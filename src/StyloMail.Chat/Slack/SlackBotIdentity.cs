@@ -30,10 +30,19 @@ public sealed record SlackBotIdentity
     /// No identity configured.
     /// </summary>
     /// <remarks>
-    /// <b>A deployment must not run with this.</b> It reads every bot's posts, including its own,
-    /// which is the loop described above. It exists so that the degenerate configuration is a value
-    /// that can be named and tested rather than an accident, and configuring the identity is an
-    /// ingress-startup obligation rather than something this record can enforce.
+    /// <para>
+    /// <b>Production cannot produce this value.</b> It reads every bot's posts, including our own,
+    /// which is the loop described above, so an ingress configured with it is a configuration error
+    /// and must fail to start rather than run in a permissive degraded mode. A missing value that
+    /// degrades into a permissive default works perfectly in tests and is wrong in production, which
+    /// is why this project already fails loudly on a missing secret for the same reason.
+    /// </para>
+    /// <para>
+    /// <b>It exists so the degenerate state is nameable and testable</b> rather than reached by
+    /// accident, and so that a test can assert what it does instead of a reader inferring it.
+    /// Enforcing that startup refuses it belongs to the ingress in plan 2b Task 4, not to this
+    /// record, which cannot see whether it was configured.
+    /// </para>
     /// </remarks>
     public static SlackBotIdentity None { get; } = new();
 
