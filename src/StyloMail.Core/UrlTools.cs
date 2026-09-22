@@ -2,10 +2,10 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 
-namespace StyloMail.Mime;
+namespace StyloMail.Core;
 
 /// <summary>The parts of a URL that deterministic analysis actually uses.</summary>
-internal sealed record UrlObservation
+public sealed record UrlObservation
 {
     /// <summary>Host as written, lower-cased, with any punycode left as-is.</summary>
     public required string Host { get; init; }
@@ -26,7 +26,7 @@ internal sealed record UrlObservation
 }
 
 /// <summary>Why an internationalised host looks like a deliberate confusable, when it does.</summary>
-internal sealed record IdnObservation
+public sealed record IdnObservation
 {
     public required string AsciiHost { get; init; }
 
@@ -47,10 +47,17 @@ internal sealed record IdnObservation
 /// URL and internationalised-domain inspection, with no network involvement whatsoever.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Nothing here resolves, normalises via DNS or fetches anything. Punycode conversion is pure
 /// string work through <see cref="IdnMapping"/>, and a host that fails to convert is reported as
 /// un-convertible rather than guessed at.
-///
+/// </para>
+/// <para>
+/// <b>This lives in Core rather than in the MIME adapter, where it was written.</b> A link lure is a
+/// link lure on every channel, and the alternative to sharing it was a chat connector that depended
+/// on a MIME parser to do URL string work, or a second copy of the homograph check. Core references
+/// nothing and this needs nothing beyond the framework, so both channels can reach it.
+/// </para>
 /// <para>
 /// The homograph check is a heuristic and is described as one: it finds characters that render
 /// like Latin letters while belonging to another script, which is the shape of a visual spoof. It
@@ -58,7 +65,7 @@ internal sealed record IdnObservation
 /// verdict.
 /// </para>
 /// </remarks>
-internal static class UrlTools
+public static class UrlTools
 {
     /// <summary>
     /// Characters that render near-identically to an ASCII character. Bounded and deliberately
