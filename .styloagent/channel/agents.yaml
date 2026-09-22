@@ -167,3 +167,31 @@ agents:
   autoStartPrompt: true
   sshHost: null
   credentialRef: null
+- prefix: agent-1-
+  repo: /Users/scottgalloway/RiderProjects/stylomail/
+  worktree: /Users/scottgalloway/RiderProjects/stylomail/
+  launchPrompt: ""
+  restartPrompt: ""
+  savedContext: /Users/scottgalloway/RiderProjects/stylomail/.styloagent/channel/saved-context/agent-1-context.md
+  transport: local
+  runtime: codex
+  tier: default
+  model: null
+  effort: null
+  autoStartPrompt: false
+  sshHost: null
+  credentialRef: null
+- prefix: agent-2-
+  repo: /Users/scottgalloway/RiderProjects/stylomail/
+  worktree: /Users/scottgalloway/RiderProjects/stylomail/
+  launchPrompt: ""
+  restartPrompt: ""
+  savedContext: /Users/scottgalloway/RiderProjects/stylomail/.styloagent/channel/saved-context/agent-2-context.md
+  transport: local
+  runtime: codex
+  tier: null
+  model: null
+  effort: null
+  autoStartPrompt: false
+  sshHost: null
+  credentialRef: null

@@ -85,6 +85,16 @@ committing an unreported half.
 | `mime-`, `adaptive-`, `queue-`, `host-` | their lanes, merged | exited |
 | `assess-`, `transport-`, `ingress-` | their lanes, merged | dehydrated |
 | `keys-` | minted keys, principal store, `stylomail key` | exited; **unowned now, route to me** |
+| `agent-1-` | *(none set)* | exited |
+| `agent-2-` | *(none set)*, **renamed "article"**, a Codex runtime agent | working |
+
+**`agent-1-` and `agent-2-` were spawned directly by the operator, not by me**, and neither has a
+responsibility set. So do not assume what either owns: ask before routing work to it, and ask before
+touching a file it may be in. They are depth 1 under `overview-` in the graph because everything is.
+
+The roster also shows `access-`, `desktop-` and `hub-` back to **working** after I had them idle, so
+the operator has been waking lanes. The fleet is larger than the cap in `fleet.yaml` says, which means
+the cockpit's limit has been changed rather than that the file is being honoured.
 
 The **Host has no owner** and neither does `Policy` except me. `overview-` holds Core, Jev and Policy.
 

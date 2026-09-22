@@ -340,6 +340,21 @@ a client pre-auth. **That is a product consequence, and the likeliest user-repor
 Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are
 theirs, not the lane's).
 
+## 14. Roster snapshot (2026-09-22 21:25, verified via `list_fleet`, not remembered)
+
+**Live and working:** `overview-` (architect), `access-` (me), `desktop-` (Avalonia console),
+`hub-` (SignalR live traffic), `chat-` (chat channel extension).
+**Dehydrated:** `assess-`, `transport-`, `ingress-`. **Exited:** `mime-`, `adaptive-`, `queue-`,
+`host-`, `agent-1-`. `agent-2-` is named `article`; **keep addressing it by the stable prefix
+`agent-2-`** (display names change, prefixes do not).
+
+**Consequences worth knowing before routing anything:**
+- Most agents I worked with today (`queue-`, `ingress-`, `assess-`, `host-`) are exited or dehydrated,
+  so a message to them may not be read. **`overview-` is the way to route anything that matters.**
+- `chat-` IS still working, so the security finding about `SlackEventReader` was deliverable.
+- Anything I want picked up rather than merely recorded should go to `overview-`, or be filed with
+  `report_issue`, rather than relying on a peer who may be parked.
+
 ## 13. Cross-lane: security review routed, not fixed
 
 An automated security review surfaced `src/StyloMail.Chat/Slack/SlackEventReader.cs` (self-loop risk:
