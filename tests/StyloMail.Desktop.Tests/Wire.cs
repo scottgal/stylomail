@@ -414,6 +414,7 @@ internal static class Wire
               "principalId": "compromised@example.test",
               "label": "Acme outbound",
               "companyId": "co_7f3a",
+              "source": "store",
               "control": {
                 "paused": true,
                 "pausedAt": "2026-09-22T09:30:00+00:00",
@@ -429,6 +430,7 @@ internal static class Wire
               "principalId": "quiet@example.test",
               "label": null,
               "companyId": null,
+              "source": "store",
               "control": {
                 "paused": false,
                 "pausedAt": "2026-09-20T09:00:00+00:00",
@@ -444,6 +446,7 @@ internal static class Wire
               "principalId": "untouched@example.test",
               "label": null,
               "companyId": null,
+              "source": "environment",
               "control": {
                 "paused": false,
                 "pausedAt": null,

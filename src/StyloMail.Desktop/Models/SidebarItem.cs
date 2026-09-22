@@ -129,14 +129,46 @@ public sealed class SidebarItem : ObservableObject
     /// target removes the ambiguity rather than depending on the order the
     /// visual tree happens to be in.
     /// </para>
+    ///
+    /// <para>
+    /// Built from the principal, not the title. The title became the operator's
+    /// label when senders gained one, so an id derived from it changed the
+    /// moment somebody renamed a sender, and a harness target that moves when a
+    /// display name changes is not an identity. This is the third place the
+    /// same distinction had to be drawn: the row title, the selection restore,
+    /// and here.
+    /// </para>
     /// </remarks>
-    public string PauseAutomationId => $"pause-sender-{Title}";
+    public string PauseAutomationId => $"pause-sender-{PrincipalId ?? Title}";
 
     /// <summary>A stable identity for this row's resume control, for the UI harness.</summary>
-    public string ResumeAutomationId => $"resume-sender-{Title}";
+    public string ResumeAutomationId => $"resume-sender-{PrincipalId ?? Title}";
 
     /// <summary>Whether this entry is a sending principal rather than a destination.</summary>
     public bool IsSender { get; init; }
+
+    /// <summary>
+    /// The principal this entry stands for, when it is a sender.
+    /// </summary>
+    /// <remarks>
+    /// The title is the operator's label, which is not a stable identity: two
+    /// principals could carry the same label, and a label is exactly the thing
+    /// an operator renames. Restoring a selection by title after a reload would
+    /// then select the wrong row, or none.
+    /// </remarks>
+    public string? PrincipalId { get; init; }
+
+    /// <summary>
+    /// Where this sender's authority came from, when it is a sender.
+    /// </summary>
+    /// <remarks>
+    /// Carried so the profile screen can say which kind it is editing and
+    /// refuse what does not apply, rather than offering a control the Host will
+    /// reject. An unrecognised value is kept as-is: a row whose provenance the
+    /// console cannot name is still a row that exists, and hiding it would
+    /// reproduce the bug the field was added to fix.
+    /// </remarks>
+    public string? Source { get; init; }
 
     /// <summary>Whether this entry needs a route the Host does not have.</summary>
     /// <remarks>

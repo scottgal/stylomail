@@ -123,6 +123,36 @@ console_start_host() {
 # every Host on the machine, including one another agent is running on a
 # different port, and this repository has several agents that start one. A
 # cleanup step that reaches outside what it started is worse than no cleanup.
+# Gives the throwaway Host something to group.
+#
+# A fresh Host has one principal and no companies, so the sidebar would show a
+# single "Ungrouped" row and the grouping would be invisible to every
+# assertion. Seeded through the API rather than by writing the database, so
+# what the console reads is what the routes produce.
+console_seed_management() {
+    local key base
+    key="$(cat "$CONSOLE_RUN/data/principal.key")"
+    base="$CONSOLE_BASE"
+
+    local company
+    company=$(curl -fsS -X POST \
+        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        --data '{"name":"Acme","notes":"seeded by the console harness"}' \
+        "$base/v1/companies" | sed -n 's/.*"companyId":"\([^"]*\)".*/\1/p')
+
+    if [[ -z "$company" ]]; then
+        echo "Could not seed a company; the sidebar will show one ungrouped sender." >&2
+        return 0
+    fi
+
+    curl -fsS -X PUT \
+        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        --data "{\"label\":\"Acme outbound\",\"companyId\":\"$company\",\"notes\":\"seeded\"}" \
+        "$base/v1/senders/harness/settings" >/dev/null
+
+    echo "seeded company $company with the harness principal filed under it"
+}
+
 console_stop_host() {
     if [[ -n "${CONSOLE_HOST_PID:-}" ]]; then
         kill "$CONSOLE_HOST_PID" 2>/dev/null || true

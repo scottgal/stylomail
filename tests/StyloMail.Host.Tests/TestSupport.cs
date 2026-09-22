@@ -10,6 +10,7 @@ using StyloMail.Transport.Cloudflare;
 using StyloMail.Transport.Ingress;
 using StyloMail.Core;
 using StyloMail.Host;
+using StyloMail.Host.Auth;
 using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
@@ -298,6 +299,37 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     {
         _overrides.Add(configure);
         return this;
+    }
+
+    /// <summary>
+    /// Mints a key straight into this host's store and returns the value it would have printed.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the store rather than <c>KeyCommands.CreateAsync</c>: a test about what the
+    /// <em>listing</em> does with a minted principal should not depend on the CLI's output format,
+    /// and the CLI's own tests drive the CLI. This writes exactly the row <c>key create</c> writes,
+    /// because it is the same call.
+    /// </remarks>
+    public string MintKey(string principalId, string tenantId, params string[] privileges)
+    {
+        var material = MintedApiKey.Mint();
+
+        var created = Services.GetRequiredService<MintedPrincipalStore>().Create(
+            new MintedPrincipal
+            {
+                KeyId = material.KeyId,
+                PrincipalId = principalId,
+                TenantId = tenantId,
+                Privileges = [.. privileges],
+                ApprovedSenderIdentities = [],
+                CreatedAt = Clock.GetUtcNow(),
+                CreatedBy = "test",
+            },
+            material);
+
+        Assert.True(created, $"'{principalId}' already had a live minted key.");
+
+        return material.Value;
     }
 
     public TestHost AddPrincipal(string principalId, string key, string tenantId, params string[] privileges)

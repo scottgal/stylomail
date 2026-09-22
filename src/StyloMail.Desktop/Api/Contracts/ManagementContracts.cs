@@ -94,6 +94,34 @@ public static class SenderPosture
         posture is not null && All.Contains(posture, StringComparer.Ordinal);
 }
 
+/// <summary>
+/// Where a principal's authority came from.
+/// </summary>
+/// <remarks>
+/// Constants rather than an enum, for the same reason as
+/// <see cref="SenderPosture"/>: a value from a newer Host that this build does
+/// not know must be <em>shown</em>, not folded into a default. A row whose
+/// provenance the console cannot name is still a row that exists, and hiding it
+/// would reproduce the bug the field was added to fix.
+/// </remarks>
+public static class PrincipalSource
+{
+    /// <summary>Minted on this host. Revocable with the key CLI.</summary>
+    public const string Store = "store";
+
+    /// <summary>Configured in the host's configuration. Removed by editing that, not by the CLI.</summary>
+    public const string Environment = "environment";
+
+    /// <summary>What an operator reads for a value this build does not recognise.</summary>
+    public static string Describe(string? source) => source switch
+    {
+        Store => "minted on this host",
+        Environment => "configured in the host's configuration",
+        null or "" => "provenance not reported",
+        _ => $"provenance not recognised ({source})",
+    };
+}
+
 /// <summary>The answer to <c>GET /v1/companies</c>.</summary>
 public sealed record CompanyListingResponse
 {

@@ -73,9 +73,20 @@ actions:
     matcher: IsVisible
     timeout: 20000
 
+  # Senders group under the company an operator filed them in, and the row
+  # shows the label rather than the address. Both come from the listing row, so
+  # this is the assertion that the sidebar does not need a call per sender.
+  - type: Expect
+    target: "text=Acme"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='Acme outbound'"
+    matcher: IsVisible
+
   - type: Screenshot
     value: "01-connected"
-    description: "The console on open: connected, sidebar loaded from the Host"
+    description: "The console on open: connected, senders grouped by company"
 
   # ---- the decision pane --------------------------------------------------
 
@@ -170,7 +181,7 @@ actions:
   - type: Expect
     target: "name=PendingActionTitle"
     matcher: HasText
-    value: "Pause harness"
+    value: "Pause Acme outbound"
     timeout: 5000
 
   - type: Expect

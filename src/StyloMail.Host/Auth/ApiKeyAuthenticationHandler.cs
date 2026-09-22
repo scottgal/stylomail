@@ -46,10 +46,13 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
             return Task.FromResult(AuthenticateResult.Fail("Unrecognised API key."));
         }
 
+        // The resolved principal carries its privileges already parsed, from whichever source
+        // resolved it. Nothing here reads configuration, so this channel and the SMTP one cannot
+        // disagree about what a key may do.
         var identity = HostIdentityExtensions.BuildIdentity(
             principal.PrincipalId,
             principal.TenantId,
-            principal.ResolvePrivileges(),
+            principal.Privileges,
             HostClaims.ChannelHeader,
             SchemeName);
 

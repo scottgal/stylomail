@@ -9,10 +9,12 @@ namespace StyloMail.Host.Hosting;
 /// <remarks>
 /// <para>
 /// Thin by design, and thin for a reason worth stating. "Who is this and what may they do?" already
-/// has one answer in this process, <see cref="PrincipalDirectory"/>, built from
-/// <see cref="HostAuthOptions"/>, and a transport that kept its own copy of that knowledge would be
-/// a second answer that could disagree. The directory verifies keys by fixed-time digest comparison
-/// and runs to completion even after a match; none of that is re-implemented here.
+/// has one answer in this process, <see cref="PrincipalDirectory"/>, and a transport that kept its
+/// own copy of that knowledge would be a second answer that could disagree. That is now sharper than
+/// it was: the directory resolves from the host's minted-key store first and from its configuration
+/// second, so a submission credential and an HTTP credential are the same credential resolved by the
+/// same code, and a key revoked on the host stops working on both at once. None of the verification
+/// is re-implemented here.
 /// </para>
 /// <para>
 /// <b>The username must match the principal the key belongs to.</b> The key alone identifies the
@@ -23,9 +25,10 @@ namespace StyloMail.Host.Hosting;
 /// <para>
 /// <b>An empty approved-sender list authorises nothing.</b> That is the transport's rule and it is
 /// left exactly as it is: the null sender (bounces and DSNs) is always permitted, and everything
-/// else must appear in <see cref="HostPrincipalOptions.ApprovedSenderIdentities"/>. "No restriction
-/// configured" and "may send as anyone" must not be the same value, or a missing configuration
-/// becomes a universal relay permission.
+/// else must appear in <see cref="HostPrincipal.ApprovedSenderIdentities"/>. "No restriction
+/// configured" and "may send as anyone" must not be the same value, or a missing grant becomes a
+/// universal relay permission. A minted principal starts with an empty list for that reason, and
+/// <c>key create --sender</c> is how an operator grants one.
 /// </para>
 /// </remarks>
 public sealed class PrincipalSubmissionAuthenticator : ISubmissionAuthenticator

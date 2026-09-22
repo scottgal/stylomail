@@ -234,6 +234,34 @@ A dialog is addressable with `window_id:` (matches the window's Name, Title or t
 a modal's controls. Also: `InitializeComponent()` from the name generator assigns the `x:Name` fields;
 `AvaloniaXamlLoader.Load(this)` loads the XAML but leaves them null.
 
+## Landed since the management design
+
+`e2f5920` — **senders group by company in the sidebar**, label as the row title. The grouping is a pure
+function (`ShellModel.GroupSenders`) with its own tests. The harness seeds a company
+(`console_harness.console_seed_management`) so the grouping is asserted rather than hidden behind one
+ungrouped row.
+
+`1080827` — the sender-settings and company routes mirrored, verified live end to end.
+
+**The mistake to not repeat, in three places already:** a *display name* is not an identity. The row
+title, the selection restore and the automation id all used it, and all three were wrong once senders
+gained a label. Use `SidebarItem.PrincipalId`. A fourth place will come up.
+
+**Avalonia binding gotcha, cost a render:** a binding to a property the DataContext does not have
+fails *silently*, and for `IsVisible` the default is `visible`. That is how the decision pane drew an
+empty amber bar. Bind against the type the DataContext actually is (the `DecisionView`, not the
+`ShellModel`).
+
+**Harness:** dialogs need `window_id:` (matches Name/Title/type name) and `composite: true`. Use
+`InitializeComponent()` from the name generator, not `AvaloniaXamlLoader.Load(this)`, or the `x:Name`
+fields are null.
+
+## Still not built
+
+The sender **profile form** (label / company / notes / external ref / target / posture) against routes
+already live, and the **Companies** management screen. Both are next. Posture and notificationTarget
+are stored and shown but read by nothing, and the UI must keep saying so.
+
 ## Next
 
 **Spec 10.2's five areas all have a surface.** Nothing is assigned or half-built.

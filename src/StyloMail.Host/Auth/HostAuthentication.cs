@@ -61,6 +61,11 @@ public static class HostAuthenticationExtensions
         IConfiguration configuration)
     {
         services.Configure<HostAuthOptions>(configuration.GetSection(HostAuthOptions.SectionName));
+
+        // Registered here rather than in the composition root because the store exists for the
+        // authentication path and nothing else reads it. It is a singleton over HostDatabase, which
+        // the composition root registers alongside it.
+        services.AddSingleton<MintedPrincipalStore>();
         services.AddSingleton<PrincipalDirectory>();
 
         services.AddAntiforgery(options =>

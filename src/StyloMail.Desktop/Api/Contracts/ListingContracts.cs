@@ -65,6 +65,21 @@ public sealed record SenderResponse
     public string? Label { get; init; }
 
     /// <summary>
+    /// Where this principal's authority came from: <c>store</c> or <c>environment</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Required rather than nullable, and that is the point.</b> The Host has
+    /// two sources of identity and the difference is not cosmetic: a
+    /// <c>store</c> principal was minted here and can be revoked with
+    /// <c>stylomail key revoke</c>, while an <c>environment</c> one is a
+    /// configuration entry this host does not own and never revokes. A console
+    /// that could not tell them apart could not refuse to offer the wrong
+    /// thing, and the Host marks the field required so a client cannot silently
+    /// assume one.
+    /// </remarks>
+    public required string Source { get; init; }
+
+    /// <summary>
     /// Which company it belongs to, or null for "nobody has said".
     /// </summary>
     /// <remarks>

@@ -175,7 +175,22 @@ public partial class MainWindow : Window
             return;
         }
 
-        await OnUiThreadAsync(() => _model.ApplySenders(listing)).ConfigureAwait(false);
+        // The company list is a second call, and a failure there must not lose
+        // the senders. Null means "could not read them", which the model turns
+        // into one plain section rather than a heading per unreadable id.
+        CompanyListingResponse? companies = null;
+
+        try
+        {
+            companies = await _services.Client.GetCompaniesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Companies] {failure.Failure}: {failure.Message}");
+        }
+
+        await OnUiThreadAsync(() => _model.ApplySenders(listing, companies?.Companies))
+            .ConfigureAwait(false);
     }
 
     /// <summary>
