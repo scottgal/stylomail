@@ -24,12 +24,12 @@ Never touched anything under `src/StyloMail.Desktop`; `desktop-` mirrors the con
 
 Repo `stylomail`, branch `main`. Base `507fe5d`; `overview-` committed and pushed each step.
 
-## State, 2026-09-22
+## State at close, 2026-09-22
 
-**265 Host tests green, three consecutive clean runs.** Baseline before this lane was 213, so 52 new.
+**270 Host tests green, three consecutive clean runs.** Baseline before this lane was 213, so 57 new.
 `dotnet build StyloMail.slnx`: 0 errors, 0 warnings.
 
-Live probe `/tmp/keys-work/probe_keys.py`: **38/38** against a real `dotnet StyloMail.Host.dll serve`
+Live probe `/tmp/keys-work/probe_keys.py`: **41/41** against a real `dotnet StyloMail.Host.dll serve`
 process, a real Kestrel, a real SMTP submission listener over `STARTTLS`, and the same binary driven
 as the CLI. Re-run it rather than trusting the number.
 
@@ -140,3 +140,21 @@ Still open and NOT mine: `desktop-` mirrors the new `source` field in the consol
   reach a listing by someone serialising the store's record.
 - Do not `git add` / `git commit` / `git commit --amend` in this tree. `overview-` commits the lane.
 - `jevkey.pvt` is not read. Test keys are generated in the test or by `key create` in the probe.
+
+## The transferable lesson, which is the point of this file
+
+**Both defects in this lane were invisible from the composition root, and the two were found by
+opposite means.**
+
+1. The base64url key id was found by **measuring**: three failing runs with a *different* set of
+   failures each time. The composition root reads perfectly; the defect was in the alphabet of a
+   random value, and it only shows up on the ~30% of keys that contain the separator.
+2. The `key revoke` row selection was found by **reading, immediately after the measuring said
+   everything was fine**: the probe was 38/38 and the suite was green when I read the code and saw a
+   `FirstOrDefault` that could not pick the row it meant.
+
+The second is the one to carry. A green suite and a green probe are evidence about the cases they
+exercise, not about the code beside them. `overview-` records the same lesson from the other
+direction: eight source files that were never in the repository while every local build passed. That
+is why a lane has to be verified in a detached clone rather than in the tree it was written in, and
+why "I measured it and it was green" is not the same claim as "I read it and it is right".
