@@ -32,7 +32,7 @@ public sealed class LedgerLegacyRowTests
         // testing this the moment the assessment contract gained another required field, and it
         // would fail for the wrong reason.
         var stored = ReadStoredPayload(host, assessmentId);
-        var legacy = RemoveMember(stored, "deliveryTiming");
+        var legacy = RemoveMembers(stored, "deliveryTiming");
 
         // Guards the test against going vacuous: if the member is ever renamed, the removal above
         // silently stops removing anything and this test would pass while proving nothing.
@@ -83,7 +83,7 @@ public sealed class LedgerLegacyRowTests
         var assessmentId = await AssessAsync(host);
 
         var stored = ReadStoredPayload(host, assessmentId);
-        RewritePayload(host, assessmentId, RemoveMember(stored, "deliveryTiming"));
+        RewritePayload(host, assessmentId, RemoveMembers(stored, "deliveryTiming"));
 
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
         var response = await reviewer.GetAsync($"/v1/decisions/{assessmentId}");
@@ -131,10 +131,68 @@ public sealed class LedgerLegacyRowTests
         command.ExecuteNonQuery();
     }
 
-    private static string RemoveMember(string payload, string member)
+    [Fact]
+    public async Task A_decision_written_before_the_channel_existed_is_still_readable()
+    {
+        // The second member to become required after rows already existed, which is why the converter
+        // is written as a list of back-fills rather than as one special case for the first.
+        using var host = new TestHost();
+        var assessmentId = await AssessAsync(host);
+
+        var stored = ReadStoredPayload(host, assessmentId);
+        var legacy = RemoveMembers(stored, "deliveryTiming", "channel");
+        Assert.NotEqual(stored, legacy);
+        RewritePayload(host, assessmentId, legacy);
+
+        var ledger = host.Services.GetRequiredService<IDecisionLedger>();
+        var read = await ledger.FindAsync(
+            TestPrincipals.AcmeTenant, assessmentId, CancellationToken.None);
+
+        Assert.NotNull(read);
+        Assert.Equal(DeliveryTiming.PreAcceptance, read.DeliveryTiming);
+
+        // Email is what those rows were, for the same reason PreAcceptance is: MailAssessor is the
+        // only production construction site and every row on disk predates chat.
+        Assert.Equal(ChannelKind.Email, read.Channel.Kind);
+        Assert.Null(read.Channel.WorkspaceId);
+        Assert.Null(read.Channel.ChannelId);
+        Assert.Null(read.Channel.ThreadId);
+    }
+
+    [Fact]
+    public async Task The_console_view_reports_the_channel_and_the_delivery_timing()
+    {
+        // The design says the console shows deliveryTiming on every chat decision, so an operator can
+        // never read a post-hoc hold as a prevention. That sentence is unsatisfiable while the
+        // response omits the member, and it was unsatisfiable on every decision, chat or email.
+        using var host = new TestHost();
+        var assessmentId = await AssessAsync(host);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await reviewer.GetAsync($"/v1/decisions/{assessmentId}");
+        response.EnsureSuccessStatusCode();
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(
+            nameof(DeliveryTiming.PreAcceptance),
+            body.RootElement.GetProperty("deliveryTiming").GetString());
+
+        // Which channel is beside whether we could have stopped it, because either one alone tells a
+        // reader less than they need: a post-hoc hold on email would be a contradiction.
+        Assert.Equal(
+            nameof(ChannelKind.Email),
+            body.RootElement.GetProperty("channel").GetProperty("kind").GetString());
+    }
+
+    private static string RemoveMembers(string payload, params string[] members)
     {
         var document = JsonNode.Parse(payload)!.AsObject();
-        document.Remove(member);
+        foreach (var member in members)
+        {
+            document.Remove(member);
+        }
+
         return document.ToJsonString();
     }
 }

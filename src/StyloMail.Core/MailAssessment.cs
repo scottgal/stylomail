@@ -84,6 +84,16 @@ public sealed record MailAssessment
 
     public required string TenantId { get; init; }
 
+    /// <summary>
+    /// The channel this decision is about.
+    /// </summary>
+    /// <remarks>
+    /// Required, so a decision can name its own channel rather than leaving a reader to infer it
+    /// from the input it came from. A console that has to infer the channel is a console that will
+    /// one day show a chat decision and an email decision the same way.
+    /// </remarks>
+    public required ChannelContext Channel { get; init; }
+
     public required IReadOnlyList<Evidence> Evidence { get; init; }
 
     public required IReadOnlyList<RiskDimension> RiskDimensions { get; init; }

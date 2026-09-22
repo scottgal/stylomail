@@ -53,7 +53,13 @@ public sealed class PersistedAssessmentConverter : JsonConverter<MailAssessment>
             return document.RootElement.Deserialize<MailAssessment>(HostJson.Options);
         }
 
+        // Every entry here says what the rows lacking that member actually were, which is what makes
+        // this a back-fill rather than a default. MailAssessor is the only production construction
+        // site and it is the email path, so a row written before chat existed was an email
+        // assessment made while still in the delivery path: Email and PreAcceptance are what those
+        // rows were, not a guess about them.
         Backfill(assessment, nameof(MailAssessment.DeliveryTiming), DeliveryTiming.PreAcceptance, options);
+        Backfill(assessment, nameof(MailAssessment.Channel), ChannelContext.Email, options);
 
         // HostJson.Options does NOT contain this converter, which is what stops this call recursing
         // into the method it is called from. Adding this converter to Options would be an infinite

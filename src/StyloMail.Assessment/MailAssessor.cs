@@ -351,7 +351,7 @@ public sealed class MailAssessor : IMailAssessor
             // Two shapes mean the same thing to a reader: no profile at all, and a profile that
             // positively says we looked and found nothing. `overview-` is explicit that BOTH must be
             // recorded, because either way the classifier judged the words without knowing the
-            // sender. Recording only the null case made this marker unreachable — the encoder
+            // sender. Recording only the null case made this marker unreachable: the encoder
             // returns the unavailable shape rather than null for an unknown principal, so the ledger
             // would have claimed an informed judgement on every cold-start message.
             if (behaviouralProfile is null || !behaviouralProfile.ProfileAvailable)
@@ -513,6 +513,7 @@ public sealed class MailAssessor : IMailAssessor
             AssessmentId = assessmentId,
             InternalMessageId = envelope.InternalMessageId,
             TenantId = context.TenantId,
+            Channel = analysis.Channel,
             Evidence = evidence,
             RiskDimensions = BuildRiskDimensions(risk, evidence),
             RiskIndex = risk.Index,
@@ -1319,7 +1320,7 @@ public sealed class MailAssessor : IMailAssessor
     ///
     /// <para>
     /// <b>This does not decide what to teach.</b> Provenance and label are the caller's, and they are
-    /// the fields that carry authority — this supplies only the measurement, correctly. A helper that
+    /// the fields that carry authority: this supplies only the measurement, correctly. A helper that
     /// chose provenance would be a helper that could open the learning gate.
     /// </para>
     ///
@@ -1340,14 +1341,14 @@ public sealed class MailAssessor : IMailAssessor
     /// <remarks>
     /// <para>
     /// <b>Prefer this overload.</b> Profiles are keyed on a tenant-scoped pseudonym produced by
-    /// <see cref="ProfileKeyHasher"/>, not on the address — so a caller who assembles a key from the
+    /// <see cref="ProfileKeyHasher"/>, not on the address, so a caller who assembles a key from the
     /// raw sender identity names a profile that does not exist, and gets a sample with no dimensions
     /// that teaches nothing. Silently. That is the same failure shape as omitting the rate features,
     /// one layer down, and the answer is the same: do not make the caller know an internal detail.
     /// </para>
     /// <para>
     /// Outbound only. An inbound sender key is qualified by authentication provenance, so two
-    /// messages from the same address that authenticated differently are different profiles — a
+    /// messages from the same address that authenticated differently are different profiles: a
     /// caller cannot name that profile without supplying the authentication context, and guessing one
     /// here would silently teach the wrong profile. Use the <see cref="ProfileKey"/> overload, or
     /// `ProfileScopes.InboundSender`, when you have it.

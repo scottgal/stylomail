@@ -283,7 +283,7 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     /// </summary>
     /// <remarks>
     /// Needed wherever a test depends on *ordering* by time. Two records written in the same
-    /// millisecond tie on their timestamp, and a keyset cursor's tiebreak then decides the order — so
+    /// millisecond tie on their timestamp, and a keyset cursor's tiebreak then decides the order, so
     /// a test that means to exercise distinct-timestamp paging can silently become a
     /// same-timestamp one and stop covering the case it was written for. Setting the times removes
     /// the race rather than hoping the machine is slow enough.
@@ -596,7 +596,7 @@ internal sealed class RecordingAssessor : IMailAssessor
     /// <remarks>
     /// The path a rejected provider credential takes: the adapter throws and the exception travels
     /// out of the pipeline. Modelling it here is what lets a test assert what the host does with that
-    /// — which is the question, since "throws" is not by itself an answer about acknowledgements.
+    ///: which is the question, since "throws" is not by itself an answer about acknowledgements.
     /// </remarks>
     public Exception? Failure { get; set; }
 
@@ -727,6 +727,7 @@ internal sealed class RecordingAssessor : IMailAssessor
         AssessmentId = assessmentId ?? $"asm_{Guid.NewGuid():N}",
         InternalMessageId = input.Envelope.InternalMessageId,
         TenantId = input.Envelope.TenantId,
+        Channel = input.Channel,
         Evidence = [],
         RiskDimensions = [],
         RiskIndex = action == MailAction.Allow ? 0.05 : 0.95,

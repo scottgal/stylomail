@@ -66,4 +66,20 @@ public sealed class ChannelContractTests
             property.GetCustomAttribute<RequiredMemberAttribute>() is not null,
             $"{propertyName} must be required so a call site cannot omit it.");
     }
+
+    [Fact]
+    public void The_assessment_cannot_be_built_without_stating_its_channel()
+    {
+        // The channel used to be reachable only from the input, which meant a decision could not say
+        // which channel it was about without a reader going and finding the input. A decision that
+        // cannot name its own channel leaves a console showing a chat decision and an email decision
+        // the same way, and infers the difference from something else.
+        const string propertyName = nameof(MailAssessment.Channel);
+        var property = typeof(MailAssessment).GetProperty(propertyName);
+
+        Assert.NotNull(property);
+        Assert.True(
+            property.GetCustomAttribute<RequiredMemberAttribute>() is not null,
+            $"{propertyName} must be required so a call site cannot omit it.");
+    }
 }

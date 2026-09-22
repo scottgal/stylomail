@@ -28,6 +28,27 @@ public sealed record DecisionResponse
     public MailAction? ProposedActionInShadow { get; init; }
 
     /// <summary>
+    /// Which channel the decision is about.
+    /// </summary>
+    /// <remarks>
+    /// Sent as the context rather than as a bare kind, because the workspace, the channel and the
+    /// thread are what make a chat decision locatable by the operator who has to review it, and a
+    /// reader that has to go and find the input to learn them is a reader the ledger has failed.
+    /// </remarks>
+    public required ChannelContext Channel { get; init; }
+
+    /// <summary>
+    /// Whether this assessment could have stopped the message or only reacts to it.
+    /// </summary>
+    /// <remarks>
+    /// Present on every decision, chat or email, because the interface promises the console shows it
+    /// so an operator never reads a post-hoc hold as a prevention. A decision that omits it leaves
+    /// the reader to infer whether the system could have acted, which is the inference this
+    /// property exists to prevent.
+    /// </remarks>
+    public required DeliveryTiming DeliveryTiming { get; init; }
+
+    /// <summary>
     /// The aggregate risk index. A documented index, <b>not</b> a calibrated probability, and not
     /// to be read as one.
     /// </summary>
@@ -55,6 +76,8 @@ public sealed record DecisionResponse
         InternalMessageId = assessment.InternalMessageId,
         Action = assessment.Action,
         ProposedActionInShadow = assessment.ProposedActionInShadow,
+        Channel = assessment.Channel,
+        DeliveryTiming = assessment.DeliveryTiming,
         RiskIndex = assessment.RiskIndex,
         Reasons = [.. assessment.Reasons.Select(ReasonResponse.From)],
         RiskDimensions = [.. assessment.RiskDimensions.Select(d => new RiskDimensionResponse
