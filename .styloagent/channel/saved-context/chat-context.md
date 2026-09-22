@@ -151,6 +151,32 @@ Slack's markup parsing is new and belongs in `StyloMail.Chat`.
 **Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
 shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
 
+### 2b Task 2: DONE, frozen, reported (2026-09-22). Not committed.
+
+**Note: overview- ruled Task 1 landed as `ed79342`, and `SlackBotIdentity.None` must be a startup
+failure in Task 4 (a stated requirement, not a preference).**
+
+New in `src/StyloMail.Chat/`:
+- `Slack/SlackLinkMarkup.cs` parses `<https://host|label>` into display text + destination separately.
+  Bare URLs are read from a **blanked copy** of the text so the pattern stays single-sourced in Core
+  and a marked-up destination is not double-counted.
+- `ChatInputFactory.cs`: `ChatMessage` -> `ChatAnalysisInput`, producing `LinkObservation`s only.
+- `ChatEvidenceProducer.cs` + `ChatSignals.cs`: three deterministic signals mirroring MIME's
+  (`deterministic.link_display_mismatch` ratio, `.link_idn` count, `.link_idn_homograph` count),
+  `SourceVersion = "stylomail-chat/1"` (ids shared with MIME, version distinct).
+  `NotApplicable` on no links; homographs `NotApplicable` only when there are no IDN links.
+
+Measured: build 0/0, solution **1388 passed, 0 failed, 23 skipped**. Chat 34 -> 47.
+
+**DISCIPLINE DEVIATION, own it:** I wrote Task 2's tests and implementation in one pass and never ran
+them red. I substituted a mutation check (producer returning no evidence -> 5/5 producer tests fail),
+which proves the tests are not vacuous but does NOT replace red-first. Do not repeat this.
+
+**Finding raised, not fixed:** `EvidenceBuilder` is `internal` in Mime and takes `MimeParseLimits`, so
+chat has its own `Build` helper: a second site for the "deterministic origin cannot be forgotten"
+convention. Recommended moving `EvidenceBuilder` to Core taking a bound, same as the `UrlTools` move.
+Awaiting overview-'s authorisation.
+
 ### Self-loop guard made structural (2026-09-22, after access-'s security review)
 
 `access-` verified (not asserted) that my "the reader observes, the caller judges" split left the

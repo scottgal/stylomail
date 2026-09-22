@@ -1,11 +1,19 @@
 # `access-` — saved context
 
-> **SECOND LANE, added 2026-09-22 17:59: `harness-` (the protocol test harness).** Brief:
-> `.styloagent/missions/harness-.md`. Plan: `docs/protocol-harness-plan-01.md`, three tasks.
-> My lane is `tests/StyloMail.Integration.Tests/` plus `StyloMail.slnx`. **Nothing in `src/`.**
-> Hard rules: no `git add`/`commit`/`amend`/`reset`, **no em-dashes anywhere**, analyzers are errors,
-> every test skipped unless `STYLOMAIL_HARNESS=1`, **report proxy defects rather than fixing them**.
-> See section 12 at the bottom for state and the open blocker.
+> **SECOND LANE `harness-`: COMPLETE AND COMMITTED 2026-09-22, as `fd5fb47`.** `overview-` committed it
+> and instructed **"stand down now"**; plans two (SMTP/upstream MTA) and three (Cloudflare/OAuth
+> endpoint) will be sent when written. **Do not start them unprompted.**
+>
+> Brief: `.styloagent/missions/harness-.md`. Plan: `docs/protocol-harness-plan-01.md`, three tasks, all
+> done. My lane was `tests/StyloMail.Integration.Tests/` plus `StyloMail.slnx`. **Final verified state:
+> harness 5 passed / 0 failed with `STYLOMAIL_HARNESS=1`, 5 skipped without, unit suite 64 passed, my
+> projects build 0 errors and 0 warnings, working tree clean for my paths.**
+>
+> Hard rules that applied: no `git add`/`commit`/`amend`/`reset` (**`overview-` commits the lane**),
+> **no em-dashes anywhere** (verified: my files have 0 U+2014 and 0 U+2013), analyzers are errors,
+> every test skipped unless `STYLOMAIL_HARNESS=1`, **report defects rather than fixing them** (the
+> `src/` prohibition was lifted later, for one defect that turned out not to exist).
+> See section 12 for the full record and section 13 for the routed security finding.
 
 
 **Identity:** `access-`, client access proxy. **Scope:** `src/StyloMail.AccessProxy/` and
