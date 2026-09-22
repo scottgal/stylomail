@@ -1,3 +1,4 @@
+using StyloMail.Assessment.Campaign;
 using StyloMail.Assessment.Triage;
 using StyloMail.Chat;
 using StyloMail.Chat.Slack;
@@ -19,11 +20,12 @@ public sealed class TriageTests
     private static ChatAnalysisInput Input(
         string text = "hello",
         string channelId = "C01",
-        bool isExternal = false) =>
+        bool isExternal = false,
+        string eventId = "Ev01") =>
         ChatInputFactory.From(new ChatMessage
         {
             ChannelKind = ChannelKind.Slack,
-            EventId = "Ev01",
+            EventId = eventId,
             WorkspaceId = "T01",
             ChannelId = channelId,
             AuthorId = "U01",
@@ -52,6 +54,58 @@ public sealed class TriageTests
         Assert.Contains(TriageCheck.NearDuplicate, outcome.NotRun);
         Assert.Contains(TriageCheck.Links, outcome.NotRun);
         Assert.Contains(TriageCheck.Behaviour, outcome.NotRun);
+    }
+
+    private static TriageContext WithCampaign(string channel, CampaignNearDuplicateDetector campaign) =>
+        TriageContext.For(channel) with { Campaign = campaign };
+
+    private static CampaignNearDuplicateDetector Campaign() =>
+        new(new RecentCampaignWindow(8, TimeSpan.FromHours(1)));
+
+    [Fact]
+    public void The_same_words_a_second_time_are_a_duplicate_and_are_dismissed()
+    {
+        // Cutting channel noise is job three, and the shape of that noise is the same words
+        // broadcast again rather than the same links.
+        var campaign = Campaign();
+        TriageEngine.Evaluate(
+            Input("did the deploy finish?", eventId: "Ev01"), WithCampaign("C01", campaign));
+
+        var outcome = TriageEngine.Evaluate(
+            Input("did the deploy finish?", eventId: "Ev02"), WithCampaign("C01", campaign));
+
+        Assert.Equal(TriageDisposition.Dismiss, outcome.Disposition);
+        Assert.Equal(TriageCheck.NearDuplicate, outcome.DecidedBy);
+    }
+
+    [Fact]
+    public void The_same_words_pointing_somewhere_new_escalate_by_construction()
+    {
+        // The fifty-first message: identical words, one destination changed. It must escalate, and it
+        // must do so because the fingerprints differ rather than because a threshold happened to
+        // catch it. That is the whole reason the basis is text AND components.
+        var campaign = Campaign();
+        TriageEngine.Evaluate(
+            Input("urgent: <http://example.com/pay|paypal.com>", eventId: "Ev01"), WithCampaign("C01", campaign));
+
+        var outcome = TriageEngine.Evaluate(
+            Input("urgent: <http://paypal.com.evil.example|paypal.com>", eventId: "Ev02"), WithCampaign("C01", campaign));
+
+        Assert.NotEqual(TriageDisposition.Dismiss, outcome.Disposition);
+        Assert.NotEqual(TriageCheck.NearDuplicate, outcome.DecidedBy);
+    }
+
+    [Fact]
+    public void A_message_with_nothing_normalisable_agrees_with_nothing()
+    {
+        // An image with no caption is not a duplicate of every other image with no caption. The same
+        // rule as a fingerprint over nothing: an empty basis is not agreement.
+        var campaign = Campaign();
+        TriageEngine.Evaluate(Input(string.Empty, eventId: "Ev01"), WithCampaign("C01", campaign));
+
+        var outcome = TriageEngine.Evaluate(Input(string.Empty, eventId: "Ev02"), WithCampaign("C01", campaign));
+
+        Assert.NotEqual(TriageCheck.NearDuplicate, outcome.DecidedBy);
     }
 
     [Fact]

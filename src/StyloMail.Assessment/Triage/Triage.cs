@@ -1,3 +1,4 @@
+using StyloMail.Adaptive.Profiles;
 using StyloMail.Core;
 
 namespace StyloMail.Assessment.Triage;
@@ -47,12 +48,76 @@ public static class TriageEngine
             };
         }
 
+        var duplicate = NearDuplicate(input, context);
+        if (duplicate is { } duplicateOutcome)
+        {
+            return duplicateOutcome;
+        }
+
         return new TriageOutcome
         {
             Disposition = TriageDisposition.Escalate,
             DecidedBy = null,
-            NotRun = [TriageCheck.NearDuplicate, TriageCheck.Links, TriageCheck.Behaviour],
+            NotRun = [TriageCheck.Links, TriageCheck.Behaviour],
             Evidence = [],
+        };
+    }
+
+    /// <summary>
+    /// Is this a near-duplicate of something already seen?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which way it fails: dismissing something that is not really a duplicate is a missed
+    /// detection, and it is the interesting one, because repetition is how an attack hides.</b> Fifty
+    /// near-identical messages followed by a fifty-first that differs precisely where it matters is
+    /// the pattern this check could be talked into dismissing. Escalating a true duplicate pays for an
+    /// assessment already made. **So the safer error is to escalate, and by a wide margin.**
+    /// </para>
+    /// <para>
+    /// <b>Which is why the check starts at exact agreement rather than at nearness.</b> Exactness is
+    /// the conservative end of the same axis: a message that differs at all is not a duplicate and
+    /// escalates. Every step from exact toward near is a step toward dismissing things that differ,
+    /// and that step needs evidence rather than judgement. **"Near" is deliberately not attempted
+    /// yet**, and loosening needs the dismissal counts behind it.
+    /// </para>
+    /// </remarks>
+    private static TriageOutcome? NearDuplicate(ChatAnalysisInput input, TriageContext context)
+    {
+        if (context.Campaign is not { } campaign)
+        {
+            // Nothing to compare against, which is not the same as comparing and finding nothing.
+            return null;
+        }
+
+        // The message's own time, because triage has no clock of its own and the platform's
+        // timestamp is the only one it has. Stated rather than assumed: a deployment whose messages
+        // arrive long after they were sent would want this to come from the caller instead.
+        var now = input.OccurredAt;
+
+        var evidence = campaign.ObserveAndEvaluate(
+            context.TenantId,
+            assessmentId: input.EventId,
+            internalMessageId: input.EventId,
+            now,
+            DimensionVector.Create(),
+            ChatFingerprint.Of(input),
+            senderScope: input.Membership.AuthorId);
+
+        // The window reports a match as Available, and reports everything else (including no
+        // comparable message) as Unavailable. Reading the availability rather than the presence of a
+        // signal is what keeps "we looked and it was clean" apart from "we did not look".
+        if (!evidence.Any(item => item.Availability == EvidenceAvailability.Available))
+        {
+            return null;
+        }
+
+        return new TriageOutcome
+        {
+            Disposition = TriageDisposition.Dismiss,
+            DecidedBy = TriageCheck.NearDuplicate,
+            NotRun = [TriageCheck.Links, TriageCheck.Behaviour],
+            Evidence = evidence,
         };
     }
 

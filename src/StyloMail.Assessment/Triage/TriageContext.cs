@@ -20,6 +20,20 @@ public sealed record TriageContext
     /// </remarks>
     public required IReadOnlySet<string> WatchedChannels { get; init; }
 
+    /// <summary>
+    /// The tenant a chat event is assessed under, since this surface carries no principal.
+    /// </summary>
+    public string TenantId { get; init; } = "inbound";
+
+    /// <summary>
+    /// The recent-campaign window, when this deployment has one.
+    /// </summary>
+    /// <remarks>
+    /// Absent means the duplicate check does not run and says so in the outcome's
+    /// <see cref="TriageOutcome.NotRun"/>, rather than reporting that it looked and found nothing.
+    /// </remarks>
+    public Campaign.CampaignNearDuplicateDetector? Campaign { get; init; }
+
     public static TriageContext For(params string[] watchedChannels) => new()
     {
         WatchedChannels = new HashSet<string>(watchedChannels, StringComparer.Ordinal),
