@@ -3,6 +3,7 @@ using StyloMail.Host.Auth;
 using StyloMail.Host.Cli;
 using StyloMail.Host.Endpoints;
 using StyloMail.Host.Hosting;
+using StyloMail.Host.Traffic;
 using StyloMail.Transport.Cloudflare;
 
 // One executable, two front ends. `serve` runs Kestrel; everything else is a one-shot command
@@ -72,6 +73,21 @@ if (transport.CloudflareIngress.Enabled)
     _ = app.Services.GetRequiredService<CloudflareEmailRoutingConnector>();
 
     CloudflareIngressEndpoints.Map(app, transport.CloudflareIngress.MaxMessageBytes);
+}
+
+// The live-traffic hub, mapped on the same terms: only when this deployment has enabled it, so an
+// unconfigured host answers 404 on the negotiate route rather than offering a feed nobody asked
+// for. Review is the privilege, because a subscriber reads a tenant's traffic and nothing more:
+// this route adds no capability, so it must not be the way one is acquired.
+//
+// The API key is presented in a header on both the negotiate request and the WebSocket handshake,
+// which is what the console sends. The host has no query-string token path at all, deliberately:
+// SignalR's access-token pattern puts the key in the URL, where it lands in access logs, proxies
+// and crash reports.
+if (app.Services.GetRequiredService<IOptions<TrafficOptions>>().Value.Enabled)
+{
+    app.MapHub<TrafficHub>(TrafficHub.Path)
+        .RequireAuthorization(HostPolicies.Review);
 }
 
 app.Run();

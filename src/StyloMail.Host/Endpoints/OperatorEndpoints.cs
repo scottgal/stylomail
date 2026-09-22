@@ -8,6 +8,7 @@ using StyloMail.Host.Feedback;
 using StyloMail.Host.Observability;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
+using StyloMail.Host.Traffic;
 
 namespace StyloMail.Host.Endpoints;
 
@@ -101,6 +102,8 @@ internal static class QuarantineEndpoints
         ClaimsPrincipal user,
         ISubmissionIntake intake,
         HostMetrics metrics,
+        ITrafficEvents events,
+        TimeProvider clock,
         CancellationToken cancellationToken)
     {
         var tenantId = user.TenantId()!;
@@ -146,6 +149,14 @@ internal static class QuarantineEndpoints
 
         metrics.QuarantineReleased();
 
+        // Announced only when this call is the one that released it. A retry that finds nothing
+        // quarantined changed nothing, and a notice saying it did would send a console to re-read a
+        // row that is exactly as it was.
+        if (performed)
+        {
+            events.Publish(TrafficEvent.MessageStateChanged(tenantId, id, clock.GetUtcNow()));
+        }
+
         return Results.Ok(new QuarantineReleaseResponse
         {
             QueueId = id,
@@ -170,6 +181,7 @@ internal static class ControlsEndpoints
         ClaimsPrincipal user,
         ISenderControlStore controls,
         HostMetrics metrics,
+        ITrafficEvents events,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -194,6 +206,10 @@ internal static class ControlsEndpoints
 
         metrics.SenderPaused();
 
+        // One kind for both directions, and no direction on the wire: which way it moved is state,
+        // and the console re-reads the sender through the listing route it already has.
+        events.Publish(TrafficEvent.SenderControlChanged(user.TenantId()!, id, clock.GetUtcNow()));
+
         return Results.Ok(new PauseSenderResponse
         {
             PrincipalId = id,
@@ -216,6 +232,7 @@ internal static class ControlsEndpoints
         ClaimsPrincipal user,
         ISenderControlStore controls,
         HostMetrics metrics,
+        ITrafficEvents events,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -239,6 +256,9 @@ internal static class ControlsEndpoints
         }
 
         metrics.SenderResumed();
+
+        // The same kind as the pause, deliberately: see PauseSenderAsync.
+        events.Publish(TrafficEvent.SenderControlChanged(user.TenantId()!, id, clock.GetUtcNow()));
 
         return Results.Ok(new ResumeSenderResponse
         {
