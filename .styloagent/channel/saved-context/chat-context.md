@@ -97,6 +97,53 @@ refactoring around myself, no renaming, no unrequested cleanup.
   start it yet.** Do not start it without being asked.
 - Plan 3 is triage. Both are designed in `docs/chat-channels-design.md`.
 
+## Plan 2a (Slack ingress) COMPLETE, verified, reported 2026-09-22. NOT committed.
+
+`overview-` split the connector: 2a is mine (signature verification, normalisation, retry guard,
+ending at `ChatMessage`); 2b is theirs and holds the channel-neutral input decision.
+
+### Files created
+
+- `src/StyloMail.Chat/StyloMail.Chat.csproj` (**SlackNet 0.18.0**, ProjectReference to `StyloMail.Core`)
+- `src/StyloMail.Chat/ChatMessage.cs`
+- `src/StyloMail.Chat/Slack/SlackSignatureVerifier.cs` (+ `SlackSignatureVerdict`)
+- `src/StyloMail.Chat/Slack/SlackEventReader.cs` (+ `SlackEventIgnored`)
+- `src/StyloMail.Chat/Slack/SlackRetryGuard.cs`
+- `tests/StyloMail.Chat.Tests/` (3 test files)
+- Modified: `StyloMail.slnx` (added both projects; `access-`'s Integration.Tests entry preserved)
+
+### Measured on the frozen tree
+
+Build 0 warnings / 0 errors. Solution **1330 passed, 0 failed, 21 skipped** (Desktop 18 +
+Integration 3, both pre-existing). Chat.Tests **28 passed**. Previous solution was 1302 passed, so
+exactly +28 and every other project unchanged.
+
+### Four plan defects found (all reported)
+
+1. **SlackNet is added but never used.** The reader hand-rolls wire types with `System.Text.Json`
+   while SlackNet 0.18.0 ships `SlackNet.Events.EventCallback`/`MessageEvent`/`BotMessage`/
+   `UrlVerification`. This was the explicit stop-and-report case. **Awaiting `overview-`'s decision**;
+   I left the reference in place rather than deciding unilaterally.
+2. **Task 1's test contradicted its implementation**: it asserted `MalformedSignature` for `null`/`""`
+   where the impl returns `MissingSignature`, so it failed 2 of its own 4 cases. Split into two
+   theories. The plan predicts 8 tests; it is 9.
+3. **The plan omits `StyloMail.Chat` -> `StyloMail.Core` reference**, so `ChatMessage` does not
+   compile (`CS0234`). Added.
+4. **The reader violated its own "every path returns rather than throws" contract** on an
+   unauthenticated surface. All 7 probed malformed-but-valid-JSON shapes threw
+   (`InvalidOperationException` from `JsonElement.GetString()`, `FormatException` from `double.Parse`).
+   Fixed by checking `ValueKind` before every read, `TryParse` with `InvariantCulture`, range bounds
+   against `DateTimeOffset`, and a `NaN` finiteness check (`NaN` compares false against both bounds
+   and would silently become the epoch).
+
+### Reusable facts for 2b
+
+- Optional fields (`text`, `thread_ts`) degrade to absent on a wrong JSON type; required fields
+  (`event_id`, `team_id`, `channel`, `user`, `ts`) refuse. That split is deliberate and tested.
+- `SlackSignatureVerifier.Verify` returns a verdict, never a bool, and never throws.
+- `SlackRetryGuard` is single-threaded per instance, bounded by capacity, and has `Forget` for a
+  failure on our side.
+
 ### Gap analysis I delivered for plan 2 (2026-09-22)
 
 At `overview-`'s request I read the connector section and reported what is too underspecified to

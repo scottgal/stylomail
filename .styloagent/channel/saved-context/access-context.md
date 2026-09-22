@@ -1,5 +1,13 @@
 # `access-` — saved context
 
+> **SECOND LANE, added 2026-09-22 17:59: `harness-` (the protocol test harness).** Brief:
+> `.styloagent/missions/harness-.md`. Plan: `docs/protocol-harness-plan-01.md`, three tasks.
+> My lane is `tests/StyloMail.Integration.Tests/` plus `StyloMail.slnx`. **Nothing in `src/`.**
+> Hard rules: no `git add`/`commit`/`amend`/`reset`, **no em-dashes anywhere**, analyzers are errors,
+> every test skipped unless `STYLOMAIL_HARNESS=1`, **report proxy defects rather than fixing them**.
+> See section 12 at the bottom for state and the open blocker.
+
+
 **Identity:** `access-`, client access proxy. **Scope:** `src/StyloMail.AccessProxy/` and
 `tests/StyloMail.AccessProxy.Tests/`. **Status: complete and green. Standing by.**
 Design of record: `.styloagent/spec.md` §9 (esp. §9.3 product argument, §9.4 constraints, §9.5 operator
@@ -195,6 +203,49 @@ at the moment every lane used it. Filed and resolved in the shared issues list.
 - **Bounds each driven to fire**: command-line length, command count, per-account sessions, auth timeout,
   idle timeout (via injected `FakeTimeProvider`), buffer-crossing transfers. Memory is constant per
   session by construction; the absence of a "max message size" is deliberate.
+
+## 12. `harness-` lane: the protocol test harness
+
+**Goal:** real clients and real servers on real sockets around the hand-written protocol code, since
+`StyloMail.AccessProxy` and `StyloMail.Transport` have **no package references** and both sides of
+IMAP/POP3/SMTP are hand-written. `PipeDuplex` proves the state machine and proves nothing about the wire.
+
+**State (frozen, measured):**
+
+| command | result |
+|---|---|
+| `dotnet build StyloMail.slnx` | 0 errors, 0 warnings |
+| `STYLOMAIL_HARNESS=1 dotnet test tests/StyloMail.Integration.Tests/...` | 2 passed, **1 failed** (IMAP, blocked), 0 skipped |
+| `dotnet test tests/StyloMail.Integration.Tests/...` (no var) | 0 passed, 0 failed, 3 skipped |
+| `dotnet test StyloMail.slnx` (no var) | 14 projects, 1330 passed, 0 failed, 21 skipped |
+
+Files: `HarnessFactAttribute.cs`, `GreenMailServer.cs`, `GreenMailTests.cs`, `ProxyListener.cs`,
+`TcpBackendTransport.cs`, `IntegrationHarness.cs`, `ImapThroughProxyTests.cs`, `Pop3ThroughProxyTests.cs`.
+Packages resolved: **Testcontainers 4.15.0**, **MailKit 4.18.0**.
+
+**BLOCKER (reported to `overview-`, awaiting a decision).** GreenMail 2.1.14 offers **no `AUTH=PLAIN`**,
+on plaintext or TLS: only `AUTH=XOAUTH2` plus the `LOGIN` command. Our app-password provider uses SASL
+`PLAIN` for IMAP, so the IMAP leg cannot authenticate. POP3 works because that provider frames POP3 as
+`USER`/`PASS`, which GreenMail accepts. **The proxy behaved correctly**: the backend refused and it
+failed closed (spec §9.5 risk 4 working).
+
+**Finding reported, NOT fixed (mission says report, do not fix).** `ImapBackendConnector` has **no
+mechanism discovery and no `LOGIN` fallback**: it never sends `CAPABILITY`, and if `AUTHENTICATE <mech>`
+is unsupported it does not fall back to `LOGIN`, which would have worked here. Gmail advertises
+`AUTH=PLAIN` so production is fine; this is a portability limit, not a live defect.
+
+**Three defects in the plan itself, all fixed in-lane:**
+1. The "reuse `ProxyHarness`" mechanism does not work: `ProxyHarness` is `internal` and
+   `StyloMail.AccessProxy.Tests` grants no `InternalsVisibleTo` (`CS0122`). Built the equivalent from
+   the **public** surface of `StyloMail.AccessProxy` in `IntegrationHarness.cs` instead.
+2. The plan's `GreenMailServer` does not compile: `Host` as an instance property trips `CA1822`, and
+   `new ContainerBuilder()` is obsolete (`CS0618`). Fixed.
+3. The plan's GreenMail user form is wrong: `-Dgreenmail.users=alice:pwd@example.com` makes the login id
+   the **local part** (measured: `alice` authenticates, `alice@example.com` does not). Must be
+   `-Dgreenmail.users=<full-address>:<password>`. Fixed and verified.
+
+**NOT yet done:** Task 2's IMAP leg; Task 1's and the plan's `git commit` steps (the plan contradicts
+itself, Global Constraints forbid commits while each task ends with one; I followed the constraints).
 
 ## 11. Session-continuity notes
 
