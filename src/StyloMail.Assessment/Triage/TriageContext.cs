@@ -34,6 +34,23 @@ public sealed record TriageContext
     /// </remarks>
     public Campaign.CampaignNearDuplicateDetector? Campaign { get; init; }
 
+    /// <summary>
+    /// Where the author's and the conversation's behavioural evidence is read from.
+    /// </summary>
+    /// <remarks>
+    /// Absent means the behavioural evidence is not attached, and the outcome says so through
+    /// <see cref="TriageOutcome.NotRun"/> rather than reporting that it looked and found nothing.
+    /// </remarks>
+    public ChatObservationRecorder? Observations { get; init; }
+
+    /// <summary>The clock the behavioural evaluator reads.</summary>
+    /// <remarks>
+    /// Defaults to the system clock, which triage can accept because it makes no decision the clock
+    /// changes: it attaches evidence and escalates. The assessment's own clock is injected as it is
+    /// everywhere else.
+    /// </remarks>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     public static TriageContext For(params string[] watchedChannels) => new()
     {
         WatchedChannels = new HashSet<string>(watchedChannels, StringComparer.Ordinal),

@@ -142,6 +142,17 @@ public sealed class TriageTests
     }
 
     [Fact]
+    public void The_last_step_never_dismisses_and_says_the_behavioural_check_did_not_run()
+    {
+        // It is not a gate. Every path out of it escalates, and with nothing to read it says so
+        // rather than reporting that it looked and found nothing.
+        var outcome = TriageEngine.Evaluate(Input("hello"), Context("C01"));
+
+        Assert.Equal(TriageDisposition.Escalate, outcome.Disposition);
+        Assert.Contains(TriageCheck.Behaviour, outcome.NotRun);
+    }
+
+    [Fact]
     public void A_channel_this_deployment_watches_is_not_dismissed_on_scope()
     {
         // Closes the other direction, so the test above cannot pass because scope dismisses

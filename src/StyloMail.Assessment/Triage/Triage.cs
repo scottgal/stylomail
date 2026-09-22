@@ -1,4 +1,5 @@
 using StyloMail.Adaptive.Profiles;
+using StyloMail.Adaptive.Signals;
 using StyloMail.Chat;
 using StyloMail.Core;
 
@@ -61,12 +62,73 @@ public static class TriageEngine
             return lureOutcome;
         }
 
+        return Behaviour(input, context);
+    }
+
+    /// <summary>
+    /// Attaches the author's and the conversation's behavioural evidence. Never decides.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is not a gate, and calling it a check was the error.</b> The stopping rule's vocabulary
+    /// of "settles a message" does not apply to it: it has no dismiss, it never decides locally, and
+    /// every path out of it escalates. It is the point at which behavioural evidence is attached, and
+    /// its disposition is escalate because that is what sits last.
+    /// </para>
+    /// <para>
+    /// <b>Which way it fails, and why there is no dismiss.</b> Deciding "ordinary" about a
+    /// compromised account is a missed detection, and it is the interesting one: a compromised
+    /// account behaves ordinarily right up until it does not, so the fifty-first message that differs
+    /// where it matters is exactly what hides inside "ordinary". Escalating pays for an assessment.
+    /// The safer error is to escalate, and a contributor whose safer error is escalate, sitting last,
+    /// means escalate.
+    /// </para>
+    /// <para>
+    /// <b>A condition that only starts to matter once something acts.</b> In observe-only, a false
+    /// escalation costs an operator's attention. The moment an action exists it costs a person's
+    /// account being restricted on probabilistic evidence, so the bar for escalating should rise.
+    /// That is a posture-dependent threshold rather than a disposition, it is not differentiated here,
+    /// and it is a condition on the interventions plan rather than on this one.
+    /// </para>
+    /// </remarks>
+    private static TriageOutcome Behaviour(ChatAnalysisInput input, TriageContext context)
+    {
+        if (context.Observations is not { } observations)
+        {
+            // Nothing to read, which is not the same as reading and finding nothing.
+            return new TriageOutcome
+            {
+                Disposition = TriageDisposition.Escalate,
+                DecidedBy = null,
+                NotRun = [TriageCheck.Behaviour],
+                Evidence = [],
+            };
+        }
+
+        var evaluator = new BehaviouralEvidenceEvaluator(context.TimeProvider);
+
+        var evidence = new List<Evidence>();
+        foreach (var key in observations.KeysFor(input, context.TenantId))
+        {
+            evidence.AddRange(evaluator.Evaluate(observations.Read(key), key.Scope.ToString()));
+        }
+
+        // Named only when the behaviour is why the message is going further, so an escalation nobody
+        // can attribute stays distinct from one this contributed to.
+        var aloneSufficient = evidence.Any(item =>
+            item.Availability == EvidenceAvailability.Available
+            && (item.Attributes ?? []).Any(attribute =>
+                attribute.Name == BehaviouralEvidence.AloneSufficientAttribute
+                && attribute.Value == "true"));
+
         return new TriageOutcome
         {
             Disposition = TriageDisposition.Escalate,
-            DecidedBy = null,
-            NotRun = [TriageCheck.Behaviour],
-            Evidence = [],
+            DecidedBy = aloneSufficient ? TriageCheck.Behaviour : null,
+
+            // Nothing sits behind this one, which is what makes it a contributor rather than a gate.
+            NotRun = [],
+            Evidence = evidence,
         };
     }
 

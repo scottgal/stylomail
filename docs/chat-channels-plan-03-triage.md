@@ -99,9 +99,6 @@ wrong in the aggressive direction is unrecoverable.
 **Bound.** A maximum number of links considered per message, and a maximum length per link, both
 already fixed in the shared analysis.
 
-**Which way it fails.** Missing a lure is a **missed detection**. Escalating a message with a
-harmless link pays for the next check.
-
 **Which way it fails: missing a lure is a missed detection, and that is the only error that matters
 here.** Escalating a message with a harmless link pays for the next check.
 
@@ -125,7 +122,7 @@ expensive path on the most common thing in a channel.
 **Worth stating:** this check produces evidence either way, so "no links" and "links that are all
 clean" stay distinguishable. The second is a finding; the first is the absence of a question.
 
-### 4. The author's own behaviour
+### 4. The author's own behaviour: a contributor, not a check
 
 **The question.** Does this author's history make this message ordinary or extraordinary? Recipient
 fan-out, novelty, velocity and drift, all local and free.
@@ -139,14 +136,23 @@ recipient count is attacker-controlled.
 **Which way it fails.** Deciding "ordinary" about a compromised account is a **missed detection**, and
 it is job two failing. Deciding "extraordinary" about a genuinely new but innocent pattern is noise.
 
-**Safer error: this is the one where the answer is not obvious, and it is because nothing acts yet.**
-In observe-only, a false "extraordinary" costs an operator's attention and nothing else. The moment an
-action exists, it costs a person's account being restricted on probabilistic evidence, which the
-design's interventions table already says must be opt-in for exactly this reason.
+**Safer error: escalate, and there is no dismiss.** Deciding "ordinary" about a compromised account is
+a missed detection, and it is the interesting one: a compensated account behaves ordinarily right up
+until it does not, so the fifty-first message that differs where it matters is exactly what hides
+inside "ordinary".
 
-**So this check's safer error is a function of what the deployment has enabled**, and that is the
-design: it fails toward escalation when nothing acts, and its escalation must be re-examined at the
-point interventions are added rather than assumed to hold.
+**And that means this is not a check at all.** The stopping rule's vocabulary of "settles a message"
+does not apply to it: it has no dismiss, it never decides locally, and every path out of it escalates.
+**It is the point at which behavioural evidence is attached**, and its disposition is escalate because
+that is what sits last. An earlier version of this record described its disposition as a function of
+the deployment's posture, which was a category mistake: **the posture changes a bar, and a bar is not
+an outcome.**
+
+**The posture-dependent bar is a condition rather than a disposition**, and it belongs to a later plan:
+in observe-only a false escalation costs an operator's attention, while an action costs a person's
+account being restricted on probabilistic evidence, so the bar for escalating should rise once
+something acts. It is not differentiated here and must be revisited when interventions are added rather
+than assumed to hold.
 
 **And this is the check the whole plan exists for.** It is the one that earns its keep for job two,
 and it is the one that makes the point that the expensive path is not always the useful one.
@@ -218,6 +224,19 @@ and the assessment at 1.3 ms, so the saving is real but it is not the whole cost
 **And it bounds the counts.** The dismissal counts are counts of what triage did to messages that were
 **still recorded**. The count of messages that were never recorded at all must either be zero or named
 as a number, and check 1 is the only check that can produce one.
+
+## What triage is for, stated rather than implied
+
+**Its volume reduction comes from checks 1 and 2 only.** Check 3 has no dismiss by ruling and check 4
+has none by this one, so ordinary traffic reaches the assessment.
+
+**That is acceptable, and the measurement is why**: the local path costs about 1.5 ms per assessment,
+so local affordability was never the argument. **What triage actually bounds is the semantic ceiling**,
+which is money per call, and which is the cost nobody has incurred yet and the one a ceiling governs.
+
+So triage **attaches evidence, dismisses what is out of scope or duplicative, and is the only bound on
+the expensive path**. A plan arguing that it makes the local path affordable would have been arguing
+the wrong cost with the right conclusion.
 
 ## What triage emits
 
