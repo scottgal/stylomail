@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using StyloMail.Host.Traffic;
 using StyloMail.Queue;
 using StyloMail.Transport.Delivery;
 using StyloMail.Transport.Ingress;
@@ -154,31 +155,47 @@ public sealed class QueueDeliveryHostedService : BackgroundService
     private readonly QueueOptions _queueOptions;
     private readonly QueueDeliveryWorkerOptions _workerOptions;
     private readonly TimeProvider _clock;
+    private readonly ITrafficEvents _events;
 
-    private SmtpDeliveryPort? _port;
+    private SmtpDeliveryPort? _transportPort;
+    private IDeliveryPort? _port;
 
     public QueueDeliveryHostedService(
         IOptions<HostTransportOptions> transport,
         QueueStore store,
         QueueOptions queueOptions,
         QueueDeliveryWorkerOptions workerOptions,
-        TimeProvider clock)
+        TimeProvider clock,
+        ITrafficEvents events)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(queueOptions);
         ArgumentNullException.ThrowIfNull(workerOptions);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(events);
 
         _transport = transport.Value;
         _store = store;
         _queueOptions = queueOptions;
         _workerOptions = workerOptions;
         _clock = clock;
+        _events = events;
     }
 
     /// <summary>The worker id leases from this process are attributed to, or null when not running.</summary>
     public string? WorkerId { get; private set; }
+
+    /// <summary>
+    /// The port the worker dials, or null when it is not running.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so that "deliveries are announced" is a property a test can read rather than one it
+    /// has to infer from a side effect, the same reason <see cref="WorkerId"/> and the SMTP
+    /// listener's bound port are readable. Wrapped here rather than registered in the container
+    /// because whether a port exists at all is the same question as whether the worker runs.
+    /// </remarks>
+    public IDeliveryPort? DeliveryPort => _port;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -187,7 +204,11 @@ public sealed class QueueDeliveryHostedService : BackgroundService
             return;
         }
 
-        _port = new SmtpDeliveryPort(_transport.Upstream.Build(), _clock);
+        // The transport is held in its own right because it is the thing with a lifetime to end:
+        // the event wrapper is a pass-through that owns nothing, so disposal stays with the object
+        // this service built rather than becoming an interface check on whatever the port is.
+        _transportPort = new SmtpDeliveryPort(_transport.Upstream.Build(), _clock);
+        _port = new TrafficEmittingDeliveryPort(_transportPort, _events, _clock);
 
         var worker = new QueueDeliveryWorker(_store, _port, _queueOptions, _workerOptions);
         WorkerId = worker.WorkerId;
@@ -201,9 +222,10 @@ public sealed class QueueDeliveryHostedService : BackgroundService
         // delivery before the connection it is using is taken away.
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
 
-        if (_port is not null)
+        if (_transportPort is not null)
         {
-            await _port.DisposeAsync().ConfigureAwait(false);
+            await _transportPort.DisposeAsync().ConfigureAwait(false);
+            _transportPort = null;
             _port = null;
         }
     }

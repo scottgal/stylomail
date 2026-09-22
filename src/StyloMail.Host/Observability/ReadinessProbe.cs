@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
+using StyloMail.Host.Traffic;
 
 namespace StyloMail.Host.Observability;
 
@@ -29,18 +30,84 @@ public sealed class ReadinessProbe
     private readonly HostDatabase _database;
     private readonly HostStorageOptions _storage;
     private readonly ProviderCredentialHealth _credentials;
+    private readonly ITrafficEvents _events;
+    private readonly TimeProvider _clock;
+    private readonly Lock _gate = new();
+
+    private ReadinessResult? _lastObserved;
 
     public ReadinessProbe(
         HostDatabase database,
         IOptions<HostStorageOptions> storage,
-        ProviderCredentialHealth credentials)
+        ProviderCredentialHealth credentials,
+        ITrafficEvents events,
+        TimeProvider clock)
     {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(storage);
+        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(clock);
+
         _database = database;
         _storage = storage.Value;
         _credentials = credentials;
+        _events = events;
+        _clock = clock;
     }
 
     public ReadinessResult Check()
+    {
+        var result = Evaluate();
+
+        AnnounceIfChanged(result);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Announces a change in the answer, and only a change.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A poll is not a change.</b> This route is polled continuously by whatever routes mail to
+    /// this host, so announcing every sample would put a notice per liveness request on the wire and
+    /// teach the console to ignore the one channel that carries a real transition.
+    /// </para>
+    /// <para>
+    /// <b>The first answer is a baseline, not a transition.</b> Nothing has changed at that point,
+    /// only started being observed, and the console reads the current answer from
+    /// <c>/health/ready</c>, which is where state belongs. The baseline is per probe instance, and
+    /// there is one probe per host, so a restart begins observing afresh rather than announcing a
+    /// transition it never saw.
+    /// </para>
+    /// <para>
+    /// Compared under a lock, because this route answers concurrent callers: two requests racing a
+    /// transition would otherwise both decide they were the one that saw it and announce it twice.
+    /// </para>
+    /// </remarks>
+    private void AnnounceIfChanged(ReadinessResult result)
+    {
+        bool changed;
+
+        lock (_gate)
+        {
+            changed = _lastObserved is { } previous && !SameAs(previous, result);
+            _lastObserved = result;
+        }
+
+        if (changed)
+        {
+            _events.Publish(TrafficEvent.ReadinessChanged(_clock.GetUtcNow()));
+        }
+    }
+
+    private static bool SameAs(ReadinessResult left, ReadinessResult right)
+        => left.Ready == right.Ready
+           && left.FailedChecks.Order(StringComparer.Ordinal)
+               .SequenceEqual(right.FailedChecks.Order(StringComparer.Ordinal));
+
+    private ReadinessResult Evaluate()
     {
         var failed = new List<string>();
 

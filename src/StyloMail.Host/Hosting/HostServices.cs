@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using System.Text;
 using StyloMail.Assessment;
@@ -11,6 +12,7 @@ using StyloMail.Host.Feedback;
 using StyloMail.Host.Observability;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
+using StyloMail.Host.Traffic;
 using StyloMail.Adaptive.Profiles;
 using StyloMail.Jev;
 using StyloMail.Mime;
@@ -85,8 +87,55 @@ public static class HostServices
         services.AddSingleton<IMailAssessor>(sp => BuildAssessor(sp, configuration));
 
         AddTransport(services, configuration);
+        AddTrafficEvents(services, configuration);
 
         return services;
+    }
+
+    /// <summary>
+    /// Wires the live-traffic seam: what announces that something changed, if anything does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Off by default, and the off path is the no-op port rather than a null.</b> Every call site
+    /// publishes identically whether the feature is on or off, so enabling it cannot change what any
+    /// mail path does, and a deployment that never configures it resolves something that answers
+    /// every call by doing nothing.
+    /// </para>
+    /// <para>
+    /// <b>The choice is made when the port is resolved, not here.</b> The host's composition root
+    /// runs before a test host layers its own configuration in, so a decision taken at registration
+    /// reads the wrong values. The same reason <c>SmtpIngress:Enabled</c> is honoured when the
+    /// listener starts rather than when it is registered.
+    /// </para>
+    /// <para>
+    /// <b><c>AddSignalR</c> is called unconditionally, and the route is not.</b> Adding the services
+    /// opens no port and maps no endpoint; whether this deployment offers a feed is decided where
+    /// the configuration is final, beside the Cloudflare intake's route, which is the same decision
+    /// shape. A deployment that has not enabled the feature is a host with no such route.
+    /// </para>
+    /// </remarks>
+    private static void AddTrafficEvents(IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<TrafficOptions>(configuration.GetSection(TrafficOptions.SectionName));
+
+        // Enums travel as names here for the same reason they do on the HTTP surface, and it has to
+        // be said twice because SignalR writes its own serializer: the console switches on the
+        // kind, so a numeric payload would silently repoint every live screen if these members were
+        // ever reordered.
+        services.AddSignalR()
+            .AddJsonProtocol(options => options
+                .PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+        services.AddSingleton<ITrafficEvents>(sp =>
+            sp.GetRequiredService<IOptions<TrafficOptions>>().Value.Enabled
+                ? sp.GetRequiredService<SignalRTrafficEvents>()
+                : NullTrafficEvents.Instance);
+
+        // Registered in its own right as well as behind the port above, so that enabling the
+        // feature is the only thing that constructs it and a test can hand it a hub that fails.
+        services.AddSingleton<SignalRTrafficEvents>(sp =>
+            new SignalRTrafficEvents(sp.GetRequiredService<IHubContext<TrafficHub>>()));
     }
 
     /// <summary>

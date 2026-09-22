@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -131,6 +132,27 @@ internal sealed class TestHost : WebApplicationFactory<Program>
         {
             RemoveAll<ISubmissionIntake>(services);
             services.AddSingleton<ISubmissionIntake, UnavailableSubmissionIntake>();
+        });
+
+    /// <summary>
+    /// Puts a hub in the host whose every audience throws, which is what a dead hub looks like from
+    /// the code that publishes into it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The failure is injected as far from the pipeline as it can be.</b> Nothing here replaces
+    /// the port, the adapter or an emission site: the real adapter and the real wrappers run, and
+    /// only the transport underneath them is broken, so a test can assert that a hub outage reaches
+    /// no further than the hub.
+    /// </remarks>
+    public TestHost WithFailingHub()
+        => Override(services =>
+        {
+            RemoveAll<IHubContext<StyloMail.Host.Traffic.TrafficHub>>(services);
+
+            // Registered after SignalR's own open-generic registration, which is what makes this
+            // one win the resolution. SignalR registers the interface as an open generic, so the
+            // removal above finds nothing to remove.
+            services.AddSingleton<IHubContext<StyloMail.Host.Traffic.TrafficHub>>(new ThrowingHubContext());
         });
 
     /// <summary>Enables the browser cookie channel, which is off by default.</summary>

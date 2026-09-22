@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using StyloMail.Core;
 using StyloMail.Host.Serialization;
 using StyloMail.Host.Storage;
+using StyloMail.Host.Traffic;
 
 namespace StyloMail.Host.Decisions;
 
@@ -18,10 +19,15 @@ namespace StyloMail.Host.Decisions;
 public sealed class SqliteDecisionLedger : IDecisionLedger
 {
     private readonly HostDatabase _database;
+    private readonly ITrafficEvents _events;
 
-    public SqliteDecisionLedger(HostDatabase database)
+    public SqliteDecisionLedger(HostDatabase database, ITrafficEvents events)
     {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(events);
+
         _database = database;
+        _events = events;
     }
 
     public Task RecordAsync(MailAssessment assessment, CancellationToken cancellationToken)
@@ -55,6 +61,18 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
         {
             throw new StorageUnavailableException("The decision ledger could not be written.", ex);
         }
+
+        // Announced after the write and outside the catch, because the write is the completion
+        // boundary and the announcement is about the record existing rather than about the
+        // assessment having been made. A decision that failed to record is not announced: a console
+        // told to re-read a row that is not there is being sent to look at nothing.
+        //
+        // The instant is the assessment's own timestamp, which is the value this ledger stores in
+        // recorded_at, so the hint and the row it points at agree about when the decision happened.
+        _events.Publish(TrafficEvent.DecisionRecorded(
+            assessment.TenantId,
+            assessment.AssessmentId,
+            assessment.AssessedAt));
 
         return Task.CompletedTask;
     }
