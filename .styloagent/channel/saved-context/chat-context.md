@@ -230,6 +230,21 @@ unavailable AND something is waiting**. Two tests. No startup refusal - overview
 degradation is deliberate (`HostCredentials.Resolve` returns `NotConfigured` only when BOTH secrets
 are absent).
 
+**TASK 4 committed as `1bb1603`.** `cockpit-` is NOT an agent - the context notice comes from the
+cockpit itself. **Context pressure is handled by THIS CHECKPOINT, not by doing less.**
+
+**COUNTING FIX:** `awk -F'Passed: +'` undercounts by one. Use the python sum over
+`Passed:\s+(\d+)` per project line. Measured 1444 = overview-'s 1443 + the replay test.
+
+**TASK 5 COMPLETE (solution 1444).** The doc's list, all present:
+unsigned refused; **a replayed request refused** (new: a VALID signature with a 10-minute-old
+timestamp -> 401, no row stored - the window is what stops a captured request replaying forever);
+own post not assessed; `PostDelivery` on every chat decision; the semantic gap stated in evidence.
+
+**PER-EVENT WRITE COST MEASURED (not guessed, as overview- asked):** **0.07 ms/event** admit over 500
+events, 0.65 ms for a `Waiting(64)`, 0.06 ms/event complete, 211-byte payload, SQLite. **Not
+disproportionate**, so persist-before-ack is affordable and no finding is needed. Probe deleted.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 

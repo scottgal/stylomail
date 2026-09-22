@@ -158,6 +158,10 @@ control that looks like it works is a false statement about the system.
   because the proxy advertises its own capability list.
 - **The fleet cap.** `.styloagent/fleet.yaml` says 16 but the running cockpit enforces 12 and does not
   re-read the file, so only the operator can raise it.
+- ~~Slack platform facts~~: the operator chose **capture later**, so the three facts that only a real
+  payload settles (`channel_type`, `user_team`, and which identifier names the posting app) stay
+  reasoned and flagged rather than measured. The endpoint is built and shipping with them flagged; a
+  capture turns them into a small follow-up rather than a rewrite.
 
 ## Next step
 
