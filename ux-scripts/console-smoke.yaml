@@ -347,3 +347,36 @@ actions:
   - type: Click
     target: "name=CancelProfileButton"
     window_id: SenderProfileDialog
+
+  # ---- the company screen --------------------------------------------------
+  #
+  # The run seeded Acme through the same routes this screen uses, so the list
+  # has something in it and the assertion is about a real company rather than
+  # an empty state.
+
+  - type: Click
+    target: "type=Button:has-text(Companies)"
+    description: "Open the company screen"
+
+  - type: Wait
+    value: "800"
+
+  - type: Expect
+    target: "text='Company'"
+    window_id: CompaniesDialog
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "text=Acme"
+    window_id: CompaniesDialog
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "12-companies"
+    composite: true
+    description: "The company screen, over the seeded company"
+
+  - type: Click
+    target: "name=CloseCompaniesButton"
+    window_id: CompaniesDialog

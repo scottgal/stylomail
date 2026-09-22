@@ -96,6 +96,9 @@ public partial class MainWindow : Window
     /// <summary>The sidebar entry that opens the connection screen.</summary>
     public const string ConnectionSectionTitle = "Connection";
 
+    /// <summary>The sidebar entry that opens the company screen.</summary>
+    public const string CompaniesSectionTitle = "Companies";
+
     /// <summary>
     /// What the window is showing, and a way to drive the same selections an
     /// operator would make without the window needing a special path for being
@@ -640,6 +643,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (item.Title == CompaniesSectionTitle)
+        {
+            await OpenCompaniesDialogAsync().ConfigureAwait(true);
+            return;
+        }
+
         await SelectAsync(item).ConfigureAwait(true);
     }
 
@@ -665,6 +674,47 @@ public partial class MainWindow : Window
         if (!dialog.KeyChanged) return;
 
         await ReconnectAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens the company screen, and reloads the senders if anything changed.
+    /// </summary>
+    /// <remarks>
+    /// Reloading matters: renaming a company changes a heading in the sidebar,
+    /// and filing a sender changes which heading it sits under. Without the
+    /// reload the operator would have to restart the console to see what they
+    /// just did.
+    /// </remarks>
+    public async Task OpenCompaniesDialogAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        var store = new ApiCompanyStore(_services.Client);
+
+        IReadOnlyList<CompanyResponse> companies;
+
+        try
+        {
+            companies = await store.ListAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Companies] {failure.Failure}: {failure.Message}");
+
+            await OnUiThreadAsync(() => _model.CompleteAction(
+                $"Could not read the companies. {failure.Detail ?? failure.Code}",
+                failed: true)).ConfigureAwait(false);
+            return;
+        }
+
+        var changed = await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var dialog = new CompaniesDialog(store, companies);
+            await dialog.ShowDialog(this);
+            return dialog.Changed;
+        }).ConfigureAwait(false);
+
+        if (changed) await RefreshSendersAsync().ConfigureAwait(true);
     }
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>

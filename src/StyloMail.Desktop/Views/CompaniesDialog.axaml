@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StyloMail.Desktop.Views.CompaniesDialog"
+        Title="Companies"
+        Width="640" Height="480"
+        WindowStartupLocation="CenterOwner">
+
+    <DockPanel Margin="24">
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+            <Button x:Name="NewCompanyButton" Content="New" Click="OnNewClick" />
+            <Button x:Name="CloseCompaniesButton" Content="Close" Click="OnCloseClick" />
+        </StackPanel>
+
+        <Grid ColumnDefinitions="220,1,*">
+
+            <ListBox x:Name="CompanyList" Grid.Column="0" SelectionChanged="OnCompanySelected" />
+
+            <Border Grid.Column="1" Classes="separator" />
+
+            <StackPanel Grid.Column="2" Margin="20,0,0,0" Spacing="10">
+                <TextBlock Classes="paneTitle" Text="Company" />
+                <TextBlock Classes="cardBody" TextWrapping="Wrap"
+                           Text="A group senders are filed under. Operator-side only: nothing in the assessment pipeline reads a company, so this organises the console rather than changing how mail is judged." />
+
+                <TextBlock x:Name="CompanyFormTitle" Classes="actionLabel" Margin="0,6,0,0" />
+                <TextBox x:Name="CompanyNameBox" Watermark="Name" />
+
+                <TextBlock Classes="actionLabel" Text="Notes" Margin="0,6,0,0" />
+                <TextBox x:Name="CompanyNotesBox" AcceptsReturn="True" Height="80" TextWrapping="Wrap" />
+
+                <TextBlock x:Name="CompanyResultText" Classes="cardBody" TextWrapping="Wrap" />
+
+                <Button x:Name="SaveCompanyButton"
+                        Classes="primaryButton"
+                        HorizontalAlignment="Right"
+                        Content="Save"
+                        Click="OnSaveClick" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -399,6 +399,13 @@ public sealed class ShellModel : ObservableObject
                 "Enter or replace this console's API key",
                 "The console holds one credential: the API key for the Host it is pointed at. "
                     + "It is stored in your keychain and cannot be shown again after it is saved."),
+
+            new SidebarItem(
+                "Companies",
+                SidebarItemState.Available,
+                "Group senders into companies",
+                "A company organises senders in this console. Nothing in the assessment pipeline "
+                    + "reads one, so this groups your view rather than changing how mail is judged."),
         ]));
 
         model.Sections.Add(new SidebarSection("Review",
