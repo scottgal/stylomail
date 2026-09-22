@@ -9,6 +9,30 @@ connectors, and the triage layer. Parent: `overview-`. No worktree: I work in th
 work in the tree and report; `overview-` verifies and commits the lane. Several agents share this
 tree.
 
+## CURRENT STATE (read this first; everything below is chronological history)
+
+**Plans 1, 2a and 2b Tasks 1 through 5 are COMPLETE and committed** (`6b11add`, `66a0da6`, `db4a0e8`,
+`1fe10ce`, `9ece646`, `df4e6dc`, `c31380a`, `9c04d71`, `1bb1603`), except the last uncommitted stretch
+(replayed-request test, readiness line, write-cost probe). Solution measured at **1444 passed, 0
+failed**. I do not commit; `overview-` does.
+
+**What the chat extension now does end to end:** a signed Slack event arrives at
+`POST /v1/ingress/slack`, is verified as raw bytes, has the challenge handshake echoed, is refused if
+it is our own app's post, is **persisted before it is acknowledged**, and is drained off the request
+path into an assessment that records `PostDelivery` and an explicit semantic gap, then into the
+ledger.
+
+**Open, and not mine:** the emergency kill switch is unreachable by every path including email
+(`overview-` holds it). The three Slack platform facts (`user_team`, `bot_id` vs `bot_user_id`, the
+conversation-type field) are reasoned and flagged rather than measured; the operator chose **capture
+later**, so the flags stay until a real payload exists.
+
+**Rules that bind this lane, learned the hard way:** derive the direction from the author's
+relationship to the workspace; a required persisted member needs a read-path back-fill; persist before
+ack; a conditional registration at composition-root time reads the wrong configuration; a fixture I
+write cannot settle a platform fact; and a test written from the requirement disagrees with the code
+often enough to be worth running before you look.
+
 ## Reading order for a cold start
 
 1. `docs/chat-channels-plan-01-core-contract.md` (plan 1, my first deliverable)
@@ -253,9 +277,8 @@ numbers as the last measured numbers, never as the current state.
 start because the key is env-only with no configuration path, so refusing would make the host
 unstartable in tests. Mirrors `UnavailableMailAssessor`.
 
-**STILL TO DO in Task 4:** the **drain** (hosted service: `Waiting` -> read -> assess via
-`IChatAssessor` -> `IDecisionLedger.RecordAsync` -> `Complete` -> `Prune`), plus measuring the
-per-event write cost overview- asked for if it proves disproportionate.
+**Task 4 is COMPLETE**; see the drain, the spin fix, the legibility line and the measured write cost
+below. Nothing outstanding.
 
 **TWO THINGS RAISED, both block or shape the rest of Task 4:**
 1. **A fixture I write cannot settle a platform fact.** overview- expects Task 4 to settle `user_team`,

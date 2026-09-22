@@ -162,6 +162,11 @@ control that looks like it works is a false statement about the system.
   payload settles (`channel_type`, `user_team`, and which identifier names the posting app) stay
   reasoned and flagged rather than measured. The endpoint is built and shipping with them flagged; a
   capture turns them into a small follow-up rather than a rewrite.
+- **The chat lane is built, not proven.** Nothing in it has been exercised against a real workspace,
+  so every claim about Slack's payloads is a claim about the documentation's. The capture settles
+  three facts; the endpoint having never seen a real request is the larger version of the same gap,
+  and the operator accepted carrying it for now by choosing "capture later". Say "built" rather than
+  "proven" until that changes.
 
 ## Next step
 
