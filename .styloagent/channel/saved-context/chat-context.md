@@ -184,6 +184,23 @@ off the request path, bound enforced by REFUSING so the platform retries. `Compl
   `ReusingStorageOf`). **Mutation-checked**: `Complete` deleting instead of marking fails exactly the
   double-assessment test.
 
+**DONE: the endpoint (solution 1433).**
+- `src/StyloMail.Host/Endpoints/SlackEventsEndpoints.cs`, `POST /v1/ingress/slack`, `MaxBodyBytes`.
+  Flow: read raw body -> **verify as received bytes** -> 401 on any non-Valid verdict ->
+  `url_verification` echoes the challenge -> `SlackEventReader.TryRead` with our identity (ignore ->
+  200, no assessment) -> **`intake.Admit` BEFORE answering** -> 200, or **503 + Retry-After** when Full.
+- `SlackEventReader.TryReadChallenge(json, out challenge)` added to `StyloMail.Chat`.
+- `SlackIngressOptions` bound in `HostServices.cs`; mapped and **`Validate()`d** in `Program.cs` only
+  when enabled.
+- `TestHost.WithSlackIngress(secret, botId)`; `tests/StyloMail.Host.Tests/SlackEventsEndpointTests.cs`
+  (8 tests). **Mutation-checked**: breaking `IsOurOwnPost` fails exactly the own-post test.
+- **Analyzer gotcha:** a mutation making a method instance-data-free fails to build with **CA1822**, so
+  a mutation probe must still touch instance data or it silently reports nothing.
+
+**STILL TO DO in Task 4:** the **drain** (hosted service: `Waiting` -> read -> assess via
+`IChatAssessor` -> `IDecisionLedger.RecordAsync` -> `Complete` -> `Prune`), plus measuring the
+per-event write cost overview- asked for if it proves disproportionate.
+
 **TWO THINGS RAISED, both block or shape the rest of Task 4:**
 1. **A fixture I write cannot settle a platform fact.** overview- expects Task 4 to settle `user_team`,
    `bot_id` vs `bot_user_id`, and the conversation-type field by "a recorded payload". Inventing a
