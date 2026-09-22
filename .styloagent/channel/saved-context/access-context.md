@@ -267,12 +267,28 @@ password **in clear**. A fallback firing over plaintext trades a portability def
 leak. Recorded as **"discover mechanisms, and fall back to LOGIN only over TLS"**, never the short
 version. Do not fix it: it is its own change with its own test, after the harness is in.
 
-**Dovecot status: heavy on this machine, with evidence.** 2.3.21 (classic documented config) is
-**amd64 only** and dies under Rosetta (`unable to mmap ExecutableHeap: 12`). 2.4.5 (`:latest`) is
-**arm64 native** but has a rewritten config model; eight iterations took me from
-`must be dovecot_config_version` to `default_login_user doesn't exist: dovenull`, which is an
-environment failure. The image has no `id`/`ls`/`head`, so it cannot be inspected from inside.
-Proposed to `overview-`: one more focused 2.4 pass, Stalwart only if that fails. **Awaiting their call.**
+**Dovecot: WORKING.** `dovecot/dovecot:latest` (2.4.5, arm64 native), additive drop-in at
+`Dovecot/99-harness.conf` with `auth_allow_cleartext = yes` + `auth_mechanisms = plain login`,
+password via the image's `USER_PASSWORD` env, internal port **31143** (rootless image: everything is
+in the unprivileged range). **The key move was reading the image's own config via `docker cp` instead
+of guessing at 2.4 syntax**; eight iterations failed because I *replaced* `dovecot.conf`, which
+discards `vendor.d/rootless.conf` and the only user the image has (`vmail`). Never replace it. Extend it.
+
+**FINDING #2, the sharper one, REPORTED not fixed.** With Dovecot working the IMAP test still fails:
+the proxy returns **`ProtocolError`** and drops the connection when a real client uses the
+**challenge/response form** of `AUTHENTICATE`. Exact bytes MailKit sends:
+
+```
+A00000000 AUTHENTICATE PLAIN\r\n
+AGFsaWNlQGV4YW1wbGUuY29tAGNsaWVudC1zaWRlLXBhc3N3b3JkLTlmM2E=\r\n
+```
+
+The unit suite covers only `AUTHENTICATE PLAIN <inline base64>` (SASL-IR) and **passes**, because the
+fake client in `PipeDuplex` was written by us and chose the convenient spelling. **Not yet bisected to
+the exact line**: `ProtocolError` is returned from both the client-facing parse and
+`ImapBackendConnector`, since both throw `AccessProxyProtocolException`. Evidence points at the client
+side (the backend was driven by hand successfully), but that is an inference, not a measurement.
+**NEXT STEP: bisect it, then report precisely.**
 
 **NOT done:** Task 2's IMAP leg; the plan's `git commit` steps (the plan contradicts itself, Global
 Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are
