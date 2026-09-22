@@ -120,7 +120,23 @@ it to 16). Only the operator can raise it.
   It was false on every assessment in every deployment before this.
 - **Issue list reconciled**: 19 entries to 8 genuinely open. Six were already fixed, resolved or
   retracted and still said open.
-- Chat: plans 1, 2a and 2b complete; plan 3 (triage) has the outcome shape and checks 1 and 2.
+- Chat: plans 1, 2a and 2b complete; plan 3 (triage) has the outcome shape, the scope check, the
+  duplicate check and the link check. **Check 4 and the drain integration remain**, and the separated
+  write is the piece that makes triage matter at all.
+- **The README's stale front page was corrected** (`6a6c638`): it claimed eleven components and 915
+  tests against twelve and 1,465.
+- **The Jev corpus input half is committed** (`db30c09`): six synthetic messages in
+  `tests/fixtures/jev/`. `access-` owns the recording harness and replay tests. **Nothing is recorded
+  because there is no credential**: `access-` reads `TYPESAFE_API_KEY` only, and `jevkey.pvt` is mine
+  by the spec's reservation and is currently absent.
+- **The article shipped as a draft** at `docs/blog/stylomail-behavioural-inference-with-jev.md`, about
+  4,100 words, delivered to the operator's blog repo and not published. **Its claims were verified
+  against the tree**, and the repository being public means the source link resolves.
+
+## Two live operator decisions
+
+- **No LICENSE**, on a repository that is now public. Nothing grants anyone rights to the code.
+- **The chat three-platform-facts capture**, deferred by the operator with "capture later".
 
 ## Eight issues remain open
 
