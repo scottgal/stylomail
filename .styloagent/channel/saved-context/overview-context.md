@@ -12,7 +12,9 @@ and it was mine by ownership.
 Operator corrections that bind, all of them blunt:
 - "You should have agents do it" and "You keep the overall shape and decisions".
 - Spawn on `runtime: claude-deepseek`, `model: deepseek-flash`. A `claude`/`sonnet` pair silently exits.
-- **No em-dashes anywhere.** Colon or full stop. Check with `grep -c $'—'`.
+- **No em-dashes anywhere.** Use a colon or a full stop. The check is a `grep -c` over the files you
+  touched for **U+2014**, written as a codepoint here so that the rule does not itself contain the
+  character it forbids and leave the check returning one forever.
 - **Specialists own an area persistently; they are not workers moving through a task list.** "Tired"
   is not a constraint, a finite context is handled by the checkpoint rather than by stopping early,
   and the only legitimate pause is a decision the agent cannot make. The operator corrected me for
