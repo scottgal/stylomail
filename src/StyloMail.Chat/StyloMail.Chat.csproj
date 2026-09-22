@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    No Slack client library, deliberately, and this is a decision rather than an omission.
+
+    The ingress needs four things: prove the request came from Slack, deduplicate a retry,
+    normalise an event into a ChatMessage, and carry the bounded shapes those produce. All four
+    are a few hundred lines over System.Text.Json, they are tested, and a client library would be
+    a large dependency doing none of them.
+
+    SlackNet earns its place when this system needs to CALL the Slack Web API: posting a warning,
+    deleting a message, restricting an account. That is the interventions plan, and the dependency
+    should be added there, against the calls that need it.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+  </ItemGroup>
+
+</Project>
