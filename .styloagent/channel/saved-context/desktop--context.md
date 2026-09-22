@@ -138,13 +138,14 @@ Say this plainly when reporting. Do not describe the decision pane as verified a
 
 ## Awaiting / open
 
-- **No route connects a listed message to its decision.** `assessmentId` exists only on the response
-  to `POST /v1/submissions`; not on the listing rows, not on `GET /v1/submissions/{id}`, and
-  `QueueItem` carries none. Asked `ingress-` for either an `assessmentId` on the row or a
-  `GET /v1/decisions?queueId=` lookup. This is the console's headline use case, so it matters more
-  than its size suggests. **Do not** work around it with a client-side map built from own submissions.
-- **No route enumerates the decision ledger**, so the Decisions pane is marked blocked. Reading one
-  decision by id works.
+- **The join is LIVE (ecb86e1).** Message rows carry `internalMessageId`; `GET /v1/decisions?messageId=`
+  returns summaries; the newest `assessmentId` fetches the full decision. Selecting a message drives
+  it, in `MainWindow.LoadDecisionForSelectedMessageAsync`. The pane distinguishes four empty states,
+  including "the Host stopped sending the join key", which is a contract change and must not render as
+  "no decisions".
+- **No route enumerates the decision ledger with filters yet**, so the Decisions pane is still marked
+  blocked. The unfiltered listing exists and is client-reachable; the sidebar entry is waiting on
+  `action` and cursor paging being finished and on me wiring it.
 - Two issues filed against other lanes: a rejected Jev key 500s assessments while readiness says
   ready (medium), and `JevOptions.Endpoint`/`Model` are not configurable (low).
 
