@@ -341,6 +341,70 @@ internal static class Wire
         }
         """;
 
+    /// <summary>
+    /// <c>GET /v1/senders/{id}/settings</c>, transcribed from
+    /// <c>SenderSettingsResponse</c>.
+    /// </summary>
+    public const string SenderSettings = """
+        {
+          "principalId": "acme-outbound",
+          "label": "Acme outbound",
+          "companyId": "co_7f3a",
+          "notes": "Primary marketing account",
+          "externalRef": "crm-99213",
+          "notificationTarget": "ops@acme.test",
+          "posture": "watch",
+          "updatedBy": "ops@acme.test",
+          "updatedAt": "2026-09-22T15:00:00+00:00"
+        }
+        """;
+
+    /// <summary>
+    /// A principal nobody has described: 200 with nulls, not a 404. The
+    /// principal exists and is in the listing, so a 404 would read as "no such
+    /// sender" and send an operator looking for something that is right there.
+    /// </summary>
+    public const string SenderSettingsUndescribed = """
+        {
+          "principalId": "quiet@example.test",
+          "label": null,
+          "companyId": null,
+          "notes": null,
+          "externalRef": null,
+          "notificationTarget": null,
+          "posture": null,
+          "updatedBy": null,
+          "updatedAt": null
+        }
+        """;
+
+    /// <summary><c>GET /v1/companies</c>.</summary>
+    public const string CompanyListing = """
+        {
+          "tenantId": "smoke",
+          "companies": [
+            {
+              "companyId": "co_7f3a",
+              "name": "Acme",
+              "notes": "Everything under the Acme brand",
+              "updatedBy": "ops@acme.test",
+              "updatedAt": "2026-09-22T15:00:00+00:00"
+            }
+          ]
+        }
+        """;
+
+    /// <summary>One company, as a create or update answers.</summary>
+    public const string Company = """
+        {
+          "companyId": "co_7f3a",
+          "name": "Acme",
+          "notes": null,
+          "updatedBy": "ops@acme.test",
+          "updatedAt": "2026-09-22T15:00:00+00:00"
+        }
+        """;
+
     /// <summary><c>GET /v1/senders</c>, transcribed from <c>SenderListingResponse</c>.</summary>
     public const string SenderListing = """
         {
@@ -348,6 +412,8 @@ internal static class Wire
           "senders": [
             {
               "principalId": "compromised@example.test",
+              "label": "Acme outbound",
+              "companyId": "co_7f3a",
               "control": {
                 "paused": true,
                 "pausedAt": "2026-09-22T09:30:00+00:00",
@@ -361,6 +427,8 @@ internal static class Wire
             },
             {
               "principalId": "quiet@example.test",
+              "label": null,
+              "companyId": null,
               "control": {
                 "paused": false,
                 "pausedAt": "2026-09-20T09:00:00+00:00",
@@ -374,6 +442,8 @@ internal static class Wire
             },
             {
               "principalId": "untouched@example.test",
+              "label": null,
+              "companyId": null,
               "control": {
                 "paused": false,
                 "pausedAt": null,

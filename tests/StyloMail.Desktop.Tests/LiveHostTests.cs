@@ -218,6 +218,101 @@ public sealed class LiveHostTests
     }
 
     /// <summary>
+    /// The management flow end to end: create a company, file a sender into it,
+    /// and find the grouping on the sender listing.
+    /// </summary>
+    /// <remarks>
+    /// Reading the grouping back from <c>GET /v1/senders</c> rather than from
+    /// the settings response is the point. The sidebar groups from the listing
+    /// row, so a write that succeeded while the row did not carry the company
+    /// would leave the console showing a sender where the operator did not put
+    /// it, with every stubbed test still green.
+    ///
+    /// <para>
+    /// It restores what it changes, so it is safe to run repeatedly against a
+    /// throwaway Host. It does write to the Host it is pointed at, which is why
+    /// it is opt-in alongside the rest of this file.
+    /// </para>
+    /// </remarks>
+    [LiveHostFact]
+    public async Task A_company_groups_a_sender_in_the_listing()
+    {
+        var client = Client();
+
+        var principal = (await client.GetSendersAsync()).Senders[0].PrincipalId;
+
+        var company = await client.CreateCompanyAsync(new CompanyRequest
+        {
+            Name = "Harness Co",
+            Notes = "created by the desktop live suite",
+        });
+
+        Assert.Equal("Harness Co", company.Name);
+        Assert.StartsWith("co_", company.CompanyId, StringComparison.Ordinal);
+
+        await client.SaveSenderSettingsAsync(principal, new SenderSettingsRequest
+        {
+            Label = "Harness outbound",
+            CompanyId = company.CompanyId,
+            Notes = "filed by the desktop live suite",
+            Posture = SenderPosture.Watch,
+        });
+
+        var settings = await client.GetSenderSettingsAsync(principal);
+        Assert.True(settings.IsDescribed);
+        Assert.Equal("Harness outbound", settings.Label);
+        Assert.Equal(SenderPosture.Watch, settings.Posture);
+
+        // The claim the sidebar actually depends on.
+        var row = (await client.GetSendersAsync())
+            .Senders
+            .Single(sender => sender.PrincipalId == principal);
+
+        Assert.Equal("Harness outbound", row.Label);
+        Assert.Equal(company.CompanyId, row.CompanyId);
+
+        // Put it back, including clearing the profile, so a rerun starts clean.
+        await client.SaveSenderSettingsAsync(principal, new SenderSettingsRequest());
+    }
+
+    /// <summary>
+    /// An undescribed sender answers 200 with nulls rather than a 404.
+    /// </summary>
+    /// <remarks>
+    /// The distinction matters to the console: 404 would mean "no such sender"
+    /// and send an operator looking for something that is right there in the
+    /// listing they just read.
+    /// </remarks>
+    [LiveHostFact]
+    public async Task An_undescribed_sender_is_answered_not_refused()
+    {
+        var client = Client();
+
+        var principal = (await client.GetSendersAsync()).Senders[0].PrincipalId;
+
+        var settings = await client.GetSenderSettingsAsync(principal);
+
+        Assert.Equal(principal, settings.PrincipalId);
+    }
+
+    /// <summary>The posture set is closed by the Host, not only by the client.</summary>
+    [LiveHostFact]
+    public async Task The_host_refuses_a_posture_it_does_not_know()
+    {
+        var client = Client();
+
+        var principal = (await client.GetSendersAsync()).Senders[0].PrincipalId;
+
+        var exception = await Assert.ThrowsAsync<StyloMailApiException>(
+            () => client.SaveSenderSettingsAsync(principal, new SenderSettingsRequest
+            {
+                Posture = "gold",
+            }));
+
+        Assert.Equal("unknown_posture", exception.Code);
+    }
+
+    /// <summary>
     /// The release route's refusal for a message the Host does not hold.
     /// </summary>
     /// <remarks>

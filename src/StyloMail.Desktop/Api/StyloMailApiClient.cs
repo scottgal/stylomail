@@ -87,6 +87,75 @@ public sealed class StyloMailApiClient
             body: null,
             cancellationToken);
 
+    // ===================== management =====================
+
+    /// <summary>
+    /// Reads an operator's description of one sending principal.
+    /// </summary>
+    /// <remarks>
+    /// <b>A sender nobody has described answers 200 with nulls, not 404.</b>
+    /// The principal exists and is in the listing, so a 404 would read as "no
+    /// such sender" and send an operator looking for something that is right
+    /// there. <see cref="SenderSettingsResponse.IsDescribed"/> is how the
+    /// console tells "undescribed" from "described as blank".
+    /// </remarks>
+    public Task<SenderSettingsResponse> GetSenderSettingsAsync(
+        string principalId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<SenderSettingsResponse>(
+            HttpMethod.Get,
+            $"/v1/senders/{Uri.EscapeDataString(principalId)}/settings",
+            body: null,
+            cancellationToken);
+
+    /// <summary>
+    /// Writes a sending principal's description. Requires the administer privilege.
+    /// </summary>
+    /// <remarks>
+    /// <b>A full replace, not a merge.</b> Every field the request omits is
+    /// cleared, which is the Host's decision and a good one: a merge would make
+    /// it impossible to remove a label. The consequence for a caller is that
+    /// this must be sent the whole profile, including the fields the form is
+    /// not showing, or editing a note silently erases a company.
+    /// </remarks>
+    public Task<SenderSettingsResponse> SaveSenderSettingsAsync(
+        string principalId,
+        SenderSettingsRequest settings,
+        CancellationToken cancellationToken = default)
+        => SendAsync<SenderSettingsResponse>(
+            HttpMethod.Put,
+            $"/v1/senders/{Uri.EscapeDataString(principalId)}/settings",
+            settings,
+            cancellationToken);
+
+    /// <summary>Lists this tenant's companies.</summary>
+    public Task<CompanyListingResponse> GetCompaniesAsync(CancellationToken cancellationToken = default)
+        => SendAsync<CompanyListingResponse>(HttpMethod.Get, "/v1/companies", body: null, cancellationToken);
+
+    /// <summary>
+    /// Creates a company. Requires the administer privilege.
+    /// </summary>
+    /// <remarks>
+    /// The Host mints the identifier and ignores any sent with the request, so
+    /// there is no id parameter here: offering one would be offering a value
+    /// the server discards.
+    /// </remarks>
+    public Task<CompanyResponse> CreateCompanyAsync(
+        CompanyRequest company,
+        CancellationToken cancellationToken = default)
+        => SendAsync<CompanyResponse>(HttpMethod.Post, "/v1/companies", company, cancellationToken);
+
+    /// <summary>Renames or re-notes a company. Requires the administer privilege.</summary>
+    public Task<CompanyResponse> SaveCompanyAsync(
+        string companyId,
+        CompanyRequest company,
+        CancellationToken cancellationToken = default)
+        => SendAsync<CompanyResponse>(
+            HttpMethod.Put,
+            $"/v1/companies/{Uri.EscapeDataString(companyId)}",
+            company,
+            cancellationToken);
+
     /// <summary>
     /// Lists one page of the decision ledger, newest first.
     /// </summary>

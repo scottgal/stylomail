@@ -54,6 +54,25 @@ public sealed record SenderResponse
     public required string PrincipalId { get; init; }
 
     public required SenderControlResponse Control { get; init; }
+
+    /// <summary>
+    /// The operator's name for this sender, or null when nobody has described it.
+    /// </summary>
+    /// <remarks>
+    /// On the row so the sidebar groups without a settings call per sender,
+    /// which on a tenant with a few hundred would be a request storm.
+    /// </remarks>
+    public string? Label { get; init; }
+
+    /// <summary>
+    /// Which company it belongs to, or null for "nobody has said".
+    /// </summary>
+    /// <remarks>
+    /// <b>Null rather than empty, and the distinction is carried.</b> "Nobody
+    /// described this sender" and "described as belonging to no company" are
+    /// different facts, and the console groups them differently.
+    /// </remarks>
+    public string? CompanyId { get; init; }
 }
 
 /// <summary>
