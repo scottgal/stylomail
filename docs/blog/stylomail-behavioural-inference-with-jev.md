@@ -1,13 +1,15 @@
-# StyloMail: How Simple Can Behavioural Inference Be With Jev?
+# On The Jev Bandwagon: Building a Behavioural Bidirectional Spam Blocking Proxy with Jev & .NET Core
 
-<!-- category -- AI,Architecture,Behavioural Inference,Jev,StyloMail,Patterns -->
+<!-- category -- AI,Architecture,Behavioural Inference,Jev,StyloMail,.NET,Patterns -->
 <datetime class="hidden">2026-09-22T22:00</datetime>
+
+Yes, I'm getting on the Jev bandwagon. I wanted to see how far I could get using it to build a behavioural spam-blocking proxy in .NET Core. Something that looks at mail in both directions: what arrives in your inbox, and what leaves an account that might have been compromised.
 
 I've been building variations of the same idea for a while now. [Bot detection](/blog/stylobot-fingerprint), [customer intelligence](/blog/zero-pii-customer-intelligence-part1), [document processing](/blog/reduced-rag). Different inputs, different actions, but a recognisable shape underneath: collect partial evidence, remember the useful parts, infer what is happening, and apply explicit policy.
 
 I wrote about that through-line in [Behavioural Inference: How I Learned to Stop Worrying and Love Probabilistic Systems](/blog/behavioural-inference-systems-blog).
 
-StyloMail is my next experiment with it. The question this time is:
+That proxy is StyloMail, and it gives me a concrete way to test the next question:
 
 > How simple can we make a behavioural inference system when semantic judgement is available as a small, typed function call?
 
@@ -208,4 +210,4 @@ What makes Jev interesting to me is how naturally its interface fits this line o
 
 That's the experiment: how far can we get with that small, inspectable loop?
 
-[StyloMail repository](https://github.com/scottgal/stylomail), currently private.
+[StyloMail source](https://github.com/scottgal/stylomail)

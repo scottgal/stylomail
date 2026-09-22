@@ -18,7 +18,7 @@
 - Overview completed claim-by-claim review: accurate; no factual corrections required. Flagged private repository and no selected license. Draft now explicitly marks repository link as currently private; no open-source claim or licensing change.
 - Overview reports main advanced to 822d476 during review; this agent has not committed.
 - Article ready for user handoff. No application tests needed for prose-only change.
-- Draft is in writable StyloMail repo; blog source directory was used read-only. Article has not been published or copied into blog repo.
+- User corrected repository visibility: repository is public. Removed private label and copied corrected article, with approved filesystem escalation, to /Users/scottgalloway/RiderProjects/mostlylucidweb/Mostlylucid/Markdown/stylomail-behavioural-inference-with-jev.md. Compared source and destination successfully. Not published.
 
 ## Rules and factual cautions
 - Preserve experimental framing; no claim of production readiness or demonstrated detection accuracy.

@@ -34,7 +34,7 @@ Spec: `.styloagent/spec.md` (§13 is chat). Architecture: `.styloagent/architect
 ## Repo state
 
 - Root `/Users/scottgalloway/RiderProjects/stylomail`, remote `https://github.com/scottgal/stylomail`
-  (private), branch `main`. Twelve source projects, fourteen test projects.
+  (**public**, verified with `gh repo view` after I wrongly repeated a stale "private" claim), branch `main`. Twelve source projects, fourteen test projects.
 - **`main` at `2236af0`, tree clean, 1465 tests passing, 0 failing.** Everything pushed.
 - `dotnet` is **not on PATH**: `export DOTNET_ROOT=/usr/local/share/dotnet` and
   `export PATH="/usr/local/share/dotnet:$PATH"`. Solution is `StyloMail.slnx`. Analyzers are errors.
