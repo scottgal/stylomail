@@ -107,8 +107,12 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
             throw new StorageUnavailableException("The decision ledger could not be read.", ex);
         }
 
+        // PersistedRead, not Options: this document was written by whatever build was running at the
+        // time, so a member added since then has to be tolerated rather than treated as corruption.
         return Task.FromResult(
-            payload is null ? null : JsonSerializer.Deserialize<MailAssessment>(payload, HostJson.Options));
+            payload is null
+                ? null
+                : JsonSerializer.Deserialize<MailAssessment>(payload, HostJson.PersistedRead));
     }
 
     public Task<DecisionListingPage> ListAsync(
@@ -187,7 +191,7 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
 
         foreach (var row in rows)
         {
-            if (JsonSerializer.Deserialize<MailAssessment>(row.Payload, HostJson.Options) is { } assessment)
+            if (JsonSerializer.Deserialize<MailAssessment>(row.Payload, HostJson.PersistedRead) is { } assessment)
             {
                 items.Add(assessment);
             }

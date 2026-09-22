@@ -13,12 +13,37 @@ namespace StyloMail.Host.Serialization;
 /// </remarks>
 public static class HostJson
 {
+    /// <summary>Used to write anything the host persists, and to read anything it was handed.</summary>
     public static readonly JsonSerializerOptions Options = Create();
+
+    /// <summary>
+    /// Used to read an assessment back out of storage, and for nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Distinct from <see cref="Options"/> so that tolerating a member an older build did not write
+    /// is confined to the persistence boundary. Putting it in <see cref="Options"/> would make every
+    /// assessment everywhere tolerant of missing required members, which is the guarantee
+    /// <c>required</c> was chosen for.
+    /// </para>
+    /// <para>
+    /// Built as <see cref="Options"/> plus the converter, which is also what keeps the converter's
+    /// own read from recursing into itself.
+    /// </para>
+    /// </remarks>
+    public static readonly JsonSerializerOptions PersistedRead = CreatePersistedRead();
 
     private static JsonSerializerOptions Create()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.Converters.Add(new JsonStringEnumConverter());
+        return options;
+    }
+
+    private static JsonSerializerOptions CreatePersistedRead()
+    {
+        var options = Create();
+        options.Converters.Add(new PersistedAssessmentConverter());
         return options;
     }
 }
