@@ -167,6 +167,23 @@ validated. `tests/StyloMail.Host.Tests/SlackIngressOptionsTests.cs` (6 tests); t
 `Map(app, ...)` + `.AllowAnonymous()`, `IngestAsync(HttpContext, connector, ct)`, bounded
 `ReadBodyAsync`. Options bound in `HostServices.cs` via `services.Configure<T>(config.GetSection(T.SectionName))`.
 
+**RULINGS (2026-09-22):** (1) fixtures I write cannot settle platform facts - label them as documented
+shapes, keep the three flags; overview- is asking the operator for a capture. (2) **PERSIST BEFORE
+ACK** - "Slack's ack is this path's 250". A durable bounded intake, written before the answer, drained
+off the request path, bound enforced by REFUSING so the platform retries. `Complete` MARKS
+(`assessed_at`), never deletes, or a retry inside the window is assessed twice.
+
+**DONE: the durable intake (solution 1425).**
+- `host_chat_intake` DDL in `HostDatabase.cs` (`event_id` PK, `received_at`, `payload`,
+  `assessed_at` NULL) + a partial index on waiting rows + an index for pruning.
+- `src/StyloMail.Host/Chat/ChatIntakeStore.cs`: `IChatIntakeStore` (`Admit`/`Waiting`/`Complete`/
+  `Prune`), `ChatIntakeAdmission` (`Admitted`/`AlreadyKnown`/`Full`), `SqliteChatIntakeStore`.
+  Registered in `HostServices.cs` unconditionally (inert unless the ingress is enabled).
+  **Full rolls back** so the platform's retry is not mistaken for a duplicate.
+- `tests/StyloMail.Host.Tests/ChatIntakeStoreTests.cs` (6 tests; durability proved by
+  `ReusingStorageOf`). **Mutation-checked**: `Complete` deleting instead of marking fails exactly the
+  double-assessment test.
+
 **TWO THINGS RAISED, both block or shape the rest of Task 4:**
 1. **A fixture I write cannot settle a platform fact.** overview- expects Task 4 to settle `user_team`,
    `bot_id` vs `bot_user_id`, and the conversation-type field by "a recorded payload". Inventing a
