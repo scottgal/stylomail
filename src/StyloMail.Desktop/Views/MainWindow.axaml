@@ -39,6 +39,61 @@
             </Grid>
         </Border>
 
+        <!--
+            The result of the last action, and whether it worked. A failure is
+            styled differently and never shares the look of a success: a console
+            that rendered the Host's "was not applied" text the same way as
+            "Paused" would leave an operator believing a quarantined message had
+            been released when it is still in the queue.
+        -->
+        <Border DockPanel.Dock="Bottom"
+                Classes="resultBar"
+                Classes.failed="{Binding LastActionFailed}"
+                IsVisible="{Binding HasLastActionResult}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="{Binding LastActionResult}" />
+                <Button Grid.Column="1" Classes="linkButton" Content="Dismiss" Click="OnDismissResultClick" />
+            </Grid>
+        </Border>
+
+        <!--
+            The confirmation. Nothing here is carried out on the first click:
+            every action the console offers is consequential, and the ledger
+            records only that it happened, not that it was meant.
+        -->
+        <Border DockPanel.Dock="Bottom"
+                Classes="actionBar"
+                IsVisible="{Binding HasPendingAction}">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Classes="actionTitle" Text="{Binding PendingAction.Title}" />
+                    <TextBlock Classes="actionConsequence"
+                               TextWrapping="Wrap"
+                               Text="{Binding PendingAction.Consequence}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                        <TextBlock Classes="actionLabel"
+                                   VerticalAlignment="Center"
+                                   Text="Reason (recorded in the audit trail)" />
+                        <TextBox Width="380"
+                                 Watermark="Why this is being done"
+                                 Text="{Binding PendingReason, Mode=TwoWay}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                    <Button Content="Cancel" Click="OnCancelActionClick" />
+                    <Button Content="Confirm"
+                            Classes="primaryButton"
+                            IsEnabled="{Binding CanConfirmAction}"
+                            Click="OnConfirmActionClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <Grid ColumnDefinitions="228,1,340,1,*">
 
             <!-- ============ 1. sidebar ============ -->
@@ -56,20 +111,45 @@
                                         <ItemsControl ItemsSource="{Binding Items}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Button Classes="navRow"
-                                                            Classes.selected="{Binding IsSelected}"
-                                                            Click="OnSidebarItemClick">
-                                                        <Grid ColumnDefinitions="Auto,*">
-                                                            <Ellipse Grid.Column="0"
-                                                                     Classes="blockedMarker"
-                                                                     IsVisible="{Binding IsBlocked}" />
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <Button Grid.Column="0"
+                                                                Classes="navRow"
+                                                                Classes.selected="{Binding IsSelected}"
+                                                                Click="OnSidebarItemClick">
+                                                            <Grid ColumnDefinitions="Auto,*">
+                                                                <Ellipse Grid.Column="0"
+                                                                         Classes="blockedMarker"
+                                                                         IsVisible="{Binding IsBlocked}" />
 
-                                                            <StackPanel Grid.Column="1">
-                                                                <TextBlock Classes="rowTitle" Text="{Binding Title}" />
-                                                                <TextBlock Classes="rowSubtitle" Text="{Binding Detail}" />
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </Button>
+                                                                <StackPanel Grid.Column="1">
+                                                                    <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                                                    <TextBlock Classes="rowSubtitle" Text="{Binding Detail}" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Button>
+
+                                                        <!--
+                                                            Offered only where it would do
+                                                            something. A control that appears on a
+                                                            running account and an already-paused
+                                                            one alike leaves an operator unable to
+                                                            tell a no-op from a fault.
+                                                        -->
+                                                        <StackPanel Grid.Column="1"
+                                                                    Orientation="Horizontal"
+                                                                    Spacing="4"
+                                                                    VerticalAlignment="Center"
+                                                                    Margin="0,0,8,0">
+                                                            <Button Classes="rowButton"
+                                                                    Content="Pause"
+                                                                    IsVisible="{Binding CanPause}"
+                                                                    Click="OnPauseSenderClick" />
+                                                            <Button Classes="rowButton"
+                                                                    Content="Resume"
+                                                                    IsVisible="{Binding CanResume}"
+                                                                    Click="OnResumeSenderClick" />
+                                                        </StackPanel>
+                                                    </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -87,10 +167,24 @@
             <Border Grid.Column="2" Classes="list">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="16,12,16,10">
-                        <StackPanel>
-                            <TextBlock Classes="paneTitle" Text="{Binding SelectedPaneTitle}" />
-                            <TextBlock Classes="paneDetail" Text="{Binding SelectedPaneDetail}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Classes="paneTitle" Text="{Binding SelectedPaneTitle}" />
+                                <TextBlock Classes="paneDetail" Text="{Binding SelectedPaneDetail}" />
+                            </StackPanel>
+
+                            <!--
+                                Releasing is the one write action on a message, and it
+                                is offered only for a message that is actually held in
+                                quarantine.
+                            -->
+                            <Button Grid.Column="1"
+                                    Classes="rowButton"
+                                    VerticalAlignment="Center"
+                                    Content="Release"
+                                    IsVisible="{Binding CanReleaseSelected}"
+                                    Click="OnReleaseClick" />
+                        </Grid>
                     </Border>
 
                     <Border DockPanel.Dock="Top" Height="1" Classes="separator" />
@@ -150,6 +244,11 @@
 
                 <ScrollViewer IsVisible="{Binding HasDecision}">
                     <StackPanel Margin="20" Spacing="0" DataContext="{Binding Decision}">
+
+                        <TextBlock Classes="paneTitle" Text="Decision" />
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,2,0,14"
+                                   Text="Why this message was held, or allowed." />
 
                         <!-- ===== what happened ===== -->
                         <StackPanel Orientation="Horizontal" Spacing="10">

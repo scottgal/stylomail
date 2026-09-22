@@ -22,6 +22,10 @@ public sealed class ShellModel : ObservableObject
     private string? _nextCursor;
     private bool _hasMore;
     private DecisionView? _decision;
+    private ActionRequest? _pendingAction;
+    private string _pendingReason = string.Empty;
+    private string? _lastActionResult;
+    private bool _lastActionFailed;
 
     /// <summary>The section filled from <c>GET /v1/senders</c> after the window opens.</summary>
     public SidebarSection SendersSection { get; } = new("Senders", []);
@@ -139,11 +143,24 @@ public sealed class ShellModel : ObservableObject
         set
         {
             if (!Set(ref _selectedMessage, value)) return;
+
             Raise(nameof(HasSelectedMessage));
+            Raise(nameof(CanReleaseSelected));
         }
     }
 
     public bool HasSelectedMessage => SelectedMessage is not null;
+
+    /// <summary>
+    /// Whether the selected message can be released from quarantine.
+    /// </summary>
+    /// <remarks>
+    /// Only for a message that is actually quarantined. Offering release on a
+    /// delivered message would be offering an action the Host would either
+    /// refuse or, worse, treat as a no-op while reporting success.
+    /// </remarks>
+    public bool CanReleaseSelected =>
+        SelectedMessage is { State: DeliveryState.Quarantined };
 
     /// <summary>
     /// The decision being shown, when one has been opened.
@@ -331,6 +348,7 @@ public sealed class ShellModel : ObservableObject
                 DescribeControl(sender.Control))
             {
                 IsPaused = sender.Control.Paused,
+                IsSender = true,
             };
 
             SendersSection.Items.Add(item);
@@ -356,6 +374,173 @@ public sealed class ShellModel : ObservableObject
         return control is { ResumedAt: not null }
             ? $"Resumed by {control.ResumedBy ?? "unknown"}"
             : "Active";
+    }
+
+    // ===================== write actions =====================
+
+    /// <summary>
+    /// The action the operator has asked for and not yet confirmed.
+    /// </summary>
+    /// <remarks>
+    /// Held here rather than executed, so that asking and doing stay separate.
+    /// A new request replaces a pending one instead of queueing: a confirmation
+    /// that produced two actions would be worse than one that produced none.
+    /// </remarks>
+    public ActionRequest? PendingAction
+    {
+        get => _pendingAction;
+        private set
+        {
+            if (!Set(ref _pendingAction, value)) return;
+
+            Raise(nameof(HasPendingAction));
+            Raise(nameof(CanConfirmAction));
+
+            // A new request starts with no reason: it is collected in the
+            // dialog, against the consequence being shown.
+            PendingReason = string.Empty;
+        }
+    }
+
+    public bool HasPendingAction => PendingAction is not null;
+
+    /// <summary>What the last action did, or why it did not.</summary>
+    public string? LastActionResult
+    {
+        get => _lastActionResult;
+        private set
+        {
+            if (!Set(ref _lastActionResult, value)) return;
+            Raise(nameof(HasLastActionResult));
+        }
+    }
+
+    public bool HasLastActionResult => LastActionResult is not null;
+
+    /// <summary>Clears the result banner, once it has been read.</summary>
+    public void DismissActionResult() => LastActionResult = null;
+
+    /// <summary>
+    /// Whether the last action failed.
+    /// </summary>
+    /// <remarks>
+    /// <b>Separate from <see cref="LastActionResult"/> on purpose.</b> The
+    /// message alone is not enough to render: a console that showed the Host's
+    /// failure text in the same neutral style as a success would leave an
+    /// operator believing a quarantined message had been released when it is
+    /// still sitting in the queue.
+    /// </remarks>
+    public bool LastActionFailed
+    {
+        get => _lastActionFailed;
+        private set => Set(ref _lastActionFailed, value);
+    }
+
+    /// <summary>Asks to stop a principal's outbound delivery.</summary>
+    public void RequestPause(SidebarItem sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+
+        PendingAction = new ActionRequest
+        {
+            Kind = ActionKind.PauseSender,
+            Title = $"Pause {sender.Title}",
+            Consequence =
+                "Outbound mail from this account will stop being delivered until it is resumed. "
+                + "The pause is recorded against your principal.",
+            Reason = string.Empty,
+            PrincipalId = sender.Title,
+        };
+    }
+
+    /// <summary>Asks to lift a pause.</summary>
+    public void RequestResume(SidebarItem sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+
+        PendingAction = new ActionRequest
+        {
+            Kind = ActionKind.ResumeSender,
+            Title = $"Resume {sender.Title}",
+            Consequence =
+                "Outbound mail from this account will be delivered again. "
+                + "The resume is recorded against your principal.",
+            Reason = string.Empty,
+            PrincipalId = sender.Title,
+        };
+    }
+
+    /// <summary>Asks to release a quarantined message.</summary>
+    public void RequestRelease(MessageRow message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        PendingAction = new ActionRequest
+        {
+            Kind = ActionKind.ReleaseQuarantine,
+            Title = $"Release {message.QueueId}",
+            Consequence =
+                "The message will be delivered to its recipients. Releasing is recorded against "
+                + "your principal, and delivering it cannot be undone.",
+            Reason = string.Empty,
+            QueueId = message.QueueId,
+        };
+    }
+
+    /// <summary>
+    /// The reason the operator has typed into the confirmation.
+    /// </summary>
+    /// <remarks>
+    /// On the pending request rather than passed in, because the reason is
+    /// collected in the same dialog that shows the consequence. Requiring it
+    /// before the dialog opens would mean the operator agreed to something
+    /// before being told what it was.
+    ///
+    /// <para>
+    /// The Host accepts an empty reason on the pause and resume routes. The
+    /// console does not, for the reason in <see cref="ActionRequest.Reason"/>.
+    /// </para>
+    /// </remarks>
+    public string PendingReason
+    {
+        get => _pendingReason;
+        set
+        {
+            if (!Set(ref _pendingReason, value)) return;
+            Raise(nameof(CanConfirmAction));
+        }
+    }
+
+    /// <summary>Whether the pending action can be carried out.</summary>
+    public bool CanConfirmAction => PendingAction is not null && !string.IsNullOrWhiteSpace(PendingReason);
+
+    public void CancelAction() => PendingAction = null;
+
+    /// <summary>
+    /// The request with the typed reason applied, ready to be carried out.
+    /// </summary>
+    /// <remarks>
+    /// Null when nothing is pending or the reason is blank, so a caller cannot
+    /// execute an unexplained action by forgetting to check
+    /// <see cref="CanConfirmAction"/> first.
+    /// </remarks>
+    public ActionRequest? ConfirmedAction =>
+        CanConfirmAction ? PendingAction! with { Reason = PendingReason.Trim() } : null;
+
+    /// <summary>
+    /// Records what an action did, and clears the request.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="failed"/> is a required argument rather than something
+    /// inferred from the message. Inferring it, by looking for words like
+    /// "could not" in the Host's prose, is how a console ends up rendering a
+    /// failure as a success the day the Host rewords a sentence.
+    /// </remarks>
+    public void CompleteAction(string result, bool failed)
+    {
+        PendingAction = null;
+        LastActionFailed = failed;
+        LastActionResult = result;
     }
 
     /// <summary>Shows a decision in the detail pane.</summary>

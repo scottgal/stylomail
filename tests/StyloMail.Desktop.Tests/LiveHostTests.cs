@@ -162,6 +162,78 @@ public sealed class LiveHostTests
     }
 
     /// <summary>
+    /// The console's whole write path, against a real Host: pause, read it
+    /// back, resume, read it back.
+    /// </summary>
+    /// <remarks>
+    /// Reading the state back from the Host rather than trusting the response
+    /// is the point. A pause that answered <c>paused: true</c> without anything
+    /// changing would pass every stubbed test in this suite and still leave an
+    /// operator believing an account had been stopped when it had not.
+    ///
+    /// <para>
+    /// It undoes what it does, so it is safe to run repeatedly against a
+    /// throwaway Host. It does write to the Host it is pointed at, which is why
+    /// it is opt-in alongside the rest of this file rather than in the default
+    /// suite.
+    /// </para>
+    /// </remarks>
+    [LiveHostFact]
+    public async Task A_pause_is_applied_read_back_and_then_lifted()
+    {
+        var client = Client();
+
+        var principal = (await client.GetSendersAsync()).Senders[0].PrincipalId;
+
+        var paused = await client.PauseSenderAsync(principal, "desktop smoke test, pause");
+        Assert.True(paused.Paused);
+        Assert.Equal(principal, paused.PrincipalId);
+
+        var afterPause = await client
+            .GetSendersAsync();
+
+        var pausedRow = afterPause.Senders.Single(sender => sender.PrincipalId == principal);
+        Assert.True(pausedRow.Control.Paused);
+        Assert.Equal("desktop smoke test, pause", pausedRow.Control.Reason);
+        Assert.NotNull(pausedRow.Control.PausedAt);
+
+        var resumed = await client.ResumeSenderAsync(principal, "desktop smoke test, cleanup");
+        Assert.False(resumed.Paused);
+
+        var afterResume = await client.GetSendersAsync();
+        var resumedRow = afterResume.Senders.Single(sender => sender.PrincipalId == principal);
+
+        Assert.False(resumedRow.Control.Paused);
+
+        // The pause's audit trail survives the resume, which is the property
+        // the console renders and the reason its field names are kept.
+        Assert.Equal("desktop smoke test, pause", resumedRow.Control.Reason);
+        Assert.NotNull(resumedRow.Control.ResumedAt);
+        Assert.Equal("desktop smoke test, cleanup", resumedRow.Control.ResumeReason);
+    }
+
+    /// <summary>
+    /// A pause with no reason is accepted by the route, because a scripted
+    /// caller may have nothing to say. The console requires one; the route does
+    /// not, and this pins that the difference is the console's policy rather
+    /// than a contract the Host enforces.
+    /// </summary>
+    [LiveHostFact]
+    public async Task The_route_itself_accepts_an_empty_reason()
+    {
+        var client = Client();
+
+        var principal = (await client.GetSendersAsync()).Senders[0].PrincipalId;
+
+        await client.ResumeSenderAsync(principal, string.Empty);
+
+        var resumed = await client.PauseSenderAsync(principal, string.Empty);
+        Assert.True(resumed.Paused);
+
+        await client.ResumeSenderAsync(principal, "cleanup");
+    }
+
+    /// <summary>
     /// Neither listing takes a tenant, and the Host scopes both from the
     /// authenticated principal. Asserted against a live Host because it is a
     /// property of the pair: the client must not send one and the route must

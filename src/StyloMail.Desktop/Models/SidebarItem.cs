@@ -88,8 +88,33 @@ public sealed class SidebarItem : ObservableObject
     public bool IsPaused
     {
         get => _isPaused;
-        set => Set(ref _isPaused, value);
+        set
+        {
+            if (!Set(ref _isPaused, value)) return;
+
+            // The two controls are computed from this, so a pause applied
+            // elsewhere has to move the buttons with it.
+            Raise(nameof(CanPause));
+            Raise(nameof(CanResume));
+        }
     }
+
+    /// <summary>
+    /// Whether the pause control applies to this entry.
+    /// </summary>
+    /// <remarks>
+    /// Only for principals, and only when they are not already stopped. Offering
+    /// a control that would do nothing is worse than offering none: an operator
+    /// who presses it and sees no change has to work out whether the console is
+    /// broken or the account was already stopped.
+    /// </remarks>
+    public bool CanPause => IsSender && !IsPaused;
+
+    /// <summary>The resume control, offered only where a pause is in force.</summary>
+    public bool CanResume => IsSender && IsPaused;
+
+    /// <summary>Whether this entry is a sending principal rather than a destination.</summary>
+    public bool IsSender { get; init; }
 
     /// <summary>Whether this entry needs a route the Host does not have.</summary>
     /// <remarks>

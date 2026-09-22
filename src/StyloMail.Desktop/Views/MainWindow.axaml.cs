@@ -229,6 +229,164 @@ public partial class MainWindow : Window
         return OnUiThreadAsync(() => _model.ShowDecision(decision));
     }
 
+    // ===================== write actions =====================
+
+    /// <summary>
+    /// Asks to pause a principal. Marshalled, like every other model update.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every mutation goes through one of these or through
+    /// <see cref="OnUiThreadAsync"/>.</b> That is not a style rule: the third
+    /// occurrence of the same defect was a caller assigning the model directly
+    /// from a background continuation, and the only symptom was a binding that
+    /// never refreshed. The window is the single place that knows which thread
+    /// the model lives on, so it is the single place that may touch it.
+    /// </remarks>
+    public Task RequestPauseAsync(SidebarItem sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        return OnUiThreadAsync(() => _model.RequestPause(sender));
+    }
+
+    /// <summary>Asks to lift a pause. Marshalled.</summary>
+    public Task RequestResumeAsync(SidebarItem sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        return OnUiThreadAsync(() => _model.RequestResume(sender));
+    }
+
+    /// <summary>Asks to release a quarantined message. Marshalled.</summary>
+    public Task RequestReleaseAsync(MessageRow message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return OnUiThreadAsync(() => _model.RequestRelease(message));
+    }
+
+    /// <summary>
+    /// Carries out the confirmed action, and reports what happened either way.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every failure is reported as a failure, with the Host's own words.</b>
+    /// Not catching here and letting the exception escape would leave the
+    /// operator with a dialog that vanished and no statement about what
+    /// happened, which for a release means not knowing whether the mail went
+    /// out. The <c>failed</c> flag is passed explicitly rather than sniffed
+    /// from the message: inferring it from the Host's prose breaks the day a
+    /// sentence is reworded.
+    /// </remarks>
+    public async Task ConfirmActionAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        var request = _model.ConfirmedAction;
+
+        // Null when nothing is pending or the reason is blank, so an
+        // unexplained action cannot be carried out by reaching this method
+        // directly.
+        if (request is null) return;
+
+        string result;
+        var failed = false;
+
+        try
+        {
+            result = await ExecuteAsync(_services, request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            failed = true;
+            result = Describe(failure);
+        }
+
+        await OnUiThreadAsync(() =>
+        {
+            _model.CompleteAction(result, failed);
+
+            // A sender's controls move with the action, so the buttons match
+            // what the Host now holds rather than what it held a moment ago.
+            if (!failed) _ = RefreshSendersAsync();
+        }).ConfigureAwait(false);
+    }
+
+    private async Task RefreshSendersAsync()
+    {
+        if (_services is null) return;
+
+        try
+        {
+            var listing = await _services.Client.GetSendersAsync().ConfigureAwait(false);
+            await OnUiThreadAsync(() => _model.ApplySenders(listing)).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException)
+        {
+            // The buttons keep whatever state they had. The result bar already
+            // says what the action did.
+        }
+    }
+
+    private static Task<string> ExecuteAsync(
+        AppServices services,
+        Models.ActionRequest request,
+        CancellationToken cancellationToken) => request.Kind switch
+    {
+        Models.ActionKind.PauseSender => PauseAsync(services, request, cancellationToken),
+        Models.ActionKind.ResumeSender => ResumeAsync(services, request, cancellationToken),
+        Models.ActionKind.ReleaseQuarantine => ReleaseAsync(services, request, cancellationToken),
+        _ => throw new ArgumentOutOfRangeException(nameof(request), request.Kind, "Unmapped action."),
+    };
+
+    private static async Task<string> PauseAsync(
+        AppServices services,
+        Models.ActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await services.Client
+            .PauseSenderAsync(request.PrincipalId!, request.Reason, cancellationToken)
+            .ConfigureAwait(false);
+
+        return $"Paused {response.PrincipalId}. Recorded against {response.UpdatedBy}.";
+    }
+
+    private static async Task<string> ResumeAsync(
+        AppServices services,
+        Models.ActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await services.Client
+            .ResumeSenderAsync(request.PrincipalId!, request.Reason, cancellationToken)
+            .ConfigureAwait(false);
+
+        return $"Resumed {response.PrincipalId}. Recorded against {response.UpdatedBy}.";
+    }
+
+    private static async Task<string> ReleaseAsync(
+        AppServices services,
+        Models.ActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await services.Client
+            .ReleaseQuarantineAsync(request.QueueId!, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Released false means it was already released, which is a success: the
+        // caller asked for it not to be quarantined, and it is not. Saying
+        // "already released" rather than "released" is the difference between
+        // reporting what happened and reporting what was wanted.
+        return response.Released
+            ? $"{response.QueueId} released. Recorded against {response.ReleasedBy}."
+            : $"{response.QueueId} was already released. Recorded against {response.ReleasedBy}.";
+    }
+
+    /// <summary>Turns a failure into something an operator can act on.</summary>
+    private static string Describe(StyloMailApiException failure) => failure.Failure switch
+    {
+        StyloMailApiFailure.ApiKeyNotConfigured => "No API key is configured, so nothing was sent.",
+        StyloMailApiFailure.Unreachable => "The Host could not be reached, so nothing was applied.",
+        StyloMailApiFailure.UnreadableResponse =>
+            "The Host answered with something this build cannot read. The action may or may not have been applied.",
+        _ => $"Not applied. {failure.Detail ?? failure.Code ?? "The Host refused the request."}",
+    };
+
     /// <summary>
     /// Runs a model update on the UI thread, wherever the caller is.
     /// </summary>
@@ -267,4 +425,26 @@ public partial class MainWindow : Window
 
         await SelectAsync(item).ConfigureAwait(true);
     }
+
+    private async void OnPauseSenderClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: SidebarItem item }) await RequestPauseAsync(item).ConfigureAwait(true);
+    }
+
+    private async void OnResumeSenderClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: SidebarItem item }) await RequestResumeAsync(item).ConfigureAwait(true);
+    }
+
+    private async void OnReleaseClick(object? sender, RoutedEventArgs e)
+    {
+        if (_model.SelectedMessage is { } message) await RequestReleaseAsync(message).ConfigureAwait(true);
+    }
+
+    private void OnCancelActionClick(object? sender, RoutedEventArgs e) => _model.CancelAction();
+
+    private void OnDismissResultClick(object? sender, RoutedEventArgs e) => _model.DismissActionResult();
+
+    private async void OnConfirmActionClick(object? sender, RoutedEventArgs e)
+        => await ConfirmActionAsync().ConfigureAwait(true);
 }

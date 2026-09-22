@@ -158,6 +158,78 @@
         <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
 
+    <!-- ================= write actions ================= -->
+
+    <Style Selector="Button.rowButton">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Background" Value="#00000000" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleSeparator}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style Selector="Button.rowButton:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#DCDCE1" />
+    </Style>
+
+    <Style Selector="Button.linkButton">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Background" Value="#00000000" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style Selector="Button.primaryButton">
+        <Setter Property="Background" Value="{StaticResource ConsoleAccent}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style Selector="Button.primaryButton:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#0A6FD8" />
+    </Style>
+
+    <Style Selector="Button.primaryButton:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="#B9D6F7" />
+    </Style>
+
+    <Style Selector="Border.actionBar">
+        <Setter Property="Background" Value="#F1F5FB" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleAccent}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="16,10" />
+    </Style>
+
+    <Style Selector="TextBlock.actionTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="TextBlock.actionConsequence">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+    </Style>
+
+    <Style Selector="TextBlock.actionLabel">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+    </Style>
+
+    <Style Selector="Border.resultBar">
+        <Setter Property="Background" Value="#EAF6EC" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleGood}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+
+    <Style Selector="Border.resultBar.failed">
+        <Setter Property="Background" Value="#FCEBEA" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleDanger}" />
+    </Style>
+
     <!-- ================= detail placeholder ================= -->
 
     <Style Selector="Border.card">

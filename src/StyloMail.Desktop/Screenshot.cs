@@ -38,6 +38,13 @@ internal static class Screenshot
 
     private const int PumpIntervalMs = 20;
 
+    /// <summary>
+    /// How many dispatcher passes to allow after the last mutation before the
+    /// frame is taken. A change made as the load finished needs at least one
+    /// layout pass to appear.
+    /// </summary>
+    private const int SettlePumps = 8;
+
     public static async Task<int> CaptureAsync(string outputPath)
     {
         try
@@ -71,8 +78,46 @@ internal static class Screenshot
                 pumps++;
             }
 
-            // One more set of jobs, so the bindings the status update raised
-            // are laid out before the bitmap is taken.
+            // Let layout settle before the bitmap is taken, and give it more
+            // than one pass.
+            //
+            // Measured, not guessed: a single RunJobs here was enough for
+            // everything the window loads on open, and not enough for a change
+            // made in the final step. A confirmation bar set visible at the end
+            // of the load was present in the model, absent from the bitmap, and
+            // its text bindings were blank: the notification had been raised,
+            // the layout pass had not run. The capture is the verification, so
+            // it has to show the state after the last mutation rather than the
+            // state one frame before it.
+            for (var settle = 0; settle < SettlePumps; settle++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                Thread.Sleep(PumpIntervalMs);
+            }
+
+            // A load that threw leaves the loop above looking exactly like one
+            // that finished, because the loop only asks whether the task is
+            // complete. The frame would then be captured from a half-loaded
+            // window and written out as if it meant something, which is how a
+            // fault in this harness cost an afternoon: the diagnostic that
+            // would have explained it never ran, and the picture looked
+            // plausible. Report and refuse instead.
+            if (loaded.IsFaulted)
+            {
+                Console.Error.WriteLine($"[Screenshot] The window did not finish loading: {loaded.Exception?.GetBaseException().Message}");
+                return 1;
+            }
+
+            // Force a layout pass before capturing, and ask for it explicitly.
+            //
+            // Measured, not guessed. With the manual pump alone, a panel that
+            // became visible as the load finished was present in the model,
+            // raised its notification, and was absent from the bitmap: the
+            // headless render path does not drive the layout manager the way a
+            // real window's render loop does, so the pass has to be asked for.
+            // A capture that silently misses the last state change is worse
+            // than no capture, because it still looks like one.
+            window.InvalidateMeasure();
             Dispatcher.UIThread.RunJobs();
 
             var frame = window.CaptureRenderedFrame();
@@ -121,7 +166,6 @@ internal static class Screenshot
     private static async Task LoadEverything(MainWindow window)
     {
         await window.InitialLoad.ConfigureAwait(false);
-
         var model = window.Model;
 
         var queue = model.Sections
@@ -133,6 +177,34 @@ internal static class Screenshot
         await window.SelectAsync(queue).ConfigureAwait(false);
 
         await ShowDecisionIfAsked(window).ConfigureAwait(false);
+        await ShowActionIfAsked(window).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Opens the confirmation for a pause, so the dialog can be photographed.
+    /// </summary>
+    /// <remarks>
+    /// It only <em>asks</em>. Nothing is carried out, because asking and doing
+    /// are separate steps and this is the asking one: with the flag set the
+    /// window shows the confirmation and the Confirm button stays disabled
+    /// until a reason is typed, so a capture cannot accidentally act on the
+    /// Host it is pointed at.
+    /// </remarks>
+    private const string ActionVariable = "STYLOMAIL_SMOKE_ACTION";
+
+    private static async Task ShowActionIfAsked(MainWindow window)
+    {
+        if (Environment.GetEnvironmentVariable(ActionVariable) != "1") return;
+
+        var sender = window.Model.Sections
+            .SingleOrDefault(section => section.Title == "Senders")
+            ?.Items
+            .FirstOrDefault(item => item.CanPause);
+
+        // Through the window, which marshals. Assigning the model directly from
+        // this thread produced a confirmation that was pending in the model and
+        // absent from the window: the binding never heard about it.
+        if (sender is not null) await window.RequestPauseAsync(sender).ConfigureAwait(false);
     }
 
     /// <summary>
