@@ -28,8 +28,16 @@ public sealed class ShellModel : ObservableObject
     private string? _lastActionResult;
     private bool _lastActionFailed;
 
-    /// <summary>The section filled from <c>GET /v1/senders</c> after the window opens.</summary>
-    public SidebarSection SendersSection { get; } = new("Senders", []);
+    /// <summary>
+    /// The sections filled from <c>GET /v1/senders</c>, one per company.
+    /// </summary>
+    /// <remarks>
+    /// A list rather than one section, because senders group by company and the
+    /// grouping is the point of the management surface. Rebuilt in place on
+    /// every load, and the old ones removed first, so the sidebar cannot
+    /// accumulate a company that was renamed or emptied.
+    /// </remarks>
+    private readonly List<SidebarSection> _senderSections = [];
 
     /// <summary>
     /// The cursor for the next page, as the Host gave it.
@@ -238,20 +246,21 @@ public sealed class ShellModel : ObservableObject
     /// newest and says how many there are, because showing only the newest
     /// without saying so would hide that anything changed.
     /// </remarks>
-    public int DecisionCount { get; private set; }
+    /// <summary>Delegates to the view, which is what the pane is bound to.</summary>
+    public int DecisionCount => Decision?.DecisionCount ?? 0;
 
-    public string? DecisionHistoryNote => DecisionCount > 1
-        ? $"This message has been assessed {DecisionCount} times. Showing the most recent."
-        : null;
+    public string? DecisionHistoryNote => Decision?.HistoryNote;
 
-    public bool HasDecisionHistory => DecisionHistoryNote is not null;
+    public bool HasDecisionHistory => Decision?.HasHistory ?? false;
 
     /// <summary>Marks the pane as waiting for a lookup.</summary>
     public void BeginDecisionLookup()
     {
         _decisionLookup = DecisionLookup.Loading;
         Decision = null;
-        DecisionCount = 0;
+        Raise(nameof(DecisionCount));
+        Raise(nameof(DecisionHistoryNote));
+        Raise(nameof(HasDecisionHistory));
         Raise(nameof(DecisionUnavailableReason));
     }
 
@@ -260,7 +269,7 @@ public sealed class ShellModel : ObservableObject
     {
         _decisionLookup = DecisionLookup.None;
         Decision = null;
-        DecisionCount = 0;
+        Raise(nameof(DecisionCount));
         Raise(nameof(DecisionUnavailableReason));
     }
 
@@ -269,7 +278,7 @@ public sealed class ShellModel : ObservableObject
     {
         _decisionLookup = DecisionLookup.Unavailable;
         Decision = null;
-        DecisionCount = 0;
+        Raise(nameof(DecisionCount));
         Raise(nameof(DecisionUnavailableReason));
     }
 
@@ -369,12 +378,15 @@ public sealed class ShellModel : ObservableObject
                 MessageListState.Quarantined),
         ]));
 
-        // Filled from GET /v1/senders once the window opens. A placeholder
-        // rather than an empty section, so the entry does not appear and vanish.
-        model.SendersSection.Items.Add(
-            new SidebarItem("Loading", SidebarItemState.NotBuilt, "GET /v1/senders"));
+        // Filled from GET /v1/senders once the window opens, one section per
+        // company. A placeholder rather than an empty section, so the entry does
+        // not appear and vanish.
+        model._senderSections.Add(new SidebarSection("Senders",
+        [
+            new SidebarItem("Loading", SidebarItemState.NotBuilt, "GET /v1/senders"),
+        ]));
 
-        model.Sections.Add(model.SendersSection);
+        foreach (var placeholder in model._senderSections) model.Sections.Add(placeholder);
 
         // Spec 2 names an Operator / tenant admin whose job is configuring the
         // system, and 10.2's five areas are all review work. This is where that
@@ -421,56 +433,177 @@ public sealed class ShellModel : ObservableObject
     /// Collapsing them would erase the answer to "why was this account stopped
     /// for six hours", which is asked after the pause is gone.
     /// </remarks>
-    public void ApplySenders(SenderListingResponse listing)
+    public void ApplySenders(SenderListingResponse listing, IReadOnlyList<CompanyResponse>? companies = null)
     {
         ArgumentNullException.ThrowIfNull(listing);
 
         var selected = SelectedItem;
-        SendersSection.Items.Clear();
-        if (listing.Senders.Count == 0)
+        var names = (companies ?? [])
+            .ToDictionary(company => company.CompanyId, company => company.Name, StringComparer.Ordinal);
+
+        RemoveSenderSections();
+
+        // With no company list, one plain section rather than a group per id.
+        //
+        // Grouping by an id the console cannot name would put every sender
+        // under a heading reading "co_7f3a (unknown company)", which is a
+        // worse answer than not grouping: the companies were not unknown, the
+        // console just could not read them.
+        var groups = companies is null
+            ? [new SenderGroup("Senders", [.. listing.Senders
+                .OrderBy(sender => string.IsNullOrWhiteSpace(sender.Label) ? sender.PrincipalId : sender.Label,
+                    StringComparer.OrdinalIgnoreCase)])]
+            : GroupSenders(listing.Senders, names);
+
+        foreach (var group in groups)
         {
-            SendersSection.Items.Add(new SidebarItem(
-                "No senders",
-                SidebarItemState.NotBuilt,
-                "This tenant has no configured sending principals."));
-            return;
-        }
+            var section = new SidebarSection(group.Title, []);
+            _senderSections.Add(section);
 
-        foreach (var sender in listing.Senders)
-        {
-            var item = new SidebarItem(
-                sender.PrincipalId,
-                SidebarItemState.Available,
-                DescribeControl(sender.Control))
+            if (group.Senders.Count == 0)
             {
-                IsPaused = sender.Control.Paused,
-                IsSender = true,
-            };
+                section.Items.Add(new SidebarItem(
+                    "No senders",
+                    SidebarItemState.NotBuilt,
+                    "This tenant has no configured sending principals."));
+                continue;
+            }
 
-            SendersSection.Items.Add(item);
-
-            // Keep the selection pointing at the same principal across a
-            // refresh, rather than at the instance that has just been replaced.
-            if (selected is not null && selected.Title == sender.PrincipalId)
+            foreach (var sender in group.Senders)
             {
-                SelectedItem = item;
+                // The label is the operator's name for this principal, which is
+                // what makes the list navigable. The address stays as the
+                // fallback, because a principal nobody has described still has
+                // to be clickable.
+                var title = string.IsNullOrWhiteSpace(sender.Label) ? sender.PrincipalId : sender.Label!;
+
+                var item = new SidebarItem(title, SidebarItemState.Available, DescribeControl(sender.Control))
+                {
+                    IsPaused = sender.Control.Paused,
+                    IsSender = true,
+                    PrincipalId = sender.PrincipalId,
+                };
+
+                section.Items.Add(item);
+
+                if (selected is not null && selected.PrincipalId == sender.PrincipalId)
+                {
+                    SelectedItem = item;
+                }
             }
         }
+
+        InsertSenderSections();
     }
 
     /// <summary>
-    /// Says why the senders section could not be filled, in place of the
-    /// placeholder that would otherwise read as still loading.
+    /// Says why the senders could not be listed, in place of a placeholder that
+    /// would otherwise read as still loading.
     /// </summary>
+    /// <remarks>
+    /// A failure here used to be swallowed, on the reasoning that the status bar
+    /// already said why. It does not: a 403 from a missing privilege and a 500
+    /// look identical behind a status bar reading "Connected", and the sidebar
+    /// sat on "Loading" forever, which reads as a console still working.
+    /// </remarks>
     public void SendersUnavailable(StyloMailApiException failure)
     {
         ArgumentNullException.ThrowIfNull(failure);
 
-        SendersSection.Items.Clear();
-        SendersSection.Items.Add(new SidebarItem(
-            "Senders unavailable",
-            SidebarItemState.NotBuilt,
-            failure.Code is null ? failure.Message : $"the Host said {failure.Code}"));
+        RemoveSenderSections();
+
+        _senderSections.Add(new SidebarSection("Senders",
+        [
+            new SidebarItem(
+                "Senders unavailable",
+                SidebarItemState.NotBuilt,
+                failure.Code is null ? failure.Message : $"the Host said {failure.Code}"),
+        ]));
+
+        InsertSenderSections();
+    }
+
+    /// <summary>
+    /// Groups senders by company, named companies first and ungrouped last.
+    /// </summary>
+    /// <remarks>
+    /// A pure function of the listing, so the grouping can be tested without a
+    /// window, and so the ordering is a decision written down rather than
+    /// whatever a dictionary happened to produce.
+    ///
+    /// <para>
+    /// <b>Null and unknown are different.</b> A null company id means nobody has
+    /// described this sender; an id with no matching company means somebody
+    /// filed it under a company since deleted. Both need to be visible rather
+    /// than dropped, and they are labelled differently because the remedies
+    /// differ.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<SenderGroup> GroupSenders(
+        IReadOnlyList<SenderResponse> senders,
+        IReadOnlyDictionary<string, string> companyNames)
+    {
+        ArgumentNullException.ThrowIfNull(senders);
+        ArgumentNullException.ThrowIfNull(companyNames);
+
+        var groups = new List<SenderGroup>();
+
+        foreach (var byCompany in senders
+            .GroupBy(sender => sender.CompanyId ?? UngroupedCompanyId)
+            .OrderBy(group => group.Key == UngroupedCompanyId ? 1 : 0)
+            .ThenBy(group => TitleFor(group.Key, companyNames), StringComparer.OrdinalIgnoreCase))
+        {
+            var ordered = byCompany
+                .OrderBy(sender => string.IsNullOrWhiteSpace(sender.Label) ? sender.PrincipalId : sender.Label,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            groups.Add(new SenderGroup(TitleFor(byCompany.Key, companyNames), ordered));
+        }
+
+        return groups;
+    }
+
+    /// <summary>The section title for a company id.</summary>
+    private static string TitleFor(string companyId, IReadOnlyDictionary<string, string> names) => companyId switch
+    {
+        UngroupedCompanyId => "Ungrouped",
+        _ when names.TryGetValue(companyId, out var name) => name,
+
+        // Filed under a company the listing no longer contains. Shown by id
+        // rather than folded into "Ungrouped", because those are different
+        // problems: one is undescribed, the other describes something gone.
+        _ => $"{companyId} (unknown company)",
+    };
+
+    /// <summary>Stands in for "no company" in a grouping key, which must not be null.</summary>
+    private const string UngroupedCompanyId = "\u0000ungrouped";
+
+    private void RemoveSenderSections()
+    {
+        foreach (var section in _senderSections) Sections.Remove(section);
+        _senderSections.Clear();
+    }
+
+    private void InsertSenderSections()
+    {
+        if (_senderSections.Count == 0) return;
+
+        // Anchored before Management, which is where the senders section has
+        // always sat. Recomputed rather than remembered, because the sections
+        // before it can change.
+        var anchor = Sections.Count;
+
+        for (var index = 0; index < Sections.Count; index++)
+        {
+            if (Sections[index].Title == "Management")
+            {
+                anchor = index;
+                break;
+            }
+        }
+
+        foreach (var section in _senderSections) Sections.Insert(anchor++, section);
     }
 
     private static string DescribeControl(SenderControlResponse control)
@@ -560,7 +693,12 @@ public sealed class ShellModel : ObservableObject
                 "Outbound mail from this account will stop being delivered until it is resumed. "
                 + "The pause is recorded against your principal.",
             Reason = string.Empty,
-            PrincipalId = sender.Title,
+
+            // The principal, not the title. The title is the operator's label,
+            // which is a display name: a request built from it would address a
+            // sender called "Acme outbound" rather than the principal that
+            // label describes.
+            PrincipalId = sender.PrincipalId ?? sender.Title,
         };
     }
 
@@ -577,7 +715,7 @@ public sealed class ShellModel : ObservableObject
                 "Outbound mail from this account will be delivered again. "
                 + "The resume is recorded against your principal.",
             Reason = string.Empty,
-            PrincipalId = sender.Title,
+            PrincipalId = sender.PrincipalId ?? sender.Title,
         };
     }
 
@@ -675,8 +813,7 @@ public sealed class ShellModel : ObservableObject
         ArgumentNullException.ThrowIfNull(decision);
 
         _decisionLookup = DecisionLookup.Unknown;
-        DecisionCount = decisionCount;
-        Decision = DecisionView.From(decision);
+        Decision = DecisionView.From(decision, decisionCount);
 
         // Reset here rather than after a successful send, so switching
         // decisions mid-draft cannot leave a half-written label pointing at the
@@ -684,6 +821,7 @@ public sealed class ShellModel : ObservableObject
         Feedback.Reset();
 
         Raise(nameof(CanSubmitFeedback));
+        Raise(nameof(DecisionCount));
         Raise(nameof(DecisionHistoryNote));
         Raise(nameof(HasDecisionHistory));
     }
@@ -714,6 +852,16 @@ public sealed class ShellModel : ObservableObject
         Decision = null;
     }
 }
+
+/// <summary>
+/// Senders that belong together, by the company an operator filed them under.
+/// </summary>
+/// <remarks>
+/// A group rather than a section, so the grouping can be computed and asserted
+/// without building any UI: what belongs with what, and in what order, is a
+/// decision worth testing directly rather than through a rendered sidebar.
+/// </remarks>
+public sealed record SenderGroup(string Title, IReadOnlyList<SenderResponse> Senders);
 
 /// <summary>
 /// One row in the middle pane.

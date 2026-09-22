@@ -84,7 +84,124 @@ public sealed class ShellModelTests
         var senders = model.Sections.Single(section => section.Title == "Senders").Items;
 
         Assert.Equal(3, senders.Count);
-        Assert.Contains(senders, item => item.Title == "compromised@example.test");
+        Assert.Contains(senders, item => item.PrincipalId == "compromised@example.test");
+    }
+
+    // ===================== grouping senders into companies =====================
+
+    private static readonly IReadOnlyDictionary<string, string> CompanyNames =
+        new Dictionary<string, string>(StringComparer.Ordinal) { ["co_7f3a"] = "Acme" };
+
+    private static IReadOnlyList<SenderGroup> Grouped(string json = Wire.SenderListing)
+        => ShellModel.GroupSenders(Json.Read<SenderListingResponse>(json).Senders, CompanyNames);
+
+    /// <summary>
+    /// A sender is filed under the company an operator put it in, named by the
+    /// company list rather than by its id.
+    /// </summary>
+    [Fact]
+    public void Senders_group_under_their_company()
+    {
+        var groups = Grouped();
+
+        var acme = groups.Single(group => group.Title == "Acme");
+        Assert.Equal(["compromised@example.test"], acme.Senders.Select(sender => sender.PrincipalId));
+    }
+
+    /// <summary>
+    /// Ungrouped last, and named for what it is.
+    /// </summary>
+    /// <remarks>
+    /// The order is a decision rather than whatever a dictionary produced: a
+    /// company an operator created should not be pushed below the catch-all
+    /// simply because it sorts later.
+    /// </remarks>
+    [Fact]
+    public void Named_companies_come_first_and_ungrouped_is_last()
+    {
+        var groups = Grouped();
+
+        Assert.Equal(["Acme", "Ungrouped"], groups.Select(group => group.Title));
+        Assert.Equal(2, groups[^1].Senders.Count);
+    }
+
+    [Fact]
+    public void Senders_within_a_group_are_ordered_by_their_display_name()
+    {
+        var groups = Grouped();
+
+        // Neither carries a label, so the principal is the display name and the
+        // order is alphabetical rather than the order the Host sent.
+        Assert.Equal(
+            ["quiet@example.test", "untouched@example.test"],
+            groups[^1].Senders.Select(sender => sender.PrincipalId));
+    }
+
+    /// <summary>
+    /// A company id nobody can name is shown by id, and is not folded into
+    /// "Ungrouped".
+    /// </summary>
+    /// <remarks>
+    /// Those are different problems with different remedies. "Ungrouped" means
+    /// nobody described the sender; an unknown id means somebody filed it under
+    /// a company the listing no longer contains, which is a thing to go and
+    /// look at.
+    /// </remarks>
+    [Fact]
+    public void A_company_the_listing_does_not_contain_is_not_folded_into_ungrouped()
+    {
+        var groups = ShellModel.GroupSenders(
+            Json.Read<SenderListingResponse>(Wire.SenderListing).Senders,
+            new Dictionary<string, string>(StringComparer.Ordinal));
+
+        Assert.Contains(groups, group => group.Title.Contains("unknown company", StringComparison.Ordinal));
+        Assert.DoesNotContain(groups, group => group.Title == "Acme");
+    }
+
+    /// <summary>The sidebar is rebuilt, not appended to, on every load.</summary>
+    [Fact]
+    public void Loading_twice_does_not_duplicate_a_company_section()
+    {
+        var model = ShellModel.CreateDefault();
+        var companies = Json.Read<CompanyListingResponse>(Wire.CompanyListing).Companies;
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing), companies);
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing), companies);
+
+        Assert.Equal(2, model.Sections.Count(section => section.Title is "Acme" or "Ungrouped"));
+    }
+
+    /// <summary>
+    /// With no company list, one plain section rather than a heading per
+    /// unreadable id.
+    /// </summary>
+    /// <remarks>
+    /// Grouping by an id the console cannot name would put every sender under
+    /// "co_7f3a (unknown company)", which is a worse answer than not grouping:
+    /// the companies were not unknown, the console just could not read them.
+    /// </remarks>
+    [Fact]
+    public void Without_a_company_list_the_senders_stay_in_one_section()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var senders = model.Sections.Single(section => section.Title == "Senders");
+        Assert.Equal(3, senders.Items.Count);
+    }
+
+    /// <summary>The label is the row's title when there is one, and the principal when there is not.</summary>
+    [Fact]
+    public void A_row_shows_the_operators_label_in_preference_to_the_address()
+    {
+        var model = ShellModel.CreateDefault();
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var rows = model.Sections.SelectMany(section => section.Items).ToList();
+
+        Assert.Contains(rows, row => row.Title == "Acme outbound" && row.PrincipalId == "compromised@example.test");
+        Assert.Contains(rows, row => row.Title == "quiet@example.test");
     }
 
     // ===================== the join from a message to its decision =====================
@@ -264,11 +381,11 @@ public sealed class ShellModelTests
 
         var senders = model.Sections.Single(section => section.Title == "Senders").Items;
 
-        var paused = senders.Single(item => item.Title == "compromised@example.test");
+        var paused = senders.Single(item => item.PrincipalId == "compromised@example.test");
         Assert.True(paused.IsPaused);
         Assert.Contains("credential stuffing", paused.Detail, StringComparison.Ordinal);
 
-        var untouched = senders.Single(item => item.Title == "untouched@example.test");
+        var untouched = senders.Single(item => item.PrincipalId == "untouched@example.test");
         Assert.False(untouched.IsPaused);
     }
 
@@ -287,7 +404,7 @@ public sealed class ShellModelTests
         var resumed = model.Sections
             .Single(section => section.Title == "Senders")
             .Items
-            .Single(item => item.Title == "quiet@example.test");
+            .Single(item => item.PrincipalId == "quiet@example.test");
 
         Assert.False(resumed.IsPaused);
         Assert.Contains("resumed", resumed.Detail, StringComparison.OrdinalIgnoreCase);

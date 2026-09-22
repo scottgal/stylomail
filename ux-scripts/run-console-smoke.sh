@@ -38,6 +38,10 @@ console_start_host || exit 1
 console_export_app_env
 export ASPNETCORE_URLS=""
 
+# Something to group, so the sidebar's grouping is asserted rather than
+# invisible behind a single ungrouped row.
+console_seed_management
+
 echo "== driving the console =="
 cd "$CONSOLE_REPO" || exit 1
 

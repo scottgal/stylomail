@@ -59,7 +59,26 @@ public sealed class DecisionView
 
     public CacheEntry? Cache { get; init; }
 
-    public static DecisionView From(DecisionResponse decision)
+    /// <summary>
+    /// How many decisions the ledger holds for this message.
+    /// </summary>
+    /// <remarks>
+    /// On the view rather than only on the window's model, because the pane's
+    /// content is bound to a <see cref="DecisionView"/> and a property its
+    /// DataContext does not have fails silently: the binding leaves the control
+    /// at its default, which for a visibility binding is <em>visible</em>. That
+    /// is how this rendered as an empty amber bar rather than not at all.
+    /// </remarks>
+    public int DecisionCount { get; init; } = 1;
+
+    /// <summary>Says when a message has been assessed more than once.</summary>
+    public string? HistoryNote => DecisionCount > 1
+        ? $"This message has been assessed {DecisionCount} times. Showing the most recent."
+        : null;
+
+    public bool HasHistory => HistoryNote is not null;
+
+    public static DecisionView From(DecisionResponse decision, int decisionCount = 1)
     {
         ArgumentNullException.ThrowIfNull(decision);
 
@@ -70,6 +89,7 @@ public sealed class DecisionView
 
         return new DecisionView
         {
+            DecisionCount = decisionCount,
             AssessmentId = decision.AssessmentId,
             ActionLabel = decision.Action.ToString(),
             ShadowLabel = decision.ProposedActionInShadow is { } proposed

@@ -29,11 +29,17 @@ public sealed class ActionTests
         return model;
     }
 
+    /// <summary>
+    /// Finds a sender row by its principal.
+    /// </summary>
+    /// <remarks>
+    /// By principal and not by title: the title is the operator's label when
+    /// there is one, so it is a display name rather than an identity.
+    /// </remarks>
     private static SidebarItem Sender(ShellModel model, string principalId)
         => model.Sections
-            .Single(section => section.Title == "Senders")
-            .Items
-            .Single(item => item.Title == principalId);
+            .SelectMany(section => section.Items)
+            .Single(item => item.PrincipalId == principalId);
 
     [Fact]
     public void Nothing_is_pending_on_a_fresh_model()
@@ -84,6 +90,45 @@ public sealed class ActionTests
         model.PendingReason = "credential stuffing from this account";
         Assert.True(model.CanConfirmAction);
         Assert.Equal("credential stuffing from this account", model.ConfirmedAction!.Reason);
+    }
+
+    /// <summary>
+    /// The call addresses the principal, and the confirmation names the sender.
+    /// </summary>
+    /// <remarks>
+    /// <b>These are two different strings and using one for both is a real
+    /// bug.</b> The row's title became the operator's label when senders gained
+    /// one, so a request built from the title would pause
+    /// <c>Acme outbound</c> rather than <c>harness</c>: a 404 at best, and at
+    /// worst a pause aimed at whatever principal happens to carry that name.
+    /// The harness found it by being unable to find the confirmation it
+    /// expected, which is the good outcome.
+    /// </remarks>
+    [Fact]
+    public void An_action_addresses_the_principal_and_names_the_label()
+    {
+        var model = WithSenders();
+        var sender = Sender(model, "compromised@example.test");
+
+        // The fixture labels this one, so title and principal differ.
+        Assert.Equal("Acme outbound", sender.Title);
+
+        model.RequestPause(sender);
+
+        Assert.Equal("compromised@example.test", model.PendingAction!.PrincipalId);
+        Assert.Contains("Acme outbound", model.PendingAction.Title, StringComparison.Ordinal);
+    }
+
+    /// <summary>The same distinction for the resume.</summary>
+    [Fact]
+    public void A_resume_addresses_the_principal_too()
+    {
+        var model = WithSenders();
+        var sender = Sender(model, "compromised@example.test");
+
+        model.RequestResume(sender);
+
+        Assert.Equal("compromised@example.test", model.PendingAction!.PrincipalId);
     }
 
     /// <summary>A new request does not inherit the previous one's reason.</summary>
