@@ -4,6 +4,7 @@
     <Project Path="src/StyloMail.Adaptive/StyloMail.Adaptive.csproj" />
     <Project Path="src/StyloMail.Assessment/StyloMail.Assessment.csproj" />
     <Project Path="src/StyloMail.Core/StyloMail.Core.csproj" />
+    <Project Path="src/StyloMail.Desktop/StyloMail.Desktop.csproj" />
     <Project Path="src/StyloMail.Host/StyloMail.Host.csproj" />
     <Project Path="src/StyloMail.Jev/StyloMail.Jev.csproj" />
     <Project Path="src/StyloMail.Mime/StyloMail.Mime.csproj" />
@@ -17,6 +18,7 @@
     <Project Path="tests/StyloMail.Adaptive.Tests/StyloMail.Adaptive.Tests.csproj" />
     <Project Path="tests/StyloMail.Assessment.Tests/StyloMail.Assessment.Tests.csproj" />
     <Project Path="tests/StyloMail.Core.Tests/StyloMail.Core.Tests.csproj" />
+    <Project Path="tests/StyloMail.Desktop.Tests/StyloMail.Desktop.Tests.csproj" />
     <Project Path="tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj" />
     <Project Path="tests/StyloMail.Jev.Tests/StyloMail.Jev.Tests.csproj" />
     <Project Path="tests/StyloMail.Mime.Tests/StyloMail.Mime.Tests.csproj" />

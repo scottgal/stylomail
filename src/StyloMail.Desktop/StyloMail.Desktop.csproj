@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      WinExe rather than Exe so the Windows build opens without a console
+      window behind it. It has no effect on macOS or Linux, where the window is
+      the only thing that appears either way.
+    -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>StyloMail.Desktop</RootNamespace>
+    <AssemblyName>StyloMail.Desktop</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    DELIBERATELY EMPTY of ProjectReferences, and that is the load-bearing part
+    of this file rather than an omission.
+
+    Spec 10.1 decides that this console talks to the Host's HTTP API and
+    nothing else. If it referenced StyloMail.Core, StyloMail.Host or the queue,
+    the privilege model would exist in two places and could diverge, the API
+    would never be forced to become sufficient for a headless deployment, and
+    an action taken here would stop being the same audited request everything
+    else makes. Every version of "just this one enum" ends at the same place.
+
+    So the wire contracts are mirrored in Api/ instead, and the contract tests
+    pin them. That duplication is the point: a copy that is tested against a
+    stubbed handler proves what this client actually binds to, whereas
+    referencing the Host's own DTOs would test the Host against itself and
+    prove nothing.
+  -->
+
+  <!--
+    The Avalonia UI packages land with the shell window. They are absent here
+    because the first deliverable is a headless client whose tests must not
+    need a display, a dispatcher or an application instance to run.
+  -->
+
+</Project>
