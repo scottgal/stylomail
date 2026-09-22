@@ -277,6 +277,27 @@ assessment. Total ~1.54 ms versus the intake write's 0.07 ms, so the assessment 
 weak; its real case is the **semantic path**, which is money per call and disabled today. Caveats: the
 profile store was empty (a floor, not a ceiling) and 300 is a small sample.
 
+**PLAN 3 STARTED (2026-09-22). Solution 1447 passed, 0 failed.**
+
+`docs/chat-channels-plan-03-triage.md` APPROVED; `overview-` settled all three questions: counts not
+rows **visible on the operator surface** (part of the work); triage **in the drain before the assessor**
+with the write separated; near-duplicate threshold **starts conservative and stays**. He wants
+**tests, not intentions**, for the dismissal rate being readable and the never-recorded count being
+zero or named.
+
+**Increment 1 done:** `src/StyloMail.Assessment/Triage/` - `TriageDisposition`
+(Dismiss/DecideLocally/Escalate, **no score and no "unsure"**), `TriageCheck`
+(Scope/NearDuplicate/Links/Behaviour), `TriageOutcome` (Disposition, `DecidedBy` null exactly on
+Escalate, **`NotRun`** named explicitly, Evidence), `TriageContext` (empty watched set = watches
+nothing, a decision not a default), `TriageEngine.Evaluate`. **Gotcha: the class cannot be named
+`Triage` in namespace `StyloMail.Assessment.Triage`** - the compiler resolves `Triage.Evaluate` as a
+namespace lookup. It is `TriageEngine`. Checks 2-4 land in `NotRun` until implemented, so "not
+implemented" cannot read as "looked at and clean". 3 tests, red-first.
+
+**MEASUREMENT GOTCHA:** counting with an inline pipe (`awk`, or `python` piped from `dotnet test`)
+**dropped lines and printed 1428 where the truth was 1447**. Always print per-project lines and sum
+them by eye or from a saved file.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 
