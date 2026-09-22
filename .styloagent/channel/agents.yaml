@@ -125,3 +125,17 @@ agents:
   autoStartPrompt: true
   sshHost: null
   credentialRef: null
+- prefix: keys-
+  repo: /Users/scottgalloway/RiderProjects/stylomail/
+  worktree: /Users/scottgalloway/RiderProjects/stylomail
+  launchPrompt: /Users/scottgalloway/RiderProjects/stylomail/.styloagent/launch-prompts/keys-.md
+  restartPrompt: ""
+  savedContext: /Users/scottgalloway/RiderProjects/stylomail/.styloagent/channel/saved-context/keys-context.md
+  transport: local
+  runtime: claude-deepseek
+  tier: default
+  model: deepseek-flash
+  effort: high
+  autoStartPrompt: true
+  sshHost: null
+  credentialRef: null
