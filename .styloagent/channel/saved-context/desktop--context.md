@@ -32,6 +32,7 @@ API key. If the console cannot do something through the API, the API is missing 
 | `366cfe9` | Three-pane shell, macOS keychain interop |
 | `b1d23b4` | Keychain verified against the real keychain |
 | `5fdc1cf` | Sidebar + message list wired to the two new listings |
+| `de7ad59` | Decision detail pane |
 
 **88 tests.** 79 hermetic by default; 9 opt-in (6 live-Host behind `STYLOMAIL_SMOKE_URL` +
 `STYLOMAIL_SMOKE_KEY`, 3 keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). Solution build green.
@@ -44,9 +45,17 @@ API key. If the console cannot do something through the API, the API is missing 
 works before a key is configured). Contracts mirrored by hand in `Api/Contracts/`.
 
 **Shell** (`Views/`, `Models/`, `Services/`, `Styles/`): three-pane window; sidebar from
-`GET /v1/senders` and the three queue dispositions; list pane from `GET /v1/messages`; detail pane is
-still the placeholder cards. Keychain behind `IKeychain` -> `MacKeychain` (P/Invoke into
-Security.framework + CoreFoundation). `ConsoleEnvironment` holds the Debug-only harness overrides.
+`GET /v1/senders` and the three queue dispositions; list pane from `GET /v1/messages`; **decision
+detail pane built** (`Models/DecisionView.cs`). Keychain behind `IKeychain` -> `MacKeychain`
+(P/Invoke into Security.framework + CoreFoundation). `ConsoleEnvironment` holds Debug-only harness
+overrides.
+
+**Decision pane rules, all tested** (`DecisionViewTests`, 15 tests): reasons in policy's order, never
+resorted; each reason resolves its own evidence inline; a named-but-absent signal is reported by name;
+**an unavailable dimension renders "not measured (unavailable)" and has no path to render its 0.0**;
+reduced coverage shows the score plus why; a null confidence renders "not reported"; the risk index is
+pinned to "an index, not a probability" and never a percentage; shadow shows both actions; coverage
+lists only the true flags.
 
 **Screenshot harness** (Debug only): `dotnet run --project src/StyloMail.Desktop -- --screenshot <path>`.
 Headless Skia render, no window, no focus stolen. Use it after any UI change; it has now found four
@@ -99,15 +108,33 @@ it here is talking to ControlCenter, not StyloMail. Reported to `ingress-`.
 
 ## Awaiting / open
 
+- **No route connects a listed message to its decision.** `assessmentId` exists only on the response
+  to `POST /v1/submissions`; not on the listing rows, not on `GET /v1/submissions/{id}`, and
+  `QueueItem` carries none. Asked `ingress-` for either an `assessmentId` on the row or a
+  `GET /v1/decisions?queueId=` lookup. This is the console's headline use case, so it matters more
+  than its size suggests. **Do not** work around it with a client-side map built from own submissions.
 - **No route enumerates the decision ledger**, so the Decisions pane is marked blocked. Reading one
-  decision by id works. This is the one genuinely missing route left.
-- The detail pane is unbuilt (placeholder cards only).
+  decision by id works.
+- Two issues filed against other lanes: a rejected Jev key 500s assessments while readiness says
+  ready (medium), and `JevOptions.Endpoint`/`Model` are not configurable (low).
+
+## Screenshot harness input for the decision pane
+
+The pane renders from the real window, but a *real* decision needs a working semantic provider key
+(see the filed issue), which this harness must not hold. So:
+
+    STYLOMAIL_SMOKE_DECISION_FILE=/tmp/desktop-smoke/decision-fixture.json
+
+loads a decision body from a file into the model. Debug only. The fixture is
+`/tmp/desktop-smoke/decision-fixture.json`, mirroring `tests/.../Wire.Decision` plus an
+unavailable dimension and a reason naming an absent signal. **Say so when presenting that
+screenshot**; do not imply it came from a live Host.
 
 ## Next
 
-Decision detail pane: evidence, ordered reason codes each linked to its signals, versions, coverage,
-cache provenance. Explainability over decoration; never a single score. Then the sender controls
-(pause/resume, `Administer`) and quarantine release.
+Sender controls (pause and resume, `Administer`) and quarantine release (`Review`). Both routes
+exist; these are the console's first write actions, so they are where the actor-recording and
+confirmation questions land.
 
 ## Hard rules
 
