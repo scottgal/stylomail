@@ -197,6 +197,28 @@ off the request path, bound enforced by REFUSING so the platform retries. `Compl
 - **Analyzer gotcha:** a mutation making a method instance-data-free fails to build with **CA1822**, so
   a mutation probe must still touch instance data or it silently reports nothing.
 
+**TASK 4 COMPLETE (2026-09-22; solution 1437 passed, 0 failed, 23 skipped).**
+
+**The drain** (`src/StyloMail.Host/Chat/ChatIntakeDrain.cs`): `Waiting` -> re-read the stored bytes ->
+`ChatInputFactory` -> `IChatAssessor` -> `IDecisionLedger.RecordAsync` -> `Complete` -> `Prune`.
+Unreadable payload -> Complete (it will never read). **Assessment failure -> leave it WAITING**, so
+nothing is silently consumed; a stuck event is visible, a vanished one is not.
+`SlackIngressOptions.InboundTenantId` (default "inbound", same as Cloudflare) because the surface
+carries no principal.
+
+**A REAL BUG I FOUND AND FIXED, worth remembering:** I gated the chat registrations on
+`configuration.GetValue<bool>(...)` at composition-root time. **`HostServices.cs` documents this trap
+in its own remarks**: "The host's composition root runs before a test host layers its own
+configuration in, so a decision taken at registration reads the wrong values." My condition was false,
+so the drain was registered-but-never-constructed: dead code that looked present. Fixed by registering
+**unconditionally and deciding at resolution** (the drain checks `Enabled` in `ExecuteAsync` and
+resolves the assessor only after).
+
+**Degradation ruled by me, FLAGGED:** with no profile master key, chat gets
+`UnavailableChatAssessor`, which **throws**; the drain leaves events waiting. Chosen over refusing to
+start because the key is env-only with no configuration path, so refusing would make the host
+unstartable in tests. Mirrors `UnavailableMailAssessor`.
+
 **STILL TO DO in Task 4:** the **drain** (hosted service: `Waiting` -> read -> assess via
 `IChatAssessor` -> `IDecisionLedger.RecordAsync` -> `Complete` -> `Prune`), plus measuring the
 per-event write cost overview- asked for if it proves disproportionate.
