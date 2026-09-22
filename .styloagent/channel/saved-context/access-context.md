@@ -301,6 +301,24 @@ where a rejection was correct. **Not the cause of the IMAP failure.**
 alone against Dovecot, the only test pointing our hand-written IMAP client side at a server nobody
 here wrote; `ImapClientChallengeResponseTests` (unit) replays the captured MailKit bytes as a guard.
 
+**FLAKINESS FOUND AND FIXED (after `overview-` challenged my "5 passed").** Their one-off POP3
+failure was real. Measured: **9 of 10 runs failed**, 1-2 failures each, split across `GreenMailTests`
+and `Pop3ThroughProxyTests` in varying combinations. Cause:
+`Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(3143)` **waits for the port, not for
+GreenMail to create the account from `-Dgreenmail.users`**. A test connecting inside that window gets
+`AuthenticationException: Invalid login/password`, which reads like a credential defect.
+This was the **same error as my very first GreenMail run** and I did not recognise the second
+occurrence. Fixed with a protocol-level readiness probe in `GreenMailServer.StartAsync` (connect and
+authenticate, retry 30s): **12/12 clean afterwards.** Dovecot needs no probe (static passdb, no
+account to create) and none was added, since an unverified mitigation is superstition.
+
+**TWO HARNESS-BUILDING LESSONS, both "a fixture reporting success at something it did not verify":**
+1. `WithResourceMapping` was accepted and **silently never placed the file** (cost a misdiagnosis).
+2. A container wait strategy claims *readiness*; the TCP-port wait claims much less than it sounds.
+
+**AND: I reported "5 passed" from a single run, after writing the re-measure rule down.** The rule was
+in this file, not in my behaviour. A green run is the answer I wanted and it arrived first.
+
 **NOT done:** Task 2's IMAP leg; the plan's `git commit` steps (the plan contradicts itself, Global
 Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are
 theirs, not the lane's).

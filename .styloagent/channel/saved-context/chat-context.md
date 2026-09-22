@@ -121,7 +121,62 @@ interface doc's "the console shows deliveryTiming on every chat decision" is not
 any decision. And `SqliteDecisionLedger.cs` has pre-existing em-dashes at lines 132, 133, 160 (not
 mine, left alone).
 
-## Plan 2b (assigned 2026-09-22, HELD pending overview-'s go-ahead)
+## Item 2 of overview-'s order: DONE, frozen, reported (2026-09-22)
+
+**Do not hold refactors for overview- again.** He ruled: "Waiting for a clean tree to hand me is the
+right instinct when the change is a defect fix and the wrong one when it is a refactor." For a
+refactor, state the transient red in the report and carry on.
+
+**The URL and IDN analysis now lives in Core.**
+- new `src/StyloMail.Core/UrlTools.cs` (`UrlTools`, `UrlObservation`, `IdnObservation`, all public)
+- new `src/StyloMail.Core/LinkAnalysis.cs` (`LinkFinding` + extraction + **`FromPlainText(text, maxLinks)`**)
+- modified `src/StyloMail.Mime/LinkExtractor.cs` (thin adapter over `LinkAnalysis.Extract`)
+- deleted `src/StyloMail.Mime/UrlTools.cs`
+- new `tests/StyloMail.Core.Tests/LinkAnalysisTests.cs` (11 tests)
+
+Measured: build 0/0, solution 1362 passed 0 failed. **Core 20 -> 31, Mime 91 unchanged** (that is the
+evidence it moved rather than changed).
+
+**Two defects I introduced and caught by diffing against the original:** the `ScriptOf` ranges had been
+transcribed from hex escapes into literal glyphs, and `KeySeparator` became a raw NUL byte instead of
+the escape text. Both restored. **Always diff moved text against its origin; never trust transcription.**
+
+**A tooling gotcha worth remembering:** writing `\u0000` or `\u0041` in an edit is decoded to the
+character, so escape sequences in C# source must be written via a script (python with `chr(92)`) or
+they silently become control characters. Scan new files for control characters after any such edit.
+
+**For 2b Task 2:** a channel with a separate display text (HTML anchors, Slack's `<url|label>`) passes
+both through `LinkAnalysis.Extract`; a channel whose text merely contains URLs uses `FromPlainText`.
+Slack's markup parsing is new and belongs in `StyloMail.Chat`.
+**Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
+shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
+
+### 2b Task 1, first half: DONE, frozen, reported (2026-09-22)
+
+- `MailAssessment.Channel` required (test first, red as CS0117).
+- Second back-fill in `PersistedAssessmentConverter` (`ChannelContext.Email`), with the why in the code.
+- `DecisionResponse` now carries `channel` AND `deliveryTiming`, so "the console shows deliveryTiming
+  on every chat decision" is finally satisfiable (it was unsatisfiable on *any* decision).
+- Call sites: exactly two (`MailAssessor.cs`, `Host.Tests/TestSupport.cs`), compiler-confirmed.
+- **Deviation flagged:** `MailAssessor` uses `Channel = analysis.Channel`, not the literal
+  `ChannelContext.Email` the doc implies. Carries the channel the input actually declared.
+
+Measured: build 0/0, solution **1365 passed, 0 failed, 23 skipped**. Core 32, Host 305,
+**Assessment 124 unchanged** (evidence the assessor edit changed nothing).
+
+**BLOCKED on one decision: what "the platform's bounded membership facts" are** for
+`ChatAnalysisInput`. Recommended (a) a small record of named platform-asserted facts (author id,
+bot/app, external-to-workspace via Slack's `user_team`). Rejected (b) a `TaggedContext`-style map
+("bounded" then rests on discipline, not shape). **Related finding: plan 2a drops bot messages
+entirely, so an `IsBot` fact would be dead on arrival**; either the connector records the fact or the
+field does not exist. That choice changes Task 4 as well as Task 1.
+
+**Structural decision 8 (architecture.md) binds Task 2:** observation and judgement stay in separate
+layers. `LinkObservation` = what the message contained (observation, belongs on the input);
+`LinkFinding` = what the analysis made of it (judgement). **The chat reader must produce a
+`LinkObservation` and let the analysis consume it, never produce a `LinkFinding` directly.**
+
+## Plan 2b (assigned 2026-09-22, NEXT)
 
 `docs/chat-pipeline-design.md` is the decision record: **chat assessments run local-only, with an
 explicit semantic-unavailable state.** Principle: **input is per channel, output is shared.**
