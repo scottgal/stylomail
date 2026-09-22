@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 using StyloMail.Host.Traffic;
 
 namespace StyloMail.Host.Tests;
@@ -100,7 +101,73 @@ internal sealed class TrafficSubscriber : IAsyncDisposable
 
         await connection.StartAsync();
 
+        await subscriber.EstablishSubscriptionAsync(
+            host.Services.GetRequiredService<ITrafficEvents>(),
+            TestPrincipals.TenantFor(apiKey));
+
         return subscriber;
+    }
+
+    /// <summary>
+    /// Publishes until this subscriber has demonstrably heard something, then forgets it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A subscribed connection is not a connection that is in its group yet, and a test must not
+    /// assume it is.</b> The hub adds a connection to its tenant's group inside its own connection
+    /// callback, which runs after the client's <c>StartAsync</c> has already returned. A notice
+    /// published in that window is addressed to a group the connection has not joined, so it
+    /// reaches nobody at all.
+    /// </para>
+    /// <para>
+    /// <b>Measured, not assumed: 7 notices in 900 cycles were lost this way</b>, every one of them
+    /// with the subscriber having received nothing whatsoever, against **0 in 300** cycles that
+    /// published a quarter of a second after connecting and **0 in 300** that broadcast, which the
+    /// transport tracks earlier than a group. That is why this waits on a tenant-scoped notice
+    /// rather than on a broadcast.
+    /// </para>
+    /// <para>
+    /// <b>This is a harness affordance and not a claim about the system.</b> The contract is that a
+    /// change is announced to whoever is subscribed; it is not that every subscriber is subscribed
+    /// at the instant it connects. A dropped notice is a dropped hint, and a hint is never state:
+    /// the console renders from its own HTTP re-reads, so a missed notice cannot produce a wrong
+    /// screen. That is what the "hint, never state" rule buys, and this is the one place the suite
+    /// has to behave as if it knew it.
+    /// </para>
+    /// <para>
+    /// What it consumes is discarded, so that everything a test later reads was published for the
+    /// test. The wait is short and the retry is what makes it deterministic: the first attempt is
+    /// usually heard, and an unheard one is gone rather than late.
+    /// </para>
+    /// </remarks>
+    private async Task EstablishSubscriptionAsync(ITrafficEvents events, string tenantId)
+    {
+        const int Attempts = 40;
+
+        for (var attempt = 0; attempt < Attempts; attempt++)
+        {
+            events.Publish(TrafficEvent.DecisionRecorded(
+                tenantId, $"subscription_probe_{attempt}", DateTimeOffset.UnixEpoch));
+
+            if (await TryNextAsync(TimeSpan.FromMilliseconds(200)).ConfigureAwait(false) is not null)
+            {
+                Forget();
+                return;
+            }
+        }
+
+        Assert.Fail(
+            $"A subscriber was not heard from in {Attempts} attempts, which is not the measured "
+            + "0.8% loss this wait exists for. The feed is not reaching this connection at all.");
+    }
+
+    /// <summary>Drops everything received so far, so a test reads only its own traffic.</summary>
+    private void Forget()
+    {
+        lock (_gate)
+        {
+            _received.Clear();
+        }
     }
 
     /// <summary>The next notice, waiting for it if it has not arrived yet.</summary>
@@ -112,22 +179,43 @@ internal sealed class TrafficSubscriber : IAsyncDisposable
     /// </remarks>
     public async Task<JsonElement> NextAsync()
     {
-        if (!await _arrived.WaitAsync(ArrivalWindow).ConfigureAwait(false))
-        {
-            var heard = Received;
-            var described = heard.Count == 0
-                ? "nothing at all"
-                : string.Join(
-                    ", ",
-                    heard.Select(n => $"{n.GetProperty("kind").GetString()} {n.GetProperty("subjectId").GetString()}"));
+        var notice = await TryNextAsync(ArrivalWindow).ConfigureAwait(false);
 
-            Assert.Fail(
-                $"No notice arrived within {ArrivalWindow.TotalSeconds:F0}s. What this subscriber "
-                + $"received before giving up was: {described}.");
+        Assert.True(
+            notice is not null,
+            $"No notice arrived within {ArrivalWindow.TotalSeconds:F0}s. {Describe()}");
+
+        return notice!.Value;
+    }
+
+    /// <summary>The next notice within the window, or null. Never fails.</summary>
+    /// <remarks>
+    /// For a harness that has to measure a rate rather than assert one: a probe counting how often
+    /// a notice does not arrive cannot itself throw on the arrival it is counting.
+    /// </remarks>
+    public async Task<JsonElement?> TryNextAsync(TimeSpan window)
+    {
+        if (!await _arrived.WaitAsync(window).ConfigureAwait(false))
+        {
+            return null;
         }
 
-        Assert.True(_pending.TryDequeue(out var notice));
-        return notice;
+        return _pending.TryDequeue(out var notice) ? notice : null;
+    }
+
+    /// <summary>What this subscriber has been sent, named, for a failure message.</summary>
+    public string Describe()
+    {
+        var heard = Received;
+
+        return heard.Count == 0
+            ? "What this subscriber received before giving up was: nothing at all."
+            : "What this subscriber received before giving up was: "
+              + string.Join(
+                  ", ",
+                  heard.Select(n =>
+                      $"{n.GetProperty("kind").GetString()} {n.GetProperty("subjectId").GetString()}"))
+              + ".";
     }
 
     /// <summary>Waits for a moment of quiet, then answers what this subscriber was sent.</summary>

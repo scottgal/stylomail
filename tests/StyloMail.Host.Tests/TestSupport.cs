@@ -60,6 +60,23 @@ internal static class TestPrincipals
     /// <summary>Header the host reads API keys from. A custom header is deliberate: browsers do
     /// not attach it automatically, so it cannot be ridden by a cross-site request.</summary>
     public const string ApiKeyHeader = "X-StyloMail-Key";
+
+    /// <summary>
+    /// The tenant a test principal's key resolves to.
+    /// </summary>
+    /// <remarks>
+    /// Needed by anything that has to publish *to* a connected test principal, which means anything
+    /// that has to wait for one to be subscribed before telling it something. Kept beside the keys
+    /// themselves so the two cannot drift apart.
+    /// </remarks>
+    public static string TenantFor(string apiKey) => apiKey switch
+    {
+        AcmeAssessKey or AcmeSenderKey or AcmeReviewerKey or AcmeOperatorKey => AcmeTenant,
+        GlobexSenderKey or GlobexReviewerKey or GlobexOperatorKey => GlobexTenant,
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(apiKey),
+            "That key is not one of the suite's fixtures, so there is no tenant to publish to."),
+    };
 }
 
 /// <summary>
