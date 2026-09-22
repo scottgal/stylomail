@@ -48,6 +48,23 @@ public sealed record BehaviouralProfile
     /// <summary>Distinct recipients this sender has addressed in the last 30 days.</summary>
     public int? DistinctRecipientsLast30Days { get; init; }
 
+    /// <summary>
+    /// True when <see cref="DistinctRecipientsLast30Days"/> is a floor rather than a measurement.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The recipient history is bounded, so once it saturates the count can only ever under-state.
+    /// It is still emitted rather than nulled, and the asymmetry is the reason: <b>a count's error
+    /// runs downwards, and under-stating cannot manufacture alarm, whereas novelty's error runs
+    /// upwards.</b> The direction of the error decides the encoding, so a truncated count is a floor
+    /// that says it is a floor, and a truncated novelty is unknown.
+    /// </para>
+    /// <para>
+    /// Added 2026-09-22. Until it existed the floor was emitted as though it were a measurement.
+    /// </para>
+    /// </remarks>
+    public bool RecipientDistinctnessIsFloor { get; init; }
+
     /// <summary>Recipients on this message that this sender has never addressed before.</summary>
     public int? RecipientsNovelToSender { get; init; }
 
