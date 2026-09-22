@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:StyloMail.Desktop.Views.Controls"
+        xmlns:models="using:StyloMail.Desktop.Models"
         x:Class="StyloMail.Desktop.Views.MainWindow"
         Title="StyloMail"
         Width="1180" Height="720"
@@ -232,7 +233,57 @@
 
             <!-- ============ 3. detail ============ -->
             <Border Grid.Column="4" Classes="detail">
-              <Panel>
+              <!--
+                  A DockPanel, not a Panel: the feedback bar docks to the bottom
+                  and a Panel ignores docking, so the bar landed on top of the
+                  decision instead of below it.
+              -->
+              <DockPanel>
+
+                <!--
+                    Feedback. The label feeds the Host's trusted baseline, so it
+                    is scoped to a recipient rather than being a verdict about the
+                    world, and the pane says which of the two kinds is selected.
+                -->
+                <Border DockPanel.Dock="Bottom"
+                        Classes="feedbackBar"
+                        IsVisible="{Binding HasDecision}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="actionLabel" Text="Record a label for this decision" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <!--
+                                Bound to the static lists rather than through
+                                the model: a label set is not state, and an
+                                instance property returning a constant is one
+                                the analyzers correctly flag.
+                            -->
+                            <ComboBox Width="180"
+                                      ItemsSource="{x:Static models:FeedbackDraft.AvailableLabels}"
+                                      SelectedItem="{Binding Feedback.Label, Mode=TwoWay}" />
+                            <ComboBox Width="160"
+                                      ItemsSource="{x:Static models:FeedbackDraft.AvailableScopes}"
+                                      SelectedItem="{Binding Feedback.Scope, Mode=TwoWay}" />
+                            <TextBox Width="220"
+                                     Watermark="Recipient or identity"
+                                     Text="{Binding Feedback.Recipient, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <TextBlock Classes="actionLabel" TextWrapping="Wrap" Text="{Binding Feedback.Description}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBox Width="480"
+                                     Watermark="Note (optional)"
+                                     Text="{Binding Feedback.Note, Mode=TwoWay}" />
+                            <Button Classes="primaryButton"
+                                    Content="Record"
+                                    IsEnabled="{Binding CanSubmitFeedback}"
+                                    Click="OnSubmitFeedbackClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Panel>
 
                 <!-- Nothing to explain yet, and the reason is named. -->
                 <StackPanel VerticalAlignment="Center"
@@ -371,7 +422,9 @@
                         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Cache.Display}" />
                     </StackPanel>
                 </ScrollViewer>
-              </Panel>
+
+                </Panel>
+              </DockPanel>
             </Border>
         </Grid>
     </DockPanel>

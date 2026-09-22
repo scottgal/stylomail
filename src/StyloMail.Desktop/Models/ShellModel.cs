@@ -543,12 +543,36 @@ public sealed class ShellModel : ObservableObject
         LastActionResult = result;
     }
 
+    /// <summary>
+    /// The label being written against the open decision.
+    /// </summary>
+    /// <remarks>
+    /// One draft per open decision, reset whenever a different one is shown, so
+    /// a label cannot be carried over and sent against a decision other than
+    /// the one the operator was reading when they wrote it.
+    /// </remarks>
+    public FeedbackDraft Feedback { get; } = new();
+
     /// <summary>Shows a decision in the detail pane.</summary>
     public void ShowDecision(DecisionResponse decision)
     {
         ArgumentNullException.ThrowIfNull(decision);
+
         Decision = DecisionView.From(decision);
+
+        // Reset here rather than after a successful send, so switching
+        // decisions mid-draft cannot leave a half-written label pointing at the
+        // wrong one.
+        Feedback.Reset();
+        Raise(nameof(CanSubmitFeedback));
     }
+
+    /// <summary>Whether the feedback draft can be sent against the open decision.</summary>
+    public bool CanSubmitFeedback =>
+        Decision is not null && Feedback.CanSubmitFor(Decision.AssessmentId);
+
+    /// <summary>Re-evaluates whether feedback can be sent, after the draft changes.</summary>
+    public void RefreshFeedbackState() => Raise(nameof(CanSubmitFeedback));
 
     /// <summary>Replaces the list pane's contents with one page of messages.</summary>
     public void ApplyMessages(MessageListingResponse listing)

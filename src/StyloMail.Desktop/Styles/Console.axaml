@@ -285,6 +285,13 @@
         <Setter Property="Margin" Value="0,8,0,0" />
     </Style>
 
+    <Style Selector="Border.feedbackBar">
+        <Setter Property="Background" Value="#F7F7F9" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleSeparator}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="20,12" />
+    </Style>
+
     <Style Selector="TextBlock.cardTitle">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />

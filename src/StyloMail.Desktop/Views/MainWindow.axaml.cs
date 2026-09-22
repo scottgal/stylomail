@@ -377,6 +377,64 @@ public partial class MainWindow : Window
             : $"{response.QueueId} was already released. Recorded against {response.ReleasedBy}.";
     }
 
+    /// <summary>
+    /// Records the drafted label against the open decision.
+    /// </summary>
+    /// <remarks>
+    /// A label feeds the Host's trusted baseline, so a failure must not leave
+    /// the draft cleared: an operator who was told nothing was recorded, and
+    /// whose text has vanished, has to retype it and cannot tell whether the
+    /// first attempt landed.
+    /// </remarks>
+    public async Task SubmitFeedbackAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        if (_model.Decision is not { } decision) return;
+
+        if (!_model.Feedback.CanSubmitFor(decision.AssessmentId)) return;
+
+        var request = _model.Feedback.ToRequest(decision.AssessmentId);
+
+        string result;
+        var failed = false;
+
+        try
+        {
+            var response = await _services.Client
+                .RecordFeedbackAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+
+            result = $"Recorded {response.Label} against {response.DecisionId}"
+                + (response.Recipient is null ? "." : $" for {response.Recipient}.");
+
+            // Scoped labels are what the baseline learns from, so say which
+            // kind was recorded rather than letting the operator assume it was
+            // a verdict about the message.
+            if (_model.Feedback.IsRecipientPreference)
+            {
+                result += " Recorded as a recipient preference, not a verdict about the message.";
+            }
+        }
+        catch (StyloMailApiException failure)
+        {
+            failed = true;
+            result = Describe(failure);
+        }
+
+        var recorded = !failed;
+
+        await OnUiThreadAsync(() =>
+        {
+            // Cleared only on success, so a failed attempt keeps what was
+            // typed.
+            if (recorded) _model.Feedback.Reset();
+
+            _model.CompleteAction(result, failed);
+            _model.RefreshFeedbackState();
+        }).ConfigureAwait(false);
+    }
+
     /// <summary>Turns a failure into something an operator can act on.</summary>
     private static string Describe(StyloMailApiException failure) => failure.Failure switch
     {
@@ -447,4 +505,7 @@ public partial class MainWindow : Window
 
     private async void OnConfirmActionClick(object? sender, RoutedEventArgs e)
         => await ConfirmActionAsync().ConfigureAwait(true);
+
+    private async void OnSubmitFeedbackClick(object? sender, RoutedEventArgs e)
+        => await SubmitFeedbackAsync().ConfigureAwait(true);
 }
