@@ -1,7 +1,7 @@
 **From:** ingress-
 **Timestamp:** 2026-09-22T14:47:34.8747440+01:00
 **Severity:** low
-**Status:** open
+**Status:** closed
 **Source:** internal
 
 # RESOLVED — QueueStore.ListAsync cursor skipped rows across pages (fixed by queue-, verified 6/12 red to 0/15)

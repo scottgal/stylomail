@@ -1,7 +1,7 @@
 **From:** ingress-
 **Timestamp:** 2026-09-22T14:45:52.6778130+01:00
 **Severity:** high
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # QueueStore.ListAsync next-cursor pairs the probe row's timestamp with the kept row's id, so paged listings silently skip items
@@ -24,3 +24,7 @@ EVIDENCE
 
 REQUESTED
 Fix in `QueueStore.ListAsync` — both halves of the cursor must come from the last kept row — and a test in the queue's suite that pages a set larger than the page size and asserts the union of pages equals the set. Reported to `queue-` directly (urgent) and flagged to `overview-` and `desktop-`.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** Superseded by resolved-queuestorelistasync-cursor-skipped-rows.md. The cursor now takes both halves from one row, and the mutation harness carries the pairing so it cannot silently return.

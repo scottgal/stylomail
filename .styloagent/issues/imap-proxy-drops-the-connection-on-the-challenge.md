@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T18:21:36.5668280+01:00
 **Severity:** high
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # IMAP proxy drops the connection on the challenge/response form of AUTHENTICATE
@@ -36,3 +36,7 @@ Handle the challenge/response form as well as the inline one, with a **unit** te
 RELATED
 
 A separate and less severe AccessProxy defect, no capability discovery and no `LOGIN` fallback, is filed separately. Both were invisible to an in-memory pipe, the first because the fake backend was ours and the second because the fake client was ours.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** Withdrawn. The defect did not exist: the harness's Dovecot drop-in never arrived because WithResourceMapping accepted the mapping silently, so the backend refused the credential and the refusal was read as a proxy parse failure. See retracted-the-imap-proxy-does-not-drop-the-conne.md.

@@ -316,6 +316,19 @@ match at all. Must be stated in the commit message as deliberate with its own ju
 **NOT DONE YET (overview- required it):** the comparison output must **state that no dimensions were
 compared** when it matched on the fingerprint alone.
 
+**PLAN 3 CHECK 2 DONE (2026-09-22). Solution 1456 passed, 0 failed. Option A committed as `8bb4991`.**
+
+- `Triage/ChatFingerprint.cs`: the fingerprint is over **normalised text + link targets**, length-prefixed
+  (no separator char, unambiguous). Normalisation = trim + collapse whitespace, **case preserved**
+  deliberately. Empty text + no links -> `ComponentCount = 0`, which cannot agree with anything.
+- `TriageContext` gained `TenantId` (default "inbound") and optional `Campaign`.
+- `TriageEngine.NearDuplicate`: dismisses when the campaign reports **Available** (a match), returns
+  null otherwise so the next check runs. Reads Availability, never the presence of a signal.
+- **Starts at exact agreement**: "near" is deliberately not attempted; loosening needs the dismissal
+  counts behind it.
+- **Gotcha:** the window excludes a match against the same assessment id, so a test using one event id
+  for two different messages sees no match. Distinct events need distinct ids.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 

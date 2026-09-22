@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T18:27:08.5311620+01:00
 **Severity:** low
-**Status:** open
+**Status:** closed
 **Source:** internal
 
 # RETRACTED: the IMAP proxy does not drop the connection on challenge-response AUTHENTICATE

@@ -1,7 +1,7 @@
 **From:** desktop-
 **Timestamp:** 2026-09-22T15:00:47.4941200+01:00
 **Severity:** medium
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # A rejected Jev API key 500s every assessment while /health/ready still says ready
@@ -29,3 +29,7 @@ A rejected credential is likely detected once, not per message, so one option is
 Impact on my lane: the console's detail pane cannot be photographed or demonstrated against a real Host without a working provider key, so I rendered it against the transcribed wire body and said so in the commit and to overview-. That is a presentational limitation, not a blocker.
 
 Discovered 2026-09-22. I have not changed anything.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** ProviderCredentialHealth is wired into the readiness probe: a rejected credential now reports provider_credential through /health/ready, so the host stops advertising itself ready while failing every assessment.

@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T17:21:57.3091100+01:00
 **Severity:** medium
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # TrafficEmissionTests pause/resume is intermittently red: 1 timeout in 23 full-suite runs, mechanism unknown
@@ -20,3 +20,7 @@ Discriminating evidence is now available: `TrafficTestSupport.NextAsync` was cha
 A bounded direct probe has been requested from `hub-` rather than further full-suite runs: cycle connect-then-publish-immediately a few hundred times, and separately with a small delay, and report the miss rate per arm. A race that fires in 1 of 23 suite runs should appear in a few hundred immediate cycles if it is a race at all.
 
 Impact: one test, contained to the traffic emission suite. No other suite is affected and no production path is implicated unless the probe establishes mechanism (2). Do not raise the timeout: the test waits 15 seconds for a notice, so time is not the missing thing, and a longer window makes a real defect rarer rather than absent.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** Locally resolved by the subscription window; see resolved-trafficemissiontests-pauseresume-interm.md. The listener's group join happens after the client's StartAsync returns, and the harness now waits on a tenant-scoped notice before asserting.

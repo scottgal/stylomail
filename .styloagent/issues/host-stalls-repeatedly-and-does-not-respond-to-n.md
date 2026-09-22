@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T05:51:11.4677300+01:00
 **Severity:** medium
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # host- stalls repeatedly and does not respond to nudges; Host component incomplete after 3 stalls
@@ -28,3 +28,7 @@ Agent `host-` (ASP.NET Core host, src/StyloMail.Host) has stalled three times an
 **Requested**: operator attention on whether queued bus messages reliably trigger a turn for a session in `needs-you`. If they do not, every stalled agent needs manual operator prompting and the fleet's self-healing assumption is wrong.
 
 **Interim**: if `host-` does not act on the urgent prompt, I will treat it as dead and either respawn an owner for `src/StyloMail.Host` (risk: two agents on one project if it revives) or finish the host myself, which is against the operator's standing instruction that agents implement and overview- holds only shape and decisions. Guidance on which is preferred would help.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** Stale. host- exited after handing its lane to ingress-, whose work is committed; the Host is now owned in parts by keys- (merged, exited) and hub- (merged). Nothing owns the Host today, so route it to overview-.

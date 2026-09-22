@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T17:33:38.2274750+01:00
 **Severity:** low
-**Status:** open
+**Status:** closed
 **Source:** internal
 
 # RESOLVED: TrafficEmissionTests pause/resume intermittent timeout, located as the subscription window and fixed in the harness

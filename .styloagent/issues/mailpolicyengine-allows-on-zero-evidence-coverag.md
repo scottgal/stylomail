@@ -1,7 +1,7 @@
 **From:** assess-
 **Timestamp:** 2026-09-22T06:08:22.5486200+01:00
 **Severity:** high
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # MailPolicyEngine allows on zero evidence coverage (semantic outage reads as an allow)
@@ -28,3 +28,7 @@ SUGGESTED FIX
 Apply a coverage floor to the allow path as well — the natural shape is: below MinimumCoverageForIrreversibleAction, a message that would otherwise be Allowed becomes a bounded Hold (with ReEvaluateBy set) rather than an Allow. That matches the documented intent, reuses the existing option, and keeps the "rarely irreversible on thin evidence" property without inventing a new threshold.
 
 Reproduce: src/StyloMail.Assessment tests — `UnavailableSemanticEvidencePropagatesAsUnavailableAndNeverAsAllow` and `ALocalOnlyDeploymentCanOptOutOfOutageDeferral` bracket the behaviour from both sides.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** The engine holds below the allow floor: MailPolicyEngine returns Hold with policy.insufficient_coverage_to_allow when coverage is under MinimumCoverageForAllow, and the tests bracket it from both sides, including A_local_evidence_only_deployment_can_opt_out_of_the_coverage_floor. The issue predates the first commit; the fix was already in it.

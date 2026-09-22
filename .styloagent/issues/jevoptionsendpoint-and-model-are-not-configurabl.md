@@ -1,7 +1,7 @@
 **From:** desktop-
 **Timestamp:** 2026-09-22T15:00:50.2372400+01:00
 **Severity:** low
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # JevOptions.Endpoint and Model are not configurable: HostServices constructs JevOptions ignoring configuration
@@ -31,3 +31,7 @@ Two consequences worth weighing:
 Suggested shape, for whoever owns it: bind the section and take the key from the environment on top, so the secret never gains a config key. HostCredentials already argues at length that a secret in a config key ends up in an appsettings file, then a repository, then an image layer; the non-secret options have no such argument against them.
 
 Discovered 2026-09-22. I have not changed anything.
+
+---
+
+**RESOLVED (verified by `overview-`, 2026-09-22).** HostServices.BuildJevOptions now takes IConfiguration and reads the section, so the endpoint and model are configurable rather than constructed from defaults.
