@@ -214,6 +214,15 @@ so the drain was registered-but-never-constructed: dead code that looked present
 **unconditionally and deciding at resolution** (the drain checks `Enabled` in `ExecuteAsync` and
 resolves the assessor only after).
 
+**A REAL DEFECT FOUND BY A REQUIREMENT-DERIVED TEST (2026-09-22; solution 1441).**
+I could not make the drain retroactively red-first (the implementation existed). Instead I wrote tests
+from the *requirement* text - the drain's own doc claim and overview-'s two named properties - ran
+them before assuming, and **one went red for the right reason**: the drain retried a failing event in
+a **tight loop with no backoff** (the `while` re-took the same batch immediately), so a persistently
+failing event would spin as fast as the CPU allows, hammering the assessor and the database.
+**Fixed** by pacing when a pass makes no progress (`progressed == 0` -> idle delay); `AssessAsync`
+now returns bool. That is what red-first buys and a mutation cannot.
+
 **Degradation ruled by me, FLAGGED:** with no profile master key, chat gets
 `UnavailableChatAssessor`, which **throws**; the drain leaves events waiting. Chosen over refusing to
 start because the key is env-only with no configuration path, so refusing would make the host
