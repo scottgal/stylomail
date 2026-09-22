@@ -1,0 +1,16 @@
+From: "Accounts" <accounts@supplier-invoices.example>
+To: alice@example.com
+Subject: Updated remittance details
+Date: Mon, 22 Sep 2026 10:02:00 +0000
+Message-ID: <jevrec-payment-1@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Please note that our banking arrangements have changed. From this month, all
+remittances should be sent to the account below rather than the one on file.
+
+Bank: Northwind Trust
+Account: 40051277
+Sort code: 04-00-75
+
+Kindly confirm receipt and update your records before the next payment run.

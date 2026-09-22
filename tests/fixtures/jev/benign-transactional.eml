@@ -1,0 +1,17 @@
+From: "Northwind Supplies" <orders@northwind.example>
+To: alice@example.com
+Subject: Your order NW-4482 has shipped
+Date: Mon, 22 Sep 2026 13:20:00 +0000
+Message-ID: <jevrec-benign-1@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello Alice,
+
+Order NW-4482 was dispatched today and should arrive within two working days.
+The invoice for this order was sent separately and is payable within 30 days.
+
+You can view the order at any time in your account:
+https://northwind.example/orders/NW-4482
+
+Thank you for your custom.
