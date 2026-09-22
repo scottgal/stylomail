@@ -1,5 +1,11 @@
 # `keys-`, saved context
 
+**LANE COMPLETE, 2026-09-22. Parked by `overview-`. Do not start anything new.**
+
+Both items are landed, verified and committed; the follow-up my own precedence rule caused is closed.
+`d135baa` (the lane) → `b91da65` (assignment of the follow-up) → `4829501` (the follow-up). Nothing of
+mine is uncommitted. If the credential path needs to move again, this file is the cold start.
+
 ## Identity + scope
 
 `keys-` owns **StyloMail's minted-key credential path**: the Host principal store that holds key
@@ -12,11 +18,11 @@ and the SMTP submission listener (both in `src/StyloMail.Host`).
 `Auth/HostAuthentication.cs`, `Auth/ApiKeyAuthenticationHandler.cs`, `Cli/CliApplication.cs`,
 `Cli/CliCommands.cs`, `Endpoints/SessionEndpoints.cs`, `Hosting/PrincipalSubmissionAuthenticator.cs`
 (docs only), `Storage/HostDatabase.cs` (DDL), `docs/running.md`.
-Never touched `ListingEndpoints.cs` / `ListingResponses.cs` on purpose: the listings are another
-lane's, see the open item below.
+For the follow-up, with the lane boundary lifted for that change only: `Endpoints/ListingEndpoints.cs`,
+`Contracts/ListingResponses.cs`, `tests/…/ListingEndpointsTests.cs`, `tests/…/TestSupport.cs`.
+Never touched anything under `src/StyloMail.Desktop`; `desktop-` mirrors the contract from its side.
 
-Repo `stylomail`, branch `main`, base `507fe5d`. **Nothing committed** (the mission reserves that for
-`overview-`).
+Repo `stylomail`, branch `main`. Base `507fe5d`; `overview-` committed and pushed each step.
 
 ## State, 2026-09-22
 
@@ -96,15 +102,35 @@ backstop for a change written *without* bumping the counter.
   advertise an account that does not exist"). Required by wholesale precedence; it is my file, and no
   existing test changed behaviour.
 
-## OPEN, for `overview-` — a listing gap I did not fix
+## Follow-up landed: the sender listing (boundary lifted for this one change)
 
-**`GET /v1/senders` does not list minted principals.** `SenderListingResponse.From` takes
-`IReadOnlyList<HostPrincipalOptions>`, and `HostPrincipalOptions` is the *configuration's* view — a
-minted principal is not a configuration entry, so `ForTenant` cannot honestly return one. The change
-is small and belongs to the listing's owner: add a projection from `PrincipalInventoryEntry` (source
-`store`, status `active`) into the listing, and carry the source per row so a console can show that a
-sender is minted rather than configured, and read-only when it is not.
-`PrincipalDirectory.Inventory()` already produces exactly that and is what `key list` renders.
+`overview-` verified and committed the lane as `d135baa`, then handed me the listing follow-up with
+the lane boundary lifted for that change only. Landed:
+
+- **`PrincipalDirectory.ForTenant` is gone**, replaced by `SendersForTenant(tenantId)` returning
+  `IReadOnlyList<PrincipalInventoryEntry>`: both sources, tenant-filtered, **only rows that can
+  authenticate**, ordered by principal id. "Who counts as a sender" now lives beside the precedence
+  rule that decides it instead of being re-derived by the route.
+- **`SenderResponse.Source`** (`store` | `environment`) on every row of `GET /v1/senders`.
+  `SenderListingResponse.From` takes the inventory entries.
+- **`PrincipalInventoryEntry.SourceName` / `StatusName` / `CanAuthenticate`** are the one spelling of
+  those values. The CLI table, `key list --json` and the listing all read them, so the JSON status
+  went from `readonly` to `read-only` in the same change: three vocabularies for one value is how a
+  console learns a word the CLI never says.
+- **The pinned case.** A name that is both configured and minted is listed **exactly once**, as a
+  `store` sender. Before this change it vanished from the listing entirely, because wholesale
+  precedence drops the configuration entry and nothing replaced it. Five tests in
+  `ListingEndpointsTests`; mutation-verified by making `SendersForTenant` skip store rows, which turns
+  four of them red including that one.
+- `docs/running.md` claimed the listing "is built from the configuration that holds every principal's
+  API key", which this change made false. Corrected. `docs/console-management-design.md` was already
+  updated by `overview-`.
+
+**Suite is now 270 green, three consecutive runs. Live probe is 41/41**, with two new checks that the
+source field survives the wire and that the both-sources name is listed once as `store`.
+
+Still open and NOT mine: `desktop-` mirrors the new `source` field in the console. I did not touch
+`src/StyloMail.Desktop`.
 
 ## Hard rules I hold
 
