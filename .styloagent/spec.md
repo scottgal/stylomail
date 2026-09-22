@@ -9,7 +9,9 @@ detail. Where they disagree, this document states the intent and that one govern
 
 ## 1. Purpose
 
-StyloMail is a small, explainable inbound/outbound **email security component**. It detects suspicious
+StyloMail is a small, explainable security component for **inbound and outbound communication**. Its
+first channel family is email, which is what §1 to §12 describe; §13 adds chat channels beside it
+rather than through it, and amends this paragraph rather than contradicting it. It detects suspicious
 *communication* rather than suspicious words: compromised outbound accounts, inbound phishing,
 impersonation, emerging campaigns, and unusual changes in otherwise legitimate communication, while
 measuring and reducing false positives.
@@ -647,3 +649,51 @@ The essential product boundary:
 
 > **Classify the message, understand the changing relationship and flow, then intervene minimally
 > through explicit policy.**
+
+## 13. Chat channels: Slack and Discord
+
+Status: **designed, not built** (operator-agreed 2026-09-22). `docs/chat-channels-design.md` is the
+design of record; this section is the identity and boundary statement.
+
+**What changes.** StyloMail stops being an email component and becomes a communication security
+component with two channel families. The email path is untouched: chat is added beside it, not through
+it. §1's identity paragraph is amended to match, and this section is the record of that amendment
+rather than a scope change discovered later.
+
+**What does not change.** Everything the system rests on survives the second channel unchanged.
+Probabilistic components produce evidence and only deterministic policy authorises side effects.
+Unknown is a distinct state. Intervention is minimal. The essential boundary at the end of §12
+describes chat as well as it describes mail, which is the reason this is an extension rather than a
+second product.
+
+**The constraint that shapes the whole design.** Email lets the system decide before delivery. A
+normal Slack app does not: it receives a `message` event **after** Slack has delivered the message.
+The honest description is therefore **an observer with post-hoc interventions, never a proxy**, and
+every chat assessment carries `DeliveryTiming: PostDelivery` as a recorded **state**, never as
+something a reader infers. The queue, the spool and the delivery worker do not transfer, because chat
+has no delivery responsibility for them to own.
+
+**Three jobs, confirmed by the operator.** Protect members from inbound social engineering; catch
+compromised member accounts; cut channel noise. The second leans on evidence that already exists and
+is local and free, which is why this is affordable at chat volumes.
+
+**Scope amendment against §3.** §3 lists "marketing platform" and "autonomous incident-response
+agent" as deliberately out of scope. Chat is neither, but it is adjacent to both, so the line is
+stated rather than assumed:
+
+> **The system produces evidence and flags for review. Destructive actions are opt-in per workspace
+> and always audited, and a deployment that configures nothing takes no irreversible action.**
+
+**Privacy is a larger step here than for email**, because these are internal conversations rather
+than inbound mail. Jev is therefore opt-in **per workspace** and defaults to local-only with an
+explicit semantic-unavailable state. That is §4's existing stance applied with a higher bar, not a new
+rule invented for chat.
+
+**Triage is the algorithmic layer, and it emits evidence, never a score.** It runs first on every
+message and answers dismiss, decide locally, or escalate. It does not produce "is spam" numbers,
+because this system exists to replace that vocabulary rather than to reintroduce it under a new name.
+A dimension with no support is `Unavailable`, never zero.
+
+**Slack first, Discord after.** The connector interface is proven against one platform before it is
+asked to abstract two. Discord's gateway is the friendlier fit for real time and Slack's .NET library
+is the maturer one; neither is a reason to design for both at once.
