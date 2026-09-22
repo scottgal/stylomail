@@ -379,6 +379,30 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ---
 
+## Corrections found while executing (2026-09-22)
+
+The plan was executed by `chat-`, and three things in it were wrong. They are recorded here rather
+than quietly fixed, because the next plan will be written the same way and will make the same mistake.
+
+**1. The construction-site inventory was incomplete, and the method that produced it is the reason.**
+The plan says Task 3 touches "the four construction sites", from a grep for `new MailAnalysisInput`.
+That pattern misses **target-typed `new()`**, so the real counts are **seven** `MailAnalysisInput`
+sites and **two** `MailAssessment` sites. The two the grep missed entirely are both in
+`tests/StyloMail.Assessment.Tests/TestSupport.cs`, and the second `MailAssessment` site is in
+`tests/StyloMail.Host.Tests/TestSupport.cs`. **Grep for the type name and read the hits, never for
+the construction idiom.**
+
+**2. CA1861 is an error in this repository.** The Task 1 test code as written passes constant arrays
+to `Assert.Equal`, which fails the build before any type exists. There is no root `.editorconfig` and
+no `Directory.Build.props`, so this arrives from the .NET 10 SDK defaults. The executed version hoists
+both arrays to locals; the assertions are otherwise identical. Any future plan's test code has to
+assume the full analyzer set, not just the obvious ones.
+
+**3. The predicted failure text in Task 2 and Task 3 was unachievable.** Both steps call `nameof(...)`
+on a property that does not exist yet, which is a compile error `CS0117`, not the runtime
+`Assert.NotNull() Failure` the plan predicts. Red before green still held; only the prediction was
+wrong. When a test references a missing member by `nameof`, the failure is always a compile error.
+
 ## What this plan deliberately does not do
 
 - **It does not add a chat input type.** The design says the chat analyser is a sibling of the MIME
