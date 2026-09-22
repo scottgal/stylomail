@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StyloMail.Host.Chat;
 using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Traffic;
@@ -36,13 +37,30 @@ public sealed class ReadinessProbe
 
     private ReadinessResult? _lastObserved;
 
+    /// <summary>
+    /// The name this host reports when chat events are accumulating unassessable.
+    /// </summary>
+    /// <remarks>
+    /// Named, never described, on the same terms as the other checks: this route is served without
+    /// credentials. An operator reads the cause from the log, and this tells them to go and look.
+    /// </remarks>
+    public const string ChatAssessmentUnavailable = "chat_assessment_unavailable";
+
+    private readonly ChatAssessmentHealth? _chatHealth;
+    private readonly Chat.IChatIntakeStore? _chatIntake;
+
     public ReadinessProbe(
         HostDatabase database,
         IOptions<HostStorageOptions> storage,
         ProviderCredentialHealth credentials,
         ITrafficEvents events,
-        TimeProvider clock)
+        TimeProvider clock,
+        ChatAssessmentHealth? chatHealth = null,
+        Chat.IChatIntakeStore? chatIntake = null)
     {
+        _chatHealth = chatHealth;
+        _chatIntake = chatIntake;
+
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(storage);
         ArgumentNullException.ThrowIfNull(credentials);
@@ -135,6 +153,17 @@ public sealed class ReadinessProbe
         if (_credentials.IsRejected)
         {
             failed.Add("provider_credential");
+        }
+
+        // Chat events that can never be assessed because this deployment has no profile master key.
+        //
+        // Not-ready only when there is actually something waiting: a deployment that has been told
+        // nothing, or that has no chat intake configured, is not degraded by an unused path. What
+        // this closes is the state that otherwise reads as a busy drain: events accumulating with
+        // nothing wrong any operator could see, and the cause only inferable from a log line.
+        if (_chatHealth?.IsUnavailable == true && _chatIntake?.Waiting(1).Count > 0)
+        {
+            failed.Add(ChatAssessmentUnavailable);
         }
 
         return failed.Count == 0 ? ReadinessResult.ReadyResult : new ReadinessResult(false, failed);

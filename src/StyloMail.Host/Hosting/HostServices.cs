@@ -111,6 +111,10 @@ public static class HostServices
             return new SqliteAdaptiveProfileStoreAdapter(profiles);
         });
 
+        // Held rather than inferred at the point of use, because the reason chat cannot assess is a
+        // property of how the process was configured and the readiness surface has to be able to say
+        // so without re-deriving it.
+        services.AddSingleton<ChatAssessmentHealth>();
         services.AddSingleton<IChatAssessor>(BuildChatAssessor);
         services.AddHostedService<ChatIntakeDrain>();
 
@@ -372,6 +376,10 @@ public static class HostServices
         // leaves events waiting when the assessment throws, so nothing is consumed unassessed.
         if (string.IsNullOrWhiteSpace(profileMasterKey))
         {
+            // Recorded so the readiness surface can name it. Without this the state is visible only
+            // as events accumulating, which reads the same as a drain that is merely busy.
+            services.GetRequiredService<ChatAssessmentHealth>().IsUnavailable = true;
+
             return new UnavailableChatAssessor();
         }
 
