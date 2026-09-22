@@ -196,6 +196,40 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Opens a decision by its assessment id and shows it in the detail pane.
+    /// </summary>
+    /// <remarks>
+    /// The route exists and works. What does not exist is any way to reach it
+    /// from the list: neither the message rows nor the submission detail carry
+    /// an assessment id, so today a decision can only be opened by an id the
+    /// caller already holds. That gap is why this is not wired to a click.
+    /// </remarks>
+    public async Task<bool> OpenDecisionAsync(string assessmentId, CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return false;
+
+        try
+        {
+            var decision = await _services.Client.GetDecisionAsync(assessmentId, cancellationToken).ConfigureAwait(false);
+
+            await OnUiThreadAsync(() => _model.ShowDecision(decision)).ConfigureAwait(false);
+
+            return true;
+        }
+        catch (StyloMailApiException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Shows a decision the caller already has. Used by the screenshot harness.</summary>
+    public Task ShowDecisionAsync(DecisionResponse decision, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        return OnUiThreadAsync(() => _model.ShowDecision(decision));
+    }
+
+    /// <summary>
     /// Runs a model update on the UI thread, wherever the caller is.
     /// </summary>
     /// <remarks>

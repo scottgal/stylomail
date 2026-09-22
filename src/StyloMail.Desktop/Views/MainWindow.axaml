@@ -138,46 +138,141 @@
 
             <!-- ============ 3. detail ============ -->
             <Border Grid.Column="4" Classes="detail">
-                <ScrollViewer>
-                    <StackPanel Margin="20" Spacing="0">
-                        <TextBlock Classes="paneTitle" Text="Decision" />
+              <Panel>
+
+                <!-- Nothing to explain yet, and the reason is named. -->
+                <StackPanel VerticalAlignment="Center"
+                            Spacing="8"
+                            IsVisible="{Binding !HasDecision}">
+                    <TextBlock Classes="emptyTitle" Text="No decision open" />
+                    <TextBlock Classes="emptyDetail" Text="{Binding DecisionUnavailableReason}" />
+                </StackPanel>
+
+                <ScrollViewer IsVisible="{Binding HasDecision}">
+                    <StackPanel Margin="20" Spacing="0" DataContext="{Binding Decision}">
+
+                        <!-- ===== what happened ===== -->
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Classes="decisionAction" Text="{Binding ActionLabel}" />
+                            <TextBlock Classes="paneDetail"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding AssessmentId}" />
+                        </StackPanel>
+
                         <TextBlock Classes="paneDetail"
-                                   Margin="0,2,0,14"
-                                   Text="Why a message was held, or allowed." />
+                                   Margin="0,2,0,4"
+                                   Text="{Binding RiskIndexLabel}" />
 
-                        <Border Classes="card">
-                            <StackPanel>
-                                <TextBlock Classes="cardTitle" Text="Evidence, then reasons" />
-                                <TextBlock Classes="cardBody"
-                                           Text="Ordered reason codes, each linked to the evidence signals that produced it. A reason with no visible evidence is an assertion, so the operator can follow every one back to the observation behind it." />
-                            </StackPanel>
+                        <!-- Shadow: what policy would have done while forwarding. -->
+                        <Border Classes="cardWarning" IsVisible="{Binding ShadowLabel, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Classes="cardBody" Text="{Binding ShadowLabel}" />
                         </Border>
 
-                        <Border Classes="card">
-                            <StackPanel>
-                                <TextBlock Classes="cardTitle" Text="Versions and coverage" />
-                                <TextBlock Classes="cardBody"
-                                           Text="Policy, classifier model and question schema versions, with what the analysis actually saw. Coverage is the qualifier on every number above it." />
-                            </StackPanel>
-                        </Border>
+                        <TextBlock Classes="sectionLabel" Text="Why" />
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,0,0,8"
+                                   Text="In the order policy ranked them. Each reason shows the evidence that produced it." />
 
-                        <Border Classes="card">
-                            <StackPanel>
-                                <TextBlock Classes="cardTitle" Text="Unavailable is not zero" />
-                                <TextBlock Classes="cardBody"
-                                           Text="A dimension nobody could measure is shown as absent, never as a low score. Semantic answers carry a probability and no confidence field at all, so a missing confidence is the documented shape rather than data to wait for." />
-                            </StackPanel>
-                        </Border>
+                        <ItemsControl ItemsSource="{Binding Reasons}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card">
+                                        <StackPanel>
+                                            <TextBlock Classes="cardTitle" Text="{Binding Code}" />
+                                            <TextBlock Classes="cardBody" Text="{Binding Message}" />
 
-                        <Border Classes="card">
-                            <StackPanel>
-                                <TextBlock Classes="cardTitle" Text="This pane is not built yet" />
-                                <TextBlock Classes="cardBody"
-                                           Text="It needs a message to show. Selecting one requires the message list, which needs a Host route that does not exist yet." />
-                            </StackPanel>
-                        </Border>
+                                            <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,8,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                                            <TextBlock Grid.Column="0"
+                                                                       Classes="signalId"
+                                                                       Text="{Binding SignalId}" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       Classes="cardBody"
+                                                                       Margin="10,0"
+                                                                       Text="{Binding OriginLabel}" />
+                                                            <TextBlock Grid.Column="2"
+                                                                       Classes="signalValue"
+                                                                       Text="{Binding ValueLabel}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- A reason naming evidence that did not arrive says so. -->
+                                            <TextBlock Classes="cardWarningText"
+                                                       Margin="0,6,0,0"
+                                                       TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasMissingEvidence}"
+                                                       Text="{Binding MissingEvidenceLabel}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- ===== measured dimensions ===== -->
+                        <TextBlock Classes="sectionLabel" Text="Dimensions" />
+                        <ItemsControl ItemsSource="{Binding Dimensions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Classes="cardBody" Text="{Binding Name}" />
+                                            <TextBlock Classes="cardWarningText"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding Qualifier}" />
+                                        </StackPanel>
+                                        <!--
+                                            ScoreLabel, never the raw score. A dimension
+                                            that could not be measured reads "not measured"
+                                            rather than 0, because a zero would say the
+                                            semantic layer looked and found nothing.
+                                        -->
+                                        <TextBlock Grid.Column="1"
+                                                   Classes="signalValue"
+                                                   Text="{Binding ScoreLabel}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- ===== what qualifies all of it ===== -->
+                        <TextBlock Classes="sectionLabel" Text="Coverage" Margin="0,16,0,4" />
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,0,0,6"
+                                   IsVisible="{Binding !Coverage.Count}"
+                                   Text="Nothing reduced the analysis: the whole message was examined." />
+                        <ItemsControl ItemsSource="{Binding Coverage}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock Classes="cardWarningText" Text="{Binding Name}" />
+                                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- ===== provenance ===== -->
+                        <TextBlock Classes="sectionLabel" Text="Versions" Margin="0,16,0,4" />
+                        <ItemsControl ItemsSource="{Binding Versions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="150,*" Margin="0,2">
+                                        <TextBlock Grid.Column="0" Classes="cardBody" Text="{Binding Label}" />
+                                        <TextBlock Grid.Column="1" Classes="cardBody" TextWrapping="Wrap" Text="{Binding Display}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="sectionLabel" Text="Semantic cache" Margin="0,16,0,4" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Cache.Display}" />
                     </StackPanel>
                 </ScrollViewer>
+              </Panel>
             </Border>
         </Grid>
     </DockPanel>

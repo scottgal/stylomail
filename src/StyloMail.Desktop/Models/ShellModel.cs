@@ -21,6 +21,7 @@ public sealed class ShellModel : ObservableObject
     private bool _isCheckingHost;
     private string? _nextCursor;
     private bool _hasMore;
+    private DecisionView? _decision;
 
     /// <summary>The section filled from <c>GET /v1/senders</c> after the window opens.</summary>
     public SidebarSection SendersSection { get; } = new("Senders", []);
@@ -143,6 +144,43 @@ public sealed class ShellModel : ObservableObject
     }
 
     public bool HasSelectedMessage => SelectedMessage is not null;
+
+    /// <summary>
+    /// The decision being shown, when one has been opened.
+    /// </summary>
+    /// <remarks>
+    /// Null on a message that was listed rather than opened by its assessment
+    /// id, and that is a real gap rather than a loading state: no route connects
+    /// a listed message to its decision today, so the pane cannot fill itself
+    /// from the list. See <see cref="DecisionUnavailableReason"/>.
+    /// </remarks>
+    public DecisionView? Decision
+    {
+        get => _decision;
+        private set
+        {
+            if (!Set(ref _decision, value)) return;
+
+            Raise(nameof(HasDecision));
+            Raise(nameof(DecisionUnavailableReason));
+        }
+    }
+
+    public bool HasDecision => Decision is not null;
+
+    /// <summary>
+    /// Why the decision pane is empty, when it is.
+    /// </summary>
+    /// <remarks>
+    /// Three different answers with three different remedies, and the pane says
+    /// which one it is. "Nothing here" would be true of all three and useful for
+    /// none.
+    /// </remarks>
+    public string DecisionUnavailableReason => SelectedMessage is null
+        ? "Select a message to see the decision behind it."
+        : "No route connects a listed message to its decision. The listing rows carry no "
+            + "assessment id and neither does the submission detail, so this pane cannot fill "
+            + "itself from the list. Opening a decision by its own id works.";
 
     public bool HasMessages => Messages.Count > 0;
 
@@ -320,6 +358,13 @@ public sealed class ShellModel : ObservableObject
             : "Active";
     }
 
+    /// <summary>Shows a decision in the detail pane.</summary>
+    public void ShowDecision(DecisionResponse decision)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        Decision = DecisionView.From(decision);
+    }
+
     /// <summary>Replaces the list pane's contents with one page of messages.</summary>
     public void ApplyMessages(MessageListingResponse listing)
     {
@@ -336,6 +381,7 @@ public sealed class ShellModel : ObservableObject
         HasMore = listing.HasMore;
 
         SelectedMessage = null;
+        Decision = null;
     }
 }
 

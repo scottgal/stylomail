@@ -131,6 +131,48 @@ internal static class Screenshot
         if (queue is null) return;
 
         await window.SelectAsync(queue).ConfigureAwait(false);
+
+        await ShowDecisionIfAsked(window).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Environment variable naming a decision body to render, for photographing
+    /// the detail pane.
+    /// </summary>
+    /// <remarks>
+    /// <b>A harness input, and a temporary one.</b> It exists because the
+    /// decision pane cannot be photographed on a deployment without a semantic
+    /// provider key: an assessment needs Jev, a rejected key currently fails the
+    /// whole request rather than degrading to unavailable evidence, and the
+    /// operator's real key is not something this harness may hold.
+    ///
+    /// <para>
+    /// So the pane is photographed against the same wire body the contract
+    /// tests are written from, and that is stated rather than implied. When the
+    /// Host can reach a ledger without a provider key, this goes away.
+    /// </para>
+    /// </remarks>
+    private const string DecisionFileVariable = "STYLOMAIL_SMOKE_DECISION_FILE";
+
+    private static async Task ShowDecisionIfAsked(MainWindow window)
+    {
+        var path = Environment.GetEnvironmentVariable(DecisionFileVariable);
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+
+        var json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+
+        var decision = System.Text.Json.JsonSerializer.Deserialize<Api.Contracts.DecisionResponse>(
+            json,
+            Api.StyloMailApiClient.JsonOptions);
+
+        if (decision is null)
+        {
+            Console.Error.WriteLine($"[Screenshot] {path} did not bind as a decision.");
+            return;
+        }
+
+        await window.ShowDecisionAsync(decision).ConfigureAwait(false);
     }
 }
 #endif

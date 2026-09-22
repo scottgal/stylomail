@@ -167,6 +167,52 @@
         <Setter Property="Margin" Value="0,0,0,10" />
     </Style>
 
+    <!--
+        The action, at the size it deserves. It is the one thing an operator
+        reads first, and it is deliberately a word rather than a colour: a
+        verdict rendered as red or green invites a decision made from the
+        corner of an eye, and the reasoning underneath is the point.
+    -->
+    <Style Selector="TextBlock.decisionAction">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="TextBlock.sectionLabel">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="Margin" Value="0,18,0,4" />
+    </Style>
+
+    <Style Selector="TextBlock.signalId">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontFamily" Value="SF Mono,Menlo,Consolas,monospace" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TextBlock.signalValue">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontFamily" Value="SF Mono,Menlo,Consolas,monospace" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- A caveat, not an error: warmer than the body text, quieter than a warning. -->
+    <Style Selector="TextBlock.cardWarningText">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleWarning}" />
+    </Style>
+
+    <Style Selector="Border.cardWarning">
+        <Setter Property="Background" Value="#FDF6E8" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleWarning}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+
     <Style Selector="TextBlock.cardTitle">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
