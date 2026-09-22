@@ -133,6 +133,14 @@ it to 16). Only the operator can raise it.
   4,100 words, delivered to the operator's blog repo and not published. **Its claims were verified
   against the tree**, and the repository being public means the source link resolves.
 
+## The Jev credential, and where it lives
+
+**The operator keeps it at `/Users/scottgalloway/Documents/jevkey.pvt`**, outside the repository and
+outside any git repository, so it cannot be committed by accident. Supply it as
+`export TYPESAFE_API_KEY="$(cat <that path>)"`: the substitution means the value reaches the
+environment and never the output. **Never print, log, persist or quote the value**, and never put it
+in a fixture, an exception message or a report. The recorder reads the environment variable only.
+
 ## Two live operator decisions
 
 - **No LICENSE**, on a repository that is now public. Nothing grants anyone rights to the code.
