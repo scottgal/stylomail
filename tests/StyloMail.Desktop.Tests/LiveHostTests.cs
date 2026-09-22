@@ -162,6 +162,36 @@ public sealed class LiveHostTests
     }
 
     /// <summary>
+    /// The release route's refusal for a message the Host does not hold.
+    /// </summary>
+    /// <remarks>
+    /// <b>What this test can and cannot reach, stated plainly.</b> Releasing a
+    /// genuinely quarantined message needs a quarantined message, and there is
+    /// no way to produce one without a working semantic provider key: an
+    /// assessment needs Jev, and a rejected key currently fails the whole
+    /// request rather than degrading to unavailable evidence. The operator's
+    /// key is not something this suite may hold.
+    ///
+    /// <para>
+    /// So the console's release path is verified by its own tests against a
+    /// stubbed handler, and against a real Host only for the case above, which
+    /// is reachable: a refusal naming the reason. The success path has not run
+    /// end to end, and this note exists so that is not mistaken for a gap
+    /// somebody forgot rather than one that is currently unreachable.
+    /// </para>
+    /// </remarks>
+    [LiveHostFact]
+    public async Task Releasing_an_unknown_message_is_refused_by_name()
+    {
+        var exception = await Assert.ThrowsAsync<StyloMailApiException>(
+            () => Client().ReleaseQuarantineAsync("q_not_a_real_queue_id"));
+
+        Assert.Equal(StyloMailApiFailure.HostRefused, exception.Failure);
+        Assert.Equal(HttpStatusCode.NotFound, exception.Status);
+        Assert.Equal("submission_not_found", exception.Code);
+    }
+
+    /// <summary>
     /// The console's whole write path, against a real Host: pause, read it
     /// back, resume, read it back.
     /// </summary>
