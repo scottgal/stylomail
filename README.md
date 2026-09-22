@@ -1,5 +1,16 @@
 # StyloMail
 
+> **This is a research project, not a product.**
+>
+> StyloMail is a time-boxed experiment: an idea built far enough to find out whether it is worth
+> pursuing, changing or stopping. There is no release, no support, no compatibility promise and no
+> upgrade path, and **no licence has been chosen**, so nothing here grants anyone the right to use,
+> modify or redistribute it. See [License](#license).
+>
+> It is deliberately built to completion rather than to a demo, because the questions it asks can
+> only be answered by a system that runs end to end. That is what the test counts below measure:
+> the experiment is finished enough to be evaluated, not the software ready to be deployed.
+
 An adaptive two-way email security proxy. StyloMail detects suspicious **communication** rather than
 suspicious words: compromised outbound accounts, inbound phishing, impersonation, emerging campaigns,
 and unusual changes in otherwise legitimate correspondence. It intervenes minimally, through explicit
@@ -9,8 +20,9 @@ It is a security edge that sits in front of back-end mail servers, terminates TL
 senders, bounds their volume, and **owns the queue**: it accepts a message only once that message is
 durably stored, and after that the mail is its responsibility.
 
-> **Status: pre-release.** Twelve components, 1,465 tests, every safety claim mutation-audited. Not
-> production-hardened, see [Status](#status) for exactly what that does and does not mean.
+> **Status: research.** Twelve components, 1,465 tests, and a mutation harness covering the safety
+> claims it enumerates. **Not production-hardened and not intended for production**, see
+> [Status](#status) for exactly what that does and does not mean.
 
 ---
 
