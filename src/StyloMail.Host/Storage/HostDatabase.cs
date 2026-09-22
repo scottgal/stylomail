@@ -237,6 +237,50 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_sender_profile_company
             ON sender_profile (tenant_id, company_id);
 
+        -- Minted API keys. A row holds a per-key salt and a slow-KDF digest and NEVER the key, so
+        -- copying this file does not hand over a usable credential and does not hand over a fast
+        -- digest to attack offline either. Named host_* for the same reason as the ledger above.
+        --
+        -- key_id is the public handle the key carries in its own value. It is what makes lookup a
+        -- single indexed read and keeps the expensive derivation to one per authentication, without
+        -- writing down anything derived cheaply from the secret — which is the property that would
+        -- make the store crackable.
+        --
+        -- Revocation stamps rather than deletes: who killed a credential and when is asked
+        -- afterwards. A revoked row also goes on claiming its principal_id, so revoking a mint
+        -- cannot silently restore an environment entry of the same name.
+        CREATE TABLE IF NOT EXISTS host_principal (
+            key_id                     TEXT NOT NULL PRIMARY KEY,
+            principal_id               TEXT NOT NULL,
+            tenant_id                  TEXT NOT NULL,
+            kdf_algorithm              TEXT NOT NULL,
+            kdf_iterations             INTEGER NOT NULL,
+            salt                       BLOB NOT NULL,
+            digest                     BLOB NOT NULL,
+            privileges                 TEXT NOT NULL,
+            approved_sender_identities TEXT NOT NULL,
+            created_at                 TEXT NOT NULL,
+            created_by                 TEXT NOT NULL,
+            revoked_at                 TEXT NULL,
+            revoked_by                 TEXT NULL
+        );
+
+        -- One live key per principal. Partial rather than total, because a revoked row stays and a
+        -- principal may legitimately be minted again afterwards; what must not exist is two keys
+        -- that both authenticate as one identity with nothing saying which is current.
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_host_principal_live
+            ON host_principal (principal_id) WHERE revoked_at IS NULL;
+
+        -- The store's change counter. Every mint and every revocation increments it in the same
+        -- transaction as the change, and a resolution cache validates against it rather than against
+        -- a local eviction it cannot perform: the CLI that revokes a key is a different process.
+        CREATE TABLE IF NOT EXISTS host_principal_store (
+            id      INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL
+        );
+
+        INSERT OR IGNORE INTO host_principal_store (id, version) VALUES (1, 0);
+
         -- Quarantine releases are audited. A release is a decision someone made, and the record
         -- of who made it is not optional.
         CREATE TABLE IF NOT EXISTS quarantine_release (

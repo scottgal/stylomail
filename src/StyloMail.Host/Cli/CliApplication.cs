@@ -28,6 +28,12 @@ public static class CliApplication
           quarantine list --tenant <id> [--json]
           quarantine release <queue-id> --tenant <id> --by <principal>
           profiles inspect --tenant <id> [--json]
+          key create --principal <id> --tenant <id> --privileges <a,b[,c]> --by <principal>
+                     [--sender <identity>]…
+                                                       Mint an API key. The value is printed once.
+          key list [--json]                            Minted and configured principals, with source
+          key revoke --principal <id> --by <principal> Revoke a minted key. Refuses on a
+                                                       configuration principal.
         """;
 
     /// <summary>Parses arguments. Returns false with an error message when they are not understood.</summary>
@@ -91,8 +97,97 @@ public static class CliApplication
                 command = new ProfilesInspectCommand(profilesTenant, rest.Contains("--json"));
                 return true;
 
+            case "key":
+                return TryParseKey(rest, out command, out error);
+
             default:
                 error = $"Unknown command '{head}'.\n\n{Usage}";
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Parses the three <c>key</c> verbs.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>--by</c> is required on both mutating verbs.</b> Minting a key is how access is granted
+    /// and revoking one is how it is withdrawn, so neither is a thing the CLI may do anonymously: it
+    /// has no identity to sign with, and inventing one would put a name in the audit record that
+    /// nobody asserted. This is the same rule and the same reasoning as <c>quarantine release --by</c>.
+    /// </remarks>
+    private static bool TryParseKey(string[] rest, out CliCommand? command, out string? error)
+    {
+        command = null;
+        error = null;
+
+        if (rest.Length == 0)
+        {
+            error = "Usage: key create|list|revoke";
+            return false;
+        }
+
+        switch (rest[0].ToLowerInvariant())
+        {
+            case "create":
+            {
+                if (Flag(rest, "--principal") is not { Length: > 0 } principal)
+                {
+                    error = "key create requires --principal <id>: a key belongs to an identity.";
+                    return false;
+                }
+
+                if (Flag(rest, "--tenant") is not { Length: > 0 } tenant)
+                {
+                    error = "key create requires --tenant <id>: a principal is always tenant-scoped.";
+                    return false;
+                }
+
+                if (Flag(rest, "--privileges") is not { Length: > 0 } privileges)
+                {
+                    error = "key create requires --privileges <a,b[,c]>.";
+                    return false;
+                }
+
+                if (Flag(rest, "--by") is not { Length: > 0 } createdBy)
+                {
+                    error = "key create requires --by <principal> so the mint is attributed.";
+                    return false;
+                }
+
+                command = new KeyCreateCommand(
+                    principal,
+                    tenant,
+                    [.. privileges.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+                    Flags(rest, "--sender"),
+                    createdBy);
+
+                return true;
+            }
+
+            case "list":
+                command = new KeyListCommand(rest.Contains("--json"));
+                return true;
+
+            case "revoke":
+            {
+                if (Flag(rest, "--principal") is not { Length: > 0 } principal)
+                {
+                    error = "key revoke requires --principal <id>.";
+                    return false;
+                }
+
+                if (Flag(rest, "--by") is not { Length: > 0 } revokedBy)
+                {
+                    error = "key revoke requires --by <principal> so the revocation is attributed.";
+                    return false;
+                }
+
+                command = new KeyRevokeCommand(principal, revokedBy);
+                return true;
+            }
+
+            default:
+                error = $"Unknown key subcommand '{rest[0]}'. Expected create, list or revoke.";
                 return false;
         }
     }
@@ -159,6 +254,22 @@ public static class CliApplication
         return false;
     }
 
+    /// <summary>Every value given for a flag that may legitimately repeat, in order.</summary>
+    private static List<string> Flags(string[] args, string name)
+    {
+        var values = new List<string>();
+
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], name, StringComparison.Ordinal))
+            {
+                values.Add(args[i + 1]);
+            }
+        }
+
+        return values;
+    }
+
     private static string? Flag(string[] args, string name)
     {
         for (var i = 0; i < args.Length - 1; i++)
@@ -204,6 +315,9 @@ public static class CliApplication
             QuarantineListCommand list => await CliCommands.QuarantineListAsync(host.Services, list, output, cancellationToken),
             QuarantineReleaseCommand release => await CliCommands.QuarantineReleaseAsync(host.Services, release, output, cancellationToken),
             ProfilesInspectCommand profiles => await CliCommands.ProfilesInspectAsync(host.Services, profiles, output, cancellationToken),
+            KeyCreateCommand create => await KeyCommands.CreateAsync(host.Services, create, output, cancellationToken),
+            KeyListCommand list => await KeyCommands.ListAsync(host.Services, list, output, cancellationToken),
+            KeyRevokeCommand revoke => await KeyCommands.RevokeAsync(host.Services, revoke, output, cancellationToken),
             _ => 2,
         };
     }

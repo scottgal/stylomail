@@ -23,6 +23,7 @@ stylomail assess <file.eml>         assess one message, locally
 stylomail replay <directory>        re-analyse fixtures deterministically
 stylomail quarantine list|release   inspect and release quarantined mail
 stylomail profiles inspect          list profile state for a tenant
+stylomail key create|list|revoke    mint, list and revoke API keys
 ```
 
 `serve` is the default when the first argument is absent or starts with `--`, so a hosting platform
@@ -213,11 +214,66 @@ see the readiness section above.
 
 `StyloMail:Auth:Principals:<n>:ApprovedSenderIdentities:<n>` lists the identities an authenticated
 principal may use in SMTP `MAIL FROM`. **Empty authorises nothing** beyond the null sender — "no
-restriction configured" and "may send as anyone" must not be the same value.
+restriction configured" and "may send as anyone" must not be the same value. `key create --sender`
+grants the same thing to a minted principal, and starts empty for the same reason.
+
+| Key (under `StyloMail:Auth:`) | Default | Notes |
+| --- | --- | --- |
+| `Principals:<n>:PrincipalId` / `:Key` / `:TenantId` / `:Privileges:<n>` | *(none)* | A principal held in configuration. Honoured, and **read-only**: see §7. |
+| `ResolutionCacheLifetime` | `30s` | How long a verified minted key is held before it is verified again. `0` verifies on every request, at one key derivation (~71 ms) per request. |
 
 ---
 
-## 7. Verifying a running instance
+## 7. Minted API keys
+
+**Two sources of identity, and the store wins wholesale.** A key minted on the host is held as a
+digest in the host database; a principal in `StyloMail:Auth:Principals` still authenticates, so
+existing deployments keep working. Where the same principal is in both, the store's entry resolves
+and the configuration entry resolves **nothing**, with any key — privileges and keys are never
+unioned across the two. That is deliberate: a union is how a configuration entry silently re-widens a
+privilege an operator narrowed when they minted its replacement.
+
+```
+$ stylomail key create --principal ops@acme --tenant acme \
+      --privileges Review,Administer --sender ops@acme.example --by alice
+smk_<32 hex>_<43 base64url>
+This key is shown once and will not be shown again. Only a digest of it is stored, so it
+cannot be recovered or re-displayed: mint a new key if this one is lost.
+
+$ stylomail key list
+principal         tenant  privileges          source       status
+ops@acme          acme    Review, Administer  store        active
+user-acme-sender  acme    Assess, Send        environment  read-only
+
+$ stylomail key revoke --principal ops@acme --by alice
+```
+
+What the host promises, and how it was checked:
+
+- **The value is shown once, on stdout, and to nothing else.** No `--output`, no file flag, never a
+  log, never stderr. Only a per-key salt and a slow-KDF digest (PBKDF2-HMAC-SHA256, 600,000
+  iterations, ~71 ms) reach the store, so a copy of the database is neither a usable credential nor a
+  cheap one to attack offline. Verified by searching the database file and its write-ahead log for
+  the minted value: absent.
+- **`key list` reports which source resolved each principal** and never the key or its digest. An
+  environment entry the store has claimed is listed as `shadowed by store`, so an operator sees their
+  configuration entry go inert rather than discovering it as a credential that stopped working.
+- **Revocation takes effect on the next request, in every process.** The store carries a change
+  counter that every mint and every revocation increments; a resolution cache validates against it,
+  which is what lets a `key revoke` in one process stop a key being served in another. A revocation
+  is never un-revoked, and re-minting the same name afterwards is the supported path.
+- **`key revoke` refuses a configuration principal and names the entry that owns it**, exiting `3`
+  rather than reporting a revocation that did not happen. It says why the fix needs a restart: the
+  principals section is read once at startup.
+- **Both channels authenticate through one resolution.** The HTTP surface and the SMTP submission
+  listener resolve through the same directory, so a revocation cannot reach one and miss the other.
+  Verified against a running host: a minted key authenticates over `STARTTLS` + `AUTH`, its
+  `--sender` grant is what decides an SMTP `MAIL FROM`, and revoking it produced `401` on HTTP and
+  `535` on SMTP with no restart.
+
+---
+
+## 8. Verifying a running instance
 
 | Route | Meaning |
 | --- | --- |
@@ -324,13 +380,13 @@ a page that quietly shows something other than what it claims is worse than a re
 
 ---
 
-## 8. CLI exit codes
+## 9. CLI exit codes
 
 | Code | Meaning | Example |
 | --- | --- | --- |
 | `0` | Success. | `assess message.eml` |
 | `2` | Bad input — unknown command, missing argument, unreadable file. | `assess missing.eml`, `profiles inspect` without `--tenant` |
-| `3` | A requested capability is unavailable. | `assess --semantic` on a deployment with no assessor configured |
+| `3` | A requested capability is unavailable. | `assess --semantic` on a deployment with no assessor configured; `key revoke` on a principal held in configuration |
 | `134` | The process refused to start (`SIGABRT`, from an unhandled configuration error). | see §2 |
 
 Exit codes are meaningful on purpose: a CLI that reported failure as success would be trusted by

@@ -27,6 +27,26 @@ public sealed class HostAuthOptions
     /// credential alive indefinitely.
     /// </summary>
     public TimeSpan CookieLifetime { get; set; } = TimeSpan.FromHours(8);
+
+    /// <summary>
+    /// How long a resolved minted key is held before it is verified again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a backstop, not the mechanism.</b> Verifying a minted key is deliberately expensive,
+    /// so a resolution is cached and the cache is invalidated by the store's own change counter,
+    /// which every mint and every <c>key revoke</c> increments. Revocation therefore takes effect on
+    /// the next request even though the revoking process is not the serving one.
+    /// </para>
+    /// <para>
+    /// What this bounds is the case that counter cannot cover: a change written without bumping it,
+    /// which would otherwise be served from a cache indefinitely. Thirty seconds of a credential
+    /// that should have stopped is a bounded and visible failure; unbounded is not. Set it to
+    /// <see cref="TimeSpan.Zero"/> to verify every minted key on every request, at the cost of one
+    /// derivation per request.
+    /// </para>
+    /// </remarks>
+    public TimeSpan ResolutionCacheLifetime { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
@@ -65,18 +85,13 @@ public sealed class HostPrincipalOptions
     /// </remarks>
     public List<string> ApprovedSenderIdentities { get; set; } = [];
 
-    public HostPrivilege ResolvePrivileges()
-    {
-        var privileges = HostPrivilege.None;
-
-        foreach (var name in Privileges)
-        {
-            if (Enum.TryParse<HostPrivilege>(name, ignoreCase: true, out var parsed))
-            {
-                privileges |= parsed;
-            }
-        }
-
-        return privileges;
-    }
+    /// <summary>
+    /// The flags these names describe.
+    /// </summary>
+    /// <remarks>
+    /// Delegates rather than parsing. A second parser here would let the same name mean one thing
+    /// when it arrived from configuration and another when it arrived from the store, which is the
+    /// divergence wholesale precedence exists to prevent.
+    /// </remarks>
+    public HostPrivilege ResolvePrivileges() => HostPrivileges.Parse(Privileges);
 }

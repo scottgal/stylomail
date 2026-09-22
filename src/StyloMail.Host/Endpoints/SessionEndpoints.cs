@@ -52,7 +52,7 @@ public static class SessionEndpoints
         var identity = HostIdentityExtensions.BuildIdentity(
             principal.PrincipalId,
             principal.TenantId,
-            principal.ResolvePrivileges(),
+            principal.Privileges,
             // The channel is recorded in the ticket, because every later request will present only
             // the cookie and the handler will have no other way to know how it got here.
             HostClaims.ChannelCookie,

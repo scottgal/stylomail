@@ -26,6 +26,18 @@ public sealed record QuarantineReleaseCommand(string TenantId, string QueueId, s
 
 public sealed record ProfilesInspectCommand(string TenantId, bool AsJson) : CliCommand;
 
+/// <summary>Mints a principal key. The value is printed once and never stored.</summary>
+public sealed record KeyCreateCommand(
+    string PrincipalId,
+    string TenantId,
+    IReadOnlyList<string> Privileges,
+    IReadOnlyList<string> ApprovedSenderIdentities,
+    string CreatedBy) : CliCommand;
+
+public sealed record KeyListCommand(bool AsJson) : CliCommand;
+
+public sealed record KeyRevokeCommand(string PrincipalId, string RevokedBy) : CliCommand;
+
 /// <summary>
 /// The CLI's commands.
 /// </summary>
