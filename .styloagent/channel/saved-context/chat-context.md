@@ -250,6 +250,25 @@ asked about different things.
 - **Gotcha:** `BehaviouralEvidenceEvaluator.Trends` yields **velocity once per window** (Burst and
   Slow), so `Assert.Single` on `behavioural.trend.velocity` fails with two matches. Use `Contains`.
 
+**TASK 3 COMPLETE (2026-09-22; solution 1413 passed, 0 failed, 23 skipped).**
+
+- Relationship target = the conversation, kind in the key (`{Conversation}|{channelId}` hashed).
+  `Unknown` kind -> no target, `RecipientKeys` absent (not empty).
+- **Observed-state write is UNCONDITIONAL**, after the assessment, to the author pool and the target
+  pool. `WasRejected = false` hard-coded (nothing is refused on this path; reading it from `Action`
+  would look like a measurement when it is a constant). `Dimensions = null`.
+- Tests added: write goes to both pools; writes even when the proposal is not Allow; unknown kind
+  writes no relationship; a DM and a channel post do not share a target key.
+- `FakeProfileStore` gained `Writes` (keyed) because "a write happened" and "it went to the right
+  pool" are different claims.
+- **Gotcha (cost me two failures):** a behavioural signal is emitted **once per profile read**, so now
+  one per scope (author + target). Match on `ObservedScope` as well as `SignalId`, never `Assert.Single`.
+
+**ONLY REMAINING ITEM, and it is a system finding rather than chat work:** the emergency kill switch
+is unreachable by EVERY path, email included. `IAssessmentPolicyContextSource` is the only shape it
+can arrive through; the only implementation is `StaticPolicyContextSource` ("Supplies nothing");
+nothing in the Host constructs a real one. Reported; needs a decision on where operator state lives.
+
 **STILL TO DO in Task 3:** (a) adaptive recipient/velocity evidence via `ProfileCoordinator` +
 `ProfileKey` (needs MailAssessor's `BuildProfileTargets`/`ReadSnapshots` as the template), and
 (b) the cross-path drift test (push equivalent evidence down both paths, assert the same action).
