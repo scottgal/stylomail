@@ -91,7 +91,37 @@ that behaviour did not change.
 Plus plan 1's standing constraint: change nothing else in Core, Mime, Host or Assessment. No
 refactoring around myself, no renaming, no unrequested cleanup.
 
-## Plan 2b (assigned 2026-09-22, HELD pending overview-'s ingress commit)
+## Item 1 of overview-'s order: DONE, frozen, commit-ready (2026-09-22)
+
+The ingress was committed by overview- at `66a0da6` (with SlackNet removed; the rationale is in the
+csproj). His order: (1) ledger read-path fix standalone, (2) the Core move, (3) plan 2b. Not 2 and 3
+together.
+
+**Defect:** `MailAssessment` is persisted as a JSON document and read with `JsonSerializer.Deserialize`,
+which enforces `required` on deserialisation. `DeliveryTiming` became required at `6b11add`, so every
+row written before it throws `JsonException` on `FindAsync`/`ListAsync`. Reproduced first, on a row
+this build wrote.
+
+**Fix (all of it):**
+- new `src/StyloMail.Host/Serialization/PersistedAssessmentConverter.cs`
+- modified `src/StyloMail.Host/Serialization/HostJson.cs` (`PersistedRead` = `Options` + converter)
+- modified `src/StyloMail.Host/Decisions/SqliteDecisionLedger.cs` (2 read sites; write path untouched)
+- new `tests/StyloMail.Host.Tests/LedgerLegacyRowTests.cs`
+
+Measured: build 0/0, solution **1333 passed, 0 failed, 21 skipped**; Host.Tests 300 -> 303.
+
+**Design rules baked in, keep them:** the converter is confined to the persisted read path and must NOT
+go into `HostJson.Options` (that would undo the `required` guarantee everywhere). Back-fills are
+back-fills, not defaults: the justification is that `MailAssessor` is the only production construction
+site and it is the email path, so legacy rows really were `Email`/`PreAcceptance`. **When 2b adds
+`Channel` required, add a second back-fill call with `Email` for the same reason.**
+
+**Two carry-forward findings:** `DecisionResponse` does not expose `deliveryTiming` at all, so the
+interface doc's "the console shows deliveryTiming on every chat decision" is not yet satisfiable for
+any decision. And `SqliteDecisionLedger.cs` has pre-existing em-dashes at lines 132, 133, 160 (not
+mine, left alone).
+
+## Plan 2b (assigned 2026-09-22, HELD pending overview-'s go-ahead)
 
 `docs/chat-pipeline-design.md` is the decision record: **chat assessments run local-only, with an
 explicit semantic-unavailable state.** Principle: **input is per channel, output is shared.**
