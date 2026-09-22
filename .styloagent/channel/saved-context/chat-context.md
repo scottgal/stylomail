@@ -223,6 +223,16 @@ failing event would spin as fast as the CPU allows, hammering the assessor and t
 **Fixed** by pacing when a pass makes no progress (`progressed == 0` -> idle delay); `AssessAsync`
 now returns bool. That is what red-first buys and a mutation cannot.
 
+**LEGIBILITY LINE DONE (overview- asked for it; committed Task 4 as `9c04d71`).**
+`ChatAssessmentHealth` (set when `UnavailableChatAssessor` is registered) + a readiness check in
+`ReadinessProbe.Evaluate`: **not-ready with `chat_assessment_unavailable` only when the assessor is
+unavailable AND something is waiting**. Two tests. No startup refusal - overview- confirmed the
+degradation is deliberate (`HostCredentials.Resolve` returns `NotConfigured` only when BOTH secrets
+are absent).
+
+**CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
+numbers as the last measured numbers, never as the current state.
+
 **Degradation ruled by me, FLAGGED:** with no profile master key, chat gets
 `UnavailableChatAssessor`, which **throws**; the drain leaves events waiting. Chosen over refusing to
 start because the key is env-only with no configuration path, so refusing would make the host
