@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
 
 namespace StyloMail.Desktop.Models;
@@ -60,6 +61,13 @@ public sealed class ShellModel : ObservableObject
         // showing its empty state after the first page arrives, because nothing
         // ever told the binding that HasMessages had changed.
         Messages.CollectionChanged += (_, _) => Raise(nameof(HasMessages));
+
+        // The Record button binds to CanSubmitFeedback, which is computed from
+        // this draft. Without forwarding the draft's own changes the button
+        // stays disabled however much is typed into it, and every test of the
+        // draft still passes because they assert the draft's property rather
+        // than the one the button is bound to.
+        Feedback.PropertyChanged += (_, _) => Raise(nameof(CanSubmitFeedback));
     }
 
     public ObservableCollection<SidebarSection> Sections { get; } = [];
@@ -360,6 +368,21 @@ public sealed class ShellModel : ObservableObject
                 SelectedItem = item;
             }
         }
+    }
+
+    /// <summary>
+    /// Says why the senders section could not be filled, in place of the
+    /// placeholder that would otherwise read as still loading.
+    /// </summary>
+    public void SendersUnavailable(StyloMailApiException failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        SendersSection.Items.Clear();
+        SendersSection.Items.Add(new SidebarItem(
+            "Senders unavailable",
+            SidebarItemState.NotBuilt,
+            failure.Code is null ? failure.Message : $"the Host said {failure.Code}"));
     }
 
     private static string DescribeControl(SenderControlResponse control)

@@ -1,37 +1,53 @@
 name: console-smoke
 description: >
   Drives the StyloMail operator console end to end against a throwaway Host:
-  the connection the sidebar and status bar report, selecting a queue, and the
+  the connection the sidebar and status bar report, the decision pane, the
   confirmation for a sender pause including the rule that it cannot be carried
-  out until a reason is given.
+  out until a reason is given, and the sidebar's one blocked entry.
 
   Run it through ux-scripts/run-console-smoke.sh, not directly. That script
-  starts the Host these assertions are about and takes it down afterwards, so
-  the run is repeatable from any starting state and leaves nothing behind.
+  starts the Host these assertions are about, supplies the decision fixture,
+  and takes it all down afterwards, so the run is repeatable from any starting
+  state and leaves nothing behind.
+
+  The decision pane is at the top of this script on purpose. It is loaded when
+  the window opens, and selecting anything in the sidebar clears it, because a
+  detail pane still showing the previous message's decision would be wrong.
+  Asserting it after a click is asserting on an empty pane.
+
+  The decision it renders is a fixture (ux-scripts/decision-fixture.json)
+  rather than one the Host produced, and that is a limit of the deployment
+  rather than a shortcut: producing a decision needs a semantic provider key,
+  and a rejected key currently fails the whole assessment request rather than
+  degrading to unavailable evidence. So these assertions are about how the
+  pane renders, which is what a script can honestly check.
 
   Deliberately not covered here, with reasons:
-    - Anything that needs a decision. An assessment needs a semantic provider
-      key, a rejected key currently fails the whole request rather than
-      degrading to unavailable evidence, and this harness must not hold the
-      operator's real key. So the decision pane and feedback are exercised by
-      their own unit tests rather than here.
-    - The quarantine release. It needs a quarantined message, which needs a
-      decision, for the reason above.
+    - Sending feedback, and releasing a quarantine. Both are writes that bind
+      to a decision the Host holds, and this run's decision is one the Host has
+      never seen, so the call would be refused for the right reason and prove
+      nothing. Both are covered by their own unit tests.
     - Anything behind a native OS dialog. There is none yet; when the API key
-      entry lands it will open one, and that is the same wall mylo records in
-      its own README.
+      entry lands it will open one, and that is the same wall mylo records.
 
-  Every assertion below is about a control the console names for this purpose.
-  Where a control is generated per row, the script targets it by its text and
-  lets the pointer event land on the button behind it, which is how a real
-  click reaches it.
+  Selector notes, both learned by getting them wrong first:
+    - A bare selector value is a single token, so a phrase has to be quoted:
+      text='two words' rather than text=two words.
+    - But quoting changes the meaning, not just the parsing. text=word matches
+      a substring, while text='word' is an exact match against the whole
+      displayed text. So text=Quarantine also matches "Quarantined" in the
+      sidebar, and a quoted sentence has to be the entire sentence.
+    - For anything longer than a word, prefer a named control with a
+      ContainsText matcher: it says what it means and cannot be broken by a
+      trailing full stop.
 
 default_delay: 250
 
 actions:
-  # The window opens, checks the Host, loads the senders and the first queue.
-  # Waited out rather than slept through: these are round trips to a real
-  # process, and a fixed sleep would be a flaky test with a lucky first run.
+  # The window opens, checks the Host, loads the senders, the first queue, and
+  # the decision fixture. Waited out rather than slept through: these are round
+  # trips to a real process, and a fixed sleep is a flaky test with a lucky
+  # first run.
   - type: Expect
     target: "name=StatusHeadlineText"
     matcher: HasText
@@ -48,17 +64,81 @@ actions:
     matcher: HasText
     value: "The Host is running and can accept mail."
 
+  # The sidebar is filled from GET /v1/senders, which is a second round trip:
+  # the status bar saying Connected only means the first one finished. Given a
+  # generous timeout for that reason, and because a cold start pays for
+  # connection setup on the way.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
   - type: Screenshot
     value: "01-connected"
-    description: "The console on open: connected, sidebar loaded, first queue selected"
+    description: "The console on open: connected, sidebar loaded from the Host"
 
-  # The sidebar is filled from GET /v1/senders, so the harness principal the
-  # run created has to be there by name.
+  # ---- the decision pane --------------------------------------------------
+
   - type: Expect
-    target: "text=harness"
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "an index, not a probability"
+    timeout: 20000
+
+  # Reasons keep policy's order and each carries the evidence behind it.
+  - type: Expect
+    target: "text=credential_request_high"
     matcher: IsVisible
 
-  # Selecting a different queue moves the list pane with it.
+  - type: Expect
+    target: "text=link_display_mismatch"
+    matcher: IsVisible
+
+  # A reason naming a signal the response did not carry says so, rather than
+  # rendering only the evidence that happened to arrive and looking complete.
+  - type: Expect
+    target: "text='Evidence referenced by this reason was not returned: sig_absent'"
+    matcher: IsVisible
+
+  # Unavailable is not zero: a dimension nobody could measure reads "not
+  # measured", and the score it arrived with is never rendered.
+  - type: Expect
+    target: "text='not measured (unavailable)'"
+    matcher: IsVisible
+
+  # Reduced coverage shows its score and names why it is weaker.
+  - type: Expect
+    target: "text='Scored over reduced input coverage, so it is real but weaker.'"
+    matcher: IsVisible
+
+  # Feedback needs a recipient before it can be recorded, because both scopes
+  # the Host accepts bind to one.
+  - type: Expect
+    target: "name=RecordFeedbackButton"
+    matcher: Not.IsEnabled
+
+  - type: Screenshot
+    value: "02-decision-pane"
+    description: "Ordered reasons, evidence inline, unavailable-is-not-zero"
+
+  - type: TypeText
+    target: "name=FeedbackRecipientBox"
+    value: "alice@example.test"
+
+  - type: Expect
+    target: "name=RecordFeedbackButton"
+    matcher: IsEnabled
+    timeout: 5000
+
+  - type: Screenshot
+    value: "03-feedback-ready"
+    description: "Feedback enabled once the scope has something to bind to"
+
+  # ---- selecting a queue clears the detail ---------------------------------
+  #
+  # A detail pane still showing the previous message's decision under a
+  # different heading would attribute one message's reasoning to another.
+
   - type: Click
     target: "type=Button:has-text(Quarantined)"
     description: "Select the quarantined queue"
@@ -66,22 +146,26 @@ actions:
   - type: Wait
     value: "600"
 
+  # On the pane, not on a control inside it: Control.IsVisible is the
+  # control's own property, so RiskIndexText still reports true when its
+  # container is hidden. Same trap as the confirmation bar above, walked into
+  # twice.
   - type: Expect
-    target: "name=HostAddressText"
-    matcher: IsVisible
+    target: "name=DecisionPaneScroll"
+    matcher: Not.IsVisible
 
   - type: Screenshot
-    value: "02-queue-selected"
-    description: "The quarantined queue selected"
+    value: "04-queue-selected"
+    description: "The quarantined queue selected, with the detail pane cleared"
 
   # ---- the pause confirmation ---------------------------------------------
   #
   # The console's whole reason for a confirmation: every action it offers is
-  # consequential, and the ledger records only that it happened.
+  # consequential and audited, and the ledger records only that it happened.
 
   - type: Click
     target: "testid=pause-sender-harness"
-    description: "Ask to pause the harness principal"
+    description: "Ask to pause the principal this run created"
 
   - type: Expect
     target: "name=PendingActionTitle"
@@ -101,7 +185,7 @@ actions:
     matcher: Not.IsEnabled
 
   - type: Screenshot
-    value: "03-confirm-needs-a-reason"
+    value: "05-confirm-needs-a-reason"
     description: "The confirmation, with Confirm refused until a reason is given"
 
   - type: TypeText
@@ -114,7 +198,7 @@ actions:
     timeout: 5000
 
   - type: Screenshot
-    value: "04-confirm-enabled"
+    value: "06-confirm-enabled"
     description: "Confirm enabled once a reason has been typed"
 
   # Cancelling leaves nothing behind, which is the other half of asking and
@@ -122,20 +206,18 @@ actions:
   - type: Click
     target: "name=CancelActionButton"
 
-  # Asserted on the bar, not on a control inside it.
-  #
-  # Avalonia's Control.IsVisible is the control's own property, not its
-  # effective visibility, so a TextBlock inside a hidden bar still reports
-  # IsVisible=true and an assertion on it passes whether the bar is there or
-  # not. The harness found this by reporting a failure where the app was
-  # right: the confirmation had gone and the test could not see that.
+  # Asserted on the bar, not on a control inside it. Avalonia's Control.IsVisible
+  # is the control's own property, not its effective visibility, so a TextBlock
+  # inside a hidden bar still reports IsVisible=true and an assertion on it
+  # passes whether the bar is there or not. This failed a run with the app in
+  # the right and the test wrong.
   - type: Expect
     target: "name=ActionConfirmBar"
     matcher: Not.IsVisible
     timeout: 5000
 
   - type: Screenshot
-    value: "05-cancelled"
+    value: "07-cancelled"
     description: "Cancelled: the confirmation is gone and nothing was done"
 
   # ---- the sidebar's blocked entry ----------------------------------------
@@ -150,6 +232,11 @@ actions:
   - type: Wait
     value: "400"
 
+  - type: Expect
+    target: "name=EmptyListDetailText"
+    matcher: ContainsText
+    value: "does not read the database"
+
   - type: Screenshot
-    value: "06-blocked-pane"
+    value: "08-blocked-pane"
     description: "The blocked Decisions pane, naming the route it needs"

@@ -1,0 +1,27 @@
+{
+  "assessmentId": "asm_0f4d2a",
+  "internalMessageId": "msg_9c1b7e",
+  "action": "Quarantine",
+  "proposedActionInShadow": null,
+  "riskIndex": 0.82,
+  "reasons": [
+    { "code": "credential_request_high", "message": "Message requests credentials and the sender has no trusted history.", "evidenceSignalIds": ["sig_cred", "sig_hist"] },
+    { "code": "link_display_mismatch", "message": "Displayed link text names one host and the target names another.", "evidenceSignalIds": ["sig_link"] },
+    { "code": "identity_authority_claim", "message": "The message claims authority it cannot demonstrate.", "evidenceSignalIds": ["sig_cred", "sig_absent"] }
+  ],
+  "riskDimensions": [
+    { "name": "semantic", "score": 0.91, "availability": "Available", "evidenceSignalIds": ["sig_cred"] },
+    { "name": "behavioural", "score": 0.42, "availability": "ReducedCoverage", "evidenceSignalIds": ["sig_hist"] },
+    { "name": "reputation", "score": 0.0, "availability": "Unavailable", "evidenceSignalIds": [] }
+  ],
+  "evidence": [
+    { "signalId": "sig_cred", "origin": "Semantic", "availability": "Available", "value": 0.99, "confidence": null, "sampleSupport": null, "sourceVersion": "jev-1.13.0", "observedAt": "2026-09-22T10:00:00+00:00", "observedScope": null },
+    { "signalId": "sig_hist", "origin": "Behavioural", "availability": "ReducedCoverage", "value": 0.42, "confidence": 0.6, "sampleSupport": 3, "sourceVersion": "adaptive-1", "observedAt": "2026-09-22T09:59:58+00:00", "observedScope": "sender" },
+    { "signalId": "sig_link", "origin": "Deterministic", "availability": "Available", "value": 1.0, "confidence": null, "sampleSupport": null, "sourceVersion": "mime-1", "observedAt": "2026-09-22T09:59:57+00:00", "observedScope": null }
+  ],
+  "versions": { "policyVersion": "policy-7", "classifierModelVersion": "jev-1.13.0", "questionSchemaVersion": "questions-3", "preprocessingVersion": "preprocess-2", "regimeId": null },
+  "coverage": { "bodyParsed": true, "htmlPresent": true, "hasAttachments": false, "htmlTextDisagreement": true, "parserLimitExceeded": false, "contentEncrypted": false, "truncated": false, "conversationContextMissing": true },
+  "cache": { "hit": true, "keyDigest": "sha256:6b1f0c", "cachedAt": "2026-09-22T09:12:00+00:00", "modelVersion": "jev-1.13.0", "stale": false },
+  "recipients": [ { "recipient": "alice@example.test", "recipientRisk": 0.8, "action": "Quarantine", "deliveryState": "Quarantined", "reEvaluateBy": "2026-09-23T10:00:00+00:00" } ],
+  "assessedAt": "2026-09-22T10:00:00+00:00"
+}

@@ -69,6 +69,9 @@ public partial class MainWindow : Window
                 await RefreshHostAsync().ConfigureAwait(true);
                 await LoadSendersAsync().ConfigureAwait(true);
                 await LoadSelectionAsync().ConfigureAwait(true);
+#if DEBUG
+                await LoadHarnessDecisionAsync().ConfigureAwait(true);
+#endif
             }
             catch (Exception ex)
             {
@@ -146,10 +149,20 @@ public partial class MainWindow : Window
         {
             listing = await _services.Client.GetSendersAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (StyloMailApiException)
+        catch (StyloMailApiException failure)
         {
-            // Reported by the status bar. Swallowed here so a first run with no
-            // key opens a usable window rather than one that failed to load.
+            // Reported by the status bar *and* on the sidebar entry, and logged.
+            //
+            // This used to return silently on the reasoning that the status bar
+            // already said why. It does not say why this failed: a 403 from a
+            // missing privilege and a 500 from the Host look identical in a
+            // status bar reading "Connected", and the sidebar sat on its
+            // "Loading" placeholder forever, which reads as a console that is
+            // still working. Swallowing the reason is the silent failure this
+            // project keeps finding, and it was in my own lane.
+            Console.Error.WriteLine($"[Senders] {failure.Failure}: {failure.Message}");
+
+            await OnUiThreadAsync(() => _model.SendersUnavailable(failure)).ConfigureAwait(false);
             return;
         }
 
@@ -222,7 +235,55 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Shows a decision the caller already has. Used by the screenshot harness.</summary>
+#if DEBUG
+    /// <summary>
+    /// Opens a decision body from a file, so the UI harness can drive the pane.
+    /// </summary>
+    /// <remarks>
+    /// <b>A harness input, and the reason it lives here rather than in a
+    /// harness.</b> The decision pane is the console's headline surface and no
+    /// route can reach it without a decision to show, which needs a semantic
+    /// provider key that a test run must never hold. Without this the pane is
+    /// the one part of the console a driving script cannot touch, and a script
+    /// that silently covers everything except the part that matters reads as
+    /// coverage.
+    ///
+    /// <para>
+    /// Debug only, and gated on an environment variable: the same shape as the
+    /// key override in <c>ConsoleEnvironment</c>. A Release build has no such
+    /// path, and nothing in the console can reach it by accident.
+    /// </para>
+    /// </remarks>
+    private async Task LoadHarnessDecisionAsync(CancellationToken cancellationToken = default)
+    {
+        var path = Environment.GetEnvironmentVariable("STYLOMAIL_SMOKE_DECISION_FILE");
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+
+            var decision = System.Text.Json.JsonSerializer.Deserialize<DecisionResponse>(
+                json,
+                StyloMailApiClient.JsonOptions);
+
+            if (decision is null)
+            {
+                Console.Error.WriteLine($"[Harness] {path} did not bind as a decision.");
+                return;
+            }
+
+            await ShowDecisionAsync(decision, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
+        {
+            Console.Error.WriteLine($"[Harness] Could not load the decision fixture: {ex.Message}");
+        }
+    }
+#endif
+
+    /// <summary>Shows a decision the caller already has. Used by the UI harness.</summary>
     public Task ShowDecisionAsync(DecisionResponse decision, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(decision);

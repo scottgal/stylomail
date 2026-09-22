@@ -88,6 +88,38 @@ public sealed class ShellModelTests
     }
 
     /// <summary>
+    /// A draft that becomes submittable has to say so on the model.
+    /// </summary>
+    /// <remarks>
+    /// The Record button binds to <see cref="ShellModel.CanSubmitFeedback"/>,
+    /// which is computed from the draft. The draft raises its own change, and
+    /// without forwarding it the button stays disabled however much is typed
+    /// into the recipient field.
+    ///
+    /// <para>
+    /// The live UI harness found this: a script typed a recipient and then
+    /// expected Record to enable, and it did not. Every unit test here passed
+    /// throughout, because they asserted the draft's own property rather than
+    /// the one the button is bound to.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_feedback_draft_that_becomes_submittable_announces_it_on_the_model()
+    {
+        var model = ShellModel.CreateDefault();
+        model.ShowDecision(Json.Read<Api.Contracts.DecisionResponse>(Wire.Decision));
+
+        var raised = Watch(model);
+
+        Assert.False(model.CanSubmitFeedback);
+
+        model.Feedback.Recipient = "alice@example.test";
+
+        Assert.True(model.CanSubmitFeedback);
+        Assert.Contains(nameof(ShellModel.CanSubmitFeedback), raised);
+    }
+
+    /// <summary>
     /// Applying the same listing again replaces the section rather than adding
     /// to it.
     /// </summary>

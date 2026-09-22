@@ -204,7 +204,9 @@
                                 Spacing="8"
                                 IsVisible="{Binding !HasMessages}">
                         <TextBlock Classes="emptyTitle" Text="Nothing to list" />
-                        <TextBlock Classes="emptyDetail" Text="{Binding EmptyListDetail}" />
+                        <TextBlock x:Name="EmptyListDetailText"
+                                   Classes="emptyDetail"
+                                   Text="{Binding EmptyListDetail}" />
                     </StackPanel>
 
                     <ListBox ItemsSource="{Binding Messages}"
@@ -307,7 +309,7 @@
                     <TextBlock Classes="emptyDetail" Text="{Binding DecisionUnavailableReason}" />
                 </StackPanel>
 
-                <ScrollViewer IsVisible="{Binding HasDecision}">
+                <ScrollViewer x:Name="DecisionPaneScroll" IsVisible="{Binding HasDecision}">
                     <StackPanel Margin="20" Spacing="0" DataContext="{Binding Decision}">
 
                         <TextBlock Classes="paneTitle" Text="Decision" />
@@ -323,7 +325,8 @@
                                        Text="{Binding AssessmentId}" />
                         </StackPanel>
 
-                        <TextBlock Classes="paneDetail"
+                        <TextBlock x:Name="RiskIndexText"
+                                   Classes="paneDetail"
                                    Margin="0,2,0,4"
                                    Text="{Binding RiskIndexLabel}" />
 

@@ -58,24 +58,54 @@ A row inside a data template cannot have a unique `x:Name`: a name in a template
 unreachable from outside it. Bind `AutomationProperties.AutomationId` to something that carries the
 identity instead, and target it with `testid=`. `SidebarItem.PauseAutomationId` is the worked example.
 
-## Four things this harness taught us, all found by running it
+## What this harness taught us, all found by running it
 
-**1. A locator matches controls that are not visible.** The first version targeted the pause button by
-its text and reached a hidden one on a different row, because every row has the control and only one
-row shows it. Naming the target removes the ambiguity rather than depending on the order the visual
-tree happens to be in.
+Several of these are about the harness rather than the app, and they are the ones worth reading
+before writing another script.
 
-**2. `Control.IsVisible` is not effective visibility.** It is the control's own property, so a
+**1. `Control.IsVisible` is not effective visibility.** It is the control's own property, so a
 `TextBlock` inside a hidden bar still reports `IsVisible=true` and an assertion on it passes whether
-the bar is there or not. Assert on the container. This one showed up as a failure where the app was
-right and the test was wrong.
+the container is there or not. Assert on the container: `ActionConfirmBar`, `DecisionPaneScroll`.
+This bit twice in one afternoon, and both times it failed a run where the app was right and the test
+was wrong.
 
-**3. A `Button` whose content is a layout, not a string, does not match `text=`.** The sidebar rows
-contain a `Grid`, so `text=Quarantined` finds the `TextBlock` and never the button. Use
+**2. Quoting a selector value changes its meaning, not just its parsing.** `text=word` matches a
+substring, so `text=Quarantine` also matches "Quarantined" in the sidebar; `text='word'` is an exact
+match against the whole displayed text, so a quoted sentence must be the entire sentence. For
+anything longer than a word, use a named control with a `ContainsText` matcher instead.
+
+**3. A `Button` whose content is a layout rather than a string does not match `text=`.** The sidebar
+rows contain a `Grid`, so `text=Quarantined` finds the `TextBlock` and never the button. Use
 `type=Button:has-text(Quarantined)`.
 
-**4. Nothing works without the Host.** The console is an API client, so a script with no Host behind
-it asserts on a first-run state. The shell script exists for that reason rather than for tidiness.
+**4. A locator matches controls that are not visible.** Targeting the pause button by its text
+reached a hidden one on a different row, because every row has the control and one row shows it.
+
+**5. Record the pid of the process that must actually die.** `( cd … && dotnet run … ) &` records the
+subshell's pid, so killing it left the real Host running. Two orphans accumulated, one of them still
+holding the port.
+
+**6. Refuse to start when the port is taken.** That orphan held a *different* API key, so the next
+run silently drove against it, every authenticated call answered 401, and the console reported
+"Connected" throughout because the readiness probe is unauthenticated. It looked exactly like an app
+bug and was not one. The Host is now launched as the built binary rather than through `dotnet run`,
+and the port is checked first.
+
+**7. Clear the results directory.** The harness writes screenshots without removing what a previous
+run left, so a step that stops running leaves its old image behind and it reads as current. A
+screenshot from a passing run was read as evidence about a failing one.
+
+**8. A silently swallowed failure is invisible to a harness too.** `LoadSendersAsync` caught the API
+exception and returned, on the reasoning that the status bar already said why. It did not, and the
+sidebar sat on "Loading" forever while the status bar said "Connected". The harness could not report
+it either, because there was nothing to report: the only symptom was a row that never appeared.
+Reporting the failure is what turned a mystery into a 401 in one line.
+
+## Nothing works without a Host
+
+The console is an API client, so a script with no Host behind it asserts on a first-run state. The
+shell script exists for that reason rather than for tidiness, and starting your own Host by hand is
+the fastest way to make a run meaningless.
 
 ## What this harness cannot reach, and why
 
