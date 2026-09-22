@@ -144,6 +144,9 @@ public sealed class SidebarItem : ObservableObject
     /// <summary>A stable identity for this row's resume control, for the UI harness.</summary>
     public string ResumeAutomationId => $"resume-sender-{PrincipalId ?? Title}";
 
+    /// <summary>A stable identity for this row's profile control, for the UI harness.</summary>
+    public string ProfileAutomationId => $"profile-sender-{PrincipalId ?? Title}";
+
     /// <summary>Whether this entry is a sending principal rather than a destination.</summary>
     public bool IsSender { get; init; }
 

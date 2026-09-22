@@ -712,6 +712,104 @@ public partial class MainWindow : Window
         if (sender is Control { DataContext: SidebarItem item }) await RequestResumeAsync(item).ConfigureAwait(true);
     }
 
+    private async void OnEditSenderClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: SidebarItem item })
+        {
+            await OpenSenderProfileAsync(item).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Opens a sender's profile, and saves it if the operator confirms.
+    /// </summary>
+    /// <remarks>
+    /// The draft is built from what the Host holds and the request is built from
+    /// the draft, so the fields this dialog collects round-trip alongside the
+    /// ones it does not. A settings write is a full replace, and assembling the
+    /// request from the visible fields is how editing a note would silently
+    /// erase a company.
+    /// </remarks>
+    public async Task OpenSenderProfileAsync(SidebarItem sender, CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+        if (sender.PrincipalId is not { Length: > 0 } principalId) return;
+
+        SenderSettingsResponse settings;
+        IReadOnlyList<CompanyResponse> companies = [];
+
+        try
+        {
+            settings = await _services.Client.GetSenderSettingsAsync(principalId, cancellationToken)
+                .ConfigureAwait(false);
+
+            try
+            {
+                companies = (await _services.Client.GetCompaniesAsync(cancellationToken).ConfigureAwait(false))
+                    .Companies;
+            }
+            catch (StyloMailApiException failure)
+            {
+                // The picker offers "no company" only. Reported rather than
+                // swallowed: an operator who cannot see their companies needs to
+                // know why before they file a sender nowhere.
+                Console.Error.WriteLine($"[Companies] {failure.Failure}: {failure.Message}");
+            }
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Profile] {failure.Failure}: {failure.Message}");
+
+            await OnUiThreadAsync(() => _model.CompleteAction(
+                $"Could not read this sender's profile. {failure.Detail ?? failure.Code}",
+                failed: true)).ConfigureAwait(false);
+            return;
+        }
+
+        var draft = SenderProfileDraft.From(settings);
+
+        // Constructed and shown on the UI thread, explicitly.
+        //
+        // This is the fourth time the same rule has had to be applied in this
+        // window, and the first time it applied to a Window rather than a
+        // model. Constructing any Control verifies dispatcher access, so a
+        // continuation that landed on the thread pool -- which is what
+        // ConfigureAwait(false) on the awaits above arranges -- throws "Call
+        // from invalid thread" before the dialog exists.
+        var confirmed = await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var dialog = new SenderProfileDialog(draft, companies);
+            await dialog.ShowDialog(this);
+            return dialog.Saved;
+        }).ConfigureAwait(false);
+
+        // Cancelled: nothing read, nothing written.
+        if (confirmed is null) return;
+
+        string result;
+        var failed = false;
+
+        try
+        {
+            var saved = await _services.Client
+                .SaveSenderSettingsAsync(principalId, draft.ToRequest(), cancellationToken)
+                .ConfigureAwait(false);
+
+            result = saved.IsDescribed
+                ? $"Saved {saved.PrincipalId}. Recorded against {saved.UpdatedBy}."
+                : $"Cleared the profile for {saved.PrincipalId}.";
+        }
+        catch (StyloMailApiException failure)
+        {
+            failed = true;
+            result = Describe(failure);
+        }
+
+        await OnUiThreadAsync(() => _model.CompleteAction(result, failed)).ConfigureAwait(false);
+
+        if (!failed) await RefreshSendersAsync().ConfigureAwait(true);
+    }
+
     private async void OnReleaseClick(object? sender, RoutedEventArgs e)
     {
         if (_model.SelectedMessage is { } message) await RequestReleaseAsync(message).ConfigureAwait(true);

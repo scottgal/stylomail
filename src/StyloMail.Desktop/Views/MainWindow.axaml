@@ -157,6 +157,11 @@
                                                                     AutomationProperties.AutomationId="{Binding ResumeAutomationId}"
                                                                     IsVisible="{Binding CanResume}"
                                                                     Click="OnResumeSenderClick" />
+                                                            <Button Classes="rowButton"
+                                                                    Content="Edit"
+                                                                    AutomationProperties.AutomationId="{Binding ProfileAutomationId}"
+                                                                    IsVisible="{Binding IsSender}"
+                                                                    Click="OnEditSenderClick" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </DataTemplate>

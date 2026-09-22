@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StyloMail.Desktop.Views.SenderProfileDialog"
+        Title="Sender profile"
+        Width="620" Height="560"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <DockPanel Margin="24">
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="CancelProfileButton" Content="Cancel" Click="OnCancelClick" />
+            <Button x:Name="SaveProfileButton" Classes="primaryButton" Content="Save" Click="OnSaveClick" />
+        </StackPanel>
+
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <TextBlock Classes="paneTitle" Text="Sender profile" />
+                <TextBlock x:Name="PrincipalText" Classes="cardBody" />
+
+                <TextBlock x:Name="SaveRefusalText"
+                           Classes="cardWarningText"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+
+                <TextBlock Classes="actionLabel" Text="Label" Margin="0,6,0,0" />
+                <TextBox x:Name="LabelBox" Watermark="A name you will recognise, e.g. Acme outbound" />
+
+                <TextBlock Classes="actionLabel" Text="Company" Margin="0,6,0,0" />
+                <ComboBox x:Name="CompanyBox" HorizontalAlignment="Stretch" />
+
+                <TextBlock Classes="actionLabel" Text="Notes" Margin="0,6,0,0" />
+                <TextBox x:Name="NotesBox" AcceptsReturn="True" Height="72" TextWrapping="Wrap" />
+
+                <TextBlock Classes="actionLabel" Text="External reference" Margin="0,6,0,0" />
+                <TextBox x:Name="ExternalRefBox" Watermark="Your own id for this sender" />
+
+                <TextBlock Classes="actionLabel" Text="Notification target" Margin="0,6,0,0" />
+                <TextBox x:Name="NotificationTargetBox" Watermark="Where to tell someone" />
+                <!--
+                    Labelled rather than merely offered. The Host stores this and
+                    nothing delivers to it yet, and a control that looks like it
+                    works when nothing reads it is the one thing this console is
+                    most careful about.
+                -->
+                <TextBlock Classes="cardWarningText"
+                           TextWrapping="Wrap"
+                           Text="Stored only. Nothing sends to this yet, on this Host or any other." />
+
+                <TextBlock Classes="actionLabel" Text="Posture" Margin="0,6,0,0" />
+                <ComboBox x:Name="PostureBox" HorizontalAlignment="Stretch" />
+                <TextBlock Classes="cardWarningText"
+                           TextWrapping="Wrap"
+                           Text="Stored and shown. No part of the pipeline reads it yet, so this records a stance rather than enforcing one." />
+
+                <TextBlock x:Name="ResultText" Classes="cardBody" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

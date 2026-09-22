@@ -313,3 +313,37 @@ actions:
   - type: Click
     target: "name=CancelKeyButton"
     window_id: ApiKeyDialog
+
+  # ---- the sender profile --------------------------------------------------
+  #
+  # The management screen, over a sender the run seeded. It is a dialog, so it
+  # names its window like the connection screen does.
+
+  - type: Click
+    target: "testid=profile-sender-harness"
+    description: "Open the seeded sender's profile"
+
+  - type: Wait
+    value: "800"
+
+  - type: Expect
+    target: "text='Sender profile'"
+    window_id: SenderProfileDialog
+    matcher: IsVisible
+    timeout: 10000
+
+  # The two fields that are stored and read by nothing say so on the form,
+  # rather than looking like controls that work.
+  - type: Expect
+    target: "text='Stored and shown. No part of the pipeline reads it yet, so this records a stance rather than enforcing one.'"
+    window_id: SenderProfileDialog
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "11-sender-profile"
+    composite: true
+    description: "The sender profile form, with the not-yet-read fields labelled"
+
+  - type: Click
+    target: "name=CancelProfileButton"
+    window_id: SenderProfileDialog
