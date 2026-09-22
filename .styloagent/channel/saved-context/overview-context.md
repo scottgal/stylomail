@@ -21,6 +21,14 @@ Operator corrections that bind, all of them blunt:
   drifting here, and it is the drift that sounds most like care.
 - **Do not over-claim context pressure.** The cockpit's notices are guidance, not a stop signal. Keep
   working until a decision or a real limit stops you.
+- **Reuse agents. Every task does not need a new agent.** I reached for a spawn for the Jev corpus
+  while `access-`, who built exactly that pattern, was live, and while the work sat in my own lane.
+  The roster is the resource: route to the agent already adjacent to the work, rehydrate a parked one,
+  or do it yourself when it is your component. Spawn only when nothing that exists can own it, and
+  check `list_fleet` before assuming nothing can.
+- **Verify a claim you inherit.** I told the article agent the repository was private, from a line in
+  this very file, and it was public. The same class as everything else here: a document is not a
+  measurement.
 
 ## What StyloMail is
 
