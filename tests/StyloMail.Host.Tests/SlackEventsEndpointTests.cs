@@ -99,6 +99,30 @@ public sealed class SlackEventsEndpointTests
     }
 
     [Fact]
+    public async Task A_replayed_request_is_refused()
+    {
+        // A correctly signed request does not expire on its own, so without the window one captured
+        // request replays forever. The signature here is genuinely valid for the string it covers:
+        // what is wrong is that it was made ten minutes ago.
+        using var host = new TestHost().WithSlackIngress(Secret, OurBotId);
+        using var client = host.Anonymous();
+
+        var stale = (DateTimeOffset.UtcNow - TimeSpan.FromMinutes(10)).ToUnixTimeSeconds().ToString();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, SlackEventsEndpoints.Route)
+        {
+            Content = new StringContent(MessageEvent, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add(SlackEventsEndpoints.TimestampHeader, stale);
+        request.Headers.Add(SlackEventsEndpoints.SignatureHeader, Sign(stale, MessageEvent));
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(Intake(host).Waiting(8));
+    }
+
+    [Fact]
     public async Task The_challenge_handshake_is_echoed_back()
     {
         // The platform proves the endpoint is ours by sending a challenge once, and the only correct
