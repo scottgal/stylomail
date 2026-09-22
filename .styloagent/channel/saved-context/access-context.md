@@ -244,8 +244,39 @@ is unsupported it does not fall back to `LOGIN`, which would have worked here. G
    the **local part** (measured: `alice` authenticates, `alice@example.com` does not). Must be
    `-Dgreenmail.users=<full-address>:<password>`. Fixed and verified.
 
-**NOT yet done:** Task 2's IMAP leg; Task 1's and the plan's `git commit` steps (the plan contradicts
-itself, Global Constraints forbid commits while each task ends with one; I followed the constraints).
+**State after `overview-`'s ruling and correction (both applied):**
+
+| command | result |
+|---|---|
+| `dotnet build StyloMail.slnx` | 0 errors, 0 warnings |
+| `STYLOMAIL_HARNESS=1 dotnet test .../StyloMail.Integration.Tests` | 2 passed, 0 failed, **1 skipped** |
+| same, no variable | 0 passed, 0 failed, 3 skipped |
+| `dotnet test StyloMail.slnx` | 14 projects, 1330 passed, 0 failed, 21 skipped |
+
+`ImapThroughProxyTests` carries `[BlockedHarnessFact(reason)]` and **skips** with a legible reason
+(`BlockedHarnessFactAttribute` in `HarnessFactAttribute.cs`). `overview-` was right that leaving it red
+was wrong: "a suite that is expected to be red is a suite people stop running". Replace with
+`[HarnessFact]` once a PLAIN-capable backend is in.
+
+**Ruling: option 2, add a second backend that advertises PLAIN. Dovecot first, Stalwart if heavy.**
+Refused: changing the provider to LOGIN (never change production behaviour so a test passes), and
+skipping IMAP as a first resort. XOAUTH2 stays in plan three.
+
+**Carry this caveat on the `LOGIN` fallback finding wherever it is recorded:** `LOGIN` sends the
+password **in clear**. A fallback firing over plaintext trades a portability defect for a credential
+leak. Recorded as **"discover mechanisms, and fall back to LOGIN only over TLS"**, never the short
+version. Do not fix it: it is its own change with its own test, after the harness is in.
+
+**Dovecot status: heavy on this machine, with evidence.** 2.3.21 (classic documented config) is
+**amd64 only** and dies under Rosetta (`unable to mmap ExecutableHeap: 12`). 2.4.5 (`:latest`) is
+**arm64 native** but has a rewritten config model; eight iterations took me from
+`must be dovecot_config_version` to `default_login_user doesn't exist: dovenull`, which is an
+environment failure. The image has no `id`/`ls`/`head`, so it cannot be inspected from inside.
+Proposed to `overview-`: one more focused 2.4 pass, Stalwart only if that fails. **Awaiting their call.**
+
+**NOT done:** Task 2's IMAP leg; the plan's `git commit` steps (the plan contradicts itself, Global
+Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are
+theirs, not the lane's).
 
 ## 11. Session-continuity notes
 

@@ -91,6 +91,50 @@ that behaviour did not change.
 Plus plan 1's standing constraint: change nothing else in Core, Mime, Host or Assessment. No
 refactoring around myself, no renaming, no unrequested cleanup.
 
+## Plan 2b (assigned 2026-09-22, HELD pending overview-'s ingress commit)
+
+`docs/chat-pipeline-design.md` is the decision record: **chat assessments run local-only, with an
+explicit semantic-unavailable state.** Principle: **input is per channel, output is shared.**
+`MailAssessment` stays the output record (name is a legacy wart). Five tasks in the doc, tests first:
+
+1. `ChatAnalysisInput` in Core + `MailAssessment.Channel` required.
+2. A deterministic evidence producer for chat, reusing MIME link/homograph analysis.
+3. The chat assessment path in the composition root (PostDelivery + semantic-unavailable).
+4. The Slack events endpoint in the Host (url_verification, verify, dedup, normalise, ledger; ack
+   fast, assess off the request path).
+5. The tests that pin the four decisions, above all that every chat assessment is `PostDelivery`.
+
+### Two findings I raised before starting (both awaiting his call)
+
+**1. The MIME link/homograph analysis is channel-neutral but NOT reachable.** `UrlTools.cs` is pure
+BCL (System.Globalization/Net/Text, zero MimeKit) and holds `Observe`, `InspectIdn`, `DomainFamily`,
+`ToAsciiDomain`, `NormalizeAddress` plus `IdnObservation` (Scripts/IsMixedScript/Confusables/
+AsciiSkeleton). The MIME-specific part is only the entry point:
+`LinkExtractor.Extract(HtmlAnalysis html, string plainBody, MimeParseLimits limits)` wants
+`HtmlAnalysis` and `MimeParseLimits` even for the plain-text scan. Everything is `internal` with no
+`InternalsVisibleTo`. Options: (a) widen Mime's API (drags **MimeKit 4.18.0** into Chat), (b)
+`InternalsVisibleTo` (avoid), (c) **move the pure URL/IDN analysis into Core** (BCL-only, so Core's
+"references nothing" holds). I recommended (c); it touches `mime-`'s lane, so it is his call.
+Note: Slack's `<http://host|label>` markup is genuinely new and belongs in `StyloMail.Chat`.
+
+**2. A required member on `MailAssessment` is not readable back out of the ledger.**
+`SqliteDecisionLedger` stores the assessment as a JSON blob and reads it with
+`JsonSerializer.Deserialize<MailAssessment>(payload, HostJson.Options)`. `HostJson.Options` is plain
+web defaults plus a string-enum converter, and STJ enforces `required` on deserialization (proven
+outside the repo: `JsonException ... was missing required properties`). `RespectRequiredConstructorParameters
+= false` does NOT relax it. `SqliteSchema` has no migration/wipe path (`CurrentVersion = 1`).
+**Already live from plan 1:** rows written before `6b11add` lack `DeliveryTiming` and are unreadable.
+Back-fill is honest (not a guess) because `MailAssessor` is the only production construction site and
+it is the email path, so every legacy row really was `Email`/`PreAcceptance`. Recommended: a
+`JsonConverter<MailAssessment>` on the persisted read path only. **The missing test is a
+deserialization of a payload written by an older shape.**
+
+### Blast radius for `MailAssessment.Channel` (measured, read-only)
+
+Only two construction sites exist: `src/StyloMail.Assessment/MailAssessor.cs:511` and
+`tests/StyloMail.Host.Tests/TestSupport.cs` (`Build(...)`, target-typed `new()`), plus the new
+reflection test in `ChannelContractTests.cs`.
+
 ## Pending / next
 
 - **Plan 2 (read-only Slack connector) is NOT started. `overview-` is writing it, and told me not to
