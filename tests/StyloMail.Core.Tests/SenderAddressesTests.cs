@@ -57,7 +57,7 @@ public sealed class SenderAddressesTests
     public void The_travelling_value_is_the_empty_string_not_the_wire_form()
     {
         // Recorded as an assertion because the two components disagreed about it once already.
-        Assert.Equal(string.Empty, SenderAddresses.NullSenderValue);
-        Assert.Equal("<>", SenderAddresses.NullSenderWireForm);
+        Assert.Equal(SenderAddresses.NullSenderValue, string.Empty);
+        Assert.Equal(SenderAddresses.NullSenderWireForm, "<>");
     }
 }
