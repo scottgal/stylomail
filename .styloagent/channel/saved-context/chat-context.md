@@ -269,6 +269,14 @@ own post not assessed; `PostDelivery` on every chat decision; the semantic gap s
 events, 0.65 ms for a `Waiting(64)`, 0.06 ms/event complete, 211-byte payload, SQLite. **Not
 disproportionate**, so persist-before-ack is affordable and no finding is needed. Probe deleted.
 
+**FULL ASSESSMENT COST MEASURED (2026-09-22, overview- asked for this before the triage thresholds):**
+**1.350 ms/message** for `ChatAssessor.AssessAsync` over 300 messages against the **real SQLite
+profile store**; **0.191 ms/message** for `IDecisionLedger.RecordAsync`; **25 evidence entries** per
+assessment. Total ~1.54 ms versus the intake write's 0.07 ms, so the assessment is ~22x the write.
+**FINDING: at a single workspace's volume this is not a bottleneck**, so triage's *local-cost* case is
+weak; its real case is the **semantic path**, which is money per call and disabled today. Caveats: the
+profile store was empty (a floor, not a ceiling) and 300 is a small sample.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 
