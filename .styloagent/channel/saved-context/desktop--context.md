@@ -34,12 +34,15 @@ API key. If the console cannot do something through the API, the API is missing 
 | `5fdc1cf` | Sidebar + message list wired to the two new listings |
 | `de7ad59` | Decision detail pane |
 | `79405ec` | Sender controls and quarantine release |
+| `4b4ad0b` | Release-route refusal test + the verification boundary, recorded |
+| `1740147` | `.styloagent/shots/README.md`, the screenshot-harness pattern |
+| `a32ec69` | Feedback surface. **Completes spec 10.2's five areas.** |
 
-**120 tests.** 108 hermetic by default; 12 opt-in (live-Host behind `STYLOMAIL_SMOKE_URL` +
-`STYLOMAIL_SMOKE_KEY`, keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). My two projects build clean and
-warning-free. **Check the solution build separately**: at the last check `dotnet build StyloMail.slnx`
-failed in `tests/StyloMail.Host.Tests` (an inaccessible `CredentialAwareSemanticClassifier`), which is
-another agent mid-edit, not mine. Do not assume a solution red is yours, and do not assume one is not.
+**130 tests.** 118 hermetic by default; 12 opt-in (live-Host behind `STYLOMAIL_SMOKE_URL` +
+`STYLOMAIL_SMOKE_KEY`, keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). My projects build clean and
+warning-free, and the solution build is green. **Still check the solution build separately**: a red in
+`tests/StyloMail.Host.Tests` appeared and resolved within the hour while another agent was mid-edit.
+Do not assume a solution red is yours, and do not assume one is not.
 
 `.styloagent/shots/README.md` holds the screenshot-harness pattern, written at `overview-`'s request
 and adopted fleet-wide. Read it before re-deriving any of it.
@@ -129,7 +132,7 @@ What that leaves verified where:
 | The sender write path end to end | live: pause, read back from the Host, resume, read back, audit trail survives |
 | The decision pane's rendering | 15 tests plus a render, against the transcribed wire body, **not** a live response |
 | Quarantine release success path | stubbed tests only. **Never run against a real Host.** |
-| Feedback (`POST /v1/feedback`) | client method + contract test only. No UI. |
+| Feedback (`POST /v1/feedback`) | 10 model tests + a render. **Never sent to a real Host**, because it binds to a decision. |
 
 Say this plainly when reporting. Do not describe the decision pane as verified against a live Host.
 
@@ -188,10 +191,14 @@ model-level test. Use `OnUiThreadAsync` or one of the `Request*Async` / `SelectA
 
 ## Next
 
-Nothing assigned. Candidates, in the order I would pick them: wire the decision pane once ingress-
-answers (see below); sender `Administer` actions beyond pause, if the Host grows any; feedback
-(`POST /v1/feedback`) from the decision pane, which is the last of spec 10.2's five areas with no
-surface; and packaging (spec 10.4's distribution question is still open and operator-owned).
+**Spec 10.2's five areas all have a surface.** Nothing is assigned or half-built.
+
+Candidates, in the order I would pick them:
+1. **Wire the Decisions pane** the moment `ingress-` lands the listing. The blocked marker comes off
+   and `ApplyDecisions` needs writing.
+2. **Wire a message to its decision** if `ingress-` adds the join. Both are asked for already.
+3. **Sender controls beyond pause**, only if the Host grows any.
+4. **Packaging** (spec 10.4's distribution question) is still open and operator-owned.
 
 ## Hard rules
 
