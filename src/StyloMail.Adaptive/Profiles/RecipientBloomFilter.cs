@@ -9,7 +9,7 @@ namespace StyloMail.Adaptive.Profiles;
 /// </summary>
 /// <remarks>
 /// The bounded set in <see cref="RecipientHistory"/> answers this well until it is truncated, and
-/// truncation is permanent — so novelty would go dark precisely on the accounts with the widest
+/// truncation is permanent, so novelty would go dark precisely on the accounts with the widest
 /// reach, which are the ones most likely to be compromised. A signal that vanishes exactly where it
 /// is needed is worse than no signal, because it still looks present.
 ///
@@ -74,8 +74,8 @@ public sealed class RecipientBloomFilter
     public int BitCount => _bitCount;
 
     /// <summary>
-    /// Keys recorded <em>by this instance</em>. Not a membership count — duplicates and collisions
-    /// blur it — and it restarts at zero for a filter restored from bytes, so it must never be read
+    /// Keys recorded <em>by this instance</em>. Not a membership count: duplicates and collisions
+    /// blur it, and it restarts at zero for a filter restored from bytes, so it must never be read
     /// as "how many recipients are known".
     /// </summary>
     public int Count { get; private set; }
@@ -117,7 +117,7 @@ public sealed class RecipientBloomFilter
     /// </summary>
     /// <remarks>
     /// A filter that is not persisted cannot answer anything after a restart, and an empty filter
-    /// reports every recipient as novel — manufacturing the exact alarm this structure exists to
+    /// reports every recipient as novel: manufacturing the exact alarm this structure exists to
     /// avoid, at scale, on every restart. Persistence is not an optimisation here; the guarantee
     /// depends on it.
     /// </remarks>

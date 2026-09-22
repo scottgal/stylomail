@@ -18,8 +18,8 @@ namespace StyloMail.Host.Hosting;
 /// and tells <see cref="ProviderCredentialHealth"/>, which the readiness probe consults.
 /// </para>
 /// <para>
-/// <b>It rethrows, and that is deliberate.</b> The adapter's choice to make a `401` loud was correct —
-/// a revoked key must not look like a quiet inbox — and the fix for "nobody was watching" is a
+/// <b>It rethrows, and that is deliberate.</b> The adapter's choice to make a `401` loud was correct:
+/// a revoked key must not look like a quiet inbox, and the fix for "nobody was watching" is a
 /// watcher, not a quieter exception. This wrapper changes no behaviour a caller can observe; it only
 /// makes the condition visible to readiness, which is where an operator looks.
 /// </para>
@@ -59,7 +59,7 @@ public sealed class CredentialAwareSemanticClassifier : ISemanticMailClassifier
 
             // **The resolved model id is the only reliable "the provider answered" signal.** Every
             // failure path the adapter returns sets it to null, and it is populated from the response
-            // body on success — so it distinguishes an answer from an `Unavailable` result without
+            // body on success, so it distinguishes an answer from an `Unavailable` result without
             // this decorator having to guess from the evidence. Testing the evidence instead would be
             // wrong twice over: `Evidence` is non-empty even when every dimension is `Unavailable`,
             // and `Cache` is non-null even for a failure, because an unavailable cache is still a

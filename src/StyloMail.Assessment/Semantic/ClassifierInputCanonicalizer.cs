@@ -136,7 +136,7 @@ public static class ClassifierInputCanonicalizer
         // This is the case the cache must never merge: two messages with identical content, one from
         // an account with months of history and one from an account created yesterday fanning out to
         // strangers. If this section were omitted the key would digest only the message, and the
-        // second would be served the first's assessment — a judgement formed when the sender looked
+        // second would be served the first's assessment: a judgement formed when the sender looked
         // ordinary, reused after their behaviour changed. That is the same rule as tagged context and
         // relationship context, applied to the field that carries the most risk of being forgotten.
         canonical.Flag(input.Profile is not null);
@@ -178,7 +178,7 @@ public static class ClassifierInputCanonicalizer
         canonical.Int(profile.DistinctRecipientsLast30Days);
         // Whether that count is a floor rather than a measurement. A truncated count and an exact one
         // are different observations even when the number is the same, so they are different
-        // questions and must not share a key — the flag is as load-bearing as the value.
+        // questions and must not share a key: the flag is as load-bearing as the value.
         canonical.Flag(profile.RecipientDistinctnessIsFloor);
         canonical.Int(profile.RecipientsNovelToSender);
         canonical.Int(profile.MessagesLastHour);

@@ -20,7 +20,7 @@ public sealed record RecipientEntry
 ///
 /// <para>
 /// <b>Two structures, because the two questions have different failure modes.</b> Distinct counts
-/// come from a capped, windowed set — cheap and exact while it has room, and a <b>floor</b> once
+/// come from a capped, windowed set: cheap and exact while it has room, and a <b>floor</b> once
 /// <see cref="Truncated"/> says it stopped being complete. Novelty comes from a
 /// <see cref="RecipientBloomFilter"/>, which never truncates and has no false negatives, so it
 /// keeps answering the one question a capped set has to give up on.
@@ -29,7 +29,7 @@ public sealed record RecipientEntry
 /// <para>
 /// <b>The direction of the error decides the encoding.</b> A truncated count can only under-state,
 /// and under-stating cannot manufacture alarm, so it is reported as a floor. Novelty over-states,
-/// so where it cannot be established it is <see langword="null"/> — unknown — rather than zero.
+/// so where it cannot be established it is <see langword="null"/>, unknown, rather than zero.
 /// </para>
 ///
 /// <para>
@@ -45,7 +45,7 @@ public sealed class RecipientHistory
     /// <remarks>
     /// A starting point rather than a tuned value, like every other threshold in this engine. It
     /// covers the overwhelming majority of senders exactly, and the ones it does not are the ones
-    /// worth watching — which is why truncation is reported rather than hidden.
+    /// worth watching: which is why truncation is reported rather than hidden.
     /// </remarks>
     public const int DefaultCapacity = 256;
 
@@ -94,7 +94,7 @@ public sealed class RecipientHistory
     /// A filter is only evidence of absence if it was fed everything the principal has ever done.
     /// A history restored from storage has been; a history silently starting empty part-way through
     /// a principal's life has not, and reading "not present" from it would report every recipient
-    /// as novel — manufacturing the exact alarm this structure exists to avoid, at scale.
+    /// as novel: manufacturing the exact alarm this structure exists to avoid, at scale.
     /// </remarks>
     public bool IsComplete { get; private set; } = true;
 
@@ -164,7 +164,7 @@ public sealed class RecipientHistory
     /// when that cannot be established.
     /// </summary>
     /// <remarks>
-    /// Null only when the history does not cover the principal's past — never merely because the
+    /// Null only when the history does not cover the principal's past: never merely because the
     /// distinct-count set is full. A full set is exactly the case the membership filter exists to
     /// keep answering through.
     /// </remarks>
@@ -186,7 +186,7 @@ public sealed class RecipientHistory
     /// <remarks>
     /// Used when a profile is loaded and its history could not be brought with it. Without this the
     /// filter would start empty, report every recipient as novel, and manufacture alarm on the
-    /// strongest signal the profile carries — the precise failure this type is built to prevent.
+    /// strongest signal the profile carries: the precise failure this type is built to prevent.
     /// </remarks>
     public void MarkIncomplete() => IsComplete = false;
 

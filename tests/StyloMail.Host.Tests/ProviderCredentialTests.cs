@@ -19,7 +19,7 @@ namespace StyloMail.Host.Tests;
 /// <para>
 /// This is the failure this project exists to eliminate, in its purest form: **a deployment whose
 /// provider key has been rotated looks healthy to a load balancer and fails every message.** The Jev
-/// adapter throws loudly on a 401 by design — a revoked key must never present as a calm inbox — but
+/// adapter throws loudly on a 401 by design, a revoked key must never present as a calm inbox, but
 /// nothing connected that loudness to `/health/ready`, so the probe answered <c>200 ready</c> while
 /// every assessment 500ed.
 /// </para>
@@ -56,7 +56,7 @@ public sealed class ProviderCredentialTests
         Assert.Equal("not_ready", body.RootElement.GetProperty("status").GetString());
 
         // Named, never described. This route is served without credentials, so the status the
-        // provider answered with stays internal — an operator gets it from the log and the metric.
+        // provider answered with stays internal: an operator gets it from the log and the metric.
         var failed = body.RootElement.GetProperty("failedChecks")
             .EnumerateArray().Select(c => c.GetString()).ToList();
 
@@ -67,7 +67,7 @@ public sealed class ProviderCredentialTests
     [Fact]
     public async Task Liveness_is_unaffected_by_a_rejected_credential()
     {
-        // Deliberately still live. A dependency outage is not a reason to have a container restarted —
+        // Deliberately still live. A dependency outage is not a reason to have a container restarted:
         // restarting changes nothing about a revoked key, and a liveness probe that failed here would
         // turn a configuration problem into a restart loop.
         using var host = new TestHost();
@@ -126,7 +126,7 @@ public sealed class ProviderCredentialTests
     [Fact]
     public async Task A_contract_fault_is_not_treated_as_a_credential_problem()
     {
-        // A 422 means our request shape is wrong — a bug, not a deployment condition. Making the host
+        // A 422 means our request shape is wrong: a bug, not a deployment condition. Making the host
         // not-ready for it would take a service out of rotation over something a restart cannot fix.
         var health = new ProviderCredentialHealth();
         var classifier = new CredentialAwareSemanticClassifier(
@@ -186,7 +186,7 @@ public sealed class ProviderCredentialTests
         // The chain a rejected key actually produces, driven end to end through the real listener:
         // the classifier throws, the pipeline rethrows, the sink does not catch it, and the transport's
         // own defence turns it into a deferral. The assertion that matters is the one the client sees
-        // — 451, not 250 — because a 250 tells it to delete its copy.
+        //, 451, not 250, because a 250 tells it to delete its copy.
         using var host = new TestHost().WithSmtpIngress("example.test");
         host.Assessor.Failure = new JevContractException("rejected the API key", HttpStatusCode.Unauthorized);
 
@@ -222,13 +222,13 @@ public sealed class ProviderCredentialTests
         request.Headers.Add("Idempotency-Key", "key-failing-provider");
 
         // **TestServer rethrows an unhandled exception to the caller where Kestrel would answer 500**,
-        // so this request either throws here or comes back a 5xx — and which of the two happens is a
+        // so this request either throws here or comes back a 5xx, and which of the two happens is a
         // property of the server, not of the claim being tested. Asserting a status code alone would
         // therefore be asserting about TestServer.
         //
         // What must hold under either is the thing that would be a defect rather than an ugly status
         // code: no 2xx, because a 2xx here transfers delivery responsibility for mail that was never
-        // assessed. The 500 itself is reported separately — it is worth improving, and it is not this.
+        // assessed. The 500 itself is reported separately: it is worth improving, and it is not this.
         HttpResponseMessage? response = null;
 
         try
@@ -453,7 +453,7 @@ public sealed class JevOptionsBindingTests
 /// </summary>
 /// <remarks>
 /// The unit tests above use a stub classifier, so they prove the decorator records what it is given.
-/// They say nothing about whether the real adapter *gives* it a credential rejection — and that is the
+/// They say nothing about whether the real adapter *gives* it a credential rejection, and that is the
 /// half that decides whether the whole fix is connected to anything. This drives the actual
 /// <see cref="JevSemanticMailClassifier"/> against a provider answering 401.
 /// </remarks>
@@ -590,7 +590,7 @@ internal sealed class CannedProvider : IDisposable
 
                 // Read the request head before answering, so the client is not still writing when the
                 // response lands. A server that answers and closes mid-request makes the client see a
-                // connection fault rather than the status, which is a different thing entirely — and
+                // connection fault rather than the status, which is a different thing entirely, and
                 // was the bug in this stub that cost an afternoon of chasing the wrong component.
                 //
                 // The byte count is used rather than discarded: ignoring it means not knowing whether
@@ -663,7 +663,7 @@ internal sealed class CannedProvider : IDisposable
 /// the provider's HTTP answer.
 /// </para>
 /// <para>
-/// It exists because an out-of-process probe could not produce a 401 reliably — a Python
+/// It exists because an out-of-process probe could not produce a 401 reliably: a Python
 /// <c>http.server</c> answered in a way the client read as a connection fault, which the adapter
 /// correctly degrades to <c>Unavailable</c>. That degradation is right; what the probe could not then
 /// show is the credential path, and this can.
@@ -717,7 +717,7 @@ public sealed class PipelineCredentialRejectionTests
                         TenantId = TestPrincipals.AcmeTenant,
                         ShadowMode = false,
 
-                        // Assessment-only, so the pipeline reaches the classifier and stops there —
+                        // Assessment-only, so the pipeline reaches the classifier and stops there:
                         // no payload, no acceptance, nothing durable to clean up.
                         AssessmentOnly = true,
                         CorrelationId = "cor_credential_test",

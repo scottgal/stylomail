@@ -10,7 +10,7 @@ namespace StyloMail.Host.Contracts;
 /// <para>
 /// <b>Rows are summaries, not whole decisions.</b> A <see cref="DecisionResponse"/> carries the full
 /// evidence list, risk dimensions, recipients and coverage for one message, so a page of them is
-/// potentially megabytes and the evidence volume is per-message — the listing cannot bound it. The
+/// potentially megabytes and the evidence volume is per-message: the listing cannot bound it. The
 /// full explanation is one <c>GET /v1/decisions/{id}</c> away, and that route already returns exactly
 /// the shape the detail view renders.
 /// </para>
@@ -57,12 +57,12 @@ public sealed record DecisionSummaryResponse
     public MailAction? ProposedActionInShadow { get; init; }
 
     /// <summary>
-    /// The aggregate risk index — <b>a documented index, not a calibrated probability</b>.
+    /// The aggregate risk index: <b>a documented index, not a calibrated probability</b>.
     /// </summary>
     /// <remarks>
     /// Carried because a reviewer list will want to order or colour by it, and because it is already
     /// on the record. It is a weighted combination of correlated semantic dimensions and must not be
-    /// rendered as a probability of anything — see <see cref="MailAssessment.RiskIndex"/>.
+    /// rendered as a probability of anything: see <see cref="MailAssessment.RiskIndex"/>.
     /// </remarks>
     public required double RiskIndex { get; init; }
 

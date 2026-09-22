@@ -24,7 +24,7 @@ public interface IDecisionLedger
     /// </summary>
     /// <remarks>
     /// Keyset-paged rather than offset-paged. An offset shifts when a new decision is recorded while
-    /// a caller is paging, so a reviewer would see the same row twice or miss one entirely — and
+    /// a caller is paging, so a reviewer would see the same row twice or miss one entirely, and
     /// missing one silently is the failure that matters, because a ledger whose rows can vanish
     /// between pages is not an audit trail.
     /// </remarks>

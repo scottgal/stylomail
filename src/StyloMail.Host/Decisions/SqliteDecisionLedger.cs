@@ -129,8 +129,8 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
         // Rows are held as pairs rather than in parallel lists, and that is not a style choice: the
         // cursor must name the *last row returned* by both of its components, and two parallel
         // collections are exactly how those two components come to describe different rows. The
-        // queue's listing shipped that bug — it paired the probe row's timestamp with the kept row's
-        // id — and it dropped entries silently across pages on roughly half of runs.
+        // queue's listing shipped that bug: it paired the probe row's timestamp with the kept row's
+        // id, and it dropped entries silently across pages on roughly half of runs.
         var rows = new List<(string AssessmentId, string RecordedAt, string Payload)>(limit + 1);
 
         try
@@ -157,7 +157,7 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
             command.Parameters.AddWithValue(
                 "$action", query.Action is { } action ? action.ToString() : DBNull.Value);
 
-            // The message-id filter is an equality on an indexed column, like the action filter —
+            // The message-id filter is an equality on an indexed column, like the action filter:
             // it narrows the query rather than the page, which is what makes it honest to offer.
             command.Parameters.AddWithValue(
                 "$message",
@@ -182,7 +182,7 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
         if (rows.Count > limit)
         {
             // Drop the probe row, then take the cursor from what is now the last *kept* row. Both
-            // components come from that one row — see the comment on `rows` above.
+            // components come from that one row: see the comment on `rows` above.
             rows.RemoveAt(rows.Count - 1);
             nextCursor = EncodeCursor(rows[^1].RecordedAt, rows[^1].AssessmentId);
         }
@@ -236,7 +236,7 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
     /// <remarks>
     /// <b>A cursor that cannot be parsed is refused, not silently ignored.</b> Treating it as "no
     /// cursor" would answer with the first page, so a client paging with a corrupted cursor would
-    /// read page one, receive a valid next cursor, and fetch page one again — forever, with nothing
+    /// read page one, receive a valid next cursor, and fetch page one again: forever, with nothing
     /// anywhere saying why. A refusal that names the problem is worth more than a fallback that hides
     /// it, which is the same conclusion as refusing an unenumerable `state` by name rather than
     /// defaulting the filter.

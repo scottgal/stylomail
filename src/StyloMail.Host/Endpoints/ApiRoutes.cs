@@ -25,7 +25,7 @@ public static class ApiRoutes
         // Send *or* Review. A reviewer can release a quarantined message by this same queue id, and
         // releasing is strictly more than reading it, so requiring the lesser capability would let a
         // reviewer act on a message they were not permitted to inspect. See
-        // HostPolicies.SendOrReview — this is the only route that accepts two privileges.
+        // HostPolicies.SendOrReview: this is the only route that accepts two privileges.
         v1.MapGet("/submissions/{id}", SubmissionsEndpoints.GetAsync)
             .RequireAuthorization(HostPolicies.SendOrReview);
 
@@ -37,14 +37,14 @@ public static class ApiRoutes
 
         // The two listings the operator console reads. `Review` for both: enumerating a tenant's
         // principals or its messages in flight is reviewer-level visibility, and neither grants the
-        // ability to act — the pause and resume routes below remain `Administer`.
+        // ability to act: the pause and resume routes below remain `Administer`.
         v1.MapGet("/senders", ListingEndpoints.ListSendersAsync)
             .RequireAuthorization(HostPolicies.Review);
 
         v1.MapGet("/messages", ListingEndpoints.ListMessagesAsync)
             .RequireAuthorization(HostPolicies.Review);
 
-        // Operator metadata. Read on `Review`, write on `Administer` — the split the pause route
+        // Operator metadata. Read on `Review`, write on `Administer`: the split the pause route
         // already draws, and neither grants an effect on mail.
         v1.MapGet("/senders/{id}/settings", ManagementEndpoints.GetSenderSettingsAsync)
             .RequireAuthorization(HostPolicies.Review);

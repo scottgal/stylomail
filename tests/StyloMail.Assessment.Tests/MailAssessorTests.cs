@@ -107,7 +107,7 @@ public sealed class MailAssessorTests
         //
         // Fires on the FIRST message from a principal, which is the case it was written for: the
         // profile row is created by the observation in step three, so by step four there is a
-        // snapshot to encode — but it carries no history yet, and the encoder reports it as
+        // snapshot to encode, but it carries no history yet, and the encoder reports it as
         // ProfileAvailable: false rather than as a quiet sender.
         var marker = Assert.Single(
             assessment.Evidence,
@@ -1206,7 +1206,7 @@ public sealed class MailAssessorTests
 
         // Two messages, so the sender has a bucket with something in it by the time a sample is
         // promoted. The rate features exist ONLY in the bucket synthesis, so a sample built from this
-        // message's semantic evidence alone can never model them — and the consequence is invisible:
+        // message's semantic evidence alone can never model them, and the consequence is invisible:
         // the encoder reports the baselines as null and nothing here looks wrong.
         await harness.Assessor.AssessAsync(
             Submittable(Builders.Envelope(direction: MailDirection.Outbound)),
@@ -1282,7 +1282,7 @@ public sealed class MailAssessorTests
         harness.Clock.Advance(TimeSpan.FromSeconds(30));
 
         // By identity, not by key. A caller who assembles the key from the raw address names a
-        // profile that does not exist and gets a dimension-less sample that teaches nothing —
+        // profile that does not exist and gets a dimension-less sample that teaches nothing:
         // silently. The overload exists so the caller never has to know about the pseudonym.
         var sample = harness.Assessor.BuildTrustedSample(
             "tenant-1",

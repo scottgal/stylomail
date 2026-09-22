@@ -719,7 +719,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         var reloaded = _store.Load(key)!;
 
         // Without this the filter starts empty on every load, and an empty filter reports every
-        // recipient as never seen — manufacturing alarm on the strongest signal the profile
+        // recipient as never seen: manufacturing alarm on the strongest signal the profile
         // carries, on every single load.
         Assert.True(reloaded.Recipients.IsComplete);
         Assert.Equal(2, reloaded.Recipients.Count);

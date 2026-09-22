@@ -70,7 +70,7 @@ public sealed partial class QueueStore
         // Rows are held as PAIRS. Taking the cursor's timestamp from a separate running variable was
         // a real bug: the loop's last write is the *probe* row, so the cursor paired the probe's
         // `created_at` with the last *kept* row's id. Ordering is `created_at DESC`, so the probe's
-        // timestamp is older — and every row between the two was skipped on the next page, silently,
+        // timestamp is older, and every row between the two was skipped on the next page, silently,
         // while the listing reported itself complete. Both halves must come from one row.
         var rows = new List<(string QueueId, string CreatedAt)>(limit + 1);
 

@@ -11,7 +11,7 @@ namespace StyloMail.Adaptive.Tests;
 ///
 /// <para>
 /// <b>A capped set must not lie.</b> When the set saturates the count is a floor rather than a
-/// measurement, and — the part that matters more — <b>a recipient absent from a full set may be
+/// measurement, and, the part that matters more, <b>a recipient absent from a full set may be
 /// absent because it was evicted</b>. "Not in the set" stops meaning "never seen", so novelty
 /// becomes <em>unknown</em> rather than <em>novel</em>. Reporting it as novel would manufacture the
 /// single most alarming signal in the profile out of a memory bound, and that signal is the one
@@ -98,7 +98,7 @@ public class RecipientHistoryTests
 
         // The capped set has turned recipients away, so it can no longer count distinct-ness
         // exactly. The membership filter never forgets, so the question novelty actually asks is
-        // still answerable — which is the entire reason for keeping two structures.
+        // still answerable: which is the entire reason for keeping two structures.
         Assert.True(history.Truncated);
         Assert.Equal(1, history.NovelCount(["e", "z"]));
         Assert.Equal(0, history.NovelCount(["a", "b"]));
@@ -113,7 +113,7 @@ public class RecipientHistoryTests
         history.Record(["b"], Start.AddDays(31));   // ages "a" out of the distinct set
 
         // "a" was addressed. The distinct set released it because it is no longer recent, but the
-        // membership filter remembers it was ever seen — and "have we ever seen them" is the
+        // membership filter remembers it was ever seen, and "have we ever seen them" is the
         // question novelty asks. Answering "never" here would be a false alarm about a known
         // correspondent.
         Assert.True(history.Truncated);
@@ -127,18 +127,18 @@ public class RecipientHistoryTests
         var history = new RecipientHistory(capacity: 256, Month);
 
         history.Record(["dormant"], Start);
-        history.Record(["active"], Start.AddDays(31));   // ages "dormant" out — truncated for good
+        history.Record(["active"], Start.AddDays(31));   // ages "dormant" out: truncated for good
 
         for (var i = 0; i < 40; i++)
         {
             history.Record(["active"], Start.AddDays(31).AddHours(i));
         }
 
-        // This is the case the whole design turns on. An established sender — more than the
-        // capacity, or merely some recipients dormant for a month — permanently loses *exact
+        // This is the case the whole design turns on. An established sender: more than the
+        // capacity, or merely some recipients dormant for a month: permanently loses *exact
         // distinct counting*, and that is honest. Losing novelty as well would take the signal
         // dark precisely on the accounts with the widest reach, which are the ones most likely to
-        // be compromised — and a signal that vanishes exactly where it is needed is worse than no
+        // be compromised, and a signal that vanishes exactly where it is needed is worse than no
         // signal, because it still looks present.
         Assert.True(history.Truncated);
         Assert.Equal(1, history.NovelCount(["brand-new"]));
@@ -155,7 +155,7 @@ public class RecipientHistoryTests
 
         // A history restored from storage covers the principal's past; one silently starting
         // part-way through their life does not. Reading "not present" from the latter would report
-        // every recipient as novel — manufacturing the alarm this type exists to prevent.
+        // every recipient as novel: manufacturing the alarm this type exists to prevent.
         history.MarkIncomplete();
 
         Assert.Null(history.NovelCount(["stranger"]));

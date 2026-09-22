@@ -343,7 +343,7 @@ public static class HostServices
         var clock = services.GetRequiredService<TimeProvider>();
 
         // Wrapped so a rejected credential reaches readiness, which is the thing an operator watches.
-        // The wrapper changes nothing a caller sees — it rethrows unchanged — see
+        // The wrapper changes nothing a caller sees: it rethrows unchanged. See
         // CredentialAwareSemanticClassifier for why the exception stays loud.
         var classifier = new CredentialAwareSemanticClassifier(
             new JevSemanticMailClassifier(
@@ -374,8 +374,8 @@ public static class HostServices
     /// </para>
     /// <para>
     /// <b>The endpoint redirects message content, so a non-default one is announced at startup.</b>
-    /// Pointing it somewhere else is a legitimate operator decision — a local classifier, a staging
-    /// provider, or deliberately unreachable to exercise the semantic-unavailable path — but it is
+    /// Pointing it somewhere else is a legitimate operator decision: a local classifier, a staging
+    /// provider, or deliberately unreachable to exercise the semantic-unavailable path, but it is
     /// also the setting that decides who receives the mail this deployment processes. It is not
     /// buried in a config file; it is a line in the log of every boot.
     /// </para>
@@ -406,7 +406,7 @@ public static class HostServices
             // A warning rather than an error. Redirecting the endpoint is a decision an operator is
             // entitled to make; it is the *silence* about it that would be wrong.
             logger.LogWarning(
-                "STYLOMAIL JEV ENDPOINT OVERRIDDEN — message content is being sent to {Endpoint} "
+                "STYLOMAIL JEV ENDPOINT OVERRIDDEN: message content is being sent to {Endpoint} "
                 + "rather than {Default}. This is the setting that decides who receives the mail this "
                 + "deployment processes; confirm it is intended.",
                 endpoint,

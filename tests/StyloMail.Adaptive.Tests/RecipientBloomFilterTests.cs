@@ -7,7 +7,7 @@ namespace StyloMail.Adaptive.Tests;
 /// </summary>
 /// <remarks>
 /// A capped set cannot answer that question once it has been truncated, and truncation is permanent
-/// — so novelty would go dark precisely on the accounts with the widest reach, which are the ones
+///, so novelty would go dark precisely on the accounts with the widest reach, which are the ones
 /// most likely to be compromised. A signal that vanishes exactly where it is needed is worse than
 /// no signal, because it still looks present.
 ///
@@ -106,7 +106,7 @@ public class RecipientBloomFilterTests
     {
         var filter = new RecipientBloomFilter(expectedCapacity: 256, falsePositiveRate: 0.01);
 
-        // An empty filter is not a filter that knows nothing — it is one that has recorded nothing.
+        // An empty filter is not a filter that knows nothing: it is one that has recorded nothing.
         // Callers must not read "not present" from an unrestored filter as "never seen", which is
         // why the history tracks whether it was ever populated.
         Assert.False(filter.MightContain("recipient-0"));

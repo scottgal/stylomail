@@ -43,7 +43,7 @@ public enum PromotionOutcome
     /// <summary>The label's provenance carries no training authority.</summary>
     RejectedUntrustedProvenance = 1,
 
-    /// <summary>The label is trusted but not in this scope — a recipient preference is not global truth.</summary>
+    /// <summary>The label is trusted but not in this scope: a recipient preference is not global truth.</summary>
     RejectedProvenanceOutOfScope = 2,
 
     /// <summary>The baseline is frozen because compromise is suspected.</summary>
@@ -87,7 +87,7 @@ public static class BaselineLabelPolicy
     /// </summary>
     /// <remarks>
     /// Feedback is scoped. A recipient saying "I wanted that promotion" changes that
-    /// recipient's preference and nothing else — least of all whether the same content is
+    /// recipient's preference and nothing else: least of all whether the same content is
     /// phishing when it arrives at somebody who did not ask for it.
     /// </remarks>
     public static bool AppliesToScope(LabelProvenance provenance, ProfileScopeKind scope) => provenance switch
@@ -181,7 +181,7 @@ public sealed record TrustedBaseline
     /// <summary>Rebuilds the derived scale model against the current moments.</summary>
     /// <remarks>
     /// A baseline with no moments has no model at all rather than an empty one, so
-    /// <c>ScaleModel is null</c> stays a reliable test for "nothing is trusted here" — the
+    /// <c>ScaleModel is null</c> stays a reliable test for "nothing is trusted here": the
     /// cold-start condition callers must not confuse with "compared, and unremarkable".
     /// </remarks>
     public TrustedBaseline WithRebuiltScale(RobustScaleOptions options) =>

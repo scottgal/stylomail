@@ -10,7 +10,7 @@ namespace StyloMail.Host.Tests;
 /// The operator metadata surface: a sender's profile and the companies senders are grouped into.
 /// </summary>
 /// <remarks>
-/// Read on <c>Review</c>, write on <c>Administer</c> — the split the pause route already draws. The
+/// Read on <c>Review</c>, write on <c>Administer</c>: the split the pause route already draws. The
 /// tests here are mostly about that split and about tenant scoping, because this is metadata about
 /// senders rather than about messages: getting tenancy wrong here leaks who a tenant's senders are
 /// rather than what they sent.
@@ -59,7 +59,7 @@ public sealed class ManagementSurfaceTests
     public async Task A_sender_nobody_has_described_reads_as_unset_rather_than_missing()
     {
         // Not a 404. The caller asked a sensible question about a sender that exists, and the honest
-        // answer is "nothing recorded yet" — a 404 would read as "no such sender" and send the console
+        // answer is "nothing recorded yet": a 404 would read as "no such sender" and send the console
         // looking for a principal that is right there in the listing.
         using var host = new TestHost();
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
@@ -165,7 +165,7 @@ public sealed class ManagementSurfaceTests
     public async Task A_profile_is_scoped_to_the_tenant_that_wrote_it()
     {
         // Two tenants may legitimately use the same principal id, so an unscoped write would let one
-        // tenant describe another's sender — and the console would then show a name that tenant never
+        // tenant describe another's sender, and the console would then show a name that tenant never
         // chose.
         using var host = new TestHost();
 
@@ -284,7 +284,7 @@ public sealed class ManagementSurfaceTests
         Assert.Equal("Acme outbound", row.Label);
         Assert.Equal("co_acme", row.CompanyId);
 
-        // And a sender with no profile is null, not an empty string — "nobody described this" and
+        // And a sender with no profile is null, not an empty string: "nobody described this" and
         // "described as blank" are different facts.
         var undescribed = listing.Senders.First(s => s.PrincipalId == TestPrincipals.AcmeReviewerPrincipal);
         Assert.Null(undescribed.Label);

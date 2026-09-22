@@ -9,7 +9,7 @@ namespace StyloMail.Desktop.Models;
 /// <b>The whole reason this is a type rather than a form full of bindings.</b>
 /// A settings write is a <em>full replace</em>: every field the request omits is
 /// cleared. So a form that sent only the fields it displays would silently erase
-/// everything else the moment someone edited a note — the company, the external
+/// everything else the moment someone edited a note: the company, the external
 /// reference, the notification target, the posture, all gone, with nothing on
 /// screen having said so.
 ///
@@ -81,7 +81,7 @@ public sealed class SenderProfileDraft : ObservableObject
     /// <remarks>
     /// Null clears it. Anything else must be one of
     /// <see cref="SenderPosture"/>'s names, because the Host refuses the rest by
-    /// name — and a control that could produce a refused value would fail in
+    /// name, and a control that could produce a refused value would fail in
     /// front of an operator for something knowable at the call site.
     /// </remarks>
     public string? Posture

@@ -23,14 +23,14 @@ public sealed record BaselineCheckpoint
 /// <para>
 /// Anything that touches both is a bug: a sender that suddenly triples its volume must be
 /// visible in observed state immediately, while the baseline that defines "normal" for that
-/// sender should barely move — otherwise the first burst teaches the profile that bursts are
+/// sender should barely move: otherwise the first burst teaches the profile that bursts are
 /// normal, which is precisely the poisoning this structure exists to prevent.
 /// </para>
 ///
 /// <para>
 /// <b>One instance per profile, and never shared.</b> This type is mutable by design: it is
 /// where a principal's history lives, so it cannot be made immutable and still do its job. The
-/// guarantee is therefore the absence of sharing, not freedom from races — and it is the reason
+/// guarantee is therefore the absence of sharing, not freedom from races, and it is the reason
 /// <see cref="AdaptiveProfile"/> is deliberately <em>not</em> in the shareable set asserted by
 /// <c>SharedStateTests</c>.
 /// </para>
@@ -38,7 +38,7 @@ public sealed record BaselineCheckpoint
 /// <para>
 /// <b>Writing one back is the caller's problem, and the store offers two ways to do it.</b>
 /// <c>Save</c> writes the whole profile you are holding, and refuses the write if another writer
-/// moved the stored revision — so a lost update fails loudly rather than silently, and the caller
+/// moved the stored revision, so a lost update fails loudly rather than silently, and the caller
 /// reloads and reapplies. <c>ApplyObservation</c> and <c>Update</c> avoid the conflict altogether
 /// by doing the read-modify-write inside the store's write transaction, which is what a burst
 /// needs: under a burst many callers hold the <em>same</em> profile, so a write-and-check design
@@ -47,7 +47,7 @@ public sealed record BaselineCheckpoint
 ///
 /// <para>
 /// What all of that guards against is silent by nature. For observed counters a dropped write
-/// does not error — the abuse-bounding counts simply read low, and nothing downstream can tell
+/// does not error: the abuse-bounding counts simply read low, and nothing downstream can tell
 /// that from a quiet sender.
 /// </para>
 /// </remarks>
@@ -106,7 +106,7 @@ public sealed class AdaptiveProfile
     /// Bucket series per trend window, keyed by window name.
     /// </summary>
     /// <remarks>
-    /// Every observation lands in every window. The windows differ only in resolution —
+    /// Every observation lands in every window. The windows differ only in resolution:
     /// one bucket wide enough to see a burst, one wide enough that a burst disappears into it.
     /// </remarks>
     public IReadOnlyDictionary<string, BucketSeries> Series => _series;
@@ -269,7 +269,7 @@ public sealed class AdaptiveProfile
 
         if (_candidate is not null)
         {
-            // While a new regime is under evaluation the incumbent baseline is untouched —
+            // While a new regime is under evaluation the incumbent baseline is untouched:
             // that is precisely what makes the evaluation an evaluation.
             _candidate.Add(sample);
             return PromotionOutcome.CandidateRecorded;
@@ -327,7 +327,7 @@ public sealed class AdaptiveProfile
     /// Stops trusted learning while compromise is suspected.
     /// </summary>
     /// <remarks>
-    /// Observation continues untouched — containment needs the rate, and restoring the
+    /// Observation continues untouched: containment needs the rate, and restoring the
     /// baseline later must not be confused with restoring the quota.
     /// </remarks>
     public void FreezeBaseline(string reason, DateTimeOffset at)
@@ -388,7 +388,7 @@ public sealed class AdaptiveProfile
     /// <remarks>
     /// Dehydrating is not a reset. Deleting a profile outright would drop
     /// <see cref="Observed"/> with it, which is how an eviction becomes a way to earn a fresh
-    /// quota — so eviction dehydrates, and the durable quota ledger is never part of profile
+    /// quota, so eviction dehydrates, and the durable quota ledger is never part of profile
     /// state in the first place.
     /// </remarks>
     public void Dehydrate()

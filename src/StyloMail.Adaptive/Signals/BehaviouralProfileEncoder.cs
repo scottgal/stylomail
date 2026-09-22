@@ -16,7 +16,7 @@ namespace StyloMail.Adaptive.Signals;
 ///
 /// <para>
 /// <b>Observations and their support, never verdicts.</b> The encoder emits counts, rates, windows
-/// and baselines. There is no severity, no score, no flag — because a profile that arrived
+/// and baselines. There is no severity, no score, no flag: because a profile that arrived
 /// pre-judged would make the classifier's answers a restatement of our own flags, and the
 /// independence that makes semantic evidence worth having would be gone.
 /// </para>
@@ -96,8 +96,8 @@ public static class BehaviouralProfileEncoder
             // message to fifty colleagues is a large number in the first and one in the second.
             //
             // FLOORS, not measurements, once the recipient history is truncated: the true count
-            // can only be larger. That is the safe direction for a count — it under-reports and so
-            // cannot manufacture alarm — and the flag below says so rather than leaving the caller
+            // can only be larger. That is the safe direction for a count: it under-reports and so
+            // cannot manufacture alarm, and the flag below says so rather than leaving the caller
             // to guess. Novelty takes the opposite treatment for the opposite reason: over-
             // reporting THAT would manufacture the alarm.
             DistinctRecipientsLastHour = profile.Recipients.DistinctSince(at - TimeSpan.FromHours(1)),
@@ -206,7 +206,7 @@ public static class BehaviouralProfileEncoder
     /// <remarks>
     /// Null unless the baseline actually models the feature. Rate features are synthesised per
     /// bucket rather than observed per message, so a promotion path that only approves semantic
-    /// dimensions leaves this unmodelled — and an unmodelled baseline is not a baseline of zero.
+    /// dimensions leaves this unmodelled, and an unmodelled baseline is not a baseline of zero.
     /// </remarks>
     private static double? BaselinePerHour(RobustScaleModel? scaleModel, string featureId)
     {

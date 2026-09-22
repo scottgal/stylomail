@@ -16,7 +16,7 @@ namespace StyloMail.Adaptive.Tests;
 ///
 /// <para>
 /// Two properties are load-bearing and are asserted rather than described. The encoding carries
-/// <b>observations and their support, never verdicts</b> — a profile arriving pre-judged would make
+/// <b>observations and their support, never verdicts</b>: a profile arriving pre-judged would make
 /// the classifier's answers a restatement of our own flags. And <b>a cold profile is a distinct
 /// state</b>, not a quiet-looking one: "we do not know this sender" is not "this sender looks
 /// ordinary".
@@ -37,7 +37,7 @@ public class BehaviouralProfileEncoderTests
 
         // The whole point. A profile we do not have must not encode as zero messages, zero
         // recipients and an ordinary-looking past, because that is indistinguishable from a
-        // sender who genuinely has been quiet — and it is the same error as scoring an
+        // sender who genuinely has been quiet, and it is the same error as scoring an
         // unavailable signal as zero.
         Assert.Null(encoded.MessagesObserved);
         Assert.Null(encoded.TrustedSamples);
@@ -264,7 +264,7 @@ public class BehaviouralProfileEncoderTests
 
         var encoded = BehaviouralProfileEncoder.Encode(sender, Start, messageRecipients: ["a", "z"]);
 
-        // The capped set ran out of room, so distinct counting is a floor — but the membership
+        // The capped set ran out of room, so distinct counting is a floor, but the membership
         // filter never forgets, and "have we ever seen 'a'?" is still answerable. Taking novelty
         // dark here would blind the profile on exactly the widest-reaching senders.
         Assert.True(sender.Recipients.Truncated);
@@ -286,7 +286,7 @@ public class BehaviouralProfileEncoderTests
         });
 
         // Exactly what the store does when it loads a profile whose membership filter was not
-        // stored. The filter is empty, so every recipient would look new — and novelty is the most
+        // stored. The filter is empty, so every recipient would look new, and novelty is the most
         // alarming signal this profile carries, so an empty filter must not be allowed to answer.
         sender.Recipients.MarkIncomplete();
 
@@ -340,7 +340,7 @@ public class BehaviouralProfileEncoderTests
         var encoded = BehaviouralProfileEncoder.Encode(sender, Start);
 
         // Six distinct recipients against a set that holds four. The emitted figure is a floor:
-        // it under-states, which for a count is the direction that cannot manufacture alarm — the
+        // it under-states, which for a count is the direction that cannot manufacture alarm: the
         // opposite of novelty, where over-stating is the danger.
         //
         // The count is a floor and the record now says so, which is the difference between a

@@ -161,7 +161,7 @@ public sealed class CacheKeyTests
     [Fact]
     public void TwoMessagesDifferingOnlyInSenderBehaviourDoNotShareAKey()
     {
-        // The case the cache must never merge. Identical message, identical tenant, identical model —
+        // The case the cache must never merge. Identical message, identical tenant, identical model:
         // one sender with months of history, one who is new and fanning out. If the key digested only
         // the message, the second would be served the first's assessment: a judgement formed when the
         // sender looked ordinary, reused after their behaviour changed.

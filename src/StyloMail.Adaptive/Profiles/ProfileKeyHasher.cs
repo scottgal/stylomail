@@ -15,7 +15,7 @@ namespace StyloMail.Adaptive.Profiles;
 /// <para>
 /// This is pseudonymization, not anonymization. Anyone holding the master key can confirm a
 /// guessed address, which is exactly why the key is a secret and why rotation is a deliberate,
-/// documented operation rather than a routine one — rotating changes every pseudonym, and the
+/// documented operation rather than a routine one: rotating changes every pseudonym, and the
 /// old profiles become unreachable rather than aliased.
 /// </para>
 /// </remarks>
@@ -43,7 +43,7 @@ public sealed class ProfileKeyHasher
     /// </summary>
     /// <remarks>
     /// Identity is normalised before hashing. Case and surrounding whitespace would otherwise
-    /// split one correspondent into several profiles — which is both a correctness problem and
+    /// split one correspondent into several profiles: which is both a correctness problem and
     /// a small evasion primitive, since padding a display address is trivial.
     /// </remarks>
     public string Hash(string tenantId, string identity)

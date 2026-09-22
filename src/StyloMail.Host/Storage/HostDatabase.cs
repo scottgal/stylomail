@@ -203,7 +203,7 @@ public sealed class HostDatabase
 
         -- Operator metadata about a sending principal: what a human calls it, which company it
         -- belongs to, and their own reference for it. Nothing here is read by the assessment
-        -- pipeline, and `posture` and `notification_target` are stored but honoured by nothing yet —
+        -- pipeline, and `posture` and `notification_target` are stored but honoured by nothing yet:
         -- see SenderProfile for why they are carried anyway and what labels them as not-yet-acted-on.
         CREATE TABLE IF NOT EXISTS sender_profile (
             tenant_id            TEXT NOT NULL,
@@ -243,7 +243,7 @@ public sealed class HostDatabase
         --
         -- key_id is the public handle the key carries in its own value. It is what makes lookup a
         -- single indexed read and keeps the expensive derivation to one per authentication, without
-        -- writing down anything derived cheaply from the secret — which is the property that would
+        -- writing down anything derived cheaply from the secret: which is the property that would
         -- make the store crackable.
         --
         -- Revocation stamps rather than deletes: who killed a credential and when is asked

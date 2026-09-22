@@ -81,7 +81,7 @@ public sealed record SubmissionStatusResponse
     /// <remarks>
     /// <b>This is the join key to the decision ledger, and it is the reason this field exists.</b> A
     /// reviewer looking at a quarantined message needs the explanation for it, and the ledger is
-    /// keyed by assessment id — which appeared only on the <c>POST /v1/submissions</c> response, a
+    /// keyed by assessment id: which appeared only on the <c>POST /v1/submissions</c> response, a
     /// response a reviewer working from a list never saw. The ledger also stores the message id, so
     /// exposing it here gives a path from a listed message to its decision without either lane
     /// changing a schema: <c>GET /v1/decisions?messageId=…</c>.

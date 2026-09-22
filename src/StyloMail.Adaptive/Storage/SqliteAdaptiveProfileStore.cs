@@ -664,7 +664,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// <remarks>
     /// <b>The empty case is the dangerous one.</b> A profile with observed traffic whose
     /// membership filter was not stored would come back with an empty filter, and an empty filter
-    /// reports every recipient as never seen — manufacturing the most alarming signal in the
+    /// reports every recipient as never seen: manufacturing the most alarming signal in the
     /// profile, at scale, on every restart, for exactly the senders with the most history.
     ///
     /// <para>
@@ -676,7 +676,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// <para>
     /// <b>Known limitation, deliberately left.</b> This restores with
     /// <see cref="RecipientHistory.DefaultCapacity"/> and <see cref="RecipientHistory.DefaultWindow"/>
-    /// rather than the host's <c>AdaptiveOptions</c>, because <c>Load</c> is not given the options —
+    /// rather than the host's <c>AdaptiveOptions</c>, because <c>Load</c> is not given the options:
     /// consistent with the rest of this store, but now load-bearing for a bound rather than
     /// cosmetic. A host configured with a smaller capacity would restore into a history that
     /// saturates sooner.
@@ -685,7 +685,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// <para>
     /// Left in place because <b>the failure direction is the safe one</b>: saturating sooner sets
     /// the floor flag sooner and makes the membership filter report more false positives, which
-    /// means <em>missing</em> novelty rather than inventing it — and both are reported honestly
+    /// means <em>missing</em> novelty rather than inventing it, and both are reported honestly
     /// rather than lied about. Worth fixing when a deployment actually configures a non-default
     /// capacity.
     /// </para>
@@ -901,7 +901,7 @@ public sealed class SqliteAdaptiveProfileStore
 
         /// <summary>
         /// The membership filter, base64. Absent means novelty cannot be answered for this
-        /// principal — the restore path marks the history incomplete rather than starting it empty.
+        /// principal: the restore path marks the history incomplete rather than starting it empty.
         /// </summary>
         public string? SeenRecipients { get; init; }
 

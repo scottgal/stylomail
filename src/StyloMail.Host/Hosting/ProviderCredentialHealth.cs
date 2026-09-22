@@ -8,14 +8,14 @@ namespace StyloMail.Host.Hosting;
 /// <remarks>
 /// <para>
 /// <b>This exists because a rotated key is a failure that looks like a healthy deployment.</b> The Jev
-/// adapter throws loudly on a `401` — deliberately, since a revoked key must never present as a calm
-/// inbox — but nothing connected that loudness to the thing an operator actually watches. The result
+/// adapter throws loudly on a `401`: deliberately, since a revoked key must never present as a calm
+/// inbox, but nothing connected that loudness to the thing an operator actually watches. The result
 /// was the worst shape available: `/health/ready` answering `200 ready` while every assessment failed,
 /// so a load balancer kept routing mail to a host that could not assess any of it.
 /// </para>
 /// <para>
-/// <b>It latches, and only a success clears it.</b> A `401` from the provider is not transient — it
-/// means the credential is wrong — so treating it as a blip that might resolve would put the host back
+/// <b>It latches, and only a success clears it.</b> A `401` from the provider is not transient: it
+/// means the credential is wrong, so treating it as a blip that might resolve would put the host back
 /// to advertising itself ready while still failing every message. The state therefore stays rejected
 /// until a classification actually succeeds, which cannot happen while the key is bad. Failing closed
 /// is the only direction that cannot produce the false-healthy state this was written to remove.
@@ -58,7 +58,7 @@ public sealed class ProviderCredentialHealth
         }
     }
 
-    /// <summary>The status the provider answered with, for the operator — never served to a caller.</summary>
+    /// <summary>The status the provider answered with, for the operator: never served to a caller.</summary>
     public HttpStatusCode? RejectedWith
     {
         get

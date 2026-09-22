@@ -35,7 +35,7 @@ internal static class DecisionsEndpoints
     }
 
     /// <summary>
-    /// <c>GET /v1/decisions</c> — one page of the ledger, newest first.
+    /// <c>GET /v1/decisions</c>: one page of the ledger, newest first.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -72,7 +72,7 @@ internal static class DecisionsEndpoints
             {
                 // Refused by name, like the message listing's unknown state. A filter that silently
                 // fell back to "no filter" would show a reviewer every action while the response
-                // said they were looking at one — the same failure as a page that lies about being
+                // said they were looking at one: the same failure as a page that lies about being
                 // complete, one layer up.
                 return EndpointResults.Invalid(
                     "unknown_action",

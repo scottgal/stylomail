@@ -13,7 +13,7 @@ namespace StyloMail.Host.Endpoints;
 /// <remarks>
 /// <para>
 /// Both are <b>tenant-scoped from the authenticated principal</b>, never from a parameter, and both
-/// require <c>Review</c> — a separate grant from sending. A sender cannot enumerate the other
+/// require <c>Review</c>: a separate grant from sending. A sender cannot enumerate the other
 /// principals it shares a tenant with, nor list the mail in flight, through these routes; that
 /// separation is the same one the decision ledger already keeps.
 /// </para>
@@ -31,7 +31,7 @@ internal static class ListingEndpoints
     /// </summary>
     /// <remarks>
     /// <b>Only the dispositions the queue actually enumerates by.</b> The queue's listing answers
-    /// "what needs attention", not "what has been accepted" — there is no filter for messages in
+    /// "what needs attention", not "what has been accepted": there is no filter for messages in
     /// normal delivery, and adding one is not this route's to invent. Accepting a <c>queued</c>
     /// parameter and filtering the page after it had been cut would be worse than refusing it: pages
     /// would come back short or empty, <c>hasMore</c> would be wrong, and a caller paging through a

@@ -22,7 +22,7 @@ public static class HostPolicies
     /// <para>
     /// <b>The one place a route accepts either of two privileges, and it needs its own justification
     /// each time it is used.</b> A union policy is easy to reach for and erodes a privilege model one
-    /// convenience at a time, so it is not a general facility — it is named for the single route that
+    /// convenience at a time, so it is not a general facility: it is named for the single route that
     /// needs it.
     /// </para>
     /// <para>

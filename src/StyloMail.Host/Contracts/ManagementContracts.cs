@@ -22,13 +22,13 @@ public sealed record SenderSettingsResponse
     public string? ExternalRef { get; init; }
 
     /// <summary>
-    /// Where to tell someone. <b>Stored only — nothing delivers to it yet.</b>
+    /// Where to tell someone. <b>Stored only: nothing delivers to it yet.</b>
     /// </summary>
     public string? NotificationTarget { get; init; }
 
     /// <summary>
     /// A visible stance: <c>trusted</c>, <c>normal</c> or <c>watch</c>.
-    /// <b>Stored only — no pipeline reads it yet.</b>
+    /// <b>Stored only: no pipeline reads it yet.</b>
     /// </summary>
     public string? Posture { get; init; }
 
@@ -48,7 +48,7 @@ public sealed record SenderSettingsResponse
         Posture = profile.Posture,
 
         // The unset profile carries a sentinel instant rather than a real one, so it is reported as
-        // absent instead of as 1970 — which would read as "described a very long time ago".
+        // absent instead of as 1970: which would read as "described a very long time ago".
         UpdatedBy = string.IsNullOrEmpty(profile.UpdatedBy) ? null : profile.UpdatedBy,
         UpdatedAt = profile.UpdatedAt == DateTimeOffset.UnixEpoch ? null : profile.UpdatedAt,
     };

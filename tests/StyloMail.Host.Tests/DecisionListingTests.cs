@@ -10,7 +10,7 @@ using StyloMail.Host.Serialization;
 namespace StyloMail.Host.Tests;
 
 /// <summary>
-/// <c>GET /v1/decisions</c> — the ledger listing the Review pane is built on.
+/// <c>GET /v1/decisions</c>: the ledger listing the Review pane is built on.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +22,7 @@ namespace StyloMail.Host.Tests;
 /// <para>
 /// <b>Paging is tested with timestamps the test chooses</b>, via <see cref="TestHost.WithClock"/>.
 /// Ordering by time cannot be tested against the wall clock: two decisions written in the same
-/// millisecond tie, and the cursor's tiebreak then decides what a page contains — so a test meaning
+/// millisecond tie, and the cursor's tiebreak then decides what a page contains, so a test meaning
 /// to exercise distinct-timestamp paging can quietly become a same-timestamp one and stop covering
 /// the case it was written for.
 /// </para>
@@ -66,7 +66,7 @@ public sealed class DecisionListingTests
     public async Task Paging_returns_every_decision_exactly_once()
     {
         // The assertion with teeth. A cursor that skips produces *fewer* rows, not duplicates, so
-        // "no row appears twice" passes against it — the property that catches it is that the union
+        // "no row appears twice" passes against it: the property that catches it is that the union
         // of the pages equals the set that was recorded. This is the same defect the queue's listing
         // shipped and the same property its own test was missing.
         using var host = new TestHost().WithClock();
@@ -83,7 +83,7 @@ public sealed class DecisionListingTests
         string? cursor = null;
 
         // Page size 2 against 5, so the walk is three pages and every page but the last builds a
-        // cursor — which is where a cursor defect lives.
+        // cursor: which is where a cursor defect lives.
         for (var page = 0; page < 8; page++)
         {
             var listed = await ListingAsync(reviewer, limit: 2, after: cursor);
@@ -126,7 +126,7 @@ public sealed class DecisionListingTests
     public async Task The_action_filter_is_honoured(MailAction action)
     {
         // Served by an equality on the ledger's own indexed column, so it filters the query rather
-        // than the page — which is what makes it honest to offer.
+        // than the page: which is what makes it honest to offer.
         using var host = new TestHost().WithClock();
 
         await AssessAsync(host, TestPrincipals.AcmeSenderKey, "one", MailAction.Allow);
@@ -165,7 +165,7 @@ public sealed class DecisionListingTests
     {
         // Treating an unparseable cursor as "no cursor" would answer with the first page, so a client
         // paging with a corrupted cursor would read page one, receive a valid next cursor, and fetch
-        // page one again — forever, with nothing saying why.
+        // page one again: forever, with nothing saying why.
         using var host = new TestHost();
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
@@ -180,7 +180,7 @@ public sealed class DecisionListingTests
     [Fact]
     public async Task A_row_carries_no_evidence_payload()
     {
-        // The listing is bounded by shape, not by hope: the full decision — with its evidence list —
+        // The listing is bounded by shape, not by hope: the full decision: with its evidence list:
         // is one request away, and that is the request whose size a caller can see coming.
         using var host = new TestHost().WithClock();
         await AssessAsync(host, TestPrincipals.AcmeSenderKey, "figures");
@@ -238,7 +238,7 @@ public sealed class DecisionListingTests
 
         // What the listing leaves out is asserted structurally rather than by content: the summary
         // *type* has no evidence field, which `A_row_carries_no_evidence_payload` checks against the
-        // wire. Asserting `detail.Evidence` is non-empty here would prove nothing anyway — the test
+        // wire. Asserting `detail.Evidence` is non-empty here would prove nothing anyway: the test
         // host's assessor is a fake that records no evidence, so an empty list says nothing about
         // whether the detail route would carry one.
     }
@@ -276,7 +276,7 @@ public sealed class DecisionListingTests
         host.Assessor.Action = action;
 
         // A distinct instant per call, chosen rather than raced for. The ledger orders by it, so
-        // decisions sharing one would leave the ordering — and therefore the cursor — untested.
+        // decisions sharing one would leave the ordering, and therefore the cursor, untested.
         host.Clock.Advance(TimeSpan.FromMinutes(1));
 
         using var client = host.ClientAs(apiKey);
@@ -296,7 +296,7 @@ public sealed class DecisionListingTests
 /// <remarks>
 /// This is why the detail pane exists, and until now there was no path to it. The queue does not carry
 /// an assessment id, and the only place one was ever handed to a client was the response to
-/// <c>POST /v1/submissions</c> — a response a reviewer working from a list never saw. So a listed
+/// <c>POST /v1/submissions</c>: a response a reviewer working from a list never saw. So a listed
 /// message was a dead end.
 ///
 /// <para>
@@ -335,7 +335,7 @@ public sealed class MessageToDecisionTests
         var message = Assert.Single(Assert.IsType<MessageListingResponse>(messages).Messages);
         Assert.Equal(DeliveryState.Quarantined, message.State);
 
-        // The row carries the join key — without this the flow stops here, which is the gap this test
+        // The row carries the join key: without this the flow stops here, which is the gap this test
         // was written to close.
         Assert.False(string.IsNullOrWhiteSpace(message.InternalMessageId));
 
@@ -367,7 +367,7 @@ public sealed class MessageToDecisionTests
     public async Task The_join_key_is_also_on_the_single_message_route()
     {
         // Both routes serve SubmissionStatusResponse, so the link cannot work from the list and not
-        // from the detail — two projections of one row that disagree about the join key would be the
+        // from the detail: two projections of one row that disagree about the join key would be the
         // drift the shared projection exists to prevent.
         using var host = new TestHost().WithClock();
         await AssessAsync(host, TestPrincipals.AcmeSenderKey, "figures");

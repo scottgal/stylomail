@@ -127,7 +127,7 @@ public class QueueListingTests
     /// <remarks>
     /// <b>This exists because the test above could not see the cursor bug, and the reason is subtle.</b>
     /// That test deliberately gives every item the *same* <c>created_at</c> to exercise the
-    /// <c>queue_id</c> tiebreaker — and with equal timestamps, the probe row's <c>created_at</c> and
+    /// <c>queue_id</c> tiebreaker, and with equal timestamps, the probe row's <c>created_at</c> and
     /// the kept row's are identical, so pairing the probe's timestamp with the kept row's id is
     /// **invisible**. The two halves of the cursor have to differ for the defect to show, which means
     /// the clock must move.
@@ -135,7 +135,7 @@ public class QueueListingTests
     /// <para>
     /// Found by <c>ingress-</c>, who hit it wiring the operator console and reported the mechanism
     /// rather than the symptom. Without distinct timestamps the bug skips rows silently on roughly
-    /// half of runs — a listing that returns two of three messages while claiming to be complete, and
+    /// half of runs: a listing that returns two of three messages while claiming to be complete, and
     /// looks like flakiness from outside.
     /// </para>
     /// </remarks>
@@ -172,7 +172,7 @@ public class QueueListingTests
             cursor = page.NextCursor;
             pages++;
 
-            Assert.True(pages < 50, "Paging did not terminate — the cursor is not advancing.");
+            Assert.True(pages < 50, "Paging did not terminate: the cursor is not advancing.");
         }
         while (cursor is not null);
 

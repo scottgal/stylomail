@@ -29,12 +29,12 @@ puts a key into it.
 
 ## Nouns
 
-**Principal** — a sender identity and the digest of its key. Today the key is
+**Principal**: a sender identity and the digest of its key. Today the key is
 `HostPrincipalOptions.Key`: plaintext in configuration, which is the thing every other secret in this
 project is carefully kept out of. Minting moves it to a store, holds only a digest, and shows the
 value exactly once.
 
-**SenderProfile** — per principal, everything an operator records:
+**SenderProfile**: per principal, everything an operator records:
 
 | Field | Why |
 | --- | --- |
@@ -42,10 +42,10 @@ value exactly once.
 | `companyId` | The group it belongs to. |
 | `notes` | Free text an operator curates. |
 | `externalRef` | The operator's own id for this sender, so the console can be joined to their systems. |
-| `notificationTarget` | Where to tell someone. **Stored only — see the honesty note below.** |
+| `notificationTarget` | Where to tell someone. **Stored only: see the honesty note below.** |
 | `posture` | A visible stance: trusted, normal, watch. **Shown and stored only, for now.** |
 
-**Company** — an operator-side group: id, name, notes.
+**Company**: an operator-side group: id, name, notes.
 
 ## Routes needed
 
@@ -130,9 +130,9 @@ StyloMail Host and says to check the port. See `HostStatus.FromFailure`.
 
 A **Management** sidebar section:
 
-- **Connection** — enter, replace or clear the API key; shows which Host and whether it is live.
-- **Companies** — list, create, rename.
-- **Senders** — grouped by company, each opening a profile form, keeping the existing pause/resume.
+- **Connection**: enter, replace or clear the API key; shows which Host and whether it is live.
+- **Companies**: list, create, rename.
+- **Senders**: grouped by company, each opening a profile form, keeping the existing pause/resume.
 
 **Posture and notification target are shown as stored, and labelled as not yet acted on.** A console
 whose stated job is explaining why something was held must not show a control that looks like it

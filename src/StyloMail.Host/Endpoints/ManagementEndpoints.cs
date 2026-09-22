@@ -13,7 +13,7 @@ namespace StyloMail.Host.Endpoints;
 /// <b>Read on <c>Review</c>, write on <c>Administer</c>.</b> That is the split the pause route already
 /// draws: describing a sender and being permitted to stop one are different grants, and a reviewer who
 /// may read who a sender is has no business renaming them. Nothing here can authorise a side effect on
-/// mail — this is metadata about senders, not about messages.
+/// mail: this is metadata about senders, not about messages.
 /// </para>
 /// <para>
 /// Tenant comes from the authenticated principal and there is <b>no tenant parameter</b>, so a
@@ -203,7 +203,7 @@ internal static class ManagementEndpoints
 
 /// <summary>The postures an operator may choose.</summary>
 /// <remarks>
-/// A closed set, validated on write. <b>Nothing reads this yet</b> — see <see cref="SenderProfile"/> —
+/// A closed set, validated on write. <b>Nothing reads this yet</b>: see <see cref="SenderProfile"/>,
 /// and it is deliberately a vocabulary rather than a free string: a stored stance that nothing
 /// recognises is worse than no stance, because it looks like a decision someone made.
 /// </remarks>

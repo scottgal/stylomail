@@ -9,7 +9,7 @@ namespace StyloMail.Host.Controls;
 /// <remarks>
 /// <para>
 /// <b>Operator metadata, not policy.</b> Nothing in the assessment pipeline reads any of this. It
-/// exists so a human can navigate a tenant — "Acme outbound" is findable where an address is not —
+/// exists so a human can navigate a tenant: "Acme outbound" is findable where an address is not,
 /// and so the console can be joined to the operator's own systems.
 /// </para>
 /// <para>
@@ -18,7 +18,7 @@ namespace StyloMail.Host.Controls;
 /// unused ones, and because a console whose stated job is explaining why something was held must not
 /// show a control that looks like it works. Both are labelled as not yet acted on in the UI and in the
 /// API field documentation, so a client that is not the console cannot be misled either. When the
-/// pipeline honours posture, or the host delivers to a notification target, the labels come off — and
+/// pipeline honours posture, or the host delivers to a notification target, the labels come off, and
 /// until then, anything that reads them is a bug rather than a feature.
 /// </para>
 /// </remarks>
@@ -42,10 +42,10 @@ public sealed record SenderProfile
     /// <summary>The operator's own identifier for this sender, so the console can be joined to theirs.</summary>
     public string? ExternalRef { get; init; }
 
-    /// <summary>Where to tell someone. <b>Stored only — nothing delivers to it yet.</b></summary>
+    /// <summary>Where to tell someone. <b>Stored only: nothing delivers to it yet.</b></summary>
     public string? NotificationTarget { get; init; }
 
-    /// <summary>A visible stance: trusted, normal or watch. <b>Stored only — no pipeline reads it yet.</b></summary>
+    /// <summary>A visible stance: trusted, normal or watch. <b>Stored only: no pipeline reads it yet.</b></summary>
     public string? Posture { get; init; }
 
     public required string UpdatedBy { get; init; }

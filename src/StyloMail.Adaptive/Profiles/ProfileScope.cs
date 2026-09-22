@@ -10,7 +10,7 @@ namespace StyloMail.Adaptive.Profiles;
 /// An established relationship is evidence about a pair of correspondents; a domain is
 /// context about a naming space. Treating the second as though it were the first is how
 /// an attacker who registers one address at a reputable domain inherits that domain's
-/// reputation — see <see cref="ProfileScopeTrust"/>.
+/// reputation: see <see cref="ProfileScopeTrust"/>.
 /// </remarks>
 public enum ProfileScopeKind
 {
@@ -219,7 +219,7 @@ public static class ProfileScopes
     /// A stable, comparable qualification of how an inbound identity authenticated.
     /// </summary>
     /// <remarks>
-    /// Ordering is canonical so the same set of results always yields the same provenance —
+    /// Ordering is canonical so the same set of results always yields the same provenance:
     /// otherwise the same sender would key to several profiles depending on header order.
     /// </remarks>
     public static string AuthenticationProvenance(AuthenticationContext authentication)

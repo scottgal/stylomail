@@ -30,7 +30,7 @@ public sealed record DimensionSample
         Availability = EvidenceAvailability.Available,
     };
 
-    /// <summary>Produced, but over reduced input coverage — the value is real but weaker.</summary>
+    /// <summary>Produced, but over reduced input coverage: the value is real but weaker.</summary>
     public static DimensionSample Reduced(string dimensionId, double value, string note) => new()
     {
         DimensionId = dimensionId,
@@ -68,7 +68,7 @@ public sealed record DimensionSample
 /// <remarks>
 /// Masked dimensions are excluded from comparison, not filled. <see cref="Coverage"/> is
 /// reported alongside so a distance computed over three dimensions is never mistaken for one
-/// computed over twelve — the comparison is weaker, and saying so is the point.
+/// computed over twelve: the comparison is weaker, and saying so is the point.
 /// </remarks>
 public sealed record DimensionVector
 {

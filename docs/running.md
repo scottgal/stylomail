@@ -6,7 +6,7 @@ is healthy.
 **Every claim here was checked against a running process, not read off `Program.cs`.** That
 distinction is the whole point: `Program.cs` is commented in more detail than this file, and a
 comment is a claim about code rather than evidence about it. The checks are a script that starts the
-real binary, drives real sockets and real HTTP requests, and asserts on what came back — 49 of them,
+real binary, drives real sockets and real HTTP requests, and asserts on what came back: 49 of them,
 all passing. Where a detail could not be verified that way, this document says so rather than
 implying otherwise.
 
@@ -32,12 +32,12 @@ passing its own flags (`--urls`, `--contentRoot`) starts the server rather than 
 **Why one binary rather than two.** The CLI and the HTTP host share a composition root
 (`HostServices.AddStyloMailHost`), so a CLI command cannot administer a system configured differently
 from the one it is describing. Two binaries would be two definitions of what the system is, and the
-first thing to drift would be a safety default — the storage path, or the assessor that refuses
+first thing to drift would be a safety default: the storage path, or the assessor that refuses
 everything when nothing is configured. An unrecognised command exits `2` rather than falling through
 to `serve`: a typo silently opening a network listener is a surprising thing for a mail component
 to do.
 
-The CLI commands run **one-shot** — they build a host, do their work, and exit. They do not start
+The CLI commands run **one-shot**: they build a host, do their work, and exit. They do not start
 hosted services, so a CLI command never opens the SMTP port or runs the delivery worker.
 
 ---
@@ -47,9 +47,9 @@ hosted services, so a CLI command never opens the SMTP port or runs the delivery
 ```
 1.  parse arguments; anything but `serve` becomes a one-shot CLI command and returns here
 2.  build the web application and its service collection
-3.  InitialiseStorageAsync      — the host's schema, the persistence schema, the queue's
-4.  resolve IMailAssessor       — forced, not lazy
-5.  resolve ISmtpIngressSink    — forced, not lazy; this is where the composition assertions run
+3.  InitialiseStorageAsync     : the host's schema, the persistence schema, the queue's
+4.  resolve IMailAssessor      : forced, not lazy
+5.  resolve ISmtpIngressSink   : forced, not lazy; this is where the composition assertions run
 6.  log the transport description
 7.  UseAuthentication → CsrfMiddleware → UseAuthorization
 8.  map routes (and conditionally map the Cloudflare intake)
@@ -58,7 +58,7 @@ hosted services, so a CLI command never opens the SMTP port or runs the delivery
 
 Steps 4 and 5 are the interesting ones. **Both components are registered as lazy singletons, so
 without forcing them a misconfigured deployment would boot, answer `/health/ready` with 200, and fail
-only when real mail arrived** — a misconfiguration that looks like a healthy service. Forcing the
+only when real mail arrived**: a misconfiguration that looks like a healthy service. Forcing the
 resolution turns each into a startup failure instead.
 
 Verified by running, with the process failing to start on each:
@@ -71,8 +71,8 @@ Verified by running, with the process failing to start on each:
 | Cloudflare intake enabled with no secret | refuses to start, names the variable |
 
 **These refusals are unhandled exceptions, so the process aborts.** In a shell that is exit code
-`134` (`SIGABRT`), not a tidy `1`. That is deliberate — the message names the variable an operator has
-to fix — but a script checking `$?` should test for *non-zero* rather than for a specific code.
+`134` (`SIGABRT`), not a tidy `1`. That is deliberate: the message names the variable an operator has
+to fix, but a script checking `$?` should test for *non-zero* rather than for a specific code.
 
 ### The composition assertions
 
@@ -81,7 +81,7 @@ invisible to a reader of either one:
 
 - **`SmtpIngressOptions.MaxMessageBytes <= QueueOptions.MaxPayloadBytes`.** If the ingress will take
   messages the queue will not store, the ingress reads and authorises the message, the sink spools
-  it, and the queue refuses it — so the caller sees a **capacity deferral that looks like spool
+  it, and the queue refuses it, so the caller sees a **capacity deferral that looks like spool
   pressure** while the cause is two components away. Both values are named on failure.
 - **One `SpoolStore` instance**, compared by reference identity rather than by path. A second instance
   over the same directory would make the assessor's read-back, the queue's orphan sweep and any later
@@ -105,8 +105,8 @@ because the channel is a property of the *authenticated principal*: it only enga
 arrived on the cookie channel, which is not known until authentication has run.
 
 Health, metrics and (when enabled) the Cloudflare intake are mapped without an authorization
-requirement. For health that is a necessity — a probe that has to authenticate cannot do its job, and
-a credential handed to a load balancer is a credential in one more place — and the compensation is
+requirement. For health that is a necessity: a probe that has to authenticate cannot do its job, and
+a credential handed to a load balancer is a credential in one more place, and the compensation is
 that nothing on those routes may describe a message, an identity or a tenant. The Cloudflare intake
 carries its own credential instead: a shared secret in a bearer header.
 
@@ -144,8 +144,8 @@ deployment has nowhere to be delivered and will be held until it expires.
 ```
 
 **A listener writing into a queue nothing drains is a configuration mistake**, and the warning is the
-one that catches it. Nothing here is an error the host refuses to start over — an inbound-only
-deployment and a submission-only one are both legitimate shapes — but without the warning the mistake
+one that catches it. Nothing here is an error the host refuses to start over: an inbound-only
+deployment and a submission-only one are both legitimate shapes, but without the warning the mistake
 surfaces as messages ageing toward their expiry, which is the worst way to find out. A deployment with
 no listener and no upstream is described without a warning, because nothing is missing.
 
@@ -171,11 +171,11 @@ host and the CLI, opens no mail port, and dials nothing.
 | `TYPESAFE_API_KEY` | Jev / TypeSafe API key. |
 | `STYLOMAIL_PROFILE_KEY` | Profile keyed-hash master key. **At least 32 bytes** of high entropy. |
 | `STYLOMAIL_CF_INGRESS_SECRET` | The shared secret a Cloudflare Email Routing Worker presents. |
-| `ASPNETCORE_URLS` | Where Kestrel binds, e.g. `http://127.0.0.1:8080`. **Avoid 5000 and 7000 on macOS** — see the note below. |
+| `ASPNETCORE_URLS` | Where Kestrel binds, e.g. `http://127.0.0.1:8080`. **Avoid 5000 and 7000 on macOS**: see the note below. |
 
 **These four are read from the environment directly, and the three secrets are read from nowhere
 else.** A secret given a configuration key ends up in an `appsettings` file, then in a repository,
-then in an image layer — and a key committed to a repository must be treated as compromised and
+then in an image layer, and a key committed to a repository must be treated as compromised and
 rotated rather than merely deleted. There is deliberately **no configuration property** for any of
 them; the names live as constants beside `HostCredentials` so they are defined once and greppable.
 
@@ -238,14 +238,14 @@ resolved to, named in an `X-StyloMail-Key` header: there is no request that wide
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `StyloMail:Jev:Endpoint` | the hosted TypeSafe endpoint | **Redirects message content**, so a non-default value is announced in the startup log. Setting it is a legitimate operator decision — a local classifier, staging, or deliberately unreachable to exercise the semantic-unavailable path — and the announcement is what keeps it a decision rather than an accident. |
+| `StyloMail:Jev:Endpoint` | the hosted TypeSafe endpoint | **Redirects message content**, so a non-default value is announced in the startup log. Setting it is a legitimate operator decision, a local classifier, staging, or deliberately unreachable to exercise the semantic-unavailable path, and the announcement is what keeps it a decision rather than an accident. |
 | `StyloMail:Jev:Model` | the pinned versioned id | Bound so it can be changed deliberately. An alias here would move without notice and silently invalidate memoised assessments. |
 
-A rejected credential at this endpoint is what makes `provider_credential` appear in `/health/ready` —
+A rejected credential at this endpoint is what makes `provider_credential` appear in `/health/ready`:
 see the readiness section above.
 
 `StyloMail:Auth:Principals:<n>:ApprovedSenderIdentities:<n>` lists the identities an authenticated
-principal may use in SMTP `MAIL FROM`. **Empty authorises nothing** beyond the null sender — "no
+principal may use in SMTP `MAIL FROM`. **Empty authorises nothing** beyond the null sender: "no
 restriction configured" and "may send as anyone" must not be the same value. `key create --sender`
 grants the same thing to a minted principal, and starts empty for the same reason.
 
@@ -261,7 +261,7 @@ grants the same thing to a minted principal, and starts empty for the same reaso
 **Two sources of identity, and the store wins wholesale.** A key minted on the host is held as a
 digest in the host database; a principal in `StyloMail:Auth:Principals` still authenticates, so
 existing deployments keep working. Where the same principal is in both, the store's entry resolves
-and the configuration entry resolves **nothing**, with any key — privileges and keys are never
+and the configuration entry resolves **nothing**, with any key: privileges and keys are never
 unioned across the two. That is deliberate: a union is how a configuration entry silently re-widens a
 privilege an operator narrowed when they minted its replacement.
 
@@ -309,7 +309,7 @@ What the host promises, and how it was checked:
 
 | Route | Meaning |
 | --- | --- |
-| `GET /health/live` | `200 {"status":"live"}`. Is the process up? Deliberately checks nothing else — a dependency outage is not a reason to have a container restarted. |
+| `GET /health/live` | `200 {"status":"live"}`. Is the process up? Deliberately checks nothing else: a dependency outage is not a reason to have a container restarted. |
 | `GET /health/ready` | `200 {"status":"ready"}` or `503 {"status":"not_ready","failedChecks":[...]}`. Checks: `database`, `spool`, `provider_credential`. |
 | `GET /metrics` | Prometheus text. |
 
@@ -331,18 +331,18 @@ $ curl -s 127.0.0.1:8080/health/ready
 That is the behaviour verified here, including the return to `200` once the spool is writable again.
 A host that cannot durably accept mail must stop advertising itself, or a load balancer keeps handing
 it messages that will be refused, turning a local storage fault into a delivery outage. The failed
-check is **named, never described** — the exception text can carry a filesystem path, and this route
+check is **named, never described**: the exception text can carry a filesystem path, and this route
 is served without credentials.
 
 ### A rotated provider key makes the host not ready
 
 The `provider_credential` check fires when the semantic provider has **rejected this deployment's
-credential** — a rotated or revoked Jev key. The host cannot assess a message without semantic
+credential**: a rotated or revoked Jev key. The host cannot assess a message without semantic
 evidence, so a host that cannot assess stops advertising itself rather than accepting mail it will
 fail to judge:
 
 ```
-$ curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:8080/health/live    # 200 — still live
+$ curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:8080/health/live    # 200: still live
 $ curl -s 127.0.0.1:8080/health/ready
 {"status":"not_ready","failedChecks":["provider_credential"]}
 ```
@@ -350,7 +350,7 @@ $ curl -s 127.0.0.1:8080/health/ready
 Two things about that are deliberate. **Liveness stays `200`**: a rejected key is a configuration
 fault, and restarting the container changes nothing about it, so failing liveness would turn one bad
 deploy into a restart loop. And **the check reflects what the provider actually answered**, never what
-is configured — a key that is merely set but untested does not affect readiness, because a probe that
+is configured: a key that is merely set but untested does not affect readiness, because a probe that
 guessed would be wrong in both directions.
 
 It latches until a classification succeeds, which cannot happen while the key is bad. That direction is
@@ -384,7 +384,7 @@ on a stock macOS.
 ### Seeing what the host is holding
 
 Two authenticated reads answer "what is in here", both requiring `Review` and both scoped to the
-caller's own tenant — neither takes a tenant parameter, so a cross-tenant read is *absent* rather
+caller's own tenant: neither takes a tenant parameter, so a cross-tenant read is *absent* rather
 than refused:
 
 ```
@@ -396,18 +396,18 @@ GET /v1/decisions?action=Quarantine&after=…   the explainable ledger, newest f
 
 `state` accepts `awaiting_decision` (the default), `held` and `quarantined`. **Messages in normal
 delivery are not enumerable**, and asking for `state=queued` is a named `400` rather than a silent
-fallback — this lists what is awaiting a *decision*, which is the queue's own notion of a listing,
+fallback: this lists what is awaiting a *decision*, which is the queue's own notion of a listing,
 and filtering a page after it has been cut would produce short pages and a wrong `hasMore`.
 
 `GET /v1/senders` never returns a credential, and it now draws on **both** sources of identity. Each
 row carries `source`: `store` for a key minted on this host, `environment` for one configured in it.
-A sender that is both is listed **once**, as a `store` sender — wholesale precedence means the
+A sender that is both is listed **once**, as a `store` sender: wholesale precedence means the
 configuration entry resolves nothing, and a sender disappearing from the operator's view because
 someone minted a key for it would be worse than one shown with the wrong provenance. A principal that
 cannot authenticate is not listed at all, which is the same rule that already excluded a
 configuration entry with no key.
 
-The response names each field it carries rather than serialising a record that holds a credential —
+The response names each field it carries rather than serialising a record that holds a credential:
 the failure mode of the alternative is publishing every key on the host. It is built from the
 principal inventory, which has no key and no digest to leak in the first place.
 
@@ -416,7 +416,7 @@ ordered reasons, the versions the decision was made under and its coverage flags
 explanation with its evidence is one `GET /v1/decisions/{id}` away. A page of complete decisions would
 be unbounded, because evidence volume is per-message. `action` filters by exact action; a value the
 ledger does not record, or a cursor the ledger did not issue, is a **named `400`** rather than a
-silently different result — the same rule as `state` on the message listing, and for the same reason:
+silently different result: the same rule as `state` on the message listing, and for the same reason:
 a page that quietly shows something other than what it claims is worse than a refusal.
 
 ---
@@ -426,7 +426,7 @@ a page that quietly shows something other than what it claims is worse than a re
 | Code | Meaning | Example |
 | --- | --- | --- |
 | `0` | Success. | `assess message.eml` |
-| `2` | Bad input — unknown command, missing argument, unreadable file. | `assess missing.eml`, `profiles inspect` without `--tenant` |
+| `2` | Bad input: unknown command, missing argument, unreadable file. | `assess missing.eml`, `profiles inspect` without `--tenant` |
 | `3` | A requested capability is unavailable. | `assess --semantic` on a deployment with no assessor configured; `key revoke` on a principal held in configuration |
 | `134` | The process refused to start (`SIGABRT`, from an unhandled configuration error). | see §2 |
 
@@ -438,5 +438,5 @@ Two behaviours worth knowing:
 - **`assess` never transmits message content** unless `--semantic` is passed explicitly. Without it,
   the provider step is skipped and says so, so a local assessment cannot become a disclosure by
   accident.
-- **`replay` runs against a fixed instant**, so two runs over the same fixtures are byte-identical —
+- **`replay` runs against a fixed instant**, so two runs over the same fixtures are byte-identical:
   which is what makes it usable for comparing policy versions.

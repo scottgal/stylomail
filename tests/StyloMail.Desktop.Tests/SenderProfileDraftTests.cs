@@ -9,7 +9,7 @@ namespace StyloMail.Desktop.Tests;
 /// <remarks>
 /// The whole of this file is about one hazard. A settings write is a full
 /// replace, so a form that sends only the fields it displays erases everything
-/// else — silently, and without anything on screen having mentioned it. Most of
+/// else: silently, and without anything on screen having mentioned it. Most of
 /// these tests exist to make that impossible rather than merely unlikely.
 /// </remarks>
 public sealed class SenderProfileDraftTests

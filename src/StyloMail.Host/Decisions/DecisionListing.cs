@@ -28,8 +28,8 @@ public sealed record DecisionListingQuery
     /// Served by an equality on the ledger's own indexed `action` column, so it is a filter the query
     /// genuinely honours rather than one applied to a page after it was cut. That distinction is the
     /// whole reason this is a closed <see cref="MailAction"/> rather than a free string: anything the
-    /// ledger cannot answer — "decisions whose message was later delivered", say, which needs queue
-    /// state it does not have — is refused rather than approximated.
+    /// ledger cannot answer: "decisions whose message was later delivered", say, which needs queue
+    /// state it does not have: is refused rather than approximated.
     /// </remarks>
     public MailAction? Action { get; init; }
 
@@ -46,7 +46,7 @@ public sealed record DecisionListingQuery
     /// </para>
     /// <para>
     /// It returns a <em>list</em> rather than one decision because a message can be assessed more than
-    /// once — a re-assessment after a policy change is a legitimate thing to have on the record — and
+    /// once, a re-assessment after a policy change is a legitimate thing to have on the record, and
     /// returning only the newest would hide that. A caller wanting one takes the first.
     /// </para>
     /// </remarks>
@@ -77,7 +77,7 @@ public static class DecisionListingLimits
     /// </summary>
     /// <remarks>
     /// Lower than the queue's 200 because a ledger entry is a whole decision rather than a queue
-    /// row — each one carries the evidence, reasons, dimensions and coverage for a message — so the
+    /// row, each one carries the evidence, reasons, dimensions and coverage for a message, so the
     /// same page size is a much larger response here.
     /// </remarks>
     public const int MaxPageSize = 100;

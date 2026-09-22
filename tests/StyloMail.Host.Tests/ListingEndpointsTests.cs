@@ -10,13 +10,13 @@ using StyloMail.Queue;
 namespace StyloMail.Host.Tests;
 
 /// <summary>
-/// <c>GET /v1/senders</c> and <c>GET /v1/messages</c> — the two read listings the operator console
+/// <c>GET /v1/senders</c> and <c>GET /v1/messages</c>: the two read listings the operator console
 /// is built on.
 /// </summary>
 /// <remarks>
 /// Both are tenant-scoped from the principal and privilege-separated from sending. The tests here are
-/// mostly about what a caller <em>cannot</em> see: another tenant's rows, and — for the sender
-/// listing, which is built from the configuration that holds them — any credential at all.
+/// mostly about what a caller <em>cannot</em> see: another tenant's rows, and, for the sender
+/// listing, which is built from the configuration that holds them: any credential at all.
 /// </remarks>
 public sealed class ListingEndpointsTests
 {
@@ -389,13 +389,13 @@ public sealed class ListingEndpointsTests
         //
         // `QueueStore.ListAsync` used to build its next-cursor from two different rows: it tracked
         // `lastCreatedAt` by overwriting it on every row the reader yielded, so after the loop it held
-        // the *probe* row's timestamp — the extra row fetched to learn whether a further page exists —
+        // the *probe* row's timestamp: the extra row fetched to learn whether a further page exists:
         // while the id paired with it was the last row *kept*. The next page then skipped every row
         // whose timestamp fell between the two, and the probe row survived only if its GUID happened
         // to sort below the kept row's.
         //
-        // Two properties of that are worth keeping in mind here. It was **silent** — two of three
-        // messages returned, `hasMore: false`, no error — so a duplicate-only assertion would have
+        // Two properties of that are worth keeping in mind here. It was **silent**: two of three
+        // messages returned, `hasMore: false`, no error, so a duplicate-only assertion would have
         // passed it. And it was **intermittent**, roughly half of runs, depending on a GUID tiebreak,
         // which is what made it look like a flaky test rather than a defect. `queue-` fixed the cursor
         // to take both halves from the same row, and this went from 6 failures in 12 runs to 0 in 15.
@@ -422,7 +422,7 @@ public sealed class ListingEndpointsTests
 
         Assert.False(second.HasMore);
 
-        // No message appears on both pages, and none is skipped between them — which is the property
+        // No message appears on both pages, and none is skipped between them: which is the property
         // a cursor exists to give and a naive offset would not.
         var ids = first.Messages.Select(m => m.QueueId)
             .Concat(second.Messages.Select(m => m.QueueId))
@@ -439,7 +439,7 @@ public sealed class ListingEndpointsTests
         using var host = new TestHost();
         var queueId = await SubmitAsync(host, TestPrincipals.AcmeSenderKey, "msg-shape", MailAction.Hold);
 
-        // One client for both reads, and the *reviewer* — the console's own principal. That works
+        // One client for both reads, and the *reviewer*: the console's own principal. That works
         // only because the detail route accepts Review as well as Send; see the test below for why,
         // and this test would fail on a real console flow if that were reverted.
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
@@ -466,7 +466,7 @@ public sealed class ListingEndpointsTests
     public async Task A_review_only_principal_can_read_a_submission_it_could_already_release()
     {
         // The asymmetry this closes: `GET /v1/submissions/{id}` required Send while
-        // `POST /v1/quarantine/{id}/release` required Review, on the same queue id — so a reviewer
+        // `POST /v1/quarantine/{id}/release` required Review, on the same queue id, so a reviewer
         // could release a quarantined message and not inspect it first. Reading is strictly weaker
         // than releasing, so requiring the greater capability for the lesser act was incoherent.
         //
@@ -478,7 +478,7 @@ public sealed class ListingEndpointsTests
 
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
-        // The reviewer holds Review and Assess, never Send — asserted rather than assumed, because a
+        // The reviewer holds Review and Assess, never Send: asserted rather than assumed, because a
         // future change to the test principals that quietly added Send would make this test prove
         // nothing while staying green.
         Assert.False(reviewer.DefaultRequestHeaders.Contains("Idempotency-Key"));
