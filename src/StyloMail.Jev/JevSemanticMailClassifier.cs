@@ -115,7 +115,7 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
             return Unavailable(askable, notApplicableEvidence, now, "provider circuit open");
         }
 
-        var state = BuildState(input.Message, input.TaggedContext);
+        var state = BuildState(input.Message, input.TaggedContext, input.Profile);
         var questions = BuildQuestions(askable);
         var request = new JevRequest
         {
@@ -214,7 +214,68 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
     /// Builds the bounded, structured state. Content is data here, descriptive field names, no
     /// instructions, and hard truncation so a single message cannot blow the context budget.
     /// </summary>
-    private object BuildState(MailAnalysisInput message, IReadOnlyDictionary<string, string>? taggedContext)
+    /// <summary>
+    /// Encodes the sender's behaviour for the classifier's state.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Absence is stated, not omitted.</b> When no profile was available this emits an explicit
+    /// "not available" object rather than nothing, so the classifier is told that behavioural context
+    /// is missing rather than silently receiving a message-only view. A model that does not know it
+    /// is uninformed will answer as confidently as one that is.
+    /// </para>
+    /// <para>
+    /// Every field is an observation with its support. Nothing here is a judgement about whether the
+    /// behaviour is acceptable, because that belongs to deterministic policy.
+    /// </para>
+    /// </remarks>
+    private static object BuildBehaviourProfile(BehaviouralProfile? profile)
+    {
+        if (profile is null)
+        {
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["available"] = false,
+                ["note"] = "No behavioural context was available for this sender. This message is "
+                    + "being judged on its own content only.",
+            };
+        }
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["available"] = profile.ProfileAvailable,
+            ["cold_start"] = profile.ColdStart,
+            ["direction"] = profile.Direction.ToString(),
+            ["known_for_days"] = profile.FirstSeenDaysAgo,
+            ["messages_observed"] = profile.MessagesObserved,
+            ["trusted_samples"] = profile.TrustedSamples,
+            ["regime"] = profile.Regime,
+            ["distinct_recipients_last_hour"] = profile.DistinctRecipientsLastHour,
+            ["distinct_recipients_last_30_days"] = profile.DistinctRecipientsLast30Days,
+            ["recipients_novel_to_sender"] = profile.RecipientsNovelToSender,
+            ["messages_last_hour"] = profile.MessagesLastHour,
+            ["messages_last_24_hours"] = profile.MessagesLast24Hours,
+            ["baseline_messages_per_hour"] = profile.BaselineMessagesPerHour,
+            ["fanout_last_hour"] = profile.FanoutLastHour,
+            ["baseline_fanout_per_hour"] = profile.BaselineFanoutPerHour,
+            ["trend"] = profile.TrendNarrative,
+            ["movements"] = profile.Movements?
+                .Take(BehaviouralProfile.MaxMovements)
+                .Select(m => new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["dimension"] = m.DimensionId,
+                    ["direction"] = m.Direction,
+                    ["magnitude"] = m.Magnitude,
+                })
+                .ToList(),
+            ["dimensions_with_support"] = profile.DimensionsWithSupport,
+        };
+    }
+
+    private object BuildState(
+        MailAnalysisInput message,
+        IReadOnlyDictionary<string, string>? taggedContext,
+        BehaviouralProfile? profile)
     {
         var envelope = message.Envelope;
 
@@ -252,6 +313,16 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList(),
             },
+            // Behavioural context, under its own key and clearly labelled as observation rather than
+            // message content. Without it the classifier judges every message in isolation, and the
+            // same words from an established correspondent and from a day-old account fanning out to
+            // strangers score identically.
+            //
+            // It is facts with their support. No severity, no score, no suspicion flag: deterministic
+            // policy authorises actions, and a profile arriving pre-judged would turn the answers
+            // into a restatement of our own flags.
+            ["sender_behaviour"] = BuildBehaviourProfile(profile),
+
             ["coverage"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["body_parsed"] = message.Coverage.BodyParsed,
@@ -491,7 +562,7 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
             {
                 model = modelVersion ?? _options.Model,
                 schema = SemanticDimensions.QuestionSchemaVersion,
-                state = BuildState(input.Message, input.TaggedContext),
+                state = BuildState(input.Message, input.TaggedContext, input.Profile),
             },
             JsonOptions);
 

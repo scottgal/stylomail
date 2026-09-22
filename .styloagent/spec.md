@@ -482,7 +482,155 @@ OAuth work later requires changing callers, this decision was implemented wrongl
 first. Retrieval carries a materially smaller blast radius, no send, and delivers most of the
 value, so it is the safer first slice unless the operator says otherwise.
 
-## 10. Relationship to this project's scoping Q&A
+## 10. Operator console: a native desktop client
+
+**Added 2026-09-22 at the operator's direction. Not yet built.**
+
+An Avalonia desktop application for managing senders, messages and decisions. Visually modelled on
+Apple Mail, and built on the sibling **mylo** reader (`LucidReader` in the `lucidview` repository),
+which already provides the rendering stack, the Core-plus-app project split, and a services layer
+worth copying rather than reinventing.
+
+### 10.1 It is an API client, not a second front end into the components
+
+**Decision: the desktop app talks to the Host's HTTP API and nothing else.** It references no other
+StyloMail project except, at most, DTOs.
+
+That matters for three reasons:
+
+1. **The privilege model lives in one place.** Every route is already authenticated, tenant-scoped and
+   privilege-separated. A desktop client that reached the components directly would need its own copy
+   of those rules, and two copies of a privilege model diverge.
+2. **It forces the API to be genuinely sufficient.** If the console cannot do something through the
+   API, the API is missing it, and a headless deployment needs it too.
+3. **It keeps the audit trail honest.** Everything the console does appears in the same ledger as
+   everything else, because it is the same requests.
+
+The client therefore needs no local database, holds no credential other than its own API key, and
+cannot act on a tenant it is not authorised for.
+
+### 10.2 What it manages
+
+| Area | Purpose |
+| --- | --- |
+| **Senders** | Authenticated principals: their state, whether paused and why, and the control to pause or resume. |
+| **Messages** | Queued, held and quarantined items with per-recipient delivery state. |
+| **Decisions** | The ledger for a message: evidence, ordered reasons, versions, coverage, cache provenance. |
+| **Quarantine** | Review and release, audited, with the actor recorded. |
+| **Feedback** | Scoped labels that feed the trusted baseline, kept distinct from recipient preference. |
+
+### 10.3 Constraints
+
+1. **Nothing in the console may be the only way to do something.** Every action it offers must exist
+   as a route, so a headless or scripted deployment is not a second-class citizen.
+2. **Never render a credential.** The API key is entered once and stored in the platform keychain,
+   never in a config file, never in a log, and never in a screenshot-worthy view.
+3. **Explainability over decoration.** The decision view exists to answer "why was this held", so it
+   shows evidence and reason codes rather than a single score. The sender-facing temptation to
+   simplify must be resisted: this console is for operators.
+4. **It is not a mailbox.** It manages StyloMail's own queue and ledger. Reading a user's mail is the
+   AccessProxy's job, under its own credential model, and is out of scope here.
+5. **No em-dashes in any UI string or code comment**, consistent with the rest of the repository.
+
+### 10.4 Open questions for the operator
+
+- **Authentication shape for a desktop client.** The Host exposes an API-key handler and a cookie
+  session channel for browsers. A desktop app should probably use the key, but whether it needs the
+  session channel or a device-authorisation flow is undecided.
+- **Distribution.** mylo ships self-contained single-file per RID. Whether this console ships the same
+  way, or is developer-only for now, is a decision.
+
+## 11. Behavioural context for the semantic classifier
+
+**Added 2026-09-22 at the operator's direction.**
+
+The classifier currently judges every message **in isolation**. Its request state carries subject,
+body, links, attachments, envelope and coverage, and nothing about how this sender has been behaving.
+That is a real gap: a credential request from an account with six months of transactional receipts
+means something different from the same words sent by an account created yesterday that is fanning
+out to strangers. The message is identical; the *relationship* is not, and relationship is most of
+what makes a message suspicious.
+
+### 11.1 The profile is encoding, and it is bounded
+
+Adaptive already computes the raw material: fixed clock buckets, fast and slow windows, drift,
+velocity, acceleration, traffic class, trusted-baseline support. What is missing is an **encoding**
+of it fit to hand a classifier: a small, fixed, primitive-valued summary rather than a state dump.
+
+Suggested shape, to be finalised by `adaptive-` (the owner of the computation):
+
+```text
+direction                     inbound | outbound
+relationship
+  first_seen_days_ago         412
+  messages_observed           3120
+  trusted_samples             2980          approved baseline only
+  regime                      steady        changes suppress derivative evidence
+recipients
+  this_message_count          1
+  distinct_1h                 2             distinct recipients this sender has addressed
+  distinct_30d                84
+  novel_to_sender             0             recipients this sender has never addressed before
+rate
+  messages_1h                 3
+  messages_24h                41
+  baseline_per_hour           1.7
+  fanout_1h                   2
+  baseline_fanout_per_hour    1.6
+trend
+  narrative                   "recipient fan-out rising while payment-redirection evidence also rises"
+  movements                   top N dimensions: id, direction, magnitude
+coverage
+  profile_available           true
+  cold_start                  false
+  dimensions_with_support     9
+```
+
+### 11.2 Constraints, and they are the design
+
+1. **The profile carries observations and their support, never verdicts.** Counts, rates, windows,
+   baselines. No `is_suspicious`, no severity, no score. Deterministic policy authorises actions; the
+   classifier receives facts and forms its own judgement about the message. **A profile that arrived
+   pre-judged would make the classifier's answers a restatement of our flags**, which destroys the
+   independence that makes semantic evidence worth having.
+2. **Cold start is a distinct state, not a normal-looking profile.** `profile_available: false` means
+   "we do not know this sender", which is different from "this sender looks ordinary". Collapsing the
+   two is the same error as treating an unavailable signal as a zero score.
+3. **Bounded by construction.** A fixed field set with capped cardinality, not a serialised profile.
+   The classifier's state budget is 32k shared with the questions, and an unbounded trend list is
+   exactly how that budget gets spent on the messages least worth it.
+4. **Recipient isolation still holds.** The profile may describe the sender, and the sender's
+   relationship with *this* recipient. It must never carry another recipient's history, address, or
+   contact graph. This is a privacy boundary, not a scoring one.
+5. **It goes in `state`, never in `instructions`.** It is data. Nothing in it may be phrased as an
+   instruction to the classifier.
+6. **Its absence is recorded in the decision.** An assessment made without profile context must say
+   so, so that a reader can tell a well-informed judgement from an uninformed one.
+
+### 11.3 Where it flows
+
+```text
+Adaptive            computes the profile from observed state and baseline
+        |
+Assessment          threads it into the semantic call at pipeline step 4
+        |
+Jev                 places it in the request state under its own labelled key
+        |
+Evidence            returned dimensions are stored with the profile version they were judged against
+```
+
+**Cache correctness is the trap here.** The semantic cache key is a digest over the classifier input,
+so **the profile is part of that input and therefore part of the key**. Two messages with identical
+content but different sender behaviour must not share a cached assessment. This is the same rule as
+relationship context: if it went into the input, it is in the key.
+
+### 11.4 What this does not change
+
+The classifier still returns evidence, never an action. Behavioural evidence from Adaptive is
+unchanged and still reaches policy as its own input. This section only means the classifier is no
+longer blind to context that Adaptive had already computed and the pipeline was discarding.
+
+## 12. Relationship to this project's scoping Q&A
 
 The operator confirmed by question (2026-09-22): **inbound/outbound mail flow** in both directions;
 a **security/edge boundary** (TLS, auth, rate limits, reputation; back-ends not directly reachable);

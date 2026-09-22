@@ -52,6 +52,24 @@ public sealed record SemanticMailInput
 
     /// <summary>Explicitly tagged contextual facts the classifier may rely on. Kept separate from message content.</summary>
     public IReadOnlyDictionary<string, string>? TaggedContext { get; init; }
+
+    /// <summary>
+    /// How this sender has been behaving, so the classifier is not judging the message in isolation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The profile is part of the classifier input, and therefore part of the semantic cache
+    /// key.</b> Two messages with identical content and different sender behaviour must not share a
+    /// cached assessment, and a cache key that digested only the message would let them.
+    /// </para>
+    /// <para>
+    /// Null means no profile was available at all. That is distinct from a profile carrying
+    /// <c>ProfileAvailable: false</c>, which is a positive statement that we looked and found
+    /// nothing. Either way the assessment must record that it was made without behavioural context,
+    /// so a reader can tell an informed judgement from an uninformed one.
+    /// </para>
+    /// </remarks>
+    public BehaviouralProfile? Profile { get; init; }
 }
 
 /// <summary>
