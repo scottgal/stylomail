@@ -15,6 +15,7 @@ using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
 using StyloMail.Host.Traffic;
 using StyloMail.Adaptive.Profiles;
+using StyloMail.Adaptive.Storage;
 using StyloMail.Jev;
 using StyloMail.Mime;
 using StyloMail.Persistence;
@@ -92,17 +93,26 @@ public static class HostServices
         services.AddSingleton<HttpClient>();
         services.AddSingleton<IMailAssessor>(sp => BuildAssessor(sp, configuration));
 
-        // The chat assessment path and its drain, only when a deployment has configured a Slack
-        // intake. Registered here rather than unconditionally because the drain polls, and a
-        // deployment with no chat has nothing for it to find.
-        if (configuration.GetValue<bool>($"{SlackIngressOptions.SectionName}:Enabled"))
+        // The chat assessment path and its drain. Registered unconditionally and decided at
+        // resolution, for the reason the traffic port below records: this composition root runs
+        // before a test host layers its own configuration in, so gating here reads the wrong values
+        // and silently registers nothing. The drain checks whether the intake is enabled itself, and
+        // resolves the assessor only after that check, so a deployment with no chat never builds one.
+        services.AddSingleton<IAdaptiveProfileStore>(sp =>
         {
-            services.AddSingleton<IAdaptiveProfileStore>(sp =>
-                new SqliteAdaptiveProfileStore(sp.GetRequiredService<SqliteConnectionFactory>()));
+            var profiles = new SqliteAdaptiveProfileStore(
+                sp.GetRequiredService<SqliteConnectionFactory>());
 
-            services.AddSingleton<IChatAssessor>(BuildChatAssessor);
-            services.AddHostedService<ChatIntakeDrain>();
-        }
+            // Safe to call on every start, and called here rather than left to whichever component
+            // happens to need it first, so a chat-only deployment still has the table its
+            // assessments write into.
+            profiles.EnsureCreated();
+
+            return new SqliteAdaptiveProfileStoreAdapter(profiles);
+        });
+
+        services.AddSingleton<IChatAssessor>(BuildChatAssessor);
+        services.AddHostedService<ChatIntakeDrain>();
 
         AddTransport(services, configuration);
         AddTrafficEvents(services, configuration);
@@ -357,12 +367,12 @@ public static class HostServices
     {
         HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);
 
+        // Degrades rather than refusing to build, so a deployment that has not configured chat can
+        // still start. What stops that degrading into silence is on the other side: the intake drain
+        // leaves events waiting when the assessment throws, so nothing is consumed unassessed.
         if (string.IsNullOrWhiteSpace(profileMasterKey))
         {
-            throw new InvalidOperationException(
-                "The Slack events intake requires the profile master key, because every chat profile "
-                + "key is a pseudonym and a deployment without one would key profiles on an author's "
-                + "platform identifier.");
+            return new UnavailableChatAssessor();
         }
 
         return new ChatAssessor(

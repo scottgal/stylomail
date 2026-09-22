@@ -41,33 +41,44 @@ public sealed class ChatIntakeDrain : BackgroundService
     private static readonly TimeSpan RetainedAfterAssessment = TimeSpan.FromHours(2);
 
     private readonly IChatIntakeStore _intake;
-    private readonly IChatAssessor _assessor;
-    private readonly IDecisionLedger _ledger;
+    private readonly IServiceProvider _services;
     private readonly IOptions<SlackIngressOptions> _configured;
     private readonly TimeProvider _clock;
 
     public ChatIntakeDrain(
         IChatIntakeStore intake,
-        IChatAssessor assessor,
-        IDecisionLedger ledger,
+        IServiceProvider services,
         IOptions<SlackIngressOptions> configured,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(intake);
-        ArgumentNullException.ThrowIfNull(assessor);
-        ArgumentNullException.ThrowIfNull(ledger);
+        ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configured);
         ArgumentNullException.ThrowIfNull(clock);
 
         _intake = intake;
-        _assessor = assessor;
-        _ledger = ledger;
+        _services = services;
         _configured = configured;
         _clock = clock;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Checked here rather than at registration, following the traffic port and the SMTP
+        // listener: the composition root runs before a test host layers its own configuration in, so
+        // a decision taken at registration reads the wrong values.
+        if (!_configured.Value.Enabled)
+        {
+            return;
+        }
+
+        // Resolved after that check, and not in the constructor, so a deployment with no chat intake
+        // never builds an assessor it has no use for. The assessor refuses to be built without the
+        // profile master key, which is right for a deployment that runs one and wrong to demand of
+        // one that does not.
+        var assessor = _services.GetRequiredService<IChatAssessor>();
+        var ledger = _services.GetRequiredService<IDecisionLedger>();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var options = _configured.Value;
@@ -80,6 +91,8 @@ public sealed class ChatIntakeDrain : BackgroundService
                 continue;
             }
 
+            var progressed = 0;
+
             foreach (var entry in waiting)
             {
                 if (stoppingToken.IsCancellationRequested)
@@ -87,16 +100,35 @@ public sealed class ChatIntakeDrain : BackgroundService
                     return;
                 }
 
-                await AssessAsync(entry, options, stoppingToken).ConfigureAwait(false);
+                if (await AssessAsync(entry, options, assessor, ledger, stoppingToken).ConfigureAwait(false))
+                {
+                    progressed++;
+                }
             }
 
             _intake.Prune(_clock.GetUtcNow() - RetainedAfterAssessment);
+
+            if (progressed == 0)
+            {
+                // Nothing was dealt with, so the batch will be offered again identically on the next
+                // turn of this loop. Waiting first is what paces that: without it, an event that
+                // cannot be assessed is retried as fast as the loop can run, which hammers the
+                // assessor and the database for as long as the fault lasts. The delay is the same one
+                // an empty intake uses, because both cases are "there is nothing useful to do yet".
+                await Task.Delay(IdleDelay, stoppingToken).ConfigureAwait(false);
+            }
         }
     }
 
-    private async Task AssessAsync(
+    /// <summary>
+    /// Assesses one event. Returns true when it has been dealt with, so the caller can tell progress
+    /// from an event that is still waiting.
+    /// </summary>
+    private async Task<bool> AssessAsync(
         ChatIntakeEntry entry,
         SlackIngressOptions options,
+        IChatAssessor assessor,
+        IDecisionLedger ledger,
         CancellationToken cancellationToken)
     {
         // Read again from the bytes the platform was answered for. A payload that no longer reads as
@@ -105,7 +137,7 @@ public sealed class ChatIntakeDrain : BackgroundService
         if (!SlackEventReader.TryRead(entry.Payload, options.Identity(), out var message, out _))
         {
             _intake.Complete(entry.EventId, _clock.GetUtcNow());
-            return;
+            return true;
         }
 
         var context = new AssessmentContext
@@ -133,13 +165,14 @@ public sealed class ChatIntakeDrain : BackgroundService
 
         try
         {
-            var assessment = await _assessor
+            var assessment = await assessor
                 .AssessAsync(ChatInputFactory.From(message), context, cancellationToken)
                 .ConfigureAwait(false);
 
-            await _ledger.RecordAsync(assessment, cancellationToken).ConfigureAwait(false);
+            await ledger.RecordAsync(assessment, cancellationToken).ConfigureAwait(false);
 
             _intake.Complete(entry.EventId, _clock.GetUtcNow());
+            return true;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -148,9 +181,10 @@ public sealed class ChatIntakeDrain : BackgroundService
             // would be the loss the durable intake exists to prevent. It stays visible: an event
             // that never clears is diagnosable, whereas one that vanished is not.
             //
-            // The next pass picks it up again, so a transient fault clears itself. A fault that does
-            // not clear stays a waiting row rather than disappearing, which is the honest failure.
-            return;
+            // The next pass picks it up again, paced by the caller's idle delay, so a transient fault
+            // clears itself without the loop spinning on it. A fault that does not clear stays a
+            // waiting row rather than disappearing, which is the honest failure.
+            return false;
         }
     }
 }
