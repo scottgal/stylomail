@@ -50,12 +50,12 @@ public sealed class ChatAssessor : IChatAssessor
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
 
-        _profiles = new ProfileCoordinator(profileStore);
+        _recorder = new ChatObservationRecorder(profileStore, options);
         _options = options;
         _killSwitch = killSwitch ?? NeverEngagedKillSwitch.Instance;
     }
 
-    private readonly ProfileCoordinator _profiles;
+    private readonly ChatObservationRecorder _recorder;
 
     private readonly IEmergencyKillSwitch _killSwitch;
 
@@ -122,7 +122,7 @@ public sealed class ChatAssessor : IChatAssessor
         // Written after the assessment is made and regardless of what it decided. Observed state is
         // what velocity and drift are later read from, so it records every message that was
         // assessed rather than the ones that turned out to be interesting.
-        Observe(behavioural.Keys, input, context, now);
+        _recorder.Record(input, context.TenantId, now);
 
         return ValueTask.FromResult(new MailAssessment
         {
@@ -151,52 +151,14 @@ public sealed class ChatAssessor : IChatAssessor
         });
     }
 
-    /// <summary>
-    /// The profile keys this attempt belongs to: the author, and the conversation it went to.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The conversation replaces the recipient, and its kind is part of the key.</b> "Talking to
-    /// people it never talks to" and "posting in channels it never posts in" are different claims,
-    /// and a member's direct messages and their channel posts accumulate separately so the fan-out
-    /// evidence cannot report them as suddenly talking to new <em>people</em> when they have merely
-    /// posted somewhere new.
-    /// </para>
-    /// <para>
-    /// <b>An unknown conversation kind yields no target at all</b>, which is the honest answer
-    /// rather than filing it as either. That leaves the relationship unmeasured for those messages
-    /// and the assessment says nothing rather than something wrong.
-    /// </para>
-    /// </remarks>
-    private ProfileKey? TargetKey(
-        ChatAnalysisInput input,
-        AssessmentContext context,
-        string authorPseudonym) =>
-        TargetPseudonym(input, context) is { } target
-            ? ProfileScopes.Relationship(
-                context.TenantId, input.Membership.Direction, authorPseudonym, target)
-            : null;
-
     private BehaviouralOutcome Behavioural(
         ChatAnalysisInput input,
         AssessmentContext context,
         TimeProvider clock)
     {
-        var pseudonym = _options.ProfileKeyHasher.Hash(context.TenantId, input.Membership.AuthorId);
-
-        // The scope follows the direction, because the direction is what says whether this author is
-        // an authenticated principal of this tenant or a stranger to it. The two pools are never
-        // merged, and a member read as a stranger would lose exactly the job this evidence is for.
-        var scope = input.Membership.Direction == MailDirection.Inbound
-            ? ProfileScopes.ChatAuthor(
-                context.TenantId,
-                ChatPlatforms.Slack,
-                // Always present in practice, because the connector states it from the event. Stated
-                // rather than defaulted anyway, so a hand-built input that omits it produces a key
-                // naming the absence instead of silently joining another workspace's pool.
-                input.Channel.WorkspaceId ?? "workspace-unknown",
-                pseudonym)
-            : ProfileScopes.OutboundSender(context.TenantId, pseudonym);
+        // The keys come from the recorder, so the read and the write cannot disagree about which
+        // profile a message belongs to.
+        var keys = _recorder.KeysFor(input, context.TenantId);
 
         // No traffic class is declared for a chat channel yet, and the mail path is explicit that
         // judging every sender against an expectation nobody named bakes one class's behaviour into
@@ -204,18 +166,12 @@ public sealed class ChatAssessor : IChatAssessor
         var evaluator = new BehaviouralEvidenceEvaluator(clock, _options.Adaptive);
 
         var evidence = new List<Evidence>();
-        evidence.AddRange(evaluator.Evaluate(_profiles.Read(scope), scope.Scope.ToString()));
-
-        var target = TargetKey(input, context, pseudonym);
-        if (target is not null)
+        foreach (var key in keys)
         {
-            evidence.AddRange(evaluator.Evaluate(_profiles.Read(target), target.Scope.ToString()));
+            evidence.AddRange(evaluator.Evaluate(_recorder.Read(key), key.Scope.ToString()));
         }
 
-        return new BehaviouralOutcome(
-            evidence,
-            [],
-            target is null ? [scope] : [scope, target]);
+        return new BehaviouralOutcome(evidence, [], keys);
     }
 
     /// <summary>
@@ -234,56 +190,6 @@ public sealed class ChatAssessor : IChatAssessor
     /// everything the attempt turned out to be is known.
     /// </para>
     /// </remarks>
-    private void Observe(
-        IReadOnlyList<ProfileKey> keys,
-        ChatAnalysisInput input,
-        AssessmentContext context,
-        DateTimeOffset now)
-    {
-        var recipientKeys = TargetPseudonym(input, context) is { } target
-            ? new[] { target }
-            : null;
-
-        var observation = new ProfileObservation
-        {
-            ObservedAt = now,
-
-            // One target per message: a chat message goes to the one conversation it was posted in,
-            // rather than to a list of addresses the way a mail message does.
-            RecipientCount = 1,
-
-            // Nothing is declined on this path. Chat has no delivery responsibility and the
-            // assessment takes no action, so an attempt is never a refused one. Hard-coded rather
-            // than read from the action, which is always Allow here and would look like a
-            // measurement when it is a constant.
-            WasRejected = false,
-
-            // Null because no semantic evidence was obtained, and a vector of zeros would claim the
-            // dimensions were measured and came back calm.
-            Dimensions = null,
-
-            // Absent rather than empty when the conversation kind is unknown, which leaves novelty
-            // unanswerable for that message rather than making it zero.
-            RecipientKeys = recipientKeys,
-        };
-
-        foreach (var key in keys)
-        {
-            _profiles.Observe(key, observation, now);
-        }
-    }
-
-    /// <summary>
-    /// The pseudonym for the conversation this went to, or null when the kind is unknown.
-    /// </summary>
-    private string? TargetPseudonym(ChatAnalysisInput input, AssessmentContext context) =>
-        input.Conversation == ChatConversationKind.Unknown
-            || input.Channel.ChannelId is not { Length: > 0 } channelId
-                ? null
-                : _options.ProfileKeyHasher.Hash(
-                    context.TenantId,
-                    $"{input.Conversation}|{channelId}");
-
     private sealed record BehaviouralOutcome(
         IReadOnlyList<Evidence> Evidence,
         IReadOnlyList<ReasonCode> Reasons,

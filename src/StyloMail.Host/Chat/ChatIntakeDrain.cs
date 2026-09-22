@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Options;
+using StyloMail.Assessment;
+using StyloMail.Assessment.Triage;
 using StyloMail.Chat;
 using StyloMail.Chat.Slack;
 using StyloMail.Core;
@@ -165,8 +167,40 @@ public sealed class ChatIntakeDrain : BackgroundService
 
         try
         {
+        var input = ChatInputFactory.From(message);
+
+        // Triage runs here, before the assessor, because the assessor is the expensive thing it
+        // exists to keep the majority of traffic out of.
+        var triage = TriageEngine.Evaluate(
+            input,
+            TriageContext.For([.. options.WatchedChannels]) with
+            {
+                TenantId = options.InboundTenantId,
+            });
+
+        // A message dismissed on scope is not recorded. An out-of-scope channel is one this
+        // deployment decided not to look at, so its messages being invisible to the profile is the
+        // decision being carried out rather than a loss.
+        if (triage.DecidedBy == TriageCheck.Scope)
+        {
+            _intake.Complete(entry.EventId, _clock.GetUtcNow());
+            return true;
+        }
+
+        // Past scope, every message is recorded whether or not it is assessed, because the behaviour
+        // check computes from this history and a dismissal here is about cost rather than about the
+        // message being uninteresting. The assessor records for anything it handles, so this writes
+        // only where the assessment is skipped, and nothing is counted twice.
+        if (triage.Disposition != TriageDisposition.Escalate)
+        {
+            _services.GetRequiredService<ChatObservationRecorder>()
+                .Record(input, options.InboundTenantId, _clock.GetUtcNow());
+            _intake.Complete(entry.EventId, _clock.GetUtcNow());
+            return true;
+        }
+
             var assessment = await assessor
-                .AssessAsync(ChatInputFactory.From(message), context, cancellationToken)
+                .AssessAsync(input, context, cancellationToken)
                 .ConfigureAwait(false);
 
             await ledger.RecordAsync(assessment, cancellationToken).ConfigureAwait(false);

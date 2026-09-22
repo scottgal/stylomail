@@ -79,6 +79,16 @@ public sealed class SlackIngressOptions
     public int PendingCapacity { get; set; } = 512;
 
     /// <summary>
+    /// The channels this deployment watches. Anything else triage dismisses on scope.
+    /// </summary>
+    /// <remarks>
+    /// <b>Empty watches nothing, and that is a decision rather than a default.</b> Answering "watch
+    /// everything" for an unconfigured deployment would make the host that has not been set up the
+    /// most permissive one, which is the opposite of how every other unset value behaves here.
+    /// </remarks>
+    public IList<string> WatchedChannels { get; } = [];
+
+    /// <summary>
     /// The deployment's own identity, or <c>None</c> when it has not been configured.
     /// </summary>
     /// <remarks>

@@ -129,6 +129,17 @@ public static class HostServices
         // so without re-deriving it.
         services.AddSingleton<ChatAssessmentHealth>();
         services.AddSingleton<IChatAssessor>(BuildChatAssessor);
+
+        // The write, separable from the assessment. Registered unconditionally and resolved only by
+        // the drain's dismissal path, so a deployment with no profile master key still starts: the
+        // drain's per-event guard leaves those events waiting rather than losing them.
+        services.AddSingleton<ChatObservationRecorder>(sp => new ChatObservationRecorder(
+            sp.GetRequiredService<IAdaptiveProfileStore>(),
+            new MailAssessorOptions
+            {
+                ProfileKeyHasher = new ProfileKeyHasher(
+                    Encoding.UTF8.GetBytes(ProfileKeyMaterial(sp))),
+            }));
         services.AddHostedService<ChatIntakeDrain>();
 
         AddTransport(services, configuration);
@@ -380,6 +391,22 @@ public static class HostServices
     /// leaves the mail path with no assessor at all.
     /// </para>
     /// </remarks>
+    /// <summary>The profile master key, or a startup refusal naming why it is needed.</summary>
+    private static string ProfileKeyMaterial(IServiceProvider services)
+    {
+        HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);
+
+        if (string.IsNullOrWhiteSpace(profileMasterKey))
+        {
+            throw new InvalidOperationException(
+                "Recording chat observations requires the profile master key, because every profile "
+                + "key is a pseudonym and a deployment without one would key profiles on an author's "
+                + "platform identifier.");
+        }
+
+        return profileMasterKey;
+    }
+
     private static IChatAssessor BuildChatAssessor(IServiceProvider services)
     {
         HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);

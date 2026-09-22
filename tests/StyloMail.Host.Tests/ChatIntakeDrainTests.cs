@@ -126,13 +126,23 @@ public sealed class ChatIntakeDrainTests
         };
     }
 
-    private static SlackIngressOptions Configured() => new()
+    private static SlackIngressOptions Configured()
     {
-        Enabled = true,
-        SigningSecret = "configured-in-a-test-only",
-        OwnBotId = "B0OWN",
-        InboundTenantId = "inbound-slack",
-    };
+        var options = new SlackIngressOptions
+        {
+            Enabled = true,
+            SigningSecret = "configured-in-a-test-only",
+            OwnBotId = "B0OWN",
+            InboundTenantId = "inbound-slack",
+        };
+
+        // Triage dismisses on scope, and an empty watched set watches nothing, so a test that wants a
+        // message assessed has to say which channel it watches. That is the decision rather than a
+        // convenience: an unconfigured deployment is not a permissive one.
+        options.WatchedChannels.Add("C01");
+
+        return options;
+    }
 
     private static async Task DrainOnceAsync(
         TestHost host,
@@ -167,6 +177,29 @@ public sealed class ChatIntakeDrainTests
         var intake = host.Services.GetRequiredService<IChatIntakeStore>();
         intake.Admit(new ChatIntakeEntry(eventId, MessageEvent, DateTimeOffset.UnixEpoch), capacity: 8);
         return intake;
+    }
+
+    [Fact]
+    public async Task A_message_in_a_channel_this_deployment_does_not_watch_never_reaches_the_assessor()
+    {
+        // Triage runs before the assessor, which is the point of it: the assessor is the expensive
+        // thing triage exists to keep the majority of traffic out of. The event is still cleared,
+        // because the platform was told it would be dealt with.
+        using var host = new TestHost();
+        var intake = host.Services.GetRequiredService<IChatIntakeStore>();
+        intake.Admit(
+            new ChatIntakeEntry(
+                "Ev01",
+                MessageEvent.Replace("\"channel\":\"C01\"", "\"channel\":\"C99\""),
+                DateTimeOffset.UnixEpoch),
+            capacity: 8);
+
+        var assessor = new RecordingChatAssessor();
+
+        await DrainOnceAsync(host, assessor, new RecordingLedger());
+
+        Assert.Equal(0, assessor.Count);
+        Assert.Empty(intake.Waiting(8));
     }
 
     [Fact]
