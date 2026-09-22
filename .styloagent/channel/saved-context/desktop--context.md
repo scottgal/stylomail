@@ -179,6 +179,21 @@ confirmation bar that was pending in the model and absent from the window. All t
 model-level test. Use `OnUiThreadAsync` or one of the `Request*Async` / `SelectAsync` / `ShowDecisionAsync`
 / `Load*Async` methods. Never assign `_model` from a caller's thread.
 
+## Live UI harness (landed, use this to loop)
+
+**`./ux-scripts/run-console-smoke.sh`** drives the console end to end against a throwaway Host in
+about five seconds and currently **passes**. `Mostlylucid.Avalonia.UITesting` 1.7.1, Debug-only,
+referenced as a package (not mylo's cross-repo ProjectReference, which would break the shared build).
+Read `ux-scripts/README.md` before writing a script: it lists eight gotchas and every one cost time.
+
+Modes: `--ux-test --script <yaml> --output <dir>`, `--ux-repl`, `--ux-mcp`, plus `--ux-headless`.
+Harness port is **5271**; it refuses to start if that port is taken, deliberately, because an orphaned
+Host holding a different key once made a whole run lie.
+
+The decision pane is driven over `ux-scripts/decision-fixture.json`, loaded from the app's Debug
+startup by `STYLOMAIL_SMOKE_DECISION_FILE`. That is a fixture, not a Host response: say so when
+presenting a screenshot from it. It exists because no route can reach the pane without a provider key.
+
 ## Harness gotchas (each cost real time)
 
 1. **A faulted load used to produce a screenshot anyway.** The pump loop only checks `IsCompleted`.
