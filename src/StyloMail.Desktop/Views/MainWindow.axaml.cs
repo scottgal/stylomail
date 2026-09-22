@@ -283,6 +283,72 @@ public partial class MainWindow : Window
     }
 #endif
 
+    /// <summary>
+    /// Loads the decision behind the selected message, in two hops.
+    /// </summary>
+    /// <remarks>
+    /// <b>The console's headline flow.</b> A message row carries an internal
+    /// message id; the ledger is filtered by it to get summaries; the newest
+    /// summary's assessment id fetches the full explanation with evidence. Two
+    /// requests rather than one, because the ledger returns a list: a message
+    /// can be assessed more than once, and a single id on the row could only
+    /// have held one of them.
+    ///
+    /// <para>
+    /// An empty list is a fact, not a failure, and the pane says which of the
+    /// two it is. "This message has no decisions" and "the lookup failed" have
+    /// different remedies, and a pane that showed its generic empty text for
+    /// both would send an operator to look at the wrong thing.
+    /// </para>
+    /// </remarks>
+    public async Task LoadDecisionForSelectedMessageAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        var message = _model.SelectedMessage;
+
+        if (message is null) return;
+
+        if (string.IsNullOrEmpty(message.InternalMessageId))
+        {
+            // The Host stopped sending the join key, which is a contract
+            // change rather than a message without a decision. Saying so beats
+            // showing the "no decisions" text, which would be a wrong answer.
+            await OnUiThreadAsync(_model.DecisionLookupFailed).ConfigureAwait(false);
+            return;
+        }
+
+        await OnUiThreadAsync(_model.BeginDecisionLookup).ConfigureAwait(false);
+
+        try
+        {
+            var listing = await _services.Client
+                .GetDecisionsAsync(message.InternalMessageId, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (listing.Decisions.Count == 0)
+            {
+                await OnUiThreadAsync(_model.NoDecisionsForMessage).ConfigureAwait(false);
+                return;
+            }
+
+            var newest = listing.Decisions[0];
+
+            var decision = await _services.Client
+                .GetDecisionAsync(newest.AssessmentId, cancellationToken)
+                .ConfigureAwait(false);
+
+            await OnUiThreadAsync(() => _model.ShowDecision(decision, listing.Decisions.Count))
+                .ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Decision] {failure.Failure}: {failure.Message}");
+
+            await OnUiThreadAsync(_model.DecisionLookupFailed).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Shows a decision the caller already has. Used by the UI harness.</summary>
     public Task ShowDecisionAsync(DecisionResponse decision, CancellationToken cancellationToken = default)
     {
@@ -569,4 +635,23 @@ public partial class MainWindow : Window
 
     private async void OnSubmitFeedbackClick(object? sender, RoutedEventArgs e)
         => await SubmitFeedbackAsync().ConfigureAwait(true);
+
+    /// <summary>
+    /// Selecting a message loads the decision behind it.
+    /// </summary>
+    /// <remarks>
+    /// Driven by the event rather than by the model's setter, because the model
+    /// performs no I/O: it is the window's job to notice a selection and go and
+    /// ask, which is what keeps the model testable without a Host.
+    /// </remarks>
+    private async void OnMessageSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_model.SelectedMessage is null)
+        {
+            await OnUiThreadAsync(_model.NoDecisionsForMessage).ConfigureAwait(true);
+            return;
+        }
+
+        await LoadDecisionForSelectedMessageAsync().ConfigureAwait(true);
+    }
 }

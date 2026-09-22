@@ -197,15 +197,83 @@ public sealed class ShellModel : ObservableObject
     /// Why the decision pane is empty, when it is.
     /// </summary>
     /// <remarks>
-    /// Three different answers with three different remedies, and the pane says
-    /// which one it is. "Nothing here" would be true of all three and useful for
+    /// Four different answers with four different remedies, and the pane says
+    /// which one it is. "Nothing here" would be true of all four and useful for
     /// none.
     /// </remarks>
-    public string DecisionUnavailableReason => SelectedMessage is null
-        ? "Select a message to see the decision behind it."
-        : "No route connects a listed message to its decision. The listing rows carry no "
-            + "assessment id and neither does the submission detail, so this pane cannot fill "
-            + "itself from the list. Opening a decision by its own id works.";
+    public string DecisionUnavailableReason => SelectedMessage switch
+    {
+        null => "Select a message to see the decision behind it.",
+
+        { InternalMessageId.Length: 0 } =>
+            "This message carries no internal message id, so the ledger cannot be asked about it. "
+            + "That is a Host that stopped sending the join key rather than a message without a "
+            + "decision.",
+
+        _ when _decisionLookup is DecisionLookup.Loading => "Looking up the decisions for this message.",
+
+        _ when _decisionLookup is DecisionLookup.None =>
+            "No decisions are recorded for this message. Assessment may not be configured on this "
+            + "Host, or the message may have been listed before it was assessed.",
+
+        _ => "The decisions for this message could not be read.",
+    };
+
+    /// <summary>What the last decision lookup for the selected message produced.</summary>
+    private DecisionLookup _decisionLookup = DecisionLookup.Unknown;
+
+    /// <summary>
+    /// How many decisions are recorded against the selected message.
+    /// </summary>
+    /// <remarks>
+    /// A message can be assessed more than once, and a re-assessment after a
+    /// policy change is a real thing to have on the record. The pane shows the
+    /// newest and says how many there are, because showing only the newest
+    /// without saying so would hide that anything changed.
+    /// </remarks>
+    public int DecisionCount { get; private set; }
+
+    public string? DecisionHistoryNote => DecisionCount > 1
+        ? $"This message has been assessed {DecisionCount} times. Showing the most recent."
+        : null;
+
+    public bool HasDecisionHistory => DecisionHistoryNote is not null;
+
+    /// <summary>Marks the pane as waiting for a lookup.</summary>
+    public void BeginDecisionLookup()
+    {
+        _decisionLookup = DecisionLookup.Loading;
+        Decision = null;
+        DecisionCount = 0;
+        Raise(nameof(DecisionUnavailableReason));
+    }
+
+    /// <summary>The ledger answered, and had nothing for this message.</summary>
+    public void NoDecisionsForMessage()
+    {
+        _decisionLookup = DecisionLookup.None;
+        Decision = null;
+        DecisionCount = 0;
+        Raise(nameof(DecisionUnavailableReason));
+    }
+
+    /// <summary>The lookup failed.</summary>
+    public void DecisionLookupFailed()
+    {
+        _decisionLookup = DecisionLookup.Unavailable;
+        Decision = null;
+        DecisionCount = 0;
+        Raise(nameof(DecisionUnavailableReason));
+    }
+
+    /// <summary>What a decision lookup produced, for the pane's empty state.</summary>
+    private enum DecisionLookup
+    {
+        Unknown,
+        Loading,
+        None,
+        Unavailable,
+    }
 
     public bool HasMessages => Messages.Count > 0;
 
@@ -577,17 +645,27 @@ public sealed class ShellModel : ObservableObject
     public FeedbackDraft Feedback { get; } = new();
 
     /// <summary>Shows a decision in the detail pane.</summary>
-    public void ShowDecision(DecisionResponse decision)
+    /// <param name="decision">The full decision to render.</param>
+    /// <param name="decisionCount">
+    /// How many decisions the ledger holds for this message. More than one
+    /// means it has been assessed more than once, which the pane says.
+    /// </param>
+    public void ShowDecision(DecisionResponse decision, int decisionCount = 1)
     {
         ArgumentNullException.ThrowIfNull(decision);
 
+        _decisionLookup = DecisionLookup.Unknown;
+        DecisionCount = decisionCount;
         Decision = DecisionView.From(decision);
 
         // Reset here rather than after a successful send, so switching
         // decisions mid-draft cannot leave a half-written label pointing at the
         // wrong one.
         Feedback.Reset();
+
         Raise(nameof(CanSubmitFeedback));
+        Raise(nameof(DecisionHistoryNote));
+        Raise(nameof(HasDecisionHistory));
     }
 
     /// <summary>Whether the feedback draft can be sent against the open decision.</summary>
@@ -638,6 +716,17 @@ public sealed class MessageRow
 {
     public required string QueueId { get; init; }
 
+    /// <summary>
+    /// The key the ledger can be filtered by to find this message's decisions.
+    /// </summary>
+    /// <remarks>
+    /// Empty when the Host did not send one, which the console treats as "the
+    /// join is not available" rather than falling back to the queue id: those
+    /// are different identifiers and guessing between them would look up the
+    /// wrong message's reasoning.
+    /// </remarks>
+    public string InternalMessageId { get; init; } = string.Empty;
+
     public required DeliveryState State { get; init; }
 
     public required int Attempts { get; init; }
@@ -651,6 +740,10 @@ public sealed class MessageRow
     public static MessageRow From(SubmissionStatusResponse message) => new()
     {
         QueueId = message.QueueId,
+
+        // The join key to this message's decisions. Carried on the row because
+        // it is what makes "why was this held" answerable from the list.
+        InternalMessageId = message.InternalMessageId,
         State = message.State,
         Attempts = message.Attempts,
         Recipients = [.. message.Recipients.Select(recipient => recipient.Recipient)],

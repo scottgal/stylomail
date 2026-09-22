@@ -88,6 +88,67 @@ public sealed class StyloMailApiClient
             cancellationToken);
 
     /// <summary>
+    /// Lists one page of the decision ledger, newest first.
+    /// </summary>
+    /// <param name="messageId">
+    /// The internal message id a message row carries, to narrow the ledger to
+    /// one message's decisions. Null lists the whole ledger.
+    /// </param>
+    /// <param name="action">An action to filter by, or null for all.</param>
+    /// <param name="limit">Page size. Clamped by the ledger rather than rejected.</param>
+    /// <param name="cursor">The previous page's cursor, echoed back unchanged.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <remarks>
+    /// <b>This is the first hop of the console's headline flow.</b> A message row
+    /// carries <c>internalMessageId</c>; this returns the decisions recorded
+    /// against it, as summaries; the newest row's <c>assessmentId</c> fetches the
+    /// full explanation with evidence.
+    ///
+    /// <para>
+    /// An empty page is the answer for a message with no decisions, not a 404.
+    /// "This message has no decisions" and "I do not know that id" are different
+    /// facts, and the ledger can only answer the first.
+    /// </para>
+    /// </remarks>
+    public Task<DecisionListingResponse> GetDecisionsAsync(
+        string? messageId = null,
+        MailAction? action = null,
+        int? limit = null,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new StringBuilder("/v1/decisions?");
+
+        if (!string.IsNullOrWhiteSpace(messageId))
+        {
+            query.Append("messageId=").Append(Uri.EscapeDataString(messageId)).Append('&');
+        }
+
+        if (action is { } selected)
+        {
+            // The Host refuses an action it does not record by name, so this is
+            // sent as the enum's own name rather than a lowercased guess.
+            query.Append("action=").Append(Uri.EscapeDataString(selected.ToString())).Append('&');
+        }
+
+        if (limit is { } pageSize)
+        {
+            query.Append("limit=").Append(pageSize).Append('&');
+        }
+
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            query.Append("after=").Append(Uri.EscapeDataString(cursor)).Append('&');
+        }
+
+        // The host treats an empty query string as no filter either way, but a
+        // trailing '?' is noise on the wire and in a captured request.
+        var path = query.ToString().TrimEnd('&', '?');
+
+        return SendAsync<DecisionListingResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+    }
+
+    /// <summary>
     /// Lists the principals this tenant can send as, with their pause state.
     /// </summary>
     /// <remarks>

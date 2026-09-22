@@ -12,6 +12,23 @@ public sealed record SubmissionStatusResponse
 {
     public required string QueueId { get; init; }
 
+    /// <summary>
+    /// The join key from this message to its decisions.
+    /// </summary>
+    /// <remarks>
+    /// <c>GET /v1/decisions?messageId=</c> takes this and returns the decisions
+    /// recorded against the message. It is the console's headline flow: a
+    /// reviewer looking at a quarantined message can reach the explanation for
+    /// it, which was impossible until this field existed on both listings.
+    ///
+    /// <para>
+    /// An id per message rather than an assessment id per row, because a
+    /// message can legitimately be assessed more than once and a single id
+    /// could only hold one of them.
+    /// </para>
+    /// </remarks>
+    public required string InternalMessageId { get; init; }
+
     /// <summary>The transaction-level state. Recipients can and often do differ from it.</summary>
     public required DeliveryState State { get; init; }
 

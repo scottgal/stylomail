@@ -162,6 +162,62 @@ public sealed class LiveHostTests
     }
 
     /// <summary>
+    /// The ledger listing, and the join from a message to its decisions.
+    /// </summary>
+    /// <remarks>
+    /// The <b>empty</b> case is what is reachable here, and it is the one worth
+    /// pinning: a message id the ledger has never seen gets an empty page
+    /// rather than a 404, because "this message has no decisions" and "I do not
+    /// know that id" are different facts and the ledger can only answer the
+    /// first. Populated pages need a decision, which needs a provider key this
+    /// suite must not hold.
+    /// </remarks>
+    [LiveHostFact]
+    public async Task The_ledger_answers_an_unknown_message_with_an_empty_page()
+    {
+        var client = Client();
+
+        var listing = await client.GetDecisionsAsync(messageId: "msg_never_seen");
+
+        Assert.Empty(listing.Decisions);
+        Assert.False(listing.HasMore);
+        Assert.Null(listing.NextCursor);
+    }
+
+    /// <summary>The unfiltered ledger is reachable, and scoped to the caller's tenant.</summary>
+    [LiveHostFact]
+    public async Task The_ledger_listing_is_reachable()
+    {
+        var client = Client();
+
+        var listing = await client.GetDecisionsAsync();
+
+        Assert.False(string.IsNullOrEmpty(listing.TenantId));
+        Assert.Null(listing.Action);
+    }
+
+    /// <summary>
+    /// An action the ledger does not record is refused by name, rather than
+    /// silently listing everything under a filter that says otherwise.
+    /// </summary>
+    [LiveHostFact]
+    public async Task The_ledger_refuses_an_action_it_does_not_record()
+    {
+        var url = Environment.GetEnvironmentVariable(LiveHostFactAttribute.UrlVariable)!;
+        using var http = new HttpClient { BaseAddress = new Uri(url) };
+        http.DefaultRequestHeaders.TryAddWithoutValidation(
+            StyloMailApiClient.ApiKeyHeaderName,
+            Environment.GetEnvironmentVariable(EnvironmentApiKeyProvider.KeyVariable));
+
+        var response = await http.GetAsync("/v1/decisions?action=Escalate");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("unknown_action", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The release route's refusal for a message the Host does not hold.
     /// </summary>
     /// <remarks>

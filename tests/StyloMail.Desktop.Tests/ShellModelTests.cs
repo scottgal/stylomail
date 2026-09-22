@@ -87,6 +87,109 @@ public sealed class ShellModelTests
         Assert.Contains(senders, item => item.Title == "compromised@example.test");
     }
 
+    // ===================== the join from a message to its decision =====================
+
+    private static ShellModel WithMessages()
+    {
+        var model = ShellModel.CreateDefault();
+        model.ApplyMessages(Json.Read<Api.Contracts.MessageListingResponse>(Wire.MessageListing));
+        return model;
+    }
+
+    /// <summary>
+    /// Every message row carries the key the ledger is filtered by, which is
+    /// what makes "why was this held" answerable from the list.
+    /// </summary>
+    [Fact]
+    public void A_message_row_carries_the_join_key_to_its_decisions()
+    {
+        var model = WithMessages();
+
+        Assert.Equal("msg_9c1b7e", model.Messages[0].InternalMessageId);
+        Assert.Equal("msg_7d2c", model.Messages[1].InternalMessageId);
+    }
+
+    /// <summary>
+    /// The lookup states are four different facts with four different remedies.
+    /// </summary>
+    /// <remarks>
+    /// "Nothing here" would be true of all of them and useful for none. The one
+    /// that matters most is the third: a Host that stopped sending the join key
+    /// is a contract change, and rendering that as "this message has no
+    /// decisions" would be a confident wrong answer about the ledger.
+    /// </remarks>
+    [Fact]
+    public void Each_empty_decision_state_says_which_one_it_is()
+    {
+        var model = WithMessages();
+
+        Assert.Contains("Select a message", model.DecisionUnavailableReason, StringComparison.Ordinal);
+
+        model.SelectedMessage = model.Messages[0];
+        model.BeginDecisionLookup();
+        Assert.Contains("Looking up", model.DecisionUnavailableReason, StringComparison.Ordinal);
+
+        model.NoDecisionsForMessage();
+        Assert.Contains("No decisions are recorded", model.DecisionUnavailableReason, StringComparison.Ordinal);
+
+        model.DecisionLookupFailed();
+        Assert.Contains("could not be read", model.DecisionUnavailableReason, StringComparison.Ordinal);
+    }
+
+    /// <summary>A row with no join key is not a row without a decision.</summary>
+    [Fact]
+    public void A_message_without_a_join_key_says_the_host_stopped_sending_it()
+    {
+        var model = WithMessages();
+        model.SelectedMessage = new MessageRow
+        {
+            QueueId = "q_1",
+            State = Api.Contracts.DeliveryState.Held,
+            Attempts = 1,
+            Recipients = [],
+            InternalMessageId = string.Empty,
+        };
+
+        model.DecisionLookupFailed();
+
+        Assert.Contains("internal message id", model.DecisionUnavailableReason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A message assessed more than once says so, because a re-assessment after
+    /// a policy change is a real thing to have on the record and showing only
+    /// the newest would hide that anything changed.
+    /// </summary>
+    [Fact]
+    public void A_message_assessed_more_than_once_says_so()
+    {
+        var model = ShellModel.CreateDefault();
+
+        var decision = Json.Read<Api.Contracts.DecisionResponse>(Wire.Decision);
+
+        model.ShowDecision(decision);
+        Assert.False(model.HasDecisionHistory);
+        Assert.Equal(1, model.DecisionCount);
+
+        model.ShowDecision(decision, decisionCount: 2);
+        Assert.True(model.HasDecisionHistory);
+        Assert.Contains("assessed 2 times", model.DecisionHistoryNote!, StringComparison.Ordinal);
+    }
+
+    /// <summary>The history note moves with the decision, not with the last one shown.</summary>
+    [Fact]
+    public void Showing_a_single_decision_clears_a_previous_history_note()
+    {
+        var model = ShellModel.CreateDefault();
+        var decision = Json.Read<Api.Contracts.DecisionResponse>(Wire.Decision);
+
+        model.ShowDecision(decision, decisionCount: 3);
+        Assert.True(model.HasDecisionHistory);
+
+        model.ShowDecision(decision);
+        Assert.False(model.HasDecisionHistory);
+    }
+
     /// <summary>
     /// A draft that becomes submittable has to say so on the model.
     /// </summary>

@@ -209,8 +209,10 @@
                                    Text="{Binding EmptyListDetail}" />
                     </StackPanel>
 
-                    <ListBox ItemsSource="{Binding Messages}"
+                    <ListBox x:Name="MessageList"
+                             ItemsSource="{Binding Messages}"
                              SelectedItem="{Binding SelectedMessage}"
+                             SelectionChanged="OnMessageSelectionChanged"
                              Background="Transparent"
                              BorderThickness="0"
                              IsVisible="{Binding HasMessages}">
@@ -329,6 +331,17 @@
                                    Classes="paneDetail"
                                    Margin="0,2,0,4"
                                    Text="{Binding RiskIndexLabel}" />
+
+                        <!--
+                            A message can be assessed more than once. Showing
+                            only the newest without saying so would hide that
+                            anything changed.
+                        -->
+                        <Border Classes="cardWarning"
+                                Margin="0,0,0,8"
+                                IsVisible="{Binding HasDecisionHistory}">
+                            <TextBlock Classes="cardBody" Text="{Binding DecisionHistoryNote}" />
+                        </Border>
 
                         <!-- Shadow: what policy would have done while forwarding. -->
                         <Border Classes="cardWarning" IsVisible="{Binding ShadowLabel, Converter={x:Static ObjectConverters.IsNotNull}}">

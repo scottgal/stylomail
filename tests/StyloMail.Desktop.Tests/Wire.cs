@@ -206,6 +206,7 @@ internal static class Wire
     public const string SubmissionStatus = """
         {
           "queueId": "q_5a2f",
+          "internalMessageId": "msg_9c1b7e",
           "state": "Held",
           "attempts": 2,
           "nextAttemptAt": "2026-09-22T10:05:00+00:00",
@@ -273,6 +274,73 @@ internal static class Wire
         }
         """;
 
+    /// <summary>
+    /// <c>GET /v1/decisions</c>, transcribed from <c>DecisionListingResponse</c>.
+    /// Rows are summaries: reasons and coverage, no evidence.
+    /// </summary>
+    public const string DecisionListing = """
+        {
+          "tenantId": "smoke",
+          "action": null,
+          "decisions": [
+            {
+              "assessmentId": "asm_0f4d2a",
+              "internalMessageId": "msg_9c1b7e",
+              "action": "Quarantine",
+              "proposedActionInShadow": null,
+              "riskIndex": 0.82,
+              "reasons": [
+                {
+                  "code": "credential_request_high",
+                  "message": "Message requests credentials and the sender has no trusted history.",
+                  "evidenceSignalIds": ["sig_cred", "sig_hist"]
+                },
+                {
+                  "code": "link_display_mismatch",
+                  "message": "Displayed link text names one host and the target names another.",
+                  "evidenceSignalIds": ["sig_link"]
+                }
+              ],
+              "versions": {
+                "policyVersion": "policy-7",
+                "classifierModelVersion": "jev-1.13.0",
+                "questionSchemaVersion": "questions-3",
+                "preprocessingVersion": "preprocess-2",
+                "regimeId": null
+              },
+              "coverage": {
+                "bodyParsed": true,
+                "htmlPresent": true,
+                "hasAttachments": false,
+                "htmlTextDisagreement": true,
+                "parserLimitExceeded": false,
+                "contentEncrypted": false,
+                "truncated": false,
+                "conversationContextMissing": false
+              },
+              "assessedAt": "2026-09-22T10:00:00+00:00"
+            }
+          ],
+          "nextCursor": null,
+          "hasMore": false
+        }
+        """;
+
+    /// <summary>
+    /// The ledger filtered to a message that has never been assessed. An empty
+    /// page, not a 404: "no decisions" and "no such message" are different
+    /// facts and the ledger can only answer the first.
+    /// </summary>
+    public const string EmptyDecisionListing = """
+        {
+          "tenantId": "smoke",
+          "action": null,
+          "decisions": [],
+          "nextCursor": null,
+          "hasMore": false
+        }
+        """;
+
     /// <summary><c>GET /v1/senders</c>, transcribed from <c>SenderListingResponse</c>.</summary>
     public const string SenderListing = """
         {
@@ -333,6 +401,7 @@ internal static class Wire
           "messages": [
             {
               "queueId": "q_5a2f",
+              "internalMessageId": "msg_9c1b7e",
               "state": "Held",
               "attempts": 2,
               "nextAttemptAt": "2026-09-22T10:05:00+00:00",
@@ -361,6 +430,7 @@ internal static class Wire
             },
             {
               "queueId": "q_6b31",
+              "internalMessageId": "msg_7d2c",
               "state": "Quarantined",
               "attempts": 1,
               "nextAttemptAt": null,
