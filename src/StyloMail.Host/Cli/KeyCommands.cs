@@ -153,10 +153,8 @@ public static class KeyCommands
                     principal = entry.PrincipalId,
                     tenant = entry.TenantId,
                     privileges = entry.Privileges,
-                    source = entry.Source.ToString().ToLowerInvariant(),
-                    // The same words the table uses, deliberately. Two vocabularies for one status
-                    // is how a console learns a spelling the CLI never says.
-                    status = Describe(entry.Status),
+                    source = entry.SourceName,
+                    status = entry.StatusName,
                     configuredAt = entry.ConfiguredAt,
                 }),
                 HostJson.Options));
@@ -169,8 +167,8 @@ public static class KeyCommands
                 entry.PrincipalId,
                 entry.TenantId,
                 entry.Privileges.Count == 0 ? "-" : string.Join(", ", entry.Privileges),
-                entry.Source == PrincipalSource.Store ? "store" : "environment",
-                Describe(entry.Status)))
+                entry.SourceName,
+                entry.StatusName))
             .ToList();
 
         await Row.WriteTableAsync(output, rows);
@@ -372,15 +370,6 @@ public static class KeyCommands
 
         return HostPrivileges.Parse(names);
     }
-
-    private static string Describe(PrincipalStatus status) => status switch
-    {
-        PrincipalStatus.Active => "active",
-        PrincipalStatus.Revoked => "revoked",
-        PrincipalStatus.ReadOnly => "read-only",
-        PrincipalStatus.ShadowedByStore => "shadowed by store",
-        _ => status.ToString().ToLowerInvariant(),
-    };
 
     /// <summary>One rendered table row, padded into columns wide enough for their contents.</summary>
     private sealed record Row(string Principal, string Tenant, string Privileges, string Source, string Status)

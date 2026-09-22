@@ -356,7 +356,8 @@ caller's own tenant — neither takes a tenant parameter, so a cross-tenant read
 than refused:
 
 ```
-GET /v1/senders                               the principals this tenant can send as, with pause state
+GET /v1/senders                               the principals this tenant can send as, with pause
+                                              state and which source holds each one
 GET /v1/messages?state=held&limit=50&after=…  mail awaiting a decision, per-recipient progress
 GET /v1/decisions?action=Quarantine&after=…   the explainable ledger, newest first
 ```
@@ -366,9 +367,17 @@ delivery are not enumerable**, and asking for `state=queued` is a named `400` ra
 fallback — this lists what is awaiting a *decision*, which is the queue's own notion of a listing,
 and filtering a page after it has been cut would produce short pages and a wrong `hasMore`.
 
-`GET /v1/senders` never returns a credential. It is built from the configuration that holds every
-principal's API key, so its response names each field it carries rather than serialising that
-configuration — the failure mode of the alternative is publishing every key on the host.
+`GET /v1/senders` never returns a credential, and it now draws on **both** sources of identity. Each
+row carries `source`: `store` for a key minted on this host, `environment` for one configured in it.
+A sender that is both is listed **once**, as a `store` sender — wholesale precedence means the
+configuration entry resolves nothing, and a sender disappearing from the operator's view because
+someone minted a key for it would be worse than one shown with the wrong provenance. A principal that
+cannot authenticate is not listed at all, which is the same rule that already excluded a
+configuration entry with no key.
+
+The response names each field it carries rather than serialising a record that holds a credential —
+the failure mode of the alternative is publishing every key on the host. It is built from the
+principal inventory, which has no key and no digest to leak in the first place.
 
 `GET /v1/decisions` returns **summaries, not whole decisions**: each row carries the action, the
 ordered reasons, the versions the decision was made under and its coverage flags, and the full

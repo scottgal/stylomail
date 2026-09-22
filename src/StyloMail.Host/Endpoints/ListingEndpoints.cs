@@ -54,14 +54,17 @@ internal static class ListingEndpoints
     {
         var tenantId = user.TenantId()!;
 
-        var configured = principals.ForTenant(tenantId);
+        // Both sources, with provenance, and only the rows that can actually authenticate. The
+        // precedence rule decides which of a duplicated name survives, so this route does not have
+        // to know about it.
+        var senders = principals.SendersForTenant(tenantId);
         var controlStates = await controls.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
 
         // One query, not one per sender: the label and the company are on the row so the sidebar
         // groups without a settings call for each.
         var senderProfiles = await profiles.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
 
-        return Results.Ok(SenderListingResponse.From(tenantId, configured, controlStates, senderProfiles));
+        return Results.Ok(SenderListingResponse.From(tenantId, senders, controlStates, senderProfiles));
     }
 
     internal static async Task<IResult> ListMessagesAsync(

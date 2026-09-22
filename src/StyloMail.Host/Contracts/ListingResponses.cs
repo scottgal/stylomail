@@ -6,11 +6,18 @@ namespace StyloMail.Host.Contracts;
 /// The answer to <c>GET /v1/senders</c>: the principals this tenant can send as, with their controls.
 /// </summary>
 /// <remarks>
-/// <b>Deliberately not the configured record.</b> A <c>HostPrincipalOptions</c> carries the API key
-/// that authenticates the principal, and a response built from it by serialisation would publish
-/// every credential on the host. This projection names each field it carries so that adding one to
-/// the configuration cannot leak it by default — the failure mode of "serialise the options object"
-/// is exactly the one that would be hardest to notice and worst to have.
+/// <para>
+/// <b>Deliberately not a record that carries a credential.</b> A <c>HostPrincipalOptions</c> holds
+/// the API key that authenticates the principal, and a response built from one by serialisation
+/// would publish every credential on the host. This projection names each field it carries so that
+/// adding one to the configuration cannot leak it by default, which is the failure mode that would
+/// be hardest to notice and worst to have.
+/// </para>
+/// <para>
+/// It is fed from <see cref="Auth.PrincipalInventoryEntry"/> rather than from the configuration,
+/// because a sender may now be minted on the host rather than configured in it, and that type has
+/// no key and no digest to leak in the first place.
+/// </para>
 /// </remarks>
 public sealed record SenderListingResponse
 {
@@ -21,7 +28,7 @@ public sealed record SenderListingResponse
 
     public static SenderListingResponse From(
         string tenantId,
-        IReadOnlyList<Auth.HostPrincipalOptions> principals,
+        IReadOnlyList<Auth.PrincipalInventoryEntry> principals,
         IReadOnlyList<Controls.SenderControlState> controls,
         IReadOnlyList<Controls.SenderProfile> profiles)
     {
@@ -36,6 +43,12 @@ public sealed record SenderListingResponse
                 .. principals.Select(principal => new SenderResponse
                 {
                     PrincipalId = principal.PrincipalId,
+
+                    // Which of the host's two credential sources holds this sender. On the row
+                    // rather than left for a second call, because a console showing a minted sender
+                    // and a configured one identically would hide the fact that only one of them can
+                    // be revoked from the host.
+                    Source = principal.SourceName,
 
                     // A principal with no control record has never been paused, which is not the same
                     // as having no state: it is the ordinary state, and it is reported as such rather
@@ -64,6 +77,17 @@ public sealed record SenderListingResponse
 public sealed record SenderResponse
 {
     public required string PrincipalId { get; init; }
+
+    /// <summary>
+    /// Which source resolved this sender: <c>store</c> for a key minted on this host, or
+    /// <c>environment</c> for one configured in it.
+    /// </summary>
+    /// <remarks>
+    /// A closed set, and the same two words <c>key list</c> reports. It matters to an operator for
+    /// one reason: a configured principal is read-only and cannot be revoked from the host, so a
+    /// console that did not carry this could not tell what its own controls would do.
+    /// </remarks>
+    public required string Source { get; init; }
 
     public required SenderControlResponse Control { get; init; }
 

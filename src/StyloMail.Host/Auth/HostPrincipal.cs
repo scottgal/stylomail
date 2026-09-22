@@ -137,6 +137,36 @@ public sealed record PrincipalInventoryEntry
 
     /// <summary>The configuration entry that owns this principal, for a source the host cannot edit.</summary>
     public string? ConfiguredAt { get; init; }
+
+    /// <summary>
+    /// Which source holds this principal, spelled the way every surface spells it: <c>store</c> or
+    /// <c>environment</c>.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than at each call site on purpose. The CLI table, <c>key list --json</c> and the
+    /// sender listing all report this, and three spellings of one value is how a console learns a
+    /// word the CLI never says. The JSON form is a closed set and is what <c>desktop-</c> mirrors;
+    /// changing it is a breaking change to that contract, not a display tweak.
+    /// </remarks>
+    public string SourceName => Source == PrincipalSource.Store ? "store" : "environment";
+
+    /// <summary>What became of this principal, spelled the way every surface spells it.</summary>
+    public string StatusName => Status switch
+    {
+        PrincipalStatus.Active => "active",
+        PrincipalStatus.Revoked => "revoked",
+        PrincipalStatus.ReadOnly => "read-only",
+        PrincipalStatus.ShadowedByStore => "shadowed by store",
+        _ => Status.ToString().ToLowerInvariant(),
+    };
+
+    /// <summary>Whether this row describes a principal that can actually authenticate.</summary>
+    /// <remarks>
+    /// The question every listing has to answer before it lists anything. A row that cannot
+    /// authenticate is not a sender: advertising one shows an account that does not exist, and the
+    /// sender listing already refuses that for a configuration entry with no key.
+    /// </remarks>
+    public bool CanAuthenticate => Status is PrincipalStatus.Active or PrincipalStatus.ReadOnly;
 }
 
 /// <summary>

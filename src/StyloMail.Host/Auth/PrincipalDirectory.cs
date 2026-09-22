@@ -75,42 +75,39 @@ public sealed class PrincipalDirectory
     public bool BrowserChannelEnabled => _options.EnableBrowserCookieChannel;
 
     /// <summary>
-    /// The principals configured for one tenant, ordered by identifier.
+    /// The principals one tenant can actually send as, from both sources, ordered by identifier.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Returns the configuration's view of a principal, never its credential.</b> Callers project
-    /// what they need from <see cref="HostPrincipalOptions"/>; nothing here hands out a key, and a
-    /// listing built from this must not either. The ordering is fixed so that a listing is stable
-    /// across calls, an operator reading a sidebar should not see rows move because a dictionary
-    /// enumeration changed.
+    /// <b>This is the sender listing's question, answered in one place.</b> It is the projection
+    /// behind <c>GET /v1/senders</c>, so the rule about who counts as a sender lives beside the
+    /// precedence rule that decides it rather than being re-derived by a route.
     /// </para>
     /// <para>
-    /// A principal configured without a key is skipped. It cannot authenticate, so it cannot send,
-    /// and listing it as a sender would advertise an account that does not exist. An empty tenant
-    /// returns an empty list rather than null: "this tenant has no senders" and "that question has
-    /// no answer" must not look the same to a caller.
+    /// <b>A row is included only if it can authenticate.</b> A configured principal with no key is
+    /// not a sender, and neither is a minted key that has been revoked; listing either would
+    /// advertise an account that does not exist. This is what makes wholesale precedence visible
+    /// rather than merely correct: an environment entry the store has claimed drops out because it
+    /// can no longer authenticate, and the store's row for that same name is what replaces it,
+    /// exactly once. A name that is in both does not vanish and is not listed twice.
     /// </para>
     /// <para>
-    /// <b>A principal the store has claimed is skipped for the same reason, and it is the same
-    /// rule.</b> "Cannot authenticate, so it cannot send" is exactly what wholesale precedence makes
-    /// of an environment entry with a minted twin, and a listing that went on presenting the
-    /// configuration's version of it would describe privileges that no longer apply.
+    /// Ordering is fixed so a listing is stable across calls: an operator reading a sidebar should
+    /// not see rows move because a dictionary enumeration changed. An empty tenant returns an empty
+    /// list rather than null, because "this tenant has no senders" and "that question has no answer"
+    /// must not look the same to a caller.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<HostPrincipalOptions> ForTenant(string tenantId)
+    public IReadOnlyList<PrincipalInventoryEntry> SendersForTenant(string tenantId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        var claimed = _store.ClaimedPrincipalIds();
-
         return
         [
-            .. _options.Principals
-                .Where(p => !string.IsNullOrEmpty(p.Key)
-                    && string.Equals(p.TenantId, tenantId, StringComparison.Ordinal)
-                    && !claimed.Contains(p.PrincipalId))
-                .OrderBy(p => p.PrincipalId, StringComparer.Ordinal),
+            .. Inventory()
+                .Where(entry => entry.CanAuthenticate
+                    && string.Equals(entry.TenantId, tenantId, StringComparison.Ordinal))
+                .OrderBy(entry => entry.PrincipalId, StringComparer.Ordinal),
         ];
     }
 

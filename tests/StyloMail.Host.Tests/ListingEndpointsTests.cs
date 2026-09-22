@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using StyloMail.Core;
+using StyloMail.Host.Auth;
 using StyloMail.Host.Contracts;
 using StyloMail.Queue;
 
@@ -88,6 +89,120 @@ public sealed class ListingEndpointsTests
         Assert.Equal(
             listing.Senders.Select(s => s.PrincipalId).OrderBy(id => id, StringComparer.Ordinal),
             listing.Senders.Select(s => s.PrincipalId));
+    }
+
+    [Fact]
+    public async Task A_sender_minted_on_the_host_is_listed_with_the_store_as_its_source()
+    {
+        // A minted principal is a sender like any other, and the console has to be able to see it or
+        // the first run of a fresh deployment has no senders at all.
+        using var host = new TestHost();
+        host.MintKey("svc-minted-only", TestPrincipals.AcmeTenant, "Assess", "Send");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sender = (await ListingAsync(reviewer)).Senders
+            .Single(s => s.PrincipalId == "svc-minted-only");
+
+        Assert.Equal("store", sender.Source);
+    }
+
+    [Fact]
+    public async Task A_configured_sender_is_listed_with_the_environment_as_its_source()
+    {
+        using var host = new TestHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var sender = (await ListingAsync(reviewer)).Senders
+            .Single(s => s.PrincipalId == TestPrincipals.AcmeSenderPrincipal);
+
+        // Read-only, and the console needs to know that before it offers a control that cannot work.
+        Assert.Equal("environment", sender.Source);
+    }
+
+    [Fact]
+    public async Task A_sender_that_is_both_configured_and_minted_appears_once_as_a_store_sender()
+    {
+        // The case that motivated this projection, pinned rather than left to fall out of the fix.
+        //
+        // Wholesale precedence means the configuration entry for this name authenticates nothing,
+        // and the sender listing lists only principals that can authenticate. Excluding the entry
+        // without including the store's row for the same name therefore removed the sender from the
+        // operator's view entirely: a name that existed, could send, and had simply gone invisible
+        // because someone minted a key for it. Silently disappearing is worse than appearing with
+        // the wrong provenance, so all three things are asserted here: present, exactly once, and
+        // sourced from the store.
+        using var host = new TestHost();
+        host.MintKey(TestPrincipals.AcmeSenderPrincipal, TestPrincipals.AcmeTenant, "Assess", "Send");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var listing = await ListingAsync(reviewer);
+
+        var matching = listing.Senders
+            .Where(s => s.PrincipalId == TestPrincipals.AcmeSenderPrincipal)
+            .ToList();
+
+        var sender = Assert.Single(matching);
+        Assert.Equal("store", sender.Source);
+
+        // And the configuration's key really is dead, so "listed" is not standing in for "still
+        // works by the old route". Without this the test would pass on a listing that reported the
+        // store as the source while the environment entry was quietly still the one resolving.
+        using var configuredKey = host.ClientAs(TestPrincipals.AcmeSenderKey);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await configuredKey.GetAsync("/v1/senders")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_revoked_minted_sender_is_not_listed()
+    {
+        // The same rule the listing already applies to a configuration entry with no key: it cannot
+        // authenticate, so listing it would advertise an account that does not exist. Asserted both
+        // ways, because "absent" passes against a listing that never had it.
+        using var host = new TestHost();
+        host.MintKey("svc-minted-only", TestPrincipals.AcmeTenant, "Assess", "Send");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        Assert.Contains(
+            (await ListingAsync(reviewer)).Senders,
+            s => s.PrincipalId == "svc-minted-only");
+
+        using (var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey))
+        {
+            var revoke = await operatorClient.PostAsJsonAsync(
+                "/v1/controls/senders/svc-minted-only/pause", new { reason = "unused in this test" });
+
+            Assert.Equal(HttpStatusCode.OK, revoke.StatusCode);
+        }
+
+        // Pausing is not revoking, so it must not remove the row: a paused sender is still a sender,
+        // and a listing that dropped one would make the pause look like a deletion.
+        Assert.Contains(
+            (await ListingAsync(reviewer)).Senders,
+            s => s.PrincipalId == "svc-minted-only");
+
+        host.Services.GetRequiredService<MintedPrincipalStore>()
+            .Revoke("svc-minted-only", "test", DateTimeOffset.UtcNow);
+
+        Assert.DoesNotContain(
+            (await ListingAsync(reviewer)).Senders,
+            s => s.PrincipalId == "svc-minted-only");
+    }
+
+    [Fact]
+    public async Task The_sender_listing_names_no_minted_credential_either()
+    {
+        // The configuration is not the only thing that holds a credential any more, and this is the
+        // same trap one source over: the projection must not carry the value, and the store's own
+        // record has no field for it to carry.
+        using var host = new TestHost();
+        var minted = host.MintKey("svc-minted-only", TestPrincipals.AcmeTenant, "Assess", "Review");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var body = await (await reviewer.GetAsync("/v1/senders")).Content.ReadAsStringAsync();
+
+        Assert.Contains("svc-minted-only", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(minted, body, StringComparison.Ordinal);
     }
 
     [Fact]
