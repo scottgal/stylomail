@@ -139,12 +139,16 @@ control that looks like it works is a false statement about the system.
 
 ## In flight
 
-- **`chat-`, plan 2b Task 3** (`docs/chat-pipeline-design.md`): the member path, velocity and drift,
-  and the external author's explicit `Unavailable` are in. The observed-state write, the fan-out half
-  and the external scope follow the rulings above. **The cross-path drift pin I required is currently
-  red** while it is mid-work, which is red-first as asked.
-- Plans 2b Tasks 4 and 5 remain: the Slack events endpoint in the Host, and the tests that make the
-  decisions real. Then plan 3, triage.
+- **`chat-`, plan 3, triage.** Plans 1, 2a and 2b are **complete and committed** (`2b2a01d` is the
+  last of 2b). Plan 3's decision record is written at `docs/chat-channels-plan-03-triage.md`, 204
+  lines, committed unbuilt at `b909b31`. I answered it at **summary level**, not review level, and
+  authorised **only the measurement** of the full assessment cost, because triage's benefit is
+  currently argued rather than demonstrated. The checks wait for a line-by-line read.
+- **Reading plan 3 properly is the next thing I owe the lane.** Four answers already given from its
+  summary: escalation means the full local assessment; triage runs in the drain before the assessor;
+  dismissals are counts rather than rows, and that costs no explainability because triage is
+  deterministic and can be re-run on demand; and its behaviour check becomes a condition on the
+  interventions plan rather than a note.
 - The **protocol harness** is complete for tier one (`docs/protocol-harness-plan-01.md`). Its next
   tiers, SMTP and the upstream MTA handoff, then Cloudflare and OAuth, are **not yet written**.
 
@@ -170,6 +174,16 @@ control that looks like it works is a false statement about the system.
 
 ## Next step
 
-`chat-` finishes Task 3 and the lane is committed when green. After that: Task 4, the Slack events
-endpoint, where the recorded platform payloads settle `user_team`, `bot_id` versus `bot_user_id`, and
-the conversation type, and where the own-post drop finally has a production home.
+**Two things, in this order.**
+
+1. **Read `docs/chat-channels-plan-03-triage.md` line by line and review it properly.** Authorised so
+   far is only the measurement of the full assessment cost. Everything else waits, because the checks
+   are where this extension acquires its judgement about what *not* to look at.
+2. **The emergency kill switch, which is mine.** Filed high: `EmergencyKillSwitchEngaged` exists on
+   `PolicyContextInput` and is read by the engine, but the only context source is the static one that
+   supplies nothing, so **no path can engage it, email included**, and the spec lists it as a policy
+   control. Design decided in the issue. Not started deliberately: it reaches the Host, the email path
+   and the policy context source, and it must not be left half-edited.
+
+Then: harness tier two (SMTP and the upstream MTA handoff), the console surface for chat, the
+interventions plan, and Discord.
