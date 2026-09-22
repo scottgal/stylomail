@@ -125,6 +125,12 @@ rather than a route that answers `401` to every message the Worker offers. That 
 because the two look identical from the Worker's side, and the second sends the operator to inspect
 the Worker while the fault is at this end.
 
+**The live-traffic hub is mapped only when `Traffic:Enabled` is true**, and for a third reason on top
+of the two above: a console has to be able to tell *"this Host has no live feed"* from *"I am not live
+on it"*. Those are different sentences on an operator's screen, so they are different responses.
+With the feature off, `POST /v1/traffic/negotiate` answers **`404`**; with it on but the caller
+lacking the `Review` privilege, `403`; with no key at all, `401`.
+
 ---
 
 ## 5. What the host says about itself at startup
@@ -201,6 +207,32 @@ Two consequences worth knowing:
 | `CloudflareIngress:MaxMessageBytes` | 64 MB | Also raises the server's request body limit for this route. |
 | `Upstream:Host` / `:Port` | *(none)* / `587` | **Unset means this deployment does not deliver.** |
 | `Upstream:Tls` | `Required` | `Required` / `Opportunistic` / `None`. Credentials with `None` are refused. |
+
+### Live traffic
+
+**Off by default, and off is a complete deployment.** The hub exists so the operator console reflects
+traffic as it happens rather than when someone refreshes, and a deployment that has not enabled it
+loses immediacy and nothing else: the console polls, which is what it does when the hub is
+unreachable anyway.
+
+| Key (under `StyloMail:Traffic:`) | Default | Notes |
+| --- | --- | --- |
+| `Enabled` | `false` | Maps the hub at `/v1/traffic`, `Review` privilege. Off, that route is **absent** and answers `404`. |
+
+Three things to know before turning it on:
+
+- **An event is a hint, never state.** A notice says that a row moved and gives its identifier; the
+  console re-reads the row over HTTP. Nothing here pushes a verdict, an action, or which way a
+  control moved, so a dropped, duplicated or reordered notice cannot leave a screen wrong.
+- **No pipeline code depends on the hub.** Emission is fire-and-forget through a port whose default
+  implementation does nothing, so a hub outage is invisible to mail. Enabling this cannot change what
+  this deployment does with a message.
+- **The API key is presented in a header**, on the negotiate request and on the WebSocket handshake,
+  never in a query string. This host reads no token from the URL at all.
+
+A client asks for `negotiateVersion=1` and subscribes to one method, `"traffic"`, receiving
+`{ kind, subjectId, occurredAt }`. Which rows a console hears about is decided by the tenant its key
+resolved to, named in an `X-StyloMail-Key` header: there is no request that widens it.
 
 ### The semantic provider
 

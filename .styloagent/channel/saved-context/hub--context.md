@@ -10,11 +10,22 @@ subscribes to, the four emission boundaries, the option that gates it, and the t
 
 ## State, 2026-09-22
 
-Repo `stylomail`, **worktree `.worktrees/hub`, branch `agent/hub`**, started from `8a79815`.
-**Nothing committed** (my mission forbids `git add`/`git commit`, that is `overview-`'s).
-**243 Host tests green, 4 consecutive runs. `dotnet build StyloMail.slnx`: 0 errors, 0 warnings.**
+Repo `stylomail`, **worktree `.worktrees/hub`, branch `agent/hub`**.
+
+**Committed at `8250514`** ("Announce traffic changes to the console, behind a flag that is off"),
+then **`main` merged in at `3413325`**. `overview-` corrected my original mission: committing my own
+lane was mine to do, because `wrap_up()` requires a committed branch. Plain path-list `git add` and
+`git commit`, no `--amend`, no `reset`.
+
+**300 Host tests green on the merged tree. `dotnet build StyloMail.slnx`: 0 errors, 0 warnings.**
 The lane's own 30 tests are green (Seam 13, Hub 7, Emission 5, HardRule 5), and each mechanism was
-mutation-checked (below).
+mutation-checked (below). On the pre-merge fork the suite was 243 and all of those were green too.
+
+**`overview-` rejected my first completion report as premature, and was right.** I reported 240/27
+measured before I kept editing, then found the unaddressable-change defect and changed the tree
+twice after sending it. They re-ran it mid-edit and saw two red. **A completion report has to
+describe a frozen tree, and its test count has to be the count measured on that tree.** Finish,
+freeze, verify, then report.
 
 **A backup of the uncommitted lane is at `/tmp/hub-lane-backup/`** (all changed and new files, plus
 `tracked-changes.diff`). It exists because this tree is shared and `queue-`'s harness rewrites
@@ -38,6 +49,14 @@ request **and** on the WebSocket handshake; the server reads nothing from the UR
 one client method, `"traffic"`, and receives `{ kind, subjectId, occurredAt }` where `kind` is a
 **name** (`DecisionRecorded`, `MessageStateChanged`, `SenderControlChanged`, `ReadinessChanged`).
 It then re-reads the row over HTTP. **No state is ever pushed**, not even a transition's direction.
+
+## `docs/running.md`
+
+`overview-` ruled that the flag and the route are mine to document, after the merge so `keys-`'s
+edits to that file came in first. Two additions: the hub in **§4 Conditional routes** (the 404 rule
+and why the three answers are distinguishable), and a **§6 `### Live traffic`** subsection with the
+`Enabled` key, the four facts an operator needs, and the client contract. **An undocumented flag is
+a feature nobody can turn on.**
 
 ## Files
 
