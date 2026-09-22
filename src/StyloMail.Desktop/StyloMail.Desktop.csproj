@@ -68,6 +68,28 @@
       mismatch here fails at startup with a TypeLoadException inside the
       headless clipboard stub, which reads as anything but a version problem.
     -->
+    <!--
+      The live UI harness: Playwright-style locators, real pointer input, YAML
+      playback, a REPL and an MCP server, so the console can be driven and
+      iterated rather than only photographed. Debug only, like everything else
+      here. It adds the ux-test, ux-repl and ux-mcp command-line modes.
+
+      Referenced as a package rather than as mylo references it. mylo takes a
+      ProjectReference into a sibling checkout under external/, which works
+      because that checkout is inside its own repository; here the same path
+      would point outside this repository, so the shared solution build would
+      break for anyone who did not have lucidview checked out beside it. A
+      package keeps this lane's build self-contained.
+    -->
+    <PackageReference Include="Mostlylucid.Avalonia.UITesting" Version="1.7.1" />
+
+    <!--
+      Pinned to the app's Avalonia, and listed after the reference above because
+      that package brings Avalonia.Headless 11.3.4 transitively. A headless
+      clipboard stub one minor version behind the core fails at startup with a
+      TypeLoadException, which reads as anything but a version problem. mylo
+      carries the same pin for the same reason.
+    -->
     <PackageReference Include="Avalonia.Headless" Version="11.3.12" />
   </ItemGroup>
 

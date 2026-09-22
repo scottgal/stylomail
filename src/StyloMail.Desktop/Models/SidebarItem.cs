@@ -113,6 +113,28 @@ public sealed class SidebarItem : ObservableObject
     /// <summary>The resume control, offered only where a pause is in force.</summary>
     public bool CanResume => IsSender && IsPaused;
 
+    /// <summary>
+    /// A stable identity for this row's pause control, for the UI harness.
+    /// </summary>
+    /// <remarks>
+    /// The row's controls are generated from a data template, so they cannot
+    /// have a unique <c>x:Name</c>: a name inside a template is per instance
+    /// and unreachable from outside it. An automation id can be bound, so it
+    /// can carry the principal and be unique.
+    ///
+    /// <para>
+    /// <b>Found the hard way.</b> The harness's first attempt targeted the
+    /// pause button by its text and reached a hidden one on a different row,
+    /// because a locator matches controls that are not visible. Naming the
+    /// target removes the ambiguity rather than depending on the order the
+    /// visual tree happens to be in.
+    /// </para>
+    /// </remarks>
+    public string PauseAutomationId => $"pause-sender-{Title}";
+
+    /// <summary>A stable identity for this row's resume control, for the UI harness.</summary>
+    public string ResumeAutomationId => $"resume-sender-{Title}";
+
     /// <summary>Whether this entry is a sending principal rather than a destination.</summary>
     public bool IsSender { get; init; }
 

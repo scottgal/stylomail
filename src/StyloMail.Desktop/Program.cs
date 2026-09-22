@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Data.Core.Plugins;
 #if DEBUG
 using Avalonia.Headless;
+using Mostlylucid.Avalonia.UITesting;
 #endif
 
 namespace StyloMail.Desktop;
@@ -9,18 +10,21 @@ namespace StyloMail.Desktop;
 internal static class Program
 {
     /// <summary>
-    /// Renders the window to a PNG and exits.
+    /// Renders the window to a PNG and exits. Debug only.
     /// </summary>
-    /// <remarks>
-    /// The flag is handled before Avalonia is given a lifetime, so it works on
-    /// a machine with no display and cannot be affected by anything the UI
-    /// does. Debug only: a Release build has no such flag.
-    /// </remarks>
     private const string ScreenshotFlag = "--screenshot";
+
+    /// <summary>
+    /// Runs the harness with no window and no display, so a scripted run does
+    /// not take keyboard focus on every launch.
+    /// </summary>
+    private const string UxHeadlessFlag = "--ux-headless";
 
     [STAThread]
     public static int Main(string[] args)
     {
+        // Handled before Avalonia is given a lifetime, so it works on a machine
+        // with no display and cannot be affected by anything the UI does.
 #if DEBUG
         if (args.Length >= 2 && args[0] == ScreenshotFlag)
         {
@@ -28,26 +32,61 @@ internal static class Program
         }
 #endif
 
-        return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        return BuildAvaloniaApp(args).StartWithClassicDesktopLifetime(args);
     }
 
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace()
-            .AfterSetup(_ => BindingPlugins.DataValidators.Clear());
+    public static AppBuilder BuildAvaloniaApp() => BuildAvaloniaApp([]);
+
+    public static AppBuilder BuildAvaloniaApp(string[] args)
+    {
+        BindingPlugins.DataValidators.Clear();
+
+        var builder = AppBuilder.Configure<App>();
+
+#if DEBUG
+        // Driving the app on the native platform steals focus on every launch,
+        // and a batch of scripts makes the machine unusable while it runs.
+        // UseHeadlessDrawing stays false: true skips real drawing, so every
+        // screenshot comes back blank and a script would still pass, which is
+        // worse than a failure.
+        builder = args.Contains(UxHeadlessFlag)
+            ? builder.UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).UseSkia()
+            : builder.UsePlatformDetect();
+#else
+        builder = builder.UsePlatformDetect();
+#endif
+
+        builder = builder.LogToTrace();
+
+#if DEBUG
+        // The one line that turns on the ux-test, ux-repl and ux-mcp modes.
+        //
+        // CaptureScreenshotsByDefault is false so that a run captures what its
+        // script asks for and nothing else: a harness that photographs every
+        // step produces a directory nobody reads, and the steps worth looking
+        // at are the ones somebody chose.
+        builder = builder.UseUITesting(opts =>
+        {
+            opts.DefaultScreenshotDir = "ux-screenshots";
+            opts.Log = Console.WriteLine;
+            opts.EnableCrossWindowTracking = true;
+            opts.CaptureScreenshotsByDefault = false;
+        });
+#endif
+
+        return builder.AfterSetup(_ => BindingPlugins.DataValidators.Clear());
+    }
 
 #if DEBUG
     /// <summary>
-    /// The builder a screenshot run uses.
+    /// The builder the screenshot harness uses.
     /// </summary>
     /// <remarks>
-    /// <c>UseHeadlessDrawing</c> is set to false, which reads backwards and is
-    /// not a typo. False means "do not use the headless drawing stub", so real
-    /// Skia drawing runs and the capture has something in it; leaving it at its
-    /// default produces a blank bitmap, which is worse than useless because the
-    /// run still succeeds. mylo records the same finding after losing time to
-    /// it, which is why it is written down in both places.
+    /// Deliberately without <c>UseUITesting</c>. That harness drives the app
+    /// through a lifetime and a startup event, and this one returns a frame and
+    /// exits, so the two want different pipelines. Keeping them apart also
+    /// means a fault in the UI harness cannot take out the capture that
+    /// documents the console.
     /// </remarks>
     public static AppBuilder BuildHeadlessApp()
         => AppBuilder.Configure<App>()

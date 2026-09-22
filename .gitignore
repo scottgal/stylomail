@@ -111,3 +111,5 @@ __pycache__/
 Thumbs.db
 *.swp
 *~
+ux-results/
+ux-screenshots/

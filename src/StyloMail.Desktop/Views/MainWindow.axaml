@@ -29,12 +29,13 @@
                          Fill="{Binding Status.Kind, Converter={StaticResource StatusBrush}}" />
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <TextBlock Classes="status" Text="{Binding StatusHeadline}" />
+                    <TextBlock x:Name="StatusHeadlineText" Classes="status" Text="{Binding StatusHeadline}" />
                     <TextBlock Classes="status" Text="·" />
-                    <TextBlock Classes="status" Text="{Binding StatusDetail}" />
+                    <TextBlock x:Name="StatusDetailText" Classes="status" Text="{Binding StatusDetail}" />
                 </StackPanel>
 
-                <TextBlock Grid.Column="2"
+                <TextBlock x:Name="HostAddressText"
+                           Grid.Column="2"
                            Classes="status"
                            Text="{Binding HostAddress}" />
             </Grid>
@@ -52,7 +53,8 @@
                 Classes.failed="{Binding LastActionFailed}"
                 IsVisible="{Binding HasLastActionResult}">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0"
+                <TextBlock x:Name="ActionResultText"
+                           Grid.Column="0"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"
                            Text="{Binding LastActionResult}" />
@@ -65,13 +67,15 @@
             every action the console offers is consequential, and the ledger
             records only that it happened, not that it was meant.
         -->
-        <Border DockPanel.Dock="Bottom"
+        <Border x:Name="ActionConfirmBar"
+                DockPanel.Dock="Bottom"
                 Classes="actionBar"
                 IsVisible="{Binding HasPendingAction}">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Spacing="2">
-                    <TextBlock Classes="actionTitle" Text="{Binding PendingAction.Title}" />
-                    <TextBlock Classes="actionConsequence"
+                    <TextBlock x:Name="PendingActionTitle" Classes="actionTitle" Text="{Binding PendingAction.Title}" />
+                    <TextBlock x:Name="PendingActionConsequence"
+                               Classes="actionConsequence"
                                TextWrapping="Wrap"
                                Text="{Binding PendingAction.Consequence}" />
 
@@ -79,15 +83,17 @@
                         <TextBlock Classes="actionLabel"
                                    VerticalAlignment="Center"
                                    Text="Reason (recorded in the audit trail)" />
-                        <TextBox Width="380"
+                        <TextBox x:Name="PendingReasonBox"
+                                 Width="380"
                                  Watermark="Why this is being done"
                                  Text="{Binding PendingReason, Mode=TwoWay}" />
                     </StackPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
-                    <Button Content="Cancel" Click="OnCancelActionClick" />
-                    <Button Content="Confirm"
+                    <Button x:Name="CancelActionButton" Content="Cancel" Click="OnCancelActionClick" />
+                    <Button x:Name="ConfirmActionButton"
+                            Content="Confirm"
                             Classes="primaryButton"
                             IsEnabled="{Binding CanConfirmAction}"
                             Click="OnConfirmActionClick" />
@@ -143,10 +149,12 @@
                                                                     Margin="0,0,8,0">
                                                             <Button Classes="rowButton"
                                                                     Content="Pause"
+                                                                    AutomationProperties.AutomationId="{Binding PauseAutomationId}"
                                                                     IsVisible="{Binding CanPause}"
                                                                     Click="OnPauseSenderClick" />
                                                             <Button Classes="rowButton"
                                                                     Content="Resume"
+                                                                    AutomationProperties.AutomationId="{Binding ResumeAutomationId}"
                                                                     IsVisible="{Binding CanResume}"
                                                                     Click="OnResumeSenderClick" />
                                                         </StackPanel>
@@ -179,7 +187,8 @@
                                 is offered only for a message that is actually held in
                                 quarantine.
                             -->
-                            <Button Grid.Column="1"
+                            <Button x:Name="ReleaseMessageButton"
+                                    Grid.Column="1"
                                     Classes="rowButton"
                                     VerticalAlignment="Center"
                                     Content="Release"
@@ -258,13 +267,16 @@
                                 instance property returning a constant is one
                                 the analyzers correctly flag.
                             -->
-                            <ComboBox Width="180"
+                            <ComboBox x:Name="FeedbackLabelBox"
+                                      Width="180"
                                       ItemsSource="{x:Static models:FeedbackDraft.AvailableLabels}"
                                       SelectedItem="{Binding Feedback.Label, Mode=TwoWay}" />
-                            <ComboBox Width="160"
+                            <ComboBox x:Name="FeedbackScopeBox"
+                                      Width="160"
                                       ItemsSource="{x:Static models:FeedbackDraft.AvailableScopes}"
                                       SelectedItem="{Binding Feedback.Scope, Mode=TwoWay}" />
-                            <TextBox Width="220"
+                            <TextBox x:Name="FeedbackRecipientBox"
+                                     Width="220"
                                      Watermark="Recipient or identity"
                                      Text="{Binding Feedback.Recipient, Mode=TwoWay}" />
                         </StackPanel>
@@ -272,10 +284,12 @@
                         <TextBlock Classes="actionLabel" TextWrapping="Wrap" Text="{Binding Feedback.Description}" />
 
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBox Width="480"
+                            <TextBox x:Name="FeedbackNoteBox"
+                                     Width="480"
                                      Watermark="Note (optional)"
                                      Text="{Binding Feedback.Note, Mode=TwoWay}" />
-                            <Button Classes="primaryButton"
+                            <Button x:Name="RecordFeedbackButton"
+                                    Classes="primaryButton"
                                     Content="Record"
                                     IsEnabled="{Binding CanSubmitFeedback}"
                                     Click="OnSubmitFeedbackClick" />

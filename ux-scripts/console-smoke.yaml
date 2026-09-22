@@ -1,0 +1,155 @@
+name: console-smoke
+description: >
+  Drives the StyloMail operator console end to end against a throwaway Host:
+  the connection the sidebar and status bar report, selecting a queue, and the
+  confirmation for a sender pause including the rule that it cannot be carried
+  out until a reason is given.
+
+  Run it through ux-scripts/run-console-smoke.sh, not directly. That script
+  starts the Host these assertions are about and takes it down afterwards, so
+  the run is repeatable from any starting state and leaves nothing behind.
+
+  Deliberately not covered here, with reasons:
+    - Anything that needs a decision. An assessment needs a semantic provider
+      key, a rejected key currently fails the whole request rather than
+      degrading to unavailable evidence, and this harness must not hold the
+      operator's real key. So the decision pane and feedback are exercised by
+      their own unit tests rather than here.
+    - The quarantine release. It needs a quarantined message, which needs a
+      decision, for the reason above.
+    - Anything behind a native OS dialog. There is none yet; when the API key
+      entry lands it will open one, and that is the same wall mylo records in
+      its own README.
+
+  Every assertion below is about a control the console names for this purpose.
+  Where a control is generated per row, the script targets it by its text and
+  lets the pointer event land on the button behind it, which is how a real
+  click reaches it.
+
+default_delay: 250
+
+actions:
+  # The window opens, checks the Host, loads the senders and the first queue.
+  # Waited out rather than slept through: these are round trips to a real
+  # process, and a fixed sleep would be a flaky test with a lucky first run.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: ContainsText
+    value: "127.0.0.1"
+
+  - type: Expect
+    target: "name=StatusDetailText"
+    matcher: HasText
+    value: "The Host is running and can accept mail."
+
+  - type: Screenshot
+    value: "01-connected"
+    description: "The console on open: connected, sidebar loaded, first queue selected"
+
+  # The sidebar is filled from GET /v1/senders, so the harness principal the
+  # run created has to be there by name.
+  - type: Expect
+    target: "text=harness"
+    matcher: IsVisible
+
+  # Selecting a different queue moves the list pane with it.
+  - type: Click
+    target: "type=Button:has-text(Quarantined)"
+    description: "Select the quarantined queue"
+
+  - type: Wait
+    value: "600"
+
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "02-queue-selected"
+    description: "The quarantined queue selected"
+
+  # ---- the pause confirmation ---------------------------------------------
+  #
+  # The console's whole reason for a confirmation: every action it offers is
+  # consequential, and the ledger records only that it happened.
+
+  - type: Click
+    target: "testid=pause-sender-harness"
+    description: "Ask to pause the harness principal"
+
+  - type: Expect
+    target: "name=PendingActionTitle"
+    matcher: HasText
+    value: "Pause harness"
+    timeout: 5000
+
+  - type: Expect
+    target: "name=PendingActionConsequence"
+    matcher: ContainsText
+    value: "stop being delivered"
+
+  # Nothing has happened yet, and the confirm cannot be pressed until the
+  # reason the audit trail needs has been given.
+  - type: Expect
+    target: "name=ConfirmActionButton"
+    matcher: Not.IsEnabled
+
+  - type: Screenshot
+    value: "03-confirm-needs-a-reason"
+    description: "The confirmation, with Confirm refused until a reason is given"
+
+  - type: TypeText
+    target: "name=PendingReasonBox"
+    value: "harness run"
+
+  - type: Expect
+    target: "name=ConfirmActionButton"
+    matcher: IsEnabled
+    timeout: 5000
+
+  - type: Screenshot
+    value: "04-confirm-enabled"
+    description: "Confirm enabled once a reason has been typed"
+
+  # Cancelling leaves nothing behind, which is the other half of asking and
+  # doing being separate steps.
+  - type: Click
+    target: "name=CancelActionButton"
+
+  # Asserted on the bar, not on a control inside it.
+  #
+  # Avalonia's Control.IsVisible is the control's own property, not its
+  # effective visibility, so a TextBlock inside a hidden bar still reports
+  # IsVisible=true and an assertion on it passes whether the bar is there or
+  # not. The harness found this by reporting a failure where the app was
+  # right: the confirmation had gone and the test could not see that.
+  - type: Expect
+    target: "name=ActionConfirmBar"
+    matcher: Not.IsVisible
+    timeout: 5000
+
+  - type: Screenshot
+    value: "05-cancelled"
+    description: "Cancelled: the confirmation is gone and nothing was done"
+
+  # ---- the sidebar's blocked entry ----------------------------------------
+  #
+  # Nothing enumerates the ledger yet, so this entry says so rather than
+  # looking empty. The distinction is the one the console exists to keep: a
+  # pane that cannot look must not read as a pane with nothing in it.
+
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  - type: Wait
+    value: "400"
+
+  - type: Screenshot
+    value: "06-blocked-pane"
+    description: "The blocked Decisions pane, naming the route it needs"
