@@ -116,3 +116,26 @@ public interface IMailAssessor
         AssessmentContext context,
         CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// The entry point for assessing a chat message.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>A sibling of <see cref="IMailAssessor"/> rather than a widening of it</b>, because input is
+/// per channel and output is shared: the two take different records and both produce a
+/// <see cref="MailAssessment"/>.
+/// </para>
+/// <para>
+/// <b>Implementations assess and take no action.</b> Every intervention on a chat channel is
+/// post-hoc, and a caller cannot tell whether one was taken from this contract, so an implementation
+/// records what it would have done rather than doing it.
+/// </para>
+/// </remarks>
+public interface IChatAssessor
+{
+    ValueTask<MailAssessment> AssessAsync(
+        ChatAnalysisInput input,
+        AssessmentContext context,
+        CancellationToken cancellationToken);
+}

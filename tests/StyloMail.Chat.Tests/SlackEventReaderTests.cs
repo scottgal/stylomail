@@ -67,6 +67,37 @@ public sealed class SlackEventReaderTests
     }
 
     [Fact]
+    public void An_author_from_another_workspace_is_marked_external()
+    {
+        // The fact the direction is derived from, and therefore the profile pool. A stranger and a
+        // member are different traffic even when every other field is identical.
+        var json = MessageEvent.Replace("\"user\":\"U01\"", "\"user\":\"U01\",\"user_team\":\"T99\"");
+
+        Assert.True(SlackEventReader.TryRead(json, Own, out var message, out _));
+        Assert.True(message.IsExternal);
+    }
+
+    [Fact]
+    public void An_author_with_no_other_team_is_a_member_of_this_one()
+    {
+        // Absent user_team is the platform saying the author belongs to the workspace the event was
+        // delivered to, which is the member case rather than an unknown one.
+        Assert.True(SlackEventReader.TryRead(MessageEvent, Own, out var message, out _));
+        Assert.False(message.IsExternal);
+    }
+
+    [Fact]
+    public void A_user_team_matching_the_events_team_is_not_external()
+    {
+        // Enterprise Grid delivers user_team on members too, so presence alone would misclassify
+        // every member of a grid workspace as a stranger.
+        var json = MessageEvent.Replace("\"user\":\"U01\"", "\"user\":\"U01\",\"user_team\":\"T01\"");
+
+        Assert.True(SlackEventReader.TryRead(json, Own, out var message, out _));
+        Assert.False(message.IsExternal);
+    }
+
+    [Fact]
     public void A_message_from_a_person_carries_no_bot_identifier()
     {
         Assert.True(SlackEventReader.TryRead(MessageEvent, Own, out var message, out _));

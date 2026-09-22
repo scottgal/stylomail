@@ -153,6 +153,7 @@ public static class SlackEventReader
                 ThreadId = SafeString(evt, "thread_ts"),
                 AuthorId = authorId,
                 BotId = botId,
+                IsExternal = IsExternalAuthor(evt, workspaceId),
                 Text = SafeString(evt, "text") ?? string.Empty,
                 OccurredAt = DateTimeOffset.FromUnixTimeSeconds((long)unixSeconds),
             };
@@ -161,6 +162,20 @@ public static class SlackEventReader
             return true;
         }
     }
+
+    /// <summary>
+    /// Whether the author belongs to a workspace other than the one the event arrived for.
+    /// </summary>
+    /// <remarks>
+    /// Presence of <c>user_team</c> alone is not enough, because an Enterprise Grid delivers it for
+    /// members too: the test is whether it names a different workspace from the event's own
+    /// <c>team_id</c>. Absent means the platform is placing the author in this workspace, which is
+    /// the member case rather than an unknown one, and it is the case that must not be guessed at
+    /// backwards: a member is an authenticated principal.
+    /// </remarks>
+    private static bool IsExternalAuthor(JsonElement evt, string workspaceId) =>
+        SafeString(evt, "user_team") is { Length: > 0 } authorTeam
+        && !string.Equals(authorTeam, workspaceId, StringComparison.Ordinal);
 
     /// <summary>
     /// The property as a string, or null when it is absent or is not a string.

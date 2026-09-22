@@ -10,6 +10,7 @@
     <ProjectReference Include="..\StyloMail.Policy\StyloMail.Policy.csproj" />
     <ProjectReference Include="..\StyloMail.Queue\StyloMail.Queue.csproj" />
     <ProjectReference Include="..\StyloMail.Persistence\StyloMail.Persistence.csproj" />
+    <ProjectReference Include="..\StyloMail.Chat\StyloMail.Chat.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

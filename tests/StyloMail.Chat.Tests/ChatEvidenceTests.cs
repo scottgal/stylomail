@@ -72,6 +72,7 @@ public sealed class ChatEvidenceTests
         WorkspaceId = "T01",
         ChannelId = "C01",
         AuthorId = "U01",
+        IsExternal = false,
         Text = text,
         OccurredAt = DateTimeOffset.FromUnixTimeSeconds(1_760_000_000),
     };
@@ -111,6 +112,7 @@ public sealed class ChatEvidenceTests
             ChannelId = "C01",
             AuthorId = "B01",
             BotId = "B01",
+            IsExternal = false,
             Text = "hello",
             OccurredAt = DateTimeOffset.FromUnixTimeSeconds(1_760_000_000),
         };

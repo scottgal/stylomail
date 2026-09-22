@@ -33,6 +33,7 @@ public static class ChatInputFactory
             {
                 AuthorId = message.AuthorId,
                 BotId = message.BotId,
+                IsExternal = message.IsExternal,
             },
 
             BodyText = message.Text,

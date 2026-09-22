@@ -40,6 +40,44 @@ public sealed record ChatMembershipFacts
     /// assessment weighs rather than a reason to hide the traffic.
     /// </remarks>
     public bool IsBot => BotId is not null;
+
+    /// <summary>
+    /// True when the author is outside the workspace this deployment watches.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This exists because the direction cannot be assumed.</b> A workspace member is an
+    /// authenticated principal and a stranger is not, and <see cref="Direction"/> is derived from
+    /// that difference rather than fixed for the channel. Slack reports it as <c>user_team</c> on
+    /// the author: absent, or equal to the event's team, means a member, and present and different
+    /// means an author from another workspace, which is the Enterprise Grid and Slack Connect case.
+    /// </para>
+    /// <para>
+    /// Required rather than defaulted, because a default here would silently file a member's traffic
+    /// in the stranger pool. If a deployment's platform cannot answer it, that is a gap to report at
+    /// the connector rather than a value to guess at here.
+    /// </para>
+    /// </remarks>
+    public required bool IsExternal { get; init; }
+
+    /// <summary>
+    /// Which direction this author's traffic counts as, and therefore which profile pool it lands in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Derived, never stored, and never fixed per channel.</b> The direction is not a label: it
+    /// selects the pool the observations are counted in, and the adaptive engine keeps inbound and
+    /// outbound distinct precisely because an inbound stranger and an outbound authenticated
+    /// principal carry different meaning for the same number.
+    /// </para>
+    /// <para>
+    /// <b>A member is outbound.</b> Compromised-account detection is the outbound case by
+    /// definition, an authenticated principal fanning out to people it never talks to, and that is
+    /// the job this extension gets behavioural evidence for free. Calling every chat message inbound
+    /// would hide exactly that.
+    /// </para>
+    /// </remarks>
+    public MailDirection Direction => IsExternal ? MailDirection.Inbound : MailDirection.Outbound;
 }
 
 /// <summary>

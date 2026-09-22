@@ -49,6 +49,16 @@ public sealed record ChatMessage
     /// </remarks>
     public string? BotId { get; init; }
 
+    /// <summary>
+    /// True when the author belongs to a workspace other than the one the event was delivered to.
+    /// </summary>
+    /// <remarks>
+    /// The fact the assessment's direction is derived from, and therefore which profile pool its
+    /// observations land in. A member is an authenticated principal and a stranger is not, and the
+    /// two must never be counted together.
+    /// </remarks>
+    public required bool IsExternal { get; init; }
+
     /// <summary>The message text as posted, unmodified.</summary>
     public required string Text { get; init; }
 
