@@ -329,6 +329,24 @@ compared** when it matched on the fingerprint alone.
 - **Gotcha:** the window excludes a match against the same assessment id, so a test using one event id
   for two different messages sees no match. Distinct events need distinct ids.
 
+**PLAN 3 CHECK 3 DONE (2026-09-22). Solution 1468 passed, 0 failed.**
+
+**RULED: check 3 has NO dismiss disposition at all.** A lure escalates; clean links CONTINUE to check 4
+(clean is not informative enough to settle); the absence of a lure rules one thing out and nothing
+more. An earlier version of the record said "safer error: escalate" as though it were a disposition,
+which read literally escalates every link-bearing message. **The record is fixed** to state the three
+outcomes, keeping the asymmetry as the reason it has no dismiss. Lesson: a failure direction is not a
+disposition, and conflating them produced a check that would have spent the expensive path on the
+commonest thing in a channel.
+
+Implemented in `TriageEngine.Links`, reading `ChatEvidenceProducer`'s output rather than recomputing,
+so triage and the assessment agree on what a lure is: `Available` with a positive value on
+`deterministic.link_display_mismatch` or `.link_idn_homograph`. 3 new tests.
+
+**ALSO: overview- built the kill switch** (`IEmergencyKillSwitch`/`SqliteEmergencyKillSwitch`) and
+wired `ChatAssessor` to read `_killSwitch.IsEngaged` through its own port rather than stating it false.
+That closes the gap I reported on day one. `ChatAssessor` now takes an optional `IEmergencyKillSwitch`.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 
