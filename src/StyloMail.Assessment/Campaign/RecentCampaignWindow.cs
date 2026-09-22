@@ -179,7 +179,24 @@ public sealed class RecentCampaignWindow
 
                 var (similarity, compared) = Compare(vector, candidate.Vector);
 
-                if (compared == 0 || similarity < minimumSimilarity)
+                // A comparison with no dimensions to compare falls back to the security-bearing
+                // fingerprint, which is the evidence a channel without dimensions actually has.
+                //
+                // The floor below exists so a match is not declared on too little evidence, and its
+                // stated ground is "at least one dimension must be compared". That sentence assumes
+                // the dimensions are the evidence. On a channel where every message records all of
+                // them unavailable they are not, and the fingerprint is, so the fallback is the same
+                // rule applied to different evidence rather than an exemption from it.
+                //
+                // Guarded on both sides having components, because a fingerprint over nothing is not
+                // agreement: two unrelated messages that both carry no links would otherwise match.
+                var fingerprintOnly = compared == 0
+                    && fingerprint.ComponentCount > 0
+                    && candidate.Fingerprint.ComponentCount > 0
+                    && string.Equals(
+                        candidate.Fingerprint.Digest, fingerprint.Digest, StringComparison.Ordinal);
+
+                if (!fingerprintOnly && (compared == 0 || similarity < minimumSimilarity))
                 {
                     continue;
                 }

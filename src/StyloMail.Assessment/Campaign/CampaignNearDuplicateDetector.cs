@@ -149,8 +149,18 @@ public sealed class CampaignNearDuplicateDetector
             _options.MaxMatches,
             _options.MinimumSimilarity);
 
+        // The floor exists so a match is not declared on too little evidence, and its stated ground
+        // is "at least one dimension must be compared". **That sentence assumes the dimensions are
+        // the evidence.** On a channel where every message records all of them unavailable they are
+        // not, and the security-bearing fingerprint is, so the floor applies when there are
+        // dimensions to compare rather than as an absolute.
+        //
+        // A zero-dimension candidate reaching here has already agreed on a non-empty fingerprint,
+        // because the window refuses to admit one otherwise. That is what keeps this from letting
+        // two unrelated quiet messages match each other.
         var comparable = matches
-            .Where(match => match.ComparedDimensions >= _options.MinimumComparedDimensions)
+            .Where(match => match.ComparedDimensions >= _options.MinimumComparedDimensions
+                || (match.ComparedDimensions == 0 && match.SecurityBearingAgrees))
             .ToList();
 
         if (comparable.Count == 0)
@@ -206,6 +216,14 @@ public sealed class CampaignNearDuplicateDetector
                     .. agreeing.Select(match =>
                         Attribute(CampaignEvidenceIds.MatchingMessagesAttribute, match.Observation.InternalMessageId)),
                     Attribute("compared_dimensions", best.ComparedDimensions.ToString()),
+
+                    // States the absence rather than leaving it to be read off the count. A match on
+                    // the security-bearing fingerprint alone is a narrower comparison than one over
+                    // dimensions, and a reader who does not notice "compared_dimensions: 0" would
+                    // take it for the fuller one.
+                    Attribute(
+                        "fingerprint_only",
+                        (best.ComparedDimensions == 0).ToString().ToLowerInvariant()),
                 ],
             });
         }
@@ -231,6 +249,14 @@ public sealed class CampaignNearDuplicateDetector
                     .. variants.Select(match =>
                         Attribute(CampaignEvidenceIds.VariantMessagesAttribute, match.Observation.InternalMessageId)),
                     Attribute("compared_dimensions", best.ComparedDimensions.ToString()),
+
+                    // States the absence rather than leaving it to be read off the count. A match on
+                    // the security-bearing fingerprint alone is a narrower comparison than one over
+                    // dimensions, and a reader who does not notice "compared_dimensions: 0" would
+                    // take it for the fuller one.
+                    Attribute(
+                        "fingerprint_only",
+                        (best.ComparedDimensions == 0).ToString().ToLowerInvariant()),
                 ],
             });
         }
