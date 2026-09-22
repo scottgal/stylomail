@@ -142,12 +142,12 @@ MUTATIONS = [
 
     ("M: listings never page (cursor is always null)",
      SRC / "QueueStore.Listing.cs",
-     """        if (ids.Count > limit)
+     """        if (rows.Count > limit)
         {
-            ids.RemoveAt(ids.Count - 1);""",
+            rows.RemoveAt(rows.Count - 1);""",
      """        if (false)
         {
-            ids.RemoveAt(ids.Count - 1);""",
+            rows.RemoveAt(rows.Count - 1);""",
      "Paging_visits_every_item_exactly_once"),
 
     ("N: listing ignores the tenant filter",
@@ -244,4 +244,13 @@ MUTATIONS = [
      """        await _store.CompleteAsync(lease, portResult.AsReport(_workerOptions.WorkerId), CancellationToken.None)""",
      """        await _store.CompleteAsync(lease, portResult.AsReport(_workerOptions.WorkerId), cancellationToken)""",
      "A_result_returned_despite_cancellation_is_applied_not_discarded"),
+
+    ("Y: paging cursor pairs the probe row's timestamp with the kept row's id",
+     SRC / "QueueStore.Listing.cs",
+     """            rows.RemoveAt(rows.Count - 1);
+            nextCursor = EncodeCursor(FromDb(rows[^1].CreatedAt) ?? now, rows[^1].QueueId);""",
+     """            var probe = rows[^1];
+            rows.RemoveAt(rows.Count - 1);
+            nextCursor = EncodeCursor(FromDb(probe.CreatedAt) ?? now, rows[^1].QueueId);""",
+     "Paging_visits_every_item_exactly_once_with_distinct_timestamps"),
 ]

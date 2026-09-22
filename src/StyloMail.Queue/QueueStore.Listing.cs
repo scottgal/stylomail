@@ -67,8 +67,12 @@ public sealed partial class QueueStore
 
         await using var connection = OpenConnection();
 
-        var ids = new List<string>(limit);
-        string? lastCreatedAt = null;
+        // Rows are held as PAIRS. Taking the cursor's timestamp from a separate running variable was
+        // a real bug: the loop's last write is the *probe* row, so the cursor paired the probe's
+        // `created_at` with the last *kept* row's id. Ordering is `created_at DESC`, so the probe's
+        // timestamp is older — and every row between the two was skipped on the next page, silently,
+        // while the listing reported itself complete. Both halves must come from one row.
+        var rows = new List<(string QueueId, string CreatedAt)>(limit + 1);
 
         using (var cmd = connection.CreateCommand())
         {
@@ -99,20 +103,19 @@ public sealed partial class QueueStore
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                ids.Add(reader.GetString(0));
-                lastCreatedAt = reader.GetString(1);
+                rows.Add((reader.GetString(0), reader.GetString(1)));
             }
         }
 
         string? nextCursor = null;
-        if (ids.Count > limit)
+        if (rows.Count > limit)
         {
-            ids.RemoveAt(ids.Count - 1);
-            nextCursor = EncodeCursor(FromDb(lastCreatedAt) ?? now, ids[^1]);
+            rows.RemoveAt(rows.Count - 1);
+            nextCursor = EncodeCursor(FromDb(rows[^1].CreatedAt) ?? now, rows[^1].QueueId);
         }
 
-        var items = new List<QueueItem>(ids.Count);
-        foreach (var id in ids)
+        var items = new List<QueueItem>(rows.Count);
+        foreach (var id in rows.Select(r => r.QueueId))
         {
             if (ReadItem(connection, transaction: null, id, now) is { } item)
             {

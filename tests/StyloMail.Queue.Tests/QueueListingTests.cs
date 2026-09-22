@@ -124,6 +124,65 @@ public class QueueListingTests
         Assert.Null(cursor);
     }
 
+    /// <remarks>
+    /// <b>This exists because the test above could not see the cursor bug, and the reason is subtle.</b>
+    /// That test deliberately gives every item the *same* <c>created_at</c> to exercise the
+    /// <c>queue_id</c> tiebreaker — and with equal timestamps, the probe row's <c>created_at</c> and
+    /// the kept row's are identical, so pairing the probe's timestamp with the kept row's id is
+    /// **invisible**. The two halves of the cursor have to differ for the defect to show, which means
+    /// the clock must move.
+    ///
+    /// <para>
+    /// Found by <c>ingress-</c>, who hit it wiring the operator console and reported the mechanism
+    /// rather than the symptom. Without distinct timestamps the bug skips rows silently on roughly
+    /// half of runs — a listing that returns two of three messages while claiming to be complete, and
+    /// looks like flakiness from outside.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Paging_visits_every_item_exactly_once_with_distinct_timestamps()
+    {
+        using var h = new QueueHarness();
+
+        const int total = 25;
+        var accepted = new HashSet<string>();
+
+        for (var i = 0; i < total; i++)
+        {
+            accepted.Add(await h.AcceptAsync(QueueHarness.Submission(state: DeliveryState.Held)));
+
+            // The whole point: every item gets its own created_at.
+            h.Clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var seen = new List<string>();
+        string? cursor = null;
+        var pages = 0;
+
+        do
+        {
+            var page = await h.Store.ListAsync(new QueueListingQuery
+            {
+                TenantId = "acme",
+                Limit = 3,
+                After = cursor,
+            });
+
+            seen.AddRange(page.Items.Select(i => i.QueueId));
+            cursor = page.NextCursor;
+            pages++;
+
+            Assert.True(pages < 50, "Paging did not terminate — the cursor is not advancing.");
+        }
+        while (cursor is not null);
+
+        // Every message exactly once. The bug this guards dropped whatever fell between the probe's
+        // timestamp and the last kept row's.
+        Assert.Equal(total, seen.Count);
+        Assert.Equal(total, seen.Distinct().Count());
+        Assert.Equal(accepted, seen.ToHashSet());
+    }
+
     [Fact]
     public async Task A_page_is_clamped_to_the_hard_ceiling_rather_than_rejected()
     {
