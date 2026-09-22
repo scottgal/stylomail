@@ -355,7 +355,7 @@ internal static class Wire
           "notificationTarget": "ops@acme.test",
           "posture": "watch",
           "updatedBy": "ops@acme.test",
-          "updatedAt": "2026-09-22T15:00:00+00:00"
+          "updatedAt": "2026-09-22T15:04:11.1234567+00:00"
         }
         """;
 
