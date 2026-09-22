@@ -233,6 +233,23 @@ other weights, another engine or another direction, it fails.** Gotcha found doi
 `Builders.Envelope()` **defaults to `Inbound`** - match the direction or you compare two paths being
 asked about different things.
 
+**SCOPE WORK DONE (2026-09-22; Core 39, Chat 55, Assessment 134, solution 1409 passed).**
+
+- `SlackConversationType` (`Unknown/Channel/Group/DirectMessage/MultiPersonDirectMessage`) on
+  `ChatMessage`, read from the event's `channel_type` (**unverified offline** - record a payload).
+  `Core.ChatConversationKind` (`Unknown/Audience/People`) is what the engine sees; the connector maps.
+  `ChatAnalysisInput.Conversation` added.
+- **`ProfileScopeKind.ChatAuthor = 6`** + `ProfileScopes.ChatAuthor(tenantId, platform, workspaceId,
+  authorKey)`. **No provenance component**; `authorKey` is a **pseudonym** (caller hashes it).
+  Remarks record the migration cost of adding provenance later.
+- `Core.ChatPlatforms.Slack = "slack"` - a **persisted key component**, so it must not follow an enum
+  rename.
+- `ChatAssessor.Behavioural` now selects the scope by direction: member -> `OutboundSender`,
+  external -> `ChatAuthor`. `AssessmentReasonCodes.ChatBehaviouralUnavailable` **deleted** (dead once
+  the external path was wired).
+- **Gotcha:** `BehaviouralEvidenceEvaluator.Trends` yields **velocity once per window** (Burst and
+  Slow), so `Assert.Single` on `behavioural.trend.velocity` fails with two matches. Use `Contains`.
+
 **STILL TO DO in Task 3:** (a) adaptive recipient/velocity evidence via `ProfileCoordinator` +
 `ProfileKey` (needs MailAssessor's `BuildProfileTargets`/`ReadSnapshots` as the template), and
 (b) the cross-path drift test (push equivalent evidence down both paths, assert the same action).
