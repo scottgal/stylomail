@@ -7,7 +7,7 @@ namespace StyloMail.Assessment;
 /// <remarks>
 /// <b>Two counters, because there are two paths and they should not be confused.</b> If
 /// <see cref="Mutated"/> ever climbs at message rates, whole-profile writes have drifted onto the
-/// ingest path — which is the regression that would otherwise be invisible, because it works.
+/// ingest path, which is the regression that would otherwise be invisible, because it works.
 /// </remarks>
 public sealed class ProfileWriteStatistics
 {
@@ -31,23 +31,23 @@ public sealed class ProfileWriteStatistics
 /// <remarks>
 /// <para>
 /// <b>Two operations, because there are two shapes of change.</b> An observation is a pure append,
-/// so it goes through the store's delta write. A promotion needs a <em>decision</em> — provenance,
-/// freeze state, candidate state — so it goes through the store's transactional update, which runs
+/// so it goes through the store's delta write. A promotion needs a <em>decision</em>, provenance,
+/// freeze state, candidate state, so it goes through the store's transactional update, which runs
 /// that decision inside the same write lock. Neither is optimistic and neither retries.
 ///
 /// <para>
 /// <b>Both are safe under a burst, and the split is not about that.</b> Each takes the write lock
 /// before reading, so many writers queue rather than race whichever one is used. What the split buys
 /// is that "this is an append" is stated once, in the store, instead of every caller reimplementing
-/// the merge inside an update delegate — and that the counters below can tell the two apart.
+/// the merge inside an update delegate, and that the counters below can tell the two apart.
 /// </para>
 ///
 /// <para>
 /// <b>This used to be far more machinery.</b> A striped array of per-profile gates, a bounded
 /// compare-and-swap retry loop, and a conflict exception, all of it standing in for the two store
-/// operations that now exist. The retry loop could not survive a burst — under many concurrent
+/// operations that now exist. The retry loop could not survive a burst, under many concurrent
 /// writers only one wins a round and the bounded budget loses the rest, measured at 4 attempts and
-/// 4 conflicts against a sustained burst — and the gate only ever covered writers inside this
+/// 4 conflicts against a sustained burst, and the gate only ever covered writers inside this
 /// process, which is the case the store already handles. All of it was deleted rather than tuned.
 /// </para>
 ///
@@ -93,7 +93,7 @@ public sealed class ProfileCoordinator
 
     /// <summary>Applies a change that needs a decision. The rare path.</summary>
     /// <param name="mutate">
-    /// Runs inside the store's write lock, holding it for the duration — in-memory work only, and
+    /// Runs inside the store's write lock, holding it for the duration, in-memory work only, and
     /// never a call back into this coordinator.
     /// </param>
     public T Mutate<T>(ProfileKey key, DateTimeOffset now, Func<AdaptiveProfile, T> mutate)

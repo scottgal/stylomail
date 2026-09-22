@@ -18,15 +18,15 @@ namespace StyloMail.Assessment.Semantic;
 /// The key is the composition of five things, and all five are load-bearing:
 /// </para>
 /// <list type="number">
-/// <item><b>Tenant</b> — the same bytes in two tenants are two different questions, and a shared
+/// <item><b>Tenant</b>, the same bytes in two tenants are two different questions, and a shared
 /// entry would move one tenant's evidence into another's ledger.</item>
-/// <item><b>Resolved model version</b> — an alias moves without notice, and a verdict from a
+/// <item><b>Resolved model version</b>, an alias moves without notice, and a verdict from a
 /// different model is not a cached version of this one.</item>
-/// <item><b>Question schema version</b> — adding or reworded dimensions make old answers
+/// <item><b>Question schema version</b>, adding or reworded dimensions make old answers
 /// incomparable, not merely old.</item>
-/// <item><b>Preprocessing version</b> — the same model asked about differently-prepared content is
+/// <item><b>Preprocessing version</b>, the same model asked about differently-prepared content is
 /// a different question.</item>
-/// <item><b>A digest of the complete canonical classifier input</b> — the message as the classifier
+/// <item><b>A digest of the complete canonical classifier input</b>, the message as the classifier
 /// sees it, including tagged context and relationship context when either went in.</item>
 /// </list>
 /// </remarks>

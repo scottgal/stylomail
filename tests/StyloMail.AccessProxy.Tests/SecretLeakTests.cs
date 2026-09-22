@@ -7,7 +7,7 @@ using StyloMail.AccessProxy.Tests.Support;
 namespace StyloMail.AccessProxy.Tests;
 
 /// <summary>
-/// "Never let a credential reach a log, exception, decision record or metric" — driven rather than
+/// "Never let a credential reach a log, exception, decision record or metric", driven rather than
 /// asserted.
 /// </summary>
 /// <remarks>
@@ -106,7 +106,7 @@ public sealed class SecretLeakTests
     {
         // The token endpoint is a seam someone else implements, so its messages are not ours to
         // trust. This is the case where an implementation interpolates the refresh token into an
-        // exception — the shape every logging framework would then print in full.
+        // exception, the shape every logging framework would then print in full.
         var harness = new ProxyHarness();
         await harness.EnrolOAuthAccountAsync();
         harness.OAuth.FailWith = new HttpRequestException(
@@ -151,7 +151,7 @@ public sealed class SecretLeakTests
             Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
         }
 
-        // The ciphertext and its key id are present — a record that serialised to nothing would pass
+        // The ciphertext and its key id are present, a record that serialised to nothing would pass
         // the assertions above for the wrong reason.
         Assert.Contains("ProtectedSecret", json, StringComparison.Ordinal);
         Assert.Contains(record.ProtectionKeyId, json, StringComparison.Ordinal);
@@ -168,7 +168,7 @@ public sealed class SecretLeakTests
         Assert.DoesNotContain(ProxyHarness.ClientPassword, json, StringComparison.Ordinal);
         Assert.Contains("PasswordHash", json, StringComparison.Ordinal);
 
-        // And the verifier is not the password — a hash that happened to be the plaintext would pass
+        // And the verifier is not the password, a hash that happened to be the plaintext would pass
         // a naive "no plaintext in the record" check while being exactly the bug.
         Assert.False(Contains(Encoding.UTF8.GetBytes(json), Encoding.UTF8.GetBytes(ProxyHarness.ClientPassword)));
     }
@@ -212,7 +212,7 @@ public sealed class SecretLeakTests
 
         var before = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
 
-        // Move the account onto OAuth — the migration spec §9.5 is designed around.
+        // Move the account onto OAuth, the migration spec §9.5 is designed around.
         await harness.AddBackendCredentialAsync(
             discriminator: OAuthRefreshTokenCredentialProvider.DiscriminatorValue,
             secret: ProxyHarness.RefreshTokenSecret);

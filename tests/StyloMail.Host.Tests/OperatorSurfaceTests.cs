@@ -224,7 +224,7 @@ public sealed class OperatorSurfaceTests
             $"/v1/controls/senders/{TestPrincipals.AcmeSenderPrincipal}/pause",
             new { reason = "not my sender" });
 
-        // Globex holds Administer, so this is accepted — for its own tenant's namespace. Pausing a
+        // Globex holds Administer, so this is accepted, for its own tenant's namespace. Pausing a
         // principal id is a tenant-local act; it must never reach the other tenant's sender.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -331,7 +331,7 @@ public sealed class OperatorSurfaceTests
         Assert.NotNull(state);
 
         // Two-sided on purpose. Asserting only that the pause record survived is satisfied by a
-        // resume that does nothing at all — which the mutation run confirmed, this test passed
+        // resume that does nothing at all, which the mutation run confirmed, this test passed
         // against a no-op. It has to assert that the pause was lifted *and* that the history
         // survived; a no-op fails the first, an erasing implementation fails the second.
         Assert.False(state!.Paused);
@@ -389,7 +389,7 @@ public sealed class OperatorSurfaceTests
         // principal id, in the tenant that did issue the resume, *was* affected. Without this the
         // test passes against a resume that does nothing at all, which is how it survived the
         // mutation run. A principal id is only unique within its tenant, so globex acting on it is
-        // a legitimate action in globex's own namespace — and must land there.
+        // a legitimate action in globex's own namespace, and must land there.
         var globexState = await host.Services.GetRequiredService<ISenderControlStore>()
             .GetAsync(TestPrincipals.GlobexTenant, TestPrincipals.AcmeSenderPrincipal, CancellationToken.None);
 

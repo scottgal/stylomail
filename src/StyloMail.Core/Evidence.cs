@@ -18,7 +18,7 @@ public sealed record Evidence
     public required EvidenceAvailability Availability { get; init; }
 
     /// <summary>
-    /// The signal's numeric value where one exists — a Noul probability (0..1), a Score
+    /// The signal's numeric value where one exists, a Noul probability (0..1), a Score
     /// position across its levels (which may land between levels), or a deterministic
     /// count or ratio. <see langword="null"/> when the signal is non-numeric or unavailable.
     /// </summary>
@@ -30,7 +30,7 @@ public sealed record Evidence
     /// </summary>
     /// <remarks>
     /// <b>This is always <see langword="null"/> for Noul signals.</b> The TypeSafe API
-    /// returns no confidence field for Noul — only the probability. Absence is meaningful
+    /// returns no confidence field for Noul, only the probability. Absence is meaningful
     /// and must not be defaulted to 0 or 1. For Noul, a value near 0.5 means genuinely
     /// balanced yes/no, which is not the same as "moderate" on any scale.
     /// </remarks>
@@ -43,7 +43,7 @@ public sealed record Evidence
     /// </summary>
     public int? SampleSupport { get; init; }
 
-    /// <summary>Identifier of the producer — model id, rule set, or algorithm version.</summary>
+    /// <summary>Identifier of the producer, model id, rule set, or algorithm version.</summary>
     public required string SourceVersion { get; init; }
 
     public required DateTimeOffset ObservedAt { get; init; }
@@ -56,7 +56,7 @@ public sealed record Evidence
     /// </summary>
     /// <remarks>
     /// <b>A list of pairs, not a map.</b> A dictionary silently collapses repeated keys, and
-    /// evidence is frequently multi-valued — several reduced-coverage reasons, several IDN hosts,
+    /// evidence is frequently multi-valued, several reduced-coverage reasons, several IDN hosts,
     /// several homograph candidates. Under a map, "five reasons" became "one reason" with no error
     /// anywhere. Ordering is preserved and duplicates are meaningful.
     /// </remarks>

@@ -14,7 +14,7 @@ namespace StyloMail.Assessment;
 /// Everything here is either a hard limit or a version stamp. The limits are bounds rather than
 /// tuning: an unbounded recipient list, link list or attachment list is a message that can make the
 /// pipeline expensive, and expense an attacker controls is a denial-of-service vector. The versions
-/// are what make a decision reproducible and a cache invalidatable — a version that is not recorded
+/// are what make a decision reproducible and a cache invalidatable, a version that is not recorded
 /// is a version nobody can act on when it changes.
 /// </remarks>
 public sealed record MailAssessorOptions
@@ -71,7 +71,7 @@ public sealed record MailAssessorOptions
     /// </summary>
     /// <remarks>
     /// <b>Null by default, and null is the whole point.</b> An assessment is a question, not a
-    /// verdict about what was correct, so it has no authority to teach — the ordinary case learns
+    /// verdict about what was correct, so it has no authority to teach, the ordinary case learns
     /// nothing, permanently. Setting this names the rule that overrides that, which is what a
     /// replay harness or an explicitly-permitted training feed needs. The value is recorded on every
     /// sample it authorises, so "which rule taught the profile this?" stays answerable.
@@ -85,7 +85,7 @@ public sealed record MailAssessorOptions
     /// <b>On by default, and it is a safety property rather than a preference.</b> When the provider
     /// cannot be reached, every semantic dimension is masked, the risk index is computed over no
     /// weight at all, and the number that comes out is zero. Zero is below every threshold, so
-    /// without this the wiring's answer to a classifier outage would be to allow everything — the
+    /// without this the wiring's answer to a classifier outage would be to allow everything, the
     /// exact failure the "unknown is not zero" rule exists to prevent, arriving through the back
     /// door of a scoring function that cannot see it happened.
     ///
@@ -99,7 +99,7 @@ public sealed record MailAssessorOptions
     ///
     /// <para>
     /// Set it to <see langword="false"/> for a deployment that genuinely runs on the local evidence
-    /// path with no semantic provider at all — the case the spec describes for tenants that forbid
+    /// path with no semantic provider at all, the case the spec describes for tenants that forbid
     /// external content processing. Those deployments are not experiencing an outage; they have an
     /// explicitly unavailable state by design, and refusing every message would be refusing the
     /// deployment's whole traffic.

@@ -23,7 +23,7 @@ public enum DeliveryCycleOutcome
 
     /// <summary>
     /// The item's metadata exists but its payload does not. Nothing was delivered and nothing was
-    /// settled — an integrity fault for a human, not a delivery problem.
+    /// settled, an integrity fault for a human, not a delivery problem.
     /// </summary>
     PayloadMissing = 3,
 }
@@ -81,8 +81,8 @@ public sealed record QueueDeliveryWorkerOptions
 /// so the queue stays ignorant of SMTP and a transport can be swapped without touching durability.
 /// </para>
 /// <para>
-/// <b>One item at a time per worker.</b> Concurrency comes from running several workers — each with
-/// its own <see cref="QueueDeliveryWorkerOptions.WorkerId"/> — rather than from threads inside one.
+/// <b>One item at a time per worker.</b> Concurrency comes from running several workers, each with
+/// its own <see cref="QueueDeliveryWorkerOptions.WorkerId"/>, rather than from threads inside one.
 /// The lease is what makes that safe, and a worker that dispatched several items at once would be
 /// leasing them all while holding them all in memory.
 /// </para>
@@ -130,8 +130,8 @@ public sealed class QueueDeliveryWorker
     /// Claims and dispatches at most one item.
     /// </summary>
     /// <remarks>
-    /// The unit of work, split out so the interesting behaviour — which outcome lands on which
-    /// recipient — can be driven directly, rather than observed through a running loop.
+    /// The unit of work, split out so the interesting behaviour, which outcome lands on which
+    /// recipient, can be driven directly, rather than observed through a running loop.
     /// </remarks>
     public async Task<DeliveryCycleResult> RunOnceAsync(string? tenantId = null, CancellationToken cancellationToken = default)
     {
@@ -145,8 +145,8 @@ public sealed class QueueDeliveryWorker
             return DeliveryCycleResult.Idle;
         }
 
-        // A delivery with no pending recipients should be impossible — the item would not have been
-        // claimable — but completing it is the safe response if the invariant is ever broken:
+        // A delivery with no pending recipients should be impossible, the item would not have been
+        // claimable, but completing it is the safe response if the invariant is ever broken:
         // leaving it leased would strand it until the lease expired.
         if (lease.PendingRecipients.Count == 0)
         {
@@ -172,7 +172,7 @@ public sealed class QueueDeliveryWorker
         catch (QueueIntegrityException integrity)
         {
             // Payload-before-metadata ordering makes this unreachable by design, so it is not a
-            // delivery failure to retry — it is mail we accepted and cannot produce. The lease is
+            // delivery failure to retry, it is mail we accepted and cannot produce. The lease is
             // deliberately NOT completed: settling the item would erase the only signal, and the
             // recipient state would claim an outcome nobody observed. Recovery reports it.
             return new DeliveryCycleResult
@@ -193,7 +193,7 @@ public sealed class QueueDeliveryWorker
         catch (OperationCanceledException)
         {
             // Our own drain window closed, or the host is shutting down. What the transport managed
-            // to do is unknown, so nothing is recorded and the lease is left to expire — recovery
+            // to do is unknown, so nothing is recorded and the lease is left to expire, recovery
             // reclaims it with the ambiguity visible rather than inventing an outcome.
             throw;
         }
@@ -224,7 +224,7 @@ public sealed class QueueDeliveryWorker
     /// On shutdown the loop stops claiming immediately, but an in-flight delivery is given
     /// <see cref="QueueDeliveryWorkerOptions.DrainTimeout"/> to finish. Cutting a delivery off the
     /// instant shutdown is requested would abandon it mid-flight, and the upstream may already have
-    /// accepted the message — a duplicate created by our own shutdown.
+    /// accepted the message, a duplicate created by our own shutdown.
     /// </para>
     /// <para>
     /// If the window closes first, the delivery is cancelled and its lease is left to expire. That
@@ -243,7 +243,7 @@ public sealed class QueueDeliveryWorker
             //
             // Scheduled through the injected TimeProvider, like every other deadline in this
             // component. `CancelAfter(TimeSpan)` has no TimeProvider overload, so it reads the wall
-            // clock directly — which would make this the one timing decision a deployment cannot
+            // clock directly, which would make this the one timing decision a deployment cannot
             // control and a test cannot drive.
             drainTimer = _queueOptions.TimeProvider.CreateTimer(
                 static state => ((CancellationTokenSource)state!).Cancel(),
@@ -288,7 +288,7 @@ public sealed class QueueDeliveryWorker
     private async Task<DeliveryCycleResult> RecordPortFaultAsync(QueueLease lease, Exception exception)
     {
         // The port threw instead of reporting per-recipient outcomes, so we know only that something
-        // unexpected happened — not which recipients were tried, and not whether anything was
+        // unexpected happened, not which recipients were tried, and not whether anything was
         // accepted. Retrying is the safe reading: a duplicate is recoverable and a silent loss is
         // not. The detail says plainly that the outcome is unverified rather than dressing the
         // exception up as a delivery result we actually observed.

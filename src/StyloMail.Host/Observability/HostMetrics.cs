@@ -11,7 +11,7 @@ namespace StyloMail.Host.Observability;
 /// A metrics surface is polled without credentials and is the easiest place in a system for
 /// personal data to escape, and the usual mechanism is a label: "submissions by recipient" or
 /// "decisions by sender" reads as harmless instrumentation and is a content leak with unbounded
-/// cardinality attached. Here it is not possible to write one — the only thing that can be
+/// cardinality attached. Here it is not possible to write one, the only thing that can be
 /// counted is a thing this class already knows how to count.
 ///
 /// <para>

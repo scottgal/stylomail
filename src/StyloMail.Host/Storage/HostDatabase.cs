@@ -97,7 +97,7 @@ public sealed class HostDatabase
     /// <remarks>
     /// <c>CREATE TABLE IF NOT EXISTS</c> is a no-op against a table that already exists, so a
     /// database created by an earlier build would keep its old shape and fail at the first write
-    /// that names a new column — a runtime failure on startup for anyone who had already run the
+    /// that names a new column, a runtime failure on startup for anyone who had already run the
     /// host. This is deliberately a small, additive migration rather than a versioning system;
     /// when the schema changes in a way this cannot express, it will need a real one.
     /// </remarks>
@@ -141,7 +141,7 @@ public sealed class HostDatabase
         --
         -- Named host_* deliberately. The Persistence project also declares a `decision_ledger`,
         -- normalised across columns rather than stored as a document, and the two would collide in
-        -- the single database file this deployment uses — the CREATE would silently no-op against
+        -- the single database file this deployment uses, the CREATE would silently no-op against
         -- the other one and every statement here would then fail on a missing column. The prefix
         -- keeps both definitions addressable and makes the overlap visible instead of hiding it.
         CREATE TABLE IF NOT EXISTS host_decision_ledger (
@@ -213,7 +213,7 @@ public sealed class HostDatabase
 /// </summary>
 /// <remarks>
 /// Callers must translate this into a temporary failure. It must never be swallowed into a
-/// successful acceptance — accepting a message we could not persist is precisely how mail is lost.
+/// successful acceptance, accepting a message we could not persist is precisely how mail is lost.
 /// </remarks>
 public sealed class StorageUnavailableException : Exception
 {

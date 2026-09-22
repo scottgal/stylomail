@@ -32,7 +32,7 @@ public sealed record BackendCredentialWrite
 /// a caller can hand this interface an already-encrypted blob or read one back out: writes take a
 /// <see cref="SecretValue"/>, and the implementation encrypts before it persists. That makes
 /// "a credential is never stored in plaintext" (spec §9.4 item 2) a property of the type rather
-/// than a rule somebody has to remember — a caller cannot bypass the protector because the
+/// than a rule somebody has to remember, a caller cannot bypass the protector because the
 /// protector is not reachable from the caller's side of this interface.
 ///
 /// <para>
@@ -66,7 +66,7 @@ public interface IBackendCredentialStore
 /// </summary>
 /// <remarks>
 /// <b>Not durable, and not the production store.</b> A restart loses every credential, which means
-/// every session would fail closed until re-enrolment — correct, but useless. The durable SQLite
+/// every session would fail closed until re-enrolment, correct, but useless. The durable SQLite
 /// implementation belongs with the persistence layer and is deliberately not written here: this
 /// project owns the seam and the contract, and inventing a second schema in another project's lane
 /// would be worse than reporting the gap.

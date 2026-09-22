@@ -9,7 +9,7 @@ namespace StyloMail.Assessment.Campaign;
 /// <remarks>
 /// <b>Note what is not here.</b> There is no <see cref="StyloMail.Core.SemanticAssessment"/>, no
 /// evidence list and no verdict. The window keeps a bounded behavioural vector, a security-bearing
-/// digest and an identifier — so the rule that near-duplicate matching supplies campaign evidence
+/// digest and an identifier, so the rule that near-duplicate matching supplies campaign evidence
 /// and is never reused as an assessment is enforced by the type rather than by a comment. There is
 /// nothing in this record that could be handed back as somebody else's answer.
 /// </remarks>
@@ -71,7 +71,7 @@ public sealed record CampaignMatch
 /// <b>Bounded on every axis, deliberately.</b> Capacity per tenant is a ceiling, retention is a
 /// window, and no operation here grows with the number of things ever seen. A campaign detector
 /// that accumulated without bound would be a slow memory leak driven by exactly the traffic an
-/// attacker controls — the more mail they send, the more we retain.
+/// attacker controls, the more mail they send, the more we retain.
 /// </para>
 ///
 /// <para>
@@ -229,7 +229,7 @@ public sealed class RecentCampaignWindow
     /// </summary>
     /// <remarks>
     /// A simple, explainable metric over a small bounded vector, chosen because it can be described
-    /// in the ledger — "these two agree on eleven of twelve dimensions to within 0.04" — which a
+    /// in the ledger, "these two agree on eleven of twelve dimensions to within 0.04", which a
     /// cosine similarity over an embedding this size cannot. Distances are not multiplied or
     /// compounded: the dimensions are correlated, and treating them as independent evidence is the
     /// mistake the scoring rules elsewhere in this system exist to avoid.

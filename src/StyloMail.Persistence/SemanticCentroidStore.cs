@@ -68,7 +68,7 @@ public sealed class SemanticCentroidStore
         using var transaction = connection.BeginTransaction();
 
         // A centroid implies a profile. Rather than dropping the foreign key, create a bare
-        // profile row when none exists — which also models cold start honestly: the profile is
+        // profile row when none exists, which also models cold start honestly: the profile is
         // present with no trusted baseline yet, rather than absent and indistinguishable from
         // "never seen".
         using (var ensureProfile = connection.CreateCommand())

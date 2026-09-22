@@ -105,8 +105,8 @@ internal static class EvidenceLookup
         evidence.Attributes?.FirstOrDefault(a => a.Name == name)?.Value;
 
     /// <summary>
-    /// Every attribute with this name. Several signals are multi-valued — coverage reasons above
-    /// all — and the whole point of the list shape is that all of them survive.
+    /// Every attribute with this name. Several signals are multi-valued, coverage reasons above
+    /// all, and the whole point of the list shape is that all of them survive.
     /// </summary>
     public static IReadOnlyList<string> AttributesNamed(this Evidence evidence, string name) =>
         evidence.Attributes?.Where(a => a.Name == name).Select(a => a.Value).ToList() ?? [];

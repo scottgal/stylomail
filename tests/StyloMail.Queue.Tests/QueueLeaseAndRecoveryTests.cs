@@ -60,7 +60,7 @@ public class QueueLeaseAndRecoveryTests
         var fresh = await h.Store.ClaimNextAsync("worker-b");
         Assert.NotNull(fresh);
 
-        // The dead worker's report turns up late. It may well be true — we cannot tell, and
+        // The dead worker's report turns up late. It may well be true, we cannot tell, and
         // discarding it would destroy the only evidence that it delivered anything.
         var late = await h.Store.CompleteAsync(
             stale!, QueueHarness.Delivered("worker-a", "rcpt@example.test"));
@@ -181,8 +181,8 @@ public class QueueLeaseAndRecoveryTests
     {
         using var h = new QueueHarness(c => new QueueOptions { TimeProvider = c, MaxHops = 3 });
 
-        // null means nobody looked. Accepting is the only workable answer — refusing would reject
-        // every message until the whole ingress→assess chain populates the field — but the absence
+        // null means nobody looked. Accepting is the only workable answer, refusing would reject
+        // every message until the whole ingress→assess chain populates the field, but the absence
         // must survive to the row. Storing 0 would claim we looked and found no prior hops, which is
         // how the backstop came to read as enforced while never firing.
         var queueId = await h.AcceptAsync(QueueHarness.Submission(hopCount: null));
@@ -201,7 +201,7 @@ public class QueueLeaseAndRecoveryTests
         using var h = new QueueHarness(c => new QueueOptions { TimeProvider = c, MaxHops = 1 });
 
         // With MaxHops = 1, an observed 0 is below the limit and an observed 1 is at it. If null
-        // were collapsed to 0 anywhere, this pair would be indistinguishable — the whole point of
+        // were collapsed to 0 anywhere, this pair would be indistinguishable, the whole point of
         // the nullable field is that they are not.
         var observedZero = await h.AcceptAsync(QueueHarness.Submission(hopCount: 0));
         var unobserved = await h.AcceptAsync(QueueHarness.Submission(hopCount: null));

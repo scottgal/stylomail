@@ -26,7 +26,7 @@ public class FanOutEvaluatorTests
     [Fact]
     public void TheSameTrafficIsNovelFanOutUnderAConversationalClass()
     {
-        // Identical numbers, different class, opposite conclusion — which is the whole point
+        // Identical numbers, different class, opposite conclusion, which is the whole point
         // of carrying a traffic class rather than one global notion of "too many recipients".
         var evidence = FanOutEvaluator.Evaluate(
             observedRecipientsPerSecond: 8.0,
@@ -163,7 +163,7 @@ public class BehaviouralEvidenceTests
         var velocity = BehaviouralEvidence.Velocity(trend, "sender", Start);
         var acceleration = BehaviouralEvidence.Acceleration(trend, "sender", Start);
 
-        // Zero would read as "measured, and flat" — the opposite of "we could not tell".
+        // Zero would read as "measured, and flat", the opposite of "we could not tell".
         Assert.Equal(EvidenceAvailability.Unavailable, velocity.Availability);
         Assert.Null(velocity.Value);
         Assert.Equal(EvidenceAvailability.Unavailable, acceleration.Availability);

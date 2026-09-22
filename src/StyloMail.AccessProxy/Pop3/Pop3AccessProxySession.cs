@@ -11,7 +11,7 @@ namespace StyloMail.AccessProxy.Pop3;
 /// Terminates a POP3 client session and relays it to the backend.
 /// </summary>
 /// <remarks>
-/// The same seam and the same lifecycle as <see cref="Imap.ImapAccessProxySession"/> — only the
+/// The same seam and the same lifecycle as <see cref="Imap.ImapAccessProxySession"/>, only the
 /// dialect differs. <c>USER</c>/<c>PASS</c> is the classical POP3 authentication and, like IMAP's
 /// <c>LOGIN</c>, it is the spelling that stranded clients actually speak, so it is the spelling that
 /// matters most here.
@@ -19,7 +19,7 @@ namespace StyloMail.AccessProxy.Pop3;
 /// <para>
 /// One POP3-specific hazard worth naming: <c>PASS</c> is only meaningful after <c>USER</c>, and the
 /// username is what the account is looked up by. The session therefore holds the username between
-/// the two commands rather than treating either alone as a credential — a <c>PASS</c> arriving
+/// the two commands rather than treating either alone as a credential, a <c>PASS</c> arriving
 /// without a preceding <c>USER</c> is a protocol error, not a login attempt with an empty username.
 /// </para>
 /// </remarks>

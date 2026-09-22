@@ -61,7 +61,7 @@ public class ThreadHeaderTests
     public void InReplyToNamingAParentTheReferencesNeverMention_IsRecorded()
     {
         // The headers disagree about which message this replies to. Which one is right is not for
-        // this component to decide — the disagreement is the finding.
+        // this component to decide, the disagreement is the finding.
         var result = Analyzer.Analyze(FixtureMessage.FromBytes(MessageWith(
             """
             Message-ID: <reply-2@example.com>

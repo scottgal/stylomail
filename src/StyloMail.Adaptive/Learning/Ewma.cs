@@ -11,7 +11,7 @@ public sealed record EwmaOptions
     /// </summary>
     /// <remarks>
     /// Without this, an average that has not been updated for a week is replaced wholesale by
-    /// the next message — and a single message is exactly what an attacker controls.
+    /// the next message, and a single message is exactly what an attacker controls.
     /// </remarks>
     public double MaxEventContribution { get; init; } = 0.25;
 }

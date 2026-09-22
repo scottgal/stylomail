@@ -8,7 +8,7 @@ namespace StyloMail.Policy;
 /// <remarks>
 /// <b>This is the only place an action is chosen.</b> Probabilistic components produce evidence;
 /// policy authorises side effects. The precedence order below is the safety property, not a
-/// stylistic choice — each tier can constrain the ones after it, and the lower tiers can never
+/// stylistic choice, each tier can constrain the ones after it, and the lower tiers can never
 /// relax the higher ones.
 ///
 /// <orderedlist>
@@ -16,7 +16,7 @@ namespace StyloMail.Policy;
 /// <item>Verified security rule violations</item>
 /// <item>Suspected-compromise posture</item>
 /// <item>Behavioural and semantic risk</item>
-/// <item>Recipient preference — lowest, and never able to override 1–3</item>
+/// <item>Recipient preference, lowest, and never able to override 1–3</item>
 /// </orderedlist>
 /// </remarks>
 public sealed class MailPolicyEngine
@@ -52,7 +52,7 @@ public sealed class MailPolicyEngine
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        // Tier 1 — resource and authorisation controls.
+        // Tier 1, resource and authorisation controls.
         // Deferral, not rejection: an exhausted quota or an engaged kill switch is an operational
         // state, not a verdict about this message. Rejecting permanently would turn our incident
         // into the sender's permanent mail loss.
@@ -78,7 +78,7 @@ public sealed class MailPolicyEngine
                 decidedBy: "resource-controls");
         }
 
-        // Tier 2 — verified security rules. These do not consult the model and do not require its
+        // Tier 2, verified security rules. These do not consult the model and do not require its
         // confidence: a known hard violation is established, not inferred.
         if (input.Context.VerifiedSecurityRuleViolations.Count > 0)
         {
@@ -91,7 +91,7 @@ public sealed class MailPolicyEngine
                 decidedBy: "verified-rules");
         }
 
-        // Tier 3 — suspected-compromise posture. An unresolved suspected outbound compromise stays
+        // Tier 3, suspected-compromise posture. An unresolved suspected outbound compromise stays
         // quarantined; it does not decay into delivery simply because nothing new arrived.
         if (input.Direction == MailDirection.Outbound
             && input.Context.BaselineFrozenForSuspectedCompromise)
@@ -105,10 +105,10 @@ public sealed class MailPolicyEngine
                 decidedBy: "compromise-posture");
         }
 
-        // Tier 4 — behavioural and semantic risk.
+        // Tier 4, behavioural and semantic risk.
         var decision = DecideByRisk(input);
 
-        // Tier 5 — recipient preference. Lowest precedence. It can relax a preference-shaped hold
+        // Tier 5, recipient preference. Lowest precedence. It can relax a preference-shaped hold
         // and nothing else.
         if (decision.Action == MailAction.Hold
             && input.Context.RecipientPrefersThisTrafficClass
@@ -208,7 +208,7 @@ public sealed class MailPolicyEngine
         }
 
         // Low risk is only reassuring if we actually looked. An index of 0.0 computed over a
-        // coverage of 0.0 means nothing was measured — it is an outage, not a clean message — and
+        // coverage of 0.0 means nothing was measured, it is an outage, not a clean message, and
         // allowing it would make absence of evidence indistinguishable from evidence of safety.
         if (coverage < _options.MinimumCoverageForAllow)
         {

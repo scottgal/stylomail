@@ -15,7 +15,7 @@ internal sealed record LinkFinding
 
     public required bool DisplayMismatch { get; init; }
 
-    /// <summary>How the label disagreed — <c>label-host</c>, <c>label-email</c>, <c>label-scheme</c>.</summary>
+    /// <summary>How the label disagreed, <c>label-host</c>, <c>label-email</c>, <c>label-scheme</c>.</summary>
     public string? MismatchKind { get; init; }
 
     /// <summary>
@@ -138,7 +138,7 @@ internal static partial class LinkExtractor
     /// </summary>
     /// <remarks>
     /// Only a label that itself makes a host-shaped claim is compared. Labels like "click here" or
-    /// "view your invoice" name no destination, so there is nothing to disagree with — treating
+    /// "view your invoice" name no destination, so there is nothing to disagree with, treating
     /// those as mismatches would bury the real ones.
     /// </remarks>
     private static (bool Mismatch, string? Kind, bool ClaimsHost) Compare(string label, UrlObservation? target)

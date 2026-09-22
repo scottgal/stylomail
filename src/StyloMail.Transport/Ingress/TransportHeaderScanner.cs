@@ -26,8 +26,8 @@ public sealed record TransportHeaderLimits
 /// What the transport learned from a message's headers before handing it on.
 /// </summary>
 /// <remarks>
-/// Deliberately not the MIME adapter's analysis view. That view is for <em>assessment</em> — what the
-/// message says and whether it is suspicious. This is for <em>transport correctness</em> — how many
+/// Deliberately not the MIME adapter's analysis view. That view is for <em>assessment</em>, what the
+/// message says and whether it is suspicious. This is for <em>transport correctness</em>, how many
 /// hops it has taken, whether it has already been through us, and whether its headers are within
 /// budget at all. Conflating the two would make the hop limit depend on whether parsing succeeded,
 /// and a malformed message is exactly when you most want the loop guard to still work.
@@ -50,7 +50,7 @@ public sealed record TransportHeaderFacts
     /// <summary>The <c>Received</c> value that named us, for the ledger.</summary>
     public string? LoopEvidence { get; init; }
 
-    /// <summary>The message's own <c>Message-ID</c>. <b>Untrusted</b> — recorded, never a key.</summary>
+    /// <summary>The message's own <c>Message-ID</c>. <b>Untrusted</b>, recorded, never a key.</summary>
     public string? UntrustedMessageId { get; init; }
 
     /// <summary>Header fields seen.</summary>
@@ -75,7 +75,7 @@ public sealed record TransportHeaderFacts
 /// </summary>
 /// <remarks>
 /// Runs on the raw bytes before any MIME parsing, and never throws for hostile input. Hop limits and
-/// loop detection are transport guards that must work on a message too malformed to analyse — a
+/// loop detection are transport guards that must work on a message too malformed to analyse, a
 /// message designed to break the parser is precisely the one you do not want looping.
 /// </remarks>
 public static class TransportHeaderScanner
@@ -220,8 +220,8 @@ public static class TransportHeaderScanner
     /// </summary>
     /// <remarks>
     /// Only the <c>by</c> clause is examined, and that is a deliberate narrowing. Our name appearing
-    /// in a <c>from</c> or <c>for</c> clause is normal — a correspondent's server will write our
-    /// domain in a <c>for</c> clause on nearly every message it sends us — so matching anywhere in
+    /// in a <c>from</c> or <c>for</c> clause is normal, a correspondent's server will write our
+    /// domain in a <c>for</c> clause on nearly every message it sends us, so matching anywhere in
     /// the value would declare a loop on ordinary inbound mail. <c>by</c> is the clause that asserts
     /// who accepted the message, and it is the one that a second pass through our own infrastructure
     /// would carry.

@@ -288,8 +288,7 @@ public sealed class CloudflareConnectorTests
     public async Task TheHopMarkerClaimsNoOriginItCannotKnow()
     {
         // This connector has no connection, so it has no connecting host or address. Emitting a
-        // `from` clause anyway would write a fabricated fact into the message's permanent trace —
-        // and that clause is exactly what a downstream reader would use to judge provenance.
+        // `from` clause anyway would write a fabricated fact into the message's permanent trace,         // and that clause is exactly what a downstream reader would use to judge provenance.
         var sink = new TestIngressSink();
         var connector = new CloudflareEmailRoutingConnector(Options(), sink);
 
@@ -305,7 +304,7 @@ public sealed class CloudflareConnectorTests
     public void AByHostTheLoopGuardCannotMatchIsRefusedAtConstruction()
     {
         // A `by` clause that is not one of the recognised local identities means our own hop coming
-        // back is invisible to the loop guard — a silent failure discovered as a mail loop.
+        // back is invisible to the loop guard, a silent failure discovered as a mail loop.
         var ex = Assert.Throws<InvalidOperationException>(() => new CloudflareEmailRoutingConnector(
             Options() with { ByHost = "some-other-name.example.test" },
             new TestIngressSink()));

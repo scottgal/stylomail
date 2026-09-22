@@ -1,16 +1,16 @@
-# `assess-` — composition root and semantic cache
+# `assess-`, composition root and semantic cache
 
 ## Your scope
 Own `src/StyloMail.Assessment/` and `tests/StyloMail.Assessment.Tests/`. Create them.
 Do **not** modify any other project. `mime-`, `adaptive-`, `queue-` and `host-` are actively
 building their own components and **you must not edit their files**. If you need a change to their
 API, `send_message` the owner directly (`mime-`, `adaptive-`, `queue-`, `host-`) and copy
-`overview-` — do not patch around a missing API by reimplementing it.
+`overview-`, do not patch around a missing API by reimplementing it.
 
 **Your components are still in flight.** Expect to read their public interfaces as they land. Start
 with what exists, and coordinate rather than block.
 
-## The pipeline shape — this is fixed, do not redesign it
+## The pipeline shape, this is fixed, do not redesign it
 From `spec.md` §5, in this exact order:
 
 1. Validate envelope, authorization, size and parsing limits; apply mandatory hard limits.
@@ -25,13 +25,13 @@ From `spec.md` §5, in this exact order:
 8. Commit trusted learning **only** when an authorized outcome or explicitly permitted rule exists.
 
 ## What to build
-1. **`MailAssessor : IMailAssessor`** — composes the above. It is the single entry point Host
+1. **`MailAssessor : IMailAssessor`**, composes the above. It is the single entry point Host
    consumes. `host-` already takes `IMailAssessor` as an injected port and returns 503 when it is
    unregistered; registering yours is what makes the pipeline live.
 2. **Semantic cache decorator** over `ISemanticMailClassifier` (source spec §8):
    - Exact keys include tenant, **resolved model version**, question schema version, preprocessing
      version, and a digest of the complete canonical classifier input. If relationship context went
-     into the input, it is part of the key — the key is over the *whole* input.
+     into the input, it is part of the key, the key is over the *whole* input.
    - **Single-flight**: concurrent identical requests must collapse to one provider call.
    - Configurable expiry, model/schema invalidation, bounded LRU/LFU eviction, sampled
      reclassification.
@@ -39,13 +39,12 @@ From `spec.md` §5, in this exact order:
      receives current authentication, URL, behavioural counter, profile and policy checks.
    - The persisted response must retain the evidence distribution, timestamp, coverage and provenance.
    - Near-duplicate matching supplies **campaign evidence only**; it must never be reused as an
-     assessment. Semantically similar wording with a *changed bank account* must miss the reuse gate —
-     link destinations, payment identifiers, sender context and attachment hashes are
+     assessment. Semantically similar wording with a *changed bank account* must miss the reuse gate,      link destinations, payment identifiers, sender context and attachment hashes are
      security-bearing and must not be smoothed away.
 
 ## Hard constraints
 1. **`AssessmentContext.AssessmentOnly == true` means no delivery, no learning, no live traffic
-   accounting.** Route those to the assessment path only — never into queue acceptance.
+   accounting.** Route those to the assessment path only, never into queue acceptance.
 2. **`AssessmentContext.ShadowMode`** records the proposed action while still allowing forwarding.
    It is a mode, not an action.
 3. **Use `AssessmentContext.TimeProvider` for everything.** No `DateTimeOffset.UtcNow` in logic.
@@ -54,7 +53,7 @@ From `spec.md` §5, in this exact order:
    (`policy`, resolved classifier model, question schema, preprocessing) and cache provenance.
 5. **`PayloadReferences.RequireDurable`** guards the acceptance path. Assessment-only inputs carry
    `PayloadReferences.Ephemeral` and must never reach durable acceptance.
-6. Missing semantic evidence stays `Unavailable` through composition — do not let an outage become
+6. Missing semantic evidence stays `Unavailable` through composition, do not let an outage become
    an allow anywhere in the wiring.
 
 ## Tests
@@ -69,7 +68,7 @@ records a proposed action without changing delivery.
 - `dotnet` is NOT on PATH:
   `export DOTNET_ROOT=/usr/local/share/dotnet && export PATH="/usr/local/share/dotnet:$PATH"`
 - SDK 10.0.201, TargetFramework `net10.0`. **Several agents may edit `StyloMail.slnx`
-  concurrently** — if `dotnet sln add` fails, retry once, and always verify with your own csproj.
+  concurrently**, if `dotnet sln add` fails, retry once, and always verify with your own csproj.
 - Do not run `git add` or `git commit`. **Never read, print, or reference `jevkey.pvt`.**
 
 ## Done when

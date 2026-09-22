@@ -35,7 +35,7 @@ internal sealed record ThreadAnalysis
 ///
 /// <para>
 /// The <c>Message-ID</c> is treated as untrusted throughout. It is compared against the references
-/// the same message supplied, which is a self-consistency check — it is never used as a key, never
+/// the same message supplied, which is a self-consistency check, it is never used as a key, never
 /// as identity and never as a deduplication guarantee.
 /// </para>
 /// </remarks>
@@ -54,7 +54,7 @@ internal static class ThreadInspector
         // References or a threaded subject assert ancestry, and only a claim can be contradicted.
         var hasThreadHeaders = inReplyTo is not null || references.Count > 0;
 
-        // A message's own id is deliberately not expected inside its own References chain — that
+        // A message's own id is deliberately not expected inside its own References chain, that
         // is normal and is not a signal. Only the relationships between the claims are checked.
         if (inReplyTo is not null && references.Count > 0 &&
             !references.Contains(inReplyTo, StringComparer.OrdinalIgnoreCase))

@@ -26,7 +26,7 @@ public sealed class CredentialSeamTests
     public async Task StoredCredential_IsNotRecoverableFromTheRecordAlone()
     {
         // The store hands back ciphertext and a key id. Without the key ring, that is all a database
-        // dump yields — which is the whole difference between encrypting at rest and not.
+        // dump yields, which is the whole difference between encrypting at rest and not.
         var harness = new ProxyHarness();
         var record = await harness.AddBackendCredentialAsync();
 
@@ -43,7 +43,7 @@ public sealed class CredentialSeamTests
         // The attack this closes is specific and nasty: an attacker with write access to the store
         // re-labels an OAuth refresh token as an app-password. Without the discriminator in the
         // authenticated data, the app-password provider would happily send a refresh token as a
-        // password — a silent, wrong credential presented to the provider.
+        // password, a silent, wrong credential presented to the provider.
         var harness = new ProxyHarness();
         var record = await harness.AddBackendCredentialAsync();
 
@@ -94,7 +94,7 @@ public sealed class CredentialSeamTests
     [Fact]
     public async Task Resolver_SelectsTheOAuthProviderFromTheDiscriminator()
     {
-        // Same call, same arguments, different stored discriminator — and the only thing that
+        // Same call, same arguments, different stored discriminator, and the only thing that
         // changes is what comes back. That is the swap spec §9.5 requires.
         var harness = new ProxyHarness();
         await harness.EnrolOAuthAccountAsync();
@@ -234,7 +234,7 @@ public sealed class CredentialSeamTests
     public void KeyRing_KeySurvivesRepeatedUse()
     {
         // Regression: the protector used to clear the key it was handed. The key ring owns key
-        // material, so clearing it blanked the ring's only copy — the first credential enrolled
+        // material, so clearing it blanked the ring's only copy, the first credential enrolled
         // worked and every operation after it used zeros, which is a whole-store corruption that
         // presents as "the credential failed authentication".
         var ring = InMemorySecretKeyRing.CreateRandom("k1");

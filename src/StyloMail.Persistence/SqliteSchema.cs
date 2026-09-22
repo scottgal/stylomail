@@ -27,8 +27,8 @@ public static class SqliteSchema
         ArgumentNullException.ThrowIfNull(connection);
 
         // BOTH pragmas must be applied before the transaction opens. SQLite rejects each of them
-        // inside one — journal_mode with "cannot change into wal mode from within a transaction",
-        // synchronous with "Safety level may not be changed inside a transaction" — and the failure
+        // inside one, journal_mode with "cannot change into wal mode from within a transaction",
+        // synchronous with "Safety level may not be changed inside a transaction", and the failure
         // is order- and state-dependent, so it surfaced only on the *second* call against an
         // existing WAL database. That made "safe to call on every start" false and turned a
         // restart into a boot-time failure.
@@ -133,7 +133,7 @@ public static class SqliteSchema
     private const string EvidenceDdl =
         """
         -- PRIMARY KEY is (tenant_id, assessment_id), deliberately composite. With assessment_id
-        -- alone, a lookup by id can address another tenant's row — the tenant predicate becomes a
+        -- alone, a lookup by id can address another tenant's row, the tenant predicate becomes a
         -- filter applied after addressing, not part of the address. Composite means a cross-tenant
         -- read cannot name a row at all, so the isolation is structural rather than a query
         -- discipline someone has to remember. (Flagged by host-, whose own ledger had this and
@@ -191,7 +191,7 @@ public static class SqliteSchema
             feedback_id     TEXT    NOT NULL PRIMARY KEY,
             tenant_id       TEXT    NOT NULL,
             assessment_id   TEXT    NOT NULL,
-            scope           TEXT    NOT NULL,   -- recipient preference vs. global truth — never merged
+            scope           TEXT    NOT NULL,   -- recipient preference vs. global truth, never merged
             label           TEXT    NOT NULL,
             provenance      TEXT    NOT NULL,   -- authenticated operator | recipient | application outcome
             recorded_at     TEXT    NOT NULL,

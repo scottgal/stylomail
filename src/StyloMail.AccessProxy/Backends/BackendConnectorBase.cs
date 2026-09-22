@@ -7,8 +7,7 @@ namespace StyloMail.AccessProxy.Backends;
 /// Opens a raw, unauthenticated channel to a provider.
 /// </summary>
 /// <remarks>
-/// The network seam. Separated from <see cref="IBackendConnector"/> so the authentication dialogue —
-/// which is the part with the credential in it, and the part worth testing exhaustively — can be
+/// The network seam. Separated from <see cref="IBackendConnector"/> so the authentication dialogue, /// which is the part with the credential in it, and the part worth testing exhaustively, can be
 /// driven against an in-memory channel with no socket anywhere in sight. Everything above this
 /// interface is testable without a network; everything below it is a socket and nothing else.
 /// </remarks>
@@ -26,7 +25,7 @@ public interface IBackendTransport
 /// seam is real: <b>there is no mention of a password, a token, an app password or OAuth anywhere in
 /// this class or its subclasses.</b> They receive an <see cref="IBackendAuthenticator"/> and a
 /// <see cref="BackendAuthStyle"/>, and they frame opaque tokens accordingly. Swapping app passwords
-/// for OAuth changes nothing here — the same <see cref="BackendAuthStyle.Sasl"/> path runs, with a
+/// for OAuth changes nothing here, the same <see cref="BackendAuthStyle.Sasl"/> path runs, with a
 /// different mechanism string that the provider supplied.
 ///
 /// <para>
@@ -148,8 +147,8 @@ public abstract class BackendConnectorBase : IBackendConnector
 
     /// <summary>Caps the number of challenge/response rounds.</summary>
     /// <remarks>
-    /// A provider that keeps issuing challenges would otherwise hold a session — and the credential
-    /// exchange — open indefinitely. Exceeding it is a protocol failure, not a credential failure.
+    /// A provider that keeps issuing challenges would otherwise hold a session, and the credential
+    /// exchange, open indefinitely. Exceeding it is a protocol failure, not a credential failure.
     /// </remarks>
     private protected void CheckRoundBudget(int round)
     {

@@ -10,9 +10,8 @@ namespace StyloMail.Transport.Delivery;
 /// <remarks>
 /// <para>
 /// This is the implementation of the port the queue's delivery worker calls, and the only place in
-/// the system that opens an outbound SMTP connection. It speaks the queue's own contracts —
-/// <see cref="DeliveryRequest"/> in, <see cref="DeliveryPortResult"/> out, carrying
-/// <see cref="RecipientDeliveryResult"/> — rather than a transport-local vocabulary. There is no
+/// the system that opens an outbound SMTP connection. It speaks the queue's own contracts, /// <see cref="DeliveryRequest"/> in, <see cref="DeliveryPortResult"/> out, carrying
+/// <see cref="RecipientDeliveryResult"/>, rather than a transport-local vocabulary. There is no
 /// mapping layer to drift: the types the worker reads are the types this produces.
 /// </para>
 /// <para>
@@ -27,14 +26,13 @@ namespace StyloMail.Transport.Delivery;
 /// the upstream may have accepted the message.</item>
 /// <item><b>Exceptions do not escape for ordinary delivery failures.</b> A thrown exception says
 /// nothing about which recipients were tried, which would leave the queue guessing about a message
-/// that may already be delivered. <b>Nothing propagates for a cancellation either</b> — not even
+/// that may already be delivered. <b>Nothing propagates for a cancellation either</b>, not even
 /// the caller's own. A cancelled attempt is reported per recipient like any other outcome: the ones
 /// not reached are temporary failures, and one cut off after the end-of-data terminator is
 /// in-doubt. An exception here would discard exactly the per-recipient information the queue needs,
 /// and turn a precise outcome into a lease expiry recorded much later.</item>
 /// <item><b>The message's lifetime is respected.</b> <see cref="DeliveryRequest.ExpiresAt"/> bounds
-/// the attempt, so work does not consume the budget of a message that is about to be given up on —
-/// and a deadline that lands <em>after</em> the terminator still reports in-doubt, not "cancelled".</item>
+/// the attempt, so work does not consume the budget of a message that is about to be given up on, /// and a deadline that lands <em>after</em> the terminator still reports in-doubt, not "cancelled".</item>
 /// </list>
 /// </remarks>
 public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
@@ -62,8 +60,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
     /// <param name="transcriptSink">
     /// Optional receiver for the redacted SMTP conversation, for the decision ledger. Off by
     /// default: the port result carries a concise diagnostic, and a full transcript is only worth
-    /// materialising when something is there to store it. Any exception it throws is swallowed —
-    /// an audit sink must never be able to fail a delivery.
+    /// materialising when something is there to store it. Any exception it throws is swallowed,     /// an audit sink must never be able to fail a delivery.
     /// </param>
     /// <param name="certificateValidation">
     /// <b>Test only.</b> Production must leave this null so the platform trust store decides which
@@ -134,7 +131,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
 
         var budget = RemainingBudget(request);
 
-        // No deadline means no clamping — not "expired". A message without an explicit lifetime is
+        // No deadline means no clamping, not "expired". A message without an explicit lifetime is
         // bounded by the per-operation timeouts, which is what those bounds are for.
         if (budget is { } remaining)
         {
@@ -171,7 +168,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
         catch (OperationCanceledException)
         {
             // Cancelled while queued for a connection slot. Nothing was attempted, so nothing is
-            // ambiguous — but the caller still gets one outcome per recipient rather than an
+            // ambiguous, but the caller still gets one outcome per recipient rather than an
             // exception, because the port's contract is that a caller always learns what happened to
             // each recipient, and "we never got to it" is something it can act on.
             return AllFor(
@@ -236,7 +233,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
                     {
                         // Nothing about the upstream will differ between recipients, so the whole
                         // batch takes the same outcome rather than each paying for its own failed
-                        // handshake. A permanent refusal is permanent — an attacker who can cause a
+                        // handshake. A permanent refusal is permanent, an attacker who can cause a
                         // transient one must not be able to make mail disappear.
                         FillRemaining(
                             request,
@@ -267,7 +264,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
             // Reporting a caller cancellation rather than throwing it.
             //
             // The port's contract is one outcome per recipient, and this component always knows
-            // which recipients it reached — so an exception here would discard per-recipient facts
+            // which recipients it reached, so an exception here would discard per-recipient facts
             // the caller cannot reconstruct, and would leave a worker recording an item-level lease
             // expiry much later instead of the per-recipient truth now.
             //
@@ -286,7 +283,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
         {
             // Cancelled by this port's own budget rather than by the caller, so the message's
             // lifetime ran out mid-attempt. That is an outcome, not an exception to hand to the
-            // worker — and if the terminator had already been written, the session will have
+            // worker, and if the terminator had already been written, the session will have
             // reported in-doubt for that recipient rather than reaching here for it.
             FillRemaining(
                 request,
@@ -297,8 +294,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
         }
         catch (Exception ex) when (IsTransportFault(ex))
         {
-            // Reached only for a fault that escaped before any per-recipient outcome was produced —
-            // a refused connection, a DNS failure, a TLS error. Converting it keeps the promise the
+            // Reached only for a fault that escaped before any per-recipient outcome was produced,             // a refused connection, a DNS failure, a TLS error. Converting it keeps the promise the
             // port makes: one outcome per recipient, exceptions reserved for the unexpected.
             FillRemaining(request, results, DeliveryAttemptOutcome.TemporaryFailure, ex.Message);
             detail = "The connection to the upstream failed.";
@@ -337,7 +333,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Deliberately discarded — see the remarks above.
+            // Deliberately discarded, see the remarks above.
         }
     }
 
@@ -406,7 +402,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// The upstream's reply code is the only evidence of <em>why</em> a message was refused, and it
-    /// is gone once the socket is. It is carried into the ledger here — bounded and sanitised, since
+    /// is gone once the socket is. It is carried into the ledger here, bounded and sanitised, since
     /// this text lands on a security component's audit path.
     /// </remarks>
     private static string Describe(SmtpTransactionResult outcome)
@@ -445,7 +441,7 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
     /// is separate is that neither half of that is known.
     ///
     /// <para>
-    /// Every value produced here is in <see cref="DeliveryPortContract.ReportableOutcomes"/> — the
+    /// Every value produced here is in <see cref="DeliveryPortContract.ReportableOutcomes"/>, the
     /// queue refuses the rest, and its own events (an elapsed hold, a lapsed lease, a reviewer's
     /// decision) are not ours to report.
     /// </para>

@@ -11,13 +11,13 @@ internal static class SmtpTestRig
     /// Accepts whatever certificate the fake server presents.
     /// </summary>
     /// <remarks>
-    /// Production never passes this — see <c>SocketSmtpChannel.ConnectAsync</c>. The fake server's
+    /// Production never passes this, see <c>SocketSmtpChannel.ConnectAsync</c>. The fake server's
     /// certificate is self-signed and generated per test run, so there is nothing for the platform
     /// trust store to verify against.
     /// </remarks>
     internal static readonly RemoteCertificateValidationCallback TrustAnyCertificate = (_, _, _, _) => true;
 
-    /// <summary>An upstream pointing at the fake server with TLS off — the loopback case.</summary>
+    /// <summary>An upstream pointing at the fake server with TLS off, the loopback case.</summary>
     internal static SmtpUpstream PlainUpstream(FakeSmtpServer server, string? heloName = null) => new()
     {
         Host = "127.0.0.1",

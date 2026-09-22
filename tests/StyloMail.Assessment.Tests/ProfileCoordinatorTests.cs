@@ -5,7 +5,7 @@ namespace StyloMail.Assessment.Tests;
 
 /// <summary>
 /// There are two profile operations and the wrong one for each workload is a real failure, so each
-/// test here is really asserting which store call was made — not merely that something happened.
+/// test here is really asserting which store call was made, not merely that something happened.
 /// </summary>
 public sealed class ProfileCoordinatorTests
 {

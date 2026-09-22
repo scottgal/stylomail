@@ -8,15 +8,15 @@ namespace StyloMail.AccessProxy.Backends;
 /// </summary>
 /// <remarks>
 /// The framing half of spec §9.5's seam. It reads <see cref="IBackendAuthenticator.Style"/> and
-/// frames opaque tokens accordingly — <c>AUTHENTICATE</c> for <see cref="BackendAuthStyle.Sasl"/>,
-/// <c>LOGIN</c> for <see cref="BackendAuthStyle.LegacyUsernamePassword"/> — and never learns what
+/// frames opaque tokens accordingly, <c>AUTHENTICATE</c> for <see cref="BackendAuthStyle.Sasl"/>,
+/// <c>LOGIN</c> for <see cref="BackendAuthStyle.LegacyUsernamePassword"/>, and never learns what
 /// either token means. An app password arriving as SASL <c>PLAIN</c> and an OAuth access token
 /// arriving as SASL <c>XOAUTH2</c> take the identical path through this class; only the mechanism
 /// name the provider chose differs, and that string is never interpreted here.
 ///
 /// <para>
 /// Every negative outcome below is terminal. There is no retry, no fallback mechanism, and no
-/// "try the other style" — a proxy that reattempts a rejected credential is a proxy generating
+/// "try the other style", a proxy that reattempts a rejected credential is a proxy generating
 /// failed login attempts against the user's own mailbox.
 /// </para>
 /// </remarks>
@@ -57,7 +57,7 @@ public sealed class ImapBackendConnector : BackendConnectorBase
 
         if (!greeting.StartsWith("* OK", StringComparison.OrdinalIgnoreCase))
         {
-            // Includes "* BYE", and includes anything unrecognised — an unexpected banner fails
+            // Includes "* BYE", and includes anything unrecognised, an unexpected banner fails
             // closed rather than being read as consent.
             throw new BackendAuthenticationRejectedException("The IMAP backend refused the connection.");
         }
@@ -118,7 +118,7 @@ public sealed class ImapBackendConnector : BackendConnectorBase
 
                 if (response is null)
                 {
-                    // The provider declined to continue — a revoked token, an error challenge. Fail
+                    // The provider declined to continue, a revoked token, an error challenge. Fail
                     // closed rather than prompting again.
                     throw new BackendAuthenticationRejectedException(
                         "The credential provider abandoned the authentication exchange.");

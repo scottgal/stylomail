@@ -9,7 +9,7 @@ namespace StyloMail.Host.Feedback;
 /// <remarks>
 /// There is deliberately no tenant-wide or global member. "This message was fine" must not be
 /// expressible as "this sender is fine", because that is how a single correction becomes a
-/// permanent bypass of every check the system makes — and a label that says so should be
+/// permanent bypass of every check the system makes, and a label that says so should be
 /// impossible to write down, not merely discouraged.
 /// </remarks>
 public enum FeedbackScope
@@ -47,7 +47,7 @@ public sealed record FeedbackEntry
     public required FeedbackLabel Label { get; init; }
 
     /// <summary>Required when the scope is <see cref="FeedbackScope.Recipient"/> or
-    /// <see cref="FeedbackScope.Relationship"/> — a scoped label with no scope to bind to is not
+    /// <see cref="FeedbackScope.Relationship"/>, a scoped label with no scope to bind to is not
     /// scoped at all.</summary>
     public string? Recipient { get; init; }
 

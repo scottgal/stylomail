@@ -4,7 +4,7 @@ namespace StyloMail.Queue;
 public enum QueueListingFilter
 {
     /// <summary>
-    /// Items with at least one recipient awaiting a human decision — held or quarantined.
+    /// Items with at least one recipient awaiting a human decision, held or quarantined.
     /// </summary>
     AwaitingDecision = 0,
 

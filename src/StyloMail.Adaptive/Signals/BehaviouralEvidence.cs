@@ -30,7 +30,7 @@ public static class BehaviouralEvidence
     /// </summary>
     /// <remarks>
     /// Every behavioural signal sets this to <c>false</c>. Behavioural evidence is a hint that
-    /// something changed, and change is not the same as malice — a sender that suddenly doubles
+    /// something changed, and change is not the same as malice, a sender that suddenly doubles
     /// its volume may have been acquired, won a contract, or been compromised, and only policy
     /// with more context can tell those apart.
     /// </remarks>

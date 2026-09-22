@@ -30,14 +30,14 @@ await HostServices.InitialiseStorageAsync(app.Services);
 
 // Resolve the assessor at startup, not on first request.
 //
-// It is registered as a lazy singleton, so without this a half-configured deployment — one secret
-// set and the other missing — would boot, report healthy on /health/ready, and only fail when real
+// It is registered as a lazy singleton, so without this a half-configured deployment, one secret
+// set and the other missing, would boot, report healthy on /health/ready, and only fail when real
 // mail arrived. A misconfiguration that looks like a healthy service is the failure mode this
 // whole check exists to prevent, and forcing the resolution here is what makes it fail at boot.
 _ = app.Services.GetRequiredService<StyloMail.Core.IMailAssessor>();
 
 // And the ingress sink, for the same reason plus one of its own: building it is where the two
-// composition assertions run — the ingress bound against the queue's, and the sink's spool against
+// composition assertions run, the ingress bound against the queue's, and the sink's spool against
 // the pipeline's. Both describe a property of a pair of components that neither can check alone, so
 // the only good moment to discover a mismatch is before the host is serving.
 _ = app.Services.GetRequiredService<StyloMail.Transport.Ingress.ISmtpIngressSink>();

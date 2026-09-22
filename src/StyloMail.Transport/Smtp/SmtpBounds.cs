@@ -7,7 +7,7 @@ namespace StyloMail.Transport.Smtp;
 /// <b>These are features, not tuning.</b> A transport that can be made to hold unbounded resources
 /// is a denial-of-service vector against the mail it exists to protect: an SMTP peer that never
 /// sends a line terminator, or that streams a million-line reply, can pin a worker and its memory
-/// forever unless a bound stops it. Each limit below answers a specific way that happens — see the
+/// forever unless a bound stops it. Each limit below answers a specific way that happens, see the
 /// individual remarks.
 ///
 /// <para>
@@ -68,7 +68,7 @@ public sealed record SmtpBounds
     /// <remarks>
     /// Checked <em>before</em> the transaction starts, never during. A message that is refused
     /// mid-DATA has already been partially transferred, and the upstream's own size limit is the
-    /// thing that should have caught it — this bound exists so we do not open a transfer we
+    /// thing that should have caught it, this bound exists so we do not open a transfer we
     /// already know cannot finish.
     /// </remarks>
     public long MaxMessageBytes { get; init; } = 64L * 1024 * 1024;

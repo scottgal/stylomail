@@ -11,7 +11,7 @@ using StyloMail.Transport.Cloudflare;
 namespace StyloMail.Host.Tests;
 
 /// <summary>
-/// <c>POST /v1/ingress/cloudflare</c> — the inbound handoff from a Cloudflare Email Routing Worker.
+/// <c>POST /v1/ingress/cloudflare</c>, the inbound handoff from a Cloudflare Email Routing Worker.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -129,7 +129,7 @@ public sealed class CloudflareIngressTests
     public async Task A_message_with_no_envelope_recipient_is_refused_rather_than_routed_by_its_headers()
     {
         // Without an envelope recipient there is no routing decision to make, and falling back to the
-        // To header would let message content choose the destination — which is the whole reason the
+        // To header would let message content choose the destination, which is the whole reason the
         // envelope is the only thing consulted.
         using var host = new TestHost().WithCloudflareIngress(Secret, Served);
         using var client = host.Anonymous();
@@ -143,7 +143,7 @@ public sealed class CloudflareIngressTests
     public async Task A_message_over_the_configured_maximum_is_refused_by_the_connectors_own_check()
     {
         // The connector's bound, not the server's. Both exist, and they are deliberately separate
-        // mechanisms — but the message has to reach the connector for its answer to be the one that
+        // mechanisms, but the message has to reach the connector for its answer to be the one that
         // names a maximum an operator can act on.
         using var host = new TestHost().WithCloudflareIngress(Secret, Served);
         host.Configure("StyloMail:Transport:CloudflareIngress:MaxMessageBytes", "2048");

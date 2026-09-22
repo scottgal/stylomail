@@ -70,7 +70,7 @@ public sealed record SemanticCoverage
 /// <b>What is stored is evidence, and only evidence.</b> There is no action, no disposition and no
 /// sender verdict in this record, which is what makes "never memoise allow this sender" a property
 /// of the structure rather than a rule to remember. Every message that hits this entry still goes
-/// through current authentication, URL, counter, profile and policy checks — the cache removes one
+/// through current authentication, URL, counter, profile and policy checks, the cache removes one
 /// provider call and nothing else.
 /// </remarks>
 public sealed record CachedSemanticAssessment
@@ -84,7 +84,7 @@ public sealed record CachedSemanticAssessment
     /// <summary>Coverage at the time of classification. Never recomputed from the evidence alone.</summary>
     public required SemanticCoverage Coverage { get; init; }
 
-    /// <summary>When the provider answered. Survives the cache — a hit does not re-date the evidence.</summary>
+    /// <summary>When the provider answered. Survives the cache, a hit does not re-date the evidence.</summary>
     public required DateTimeOffset CachedAt { get; init; }
 
     public required DateTimeOffset ExpiresAt { get; init; }

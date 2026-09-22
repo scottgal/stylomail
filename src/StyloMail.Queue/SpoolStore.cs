@@ -28,7 +28,7 @@ public sealed class SpoolUnavailableException : Exception
 /// <b>Payload-before-metadata ordering is deliberate.</b> The payload is written and flushed first,
 /// and only then does the queue commit the metadata row that references it. That ordering means a
 /// crash mid-acceptance can leave an <em>orphan payload</em>, which a sweeper can safely delete, but
-/// can never leave <em>metadata pointing at a payload that does not exist</em> — which would be
+/// can never leave <em>metadata pointing at a payload that does not exist</em>, which would be
 /// unrecoverable mail loss.
 /// </para>
 /// </remarks>
@@ -40,7 +40,7 @@ public sealed class SpoolStore
     /// <remarks>
     /// Shared between the writer and the sweeper on purpose. These were two independent string
     /// literals: the writer produced <c>name.{guid}.tmp</c> and the sweeper searched for
-    /// <c>*.tmp</c>, so they agreed — but only by coincidence, and a change to either would have
+    /// <c>*.tmp</c>, so they agreed, but only by coincidence, and a change to either would have
     /// left crashed temporaries accumulating on disk forever with nothing to notice.
     /// </remarks>
     private const string TemporarySuffix = ".tmp";
@@ -108,8 +108,7 @@ public sealed class SpoolStore
             File.Move(tempPath, finalPath, overwrite: false);
 
             // The rename itself is a directory-entry change, and a flushed file does not make its
-            // directory entry durable. Without this, a power loss can leave the metadata row —
-            // committed to SQLite with a full fsync of its own — referring to a payload whose
+            // directory entry durable. Without this, a power loss can leave the metadata row,             // committed to SQLite with a full fsync of its own, referring to a payload whose
             // name never made it to disk. That is the one state this component must never reach.
             FlushDirectory(directory);
         }
@@ -117,7 +116,7 @@ public sealed class SpoolStore
         {
             TryDelete(tempPath);
 
-            // Disk full, permissions, unmounted volume — all of these mean "do not accept".
+            // Disk full, permissions, unmounted volume, all of these mean "do not accept".
             throw new SpoolUnavailableException(
                 $"Payload could not be durably spooled for queue item {queueId}.", ex);
         }
@@ -137,7 +136,7 @@ public sealed class SpoolStore
     /// <summary>Whether the payload named by this reference is still present.</summary>
     public bool Exists(string payloadReference) => File.Exists(PathFor(payloadReference));
 
-    /// <summary>Deletes a payload. Absence is not an error — deletion must be idempotent.</summary>
+    /// <summary>Deletes a payload. Absence is not an error, deletion must be idempotent.</summary>
     public void Delete(string payloadReference) => TryDelete(PathFor(payloadReference));
 
     /// <summary>
@@ -197,7 +196,7 @@ public sealed class SpoolStore
     /// </summary>
     /// <remarks>
     /// These are safe to delete precisely because payload-before-metadata ordering guarantees the
-    /// only possible orphan is a payload nobody references — never metadata referencing nothing.
+    /// only possible orphan is a payload nobody references, never metadata referencing nothing.
     /// </remarks>
     public IReadOnlyList<string> SweepOrphans(IReadOnlySet<string> liveReferences, DateTimeOffset cutoff)
     {
@@ -231,7 +230,7 @@ public sealed class SpoolStore
         }
 
         // A crash between creating a temporary and renaming it leaves a file nothing will ever
-        // reference. It is not an orphan payload, but it is the same kind of debris — a distinct
+        // reference. It is not an orphan payload, but it is the same kind of debris, a distinct
         // path from an unreferenced payload, and one that leaks disk on every crashed acceptance
         // if it goes unswept.
         foreach (var file in Directory.EnumerateFiles(
@@ -313,7 +312,7 @@ public sealed class SpoolStore
     /// A failure is <b>fail-closed</b>: a rename we cannot prove durable is not a payload we can
     /// honestly claim to have stored, and the caller must defer rather than accept. The one
     /// exception is <c>EINVAL</c>/<c>ENOTSUP</c>, which some filesystems return to mean "this is
-    /// not supported here" rather than "this failed" — those are tolerated, with the residual risk
+    /// not supported here" rather than "this failed", those are tolerated, with the residual risk
     /// documented rather than hidden.
     /// </para>
     /// <para>

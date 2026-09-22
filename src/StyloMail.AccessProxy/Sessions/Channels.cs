@@ -5,7 +5,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// </summary>
 /// <remarks>
 /// Deliberately a pair of <see cref="Stream"/>s and nothing else. There is no message model here,
-/// no envelope, no parsed command — because a type that could represent a message is a type that
+/// no envelope, no parsed command, because a type that could represent a message is a type that
 /// invites someone to "just fix up" a header on the way past, and rewriting signed content
 /// invalidates DKIM. The proxy moves bytes; this interface is the whole reason it can claim that.
 ///
@@ -27,7 +27,7 @@ public interface IDuplexChannel : IAsyncDisposable
     /// A description safe for diagnostics, e.g. <c>client:127.0.0.1:51234</c> or <c>backend:gmail/imap</c>.
     /// </summary>
     /// <remarks>
-    /// Never message content and never a credential — this string is exactly the sort of thing that
+    /// Never message content and never a credential, this string is exactly the sort of thing that
     /// ends up in a metric dimension or a log line, so what it may contain is part of its contract.
     /// </remarks>
     string Description { get; }

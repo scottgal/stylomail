@@ -8,7 +8,7 @@ namespace StyloMail.Core;
 /// selects one of these. No semantic score may select an action directly.
 ///
 /// <para>
-/// Shadow is deliberately <em>not</em> a member here — shadow is a mode that records
+/// Shadow is deliberately <em>not</em> a member here, shadow is a mode that records
 /// the action it would have taken while still forwarding. Modelling it as an action
 /// would conflate "what we decided" with "whether we were allowed to act".
 /// </para>

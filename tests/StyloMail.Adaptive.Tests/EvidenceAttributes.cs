@@ -4,7 +4,7 @@ namespace StyloMail.Adaptive.Tests;
 
 /// <summary>
 /// Reads <see cref="Evidence.Attributes"/>, which is a list of name/value pairs rather than a
-/// map — so a repeated name is several entries, not one overwritten value.
+/// map, so a repeated name is several entries, not one overwritten value.
 /// </summary>
 internal static class EvidenceAttributes
 {

@@ -11,7 +11,7 @@ namespace StyloMail.Transport.Ingress;
 ///
 /// <para>
 /// <b>No domains means no inbound.</b> The empty policy refuses everything rather than allowing
-/// everything — a missing configuration must not read as a universal open relay.
+/// everything, a missing configuration must not read as a universal open relay.
 /// </para>
 /// <para>
 /// Matching is exact and case-insensitive, with no subdomain or suffix matching. A suffix match would

@@ -19,7 +19,7 @@ public enum IngressOutcome
 /// The decision to answer a client with, expressed in SMTP's terms.
 /// </summary>
 /// <remarks>
-/// <b>Acceptance is a queue id, not a boolean</b> — the same rule the queue imposes on itself, for
+/// <b>Acceptance is a queue id, not a boolean</b>, the same rule the queue imposes on itself, for
 /// the same reason. A decision that claims acceptance without naming the durable row it is a claim
 /// about is exactly how a <c>250</c> gets sent for mail that was never stored, and the client then
 /// deletes its copy. <see cref="Accepted"/> cannot be built without one.
@@ -44,7 +44,7 @@ public sealed record IngressDecision
     /// </summary>
     /// <remarks>
     /// The factories make an inconsistent decision unconstructible, but a record with init-only
-    /// properties can still be built by hand — so every consumer that turns a decision into an
+    /// properties can still be built by hand, so every consumer that turns a decision into an
     /// acknowledgement checks this first. It is the difference between a compile-time guarantee and
     /// a runtime one, and the rule it protects is the one where being wrong destroys mail.
     /// </remarks>
@@ -76,7 +76,7 @@ public sealed record IngressDecision
     /// Declined for now: the client retains responsibility and will try again.
     /// </summary>
     /// <remarks>
-    /// The correct answer whenever the message could not be made durable — disk full, an unmounted
+    /// The correct answer whenever the message could not be made durable, disk full, an unmounted
     /// spool, a lock that would not clear. <b>Never a <c>250</c>.</b> If we accepted here the client
     /// would delete its copy of mail we cannot produce.
     /// </remarks>
@@ -128,13 +128,13 @@ public sealed record AuthenticatedPrincipal
     /// </summary>
     /// <remarks>
     /// <b>There is no null-sender exemption, and that is a correctness rule rather than strictness.</b>
-    /// <c>&lt;&gt;</c> means "this is a DSN" — RFC 5321's mechanism for bounces — and this system does
+    /// <c>&lt;&gt;</c> means "this is a DSN", RFC 5321's mechanism for bounces, and this system does
     /// not originate bounces. The spec records a permanent failure and leaves it to the upstream
     /// MTA's DSN policy, so an authenticated client submitting with a null sender is either confused
     /// or probing, and permitting it is precisely the rule that lets a bounce be generated on someone
-    /// else's behalf. <c>AssessmentValidation</c> enforces it as the primary rule — named
+    /// else's behalf. <c>AssessmentValidation</c> enforces it as the primary rule, named
     /// <c>AssessmentRules.NullSenderNotPermitted</c>, <c>"envelope.null_sender_not_permitted"</c>,
-    /// outbound only — with <c>QueueStore.ValidateSubmission</c> as the backstop behind it. This is
+    /// outbound only, with <c>QueueStore.ValidateSubmission</c> as the backstop behind it. This is
     /// the third component agreeing rather than the first disagreeing.
     ///
     /// <para>
@@ -147,7 +147,7 @@ public sealed record AuthenticatedPrincipal
     ///
     /// <para>
     /// <b>Inbound is unaffected.</b> A DSN being <em>delivered to</em> a mailbox arrives
-    /// unauthenticated and never reaches this method — the listener's inbound path does not consult
+    /// unauthenticated and never reaches this method, the listener's inbound path does not consult
     /// approved identities at all. The legitimate bounce case is untouched.
     /// </para>
     /// <para>
@@ -170,7 +170,7 @@ public sealed record AuthenticatedPrincipal
 /// that knowledge inside the transport would be a second answer to "who is this?".
 ///
 /// <para>
-/// Implementations are only ever called on an encrypted connection — the listener enforces that
+/// Implementations are only ever called on an encrypted connection, the listener enforces that
 /// before it asks, so a verifier never receives a credential that travelled in the clear.
 /// </para>
 /// </remarks>
@@ -227,11 +227,11 @@ public sealed record IngressSubmission
 /// <c>IMailAssessor.AssessAsync</c> with <c>AssessmentOnly = false</c> and reads the result:
 /// </para>
 /// <list type="bullet">
-/// <item><c>MailAssessment.SubmissionId</c> — the durable queue id. Non-null exactly when a durable
+/// <item><c>MailAssessment.SubmissionId</c>, the durable queue id. Non-null exactly when a durable
 /// row exists, so it alone decides whether a <c>250</c> may be sent.</item>
-/// <item><c>MailAssessment.Action</c> — <c>Defer</c> and <c>Reject</c> mean responsibility was
+/// <item><c>MailAssessment.Action</c>, <c>Defer</c> and <c>Reject</c> mean responsibility was
 /// declined <em>before</em> acceptance. Nothing was queued and there is nothing to undo.</item>
-/// <item><c>AssessmentContext.ClientIdempotencyKey</c> — the caller's retry key, passed through
+/// <item><c>AssessmentContext.ClientIdempotencyKey</c>, the caller's retry key, passed through
 /// unchanged. An SMTP session has no client-supplied key, so this is null for both ingress paths
 /// here; the transport cannot invent one, and the resulting duplicate-after-a-lost-acknowledgement
 /// risk is the SMTP ambiguity the spec accepts rather than a gap to paper over.</item>

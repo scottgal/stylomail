@@ -30,7 +30,7 @@ public sealed class SmtpSubmissionListenerTests
             InboundTenantId = "t_inbound",
         };
 
-    /// <summary>Connects, greets, and negotiates TLS — the state every accepted message needs to reach.</summary>
+    /// <summary>Connects, greets, and negotiates TLS, the state every accepted message needs to reach.</summary>
     private static async Task<(TestSmtpClient Client, ClientReply Ehlo)> OpenEncryptedAsync(int port)
     {
         var client = await TestSmtpClient.ConnectAsync(port);
@@ -75,7 +75,7 @@ public sealed class SmtpSubmissionListenerTests
         var (client, ehlo) = await OpenEncryptedAsync(listener.BoundPort);
         await using var _ = client;
 
-        // No longer offered once the connection is already encrypted — renegotiation is not a thing
+        // No longer offered once the connection is already encrypted, renegotiation is not a thing
         // a client should be asked to do.
         Assert.DoesNotContain(ehlo.Lines, l => l.Contains("STARTTLS", StringComparison.Ordinal));
 
@@ -154,7 +154,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task DefersRatherThanAcceptingWhenDurableStorageIsUnavailable()
     {
         // The single rule that matters most. A 250 here transfers responsibility for a message we
-        // could not store, and the client deletes its copy — the mail is destroyed by our success.
+        // could not store, and the client deletes its copy, the mail is destroyed by our success.
         var sink = new TestIngressSink(_ => IngressDecision.Defer("The spool could not be written."));
         await using var listener = new SmtpSubmissionListener(Options(), sink);
         listener.Start();
@@ -278,7 +278,7 @@ public sealed class SmtpSubmissionListenerTests
         await client.ReadReplyAsync();
         var ehlo = await client.SendAsync("EHLO test.client");
 
-        // Not advertised before STARTTLS either — offering it would invite a credential we would
+        // Not advertised before STARTTLS either, offering it would invite a credential we would
         // then refuse, and the refusal would still have disclosed the mechanism.
         Assert.DoesNotContain(ehlo.Lines, l => l.Contains("AUTH", StringComparison.Ordinal));
 
@@ -342,7 +342,7 @@ public sealed class SmtpSubmissionListenerTests
     [InlineData("MAIL FROM:<> SIZE=1000")]
     public async Task AnAuthenticatedSubmissionCannotUseTheNullSender(string command)
     {
-        // `<>` means "this is a DSN", and we do not originate bounces — a permanent failure is
+        // `<>` means "this is a DSN", and we do not originate bounces, a permanent failure is
         // recorded and left to the upstream MTA's DSN policy. Permitting it here is exactly the rule
         // that lets a bounce be generated on someone else's behalf.
         //
@@ -506,7 +506,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task ExactlyOneHopMarkerIsPrependedAndNothingElseChanges()
     {
         // The precise property, stated so it cannot widen unnoticed: one Received line, then the
-        // original bytes untouched — body, headers, order and all.
+        // original bytes untouched, body, headers, order and all.
         var sink = new TestIngressSink();
         await using var listener = new SmtpSubmissionListener(Options(), sink);
         listener.Start();
@@ -535,7 +535,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task TheHopMarkerNamesUsAndTheConnectingClient()
     {
         // The `by` clause is what the loop guard matches on, so it must carry the name the listener
-        // is configured under — not a generic label, or our own hop coming back is unrecognisable.
+        // is configured under, not a generic label, or our own hop coming back is unrecognisable.
         var sink = new TestIngressSink();
         await using var listener = new SmtpSubmissionListener(Options(), sink);
         listener.Start();
@@ -559,7 +559,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task AHostileClientNameCannotForgeAnExtraHeader()
     {
         // The EHLO argument is attacker-supplied and is interpolated into a header placed at the top
-        // of the stored message — the highest-value injection point in either ingress.
+        // of the stored message, the highest-value injection point in either ingress.
         var sink = new TestIngressSink();
         await using var listener = new SmtpSubmissionListener(Options(), sink);
         listener.Start();
@@ -571,7 +571,7 @@ public sealed class SmtpSubmissionListenerTests
         await client.SendAsync("EHLO nasty.invalid");
 
         // A single EHLO argument stuffed with every structural character in the grammar. Sent as one
-        // line, because CR/LF cannot survive the line reader — the characters that can do damage are
+        // line, because CR/LF cannot survive the line reader, the characters that can do damage are
         // the ones that reframe the value without ending the line.
         await client.StartTlsAsync();
         Assert.Equal(250, (await client.SendAsync("EHLO a(b)c;<injected@evil.test>")).Code);
@@ -603,7 +603,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task TheHopMarkerNeverCarriesARecipientAddress()
     {
         // A `Received` header is stored, forwarded to every recipient, and often archived by third
-        // parties — so naming one recipient in it discloses that recipient to all the others. That
+        // parties, so naming one recipient in it discloses that recipient to all the others. That
         // is a privacy breach manufactured by a diagnostic convenience, which is why the `for`
         // clause is optional in the grammar and is deliberately not written.
         //
@@ -635,7 +635,7 @@ public sealed class SmtpSubmissionListenerTests
     public async Task AReceivedHeaderTheSinkSeesIsTheStampedOne()
     {
         // HopCount is counted over what arrived, before our marker is added, so a message with two
-        // hops still reports two — not three because we counted our own line.
+        // hops still reports two, not three because we counted our own line.
         var sink = new TestIngressSink();
         await using var listener = new SmtpSubmissionListener(Options(), sink);
         listener.Start();
@@ -662,14 +662,13 @@ public sealed class SmtpSubmissionListenerTests
     //
     // The ordinary host-shutdown path is stop-then-dispose: IHostedService calls StopAsync, then the
     // host disposes. My suite only ever used `await using`, which reaches DisposeAsync as the single
-    // entry point — so it never exercised the pairing at all, and the defect below was invisible to
+    // entry point, so it never exercised the pairing at all, and the defect below was invisible to
     // a suite that looked thorough. Reported by ingress-, who hosted it and hit it.
 
     [Fact]
     public async Task StoppingThenDisposingWithAClientAttachedDoesNotThrow()
     {
-        // The bug: StopAsync nulled the listener BEFORE awaiting the drain, so a second caller —
-        // which DisposeAsync always is on this path — returned immediately, disposed the connection
+        // The bug: StopAsync nulled the listener BEFORE awaiting the drain, so a second caller,         // which DisposeAsync always is on this path, returned immediately, disposed the connection
         // semaphore, and the still-draining session's `finally { Release(); }` threw
         // ObjectDisposedException out of the first caller's Task.WhenAll.
         var sink = new TestIngressSink();
@@ -683,7 +682,7 @@ public sealed class SmtpSubmissionListenerTests
 
         var stopping = listener.StopAsync();
 
-        // Dispose while the first stop is still draining — the exact overlap that used to race.
+        // Dispose while the first stop is still draining, the exact overlap that used to race.
         await listener.DisposeAsync();
 
         await stopping;

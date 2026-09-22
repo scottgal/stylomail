@@ -15,7 +15,7 @@ namespace StyloMail.Host.Hosting;
 /// A plain configuration record rather than a binding straight onto the transport's own option
 /// types. <see cref="SmtpIngressOptions"/> and <see cref="CloudflareIngressOptions"/> carry a
 /// certificate, an <see cref="IPAddress"/> and a <see cref="RecipientDomainPolicy"/>, none of which
-/// a configuration binder can produce honestly — a policy that arrived by binder magic would have no
+/// a configuration binder can produce honestly, a policy that arrived by binder magic would have no
 /// single place where "no domains means no inbound" is visible. Everything is spelled out here so
 /// the translation to the transport's types is one readable hop.
 /// </para>
@@ -58,7 +58,7 @@ public sealed class HostTransportOptions
         /// Password for <see cref="CertificatePath"/>.
         /// </summary>
         /// <remarks>
-        /// Supplied by configuration — in a real deployment that means an environment variable or a
+        /// Supplied by configuration, in a real deployment that means an environment variable or a
         /// secret store, never a literal in this repository, exactly as
         /// <see cref="Auth.HostPrincipalOptions.Key"/> is. It is never logged and never placed in an
         /// exception message.
@@ -71,7 +71,7 @@ public sealed class HostTransportOptions
         /// <remarks>
         /// <b>Defaults to true, and it is not a bug if that makes the listener refuse to start.</b>
         /// With encryption required and no certificate there is no <c>STARTTLS</c> and therefore no
-        /// <c>AUTH</c>, so no submission could ever be accepted — and the listener refuses to be
+        /// <c>AUTH</c>, so no submission could ever be accepted, and the listener refuses to be
         /// constructed rather than answering rejection to every client. Turning this off is a
         /// separate, explicit decision for a loopback relay, never something a missing certificate
         /// quietly implies.
@@ -82,7 +82,7 @@ public sealed class HostTransportOptions
         public bool AllowUnauthenticatedInbound { get; set; } = true;
 
         /// <summary>
-        /// Domains this deployment accepts inbound mail for. <b>Empty means no inbound</b> — a
+        /// Domains this deployment accepts inbound mail for. <b>Empty means no inbound</b>, a
         /// missing configuration must not read as a universal relay.
         /// </summary>
         public List<string> RecipientDomains { get; set; } = [];
@@ -92,7 +92,7 @@ public sealed class HostTransportOptions
 
         /// <summary>
         /// Names this system is known by, for the inbound loop guard. Must include
-        /// <see cref="ServerName"/>, which is what our own hop marker is written under — the
+        /// <see cref="ServerName"/>, which is what our own hop marker is written under, the
         /// listener refuses to start if the two disagree.
         /// </summary>
         public List<string> LocalHostIdentities { get; set; } = [];
@@ -177,7 +177,7 @@ public sealed class HostTransportOptions
         /// Builds the connector's options.
         /// </summary>
         /// <param name="sharedSecret">
-        /// The Worker's secret, read from the environment — <b>not</b> from this configuration object.
+        /// The Worker's secret, read from the environment, <b>not</b> from this configuration object.
         /// There is deliberately no <c>SharedSecret</c> property here: a secret with a config key is
         /// a secret that ends up in an appsettings file and then in a repository, and the whole point
         /// of <see cref="HostCredentials.CloudflareIngressSecretEnvironmentVariable"/> is that the
@@ -219,7 +219,7 @@ public sealed class HostTransportOptions
 
         /// <summary>
         /// Password for <c>AUTH</c>. Supplied by configuration, from the environment or a secret
-        /// store in a real deployment — never a literal here, never logged.
+        /// store in a real deployment, never a literal here, never logged.
         /// </summary>
         public string? Password { get; set; }
 

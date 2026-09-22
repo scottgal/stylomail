@@ -23,7 +23,7 @@ public enum MimeParseDisposition
 
     /// <summary>
     /// The message exceeded a structural limit (part count, nesting depth, header count or header
-    /// size). No analysis view is produced — see the type remarks.
+    /// size). No analysis view is produced, see the type remarks.
     /// </summary>
     LimitExceeded = 3,
 }
@@ -39,7 +39,7 @@ public sealed record MimeParseRejection
     /// </summary>
     /// <remarks>
     /// A limit reason suffixed <c>-after-parse</c> means the bounded pre-scan did not catch it and
-    /// the breach was found by walking the parsed tree instead — the refusal still happened, but
+    /// the breach was found by walking the parsed tree instead, the refusal still happened, but
     /// only after the parser had been handed the message. Callers watching for structural attacks
     /// should treat that as the more interesting of the two.
     /// </remarks>

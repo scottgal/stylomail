@@ -11,7 +11,7 @@ namespace StyloMail.Mime;
 /// </summary>
 /// <remarks>
 /// <b>What this class will not do.</b> It does not fetch a link, load a remote image, execute an
-/// attachment or resolve a redirect — there is no code path here that opens a socket, and that is
+/// attachment or resolve a redirect, there is no code path here that opens a socket, and that is
 /// a property of the design rather than a configuration flag someone can flip. It does not modify
 /// the message bytes it is given: the analysis view is built alongside them, because rewriting a
 /// signed message invalidates its signature and a proxy that breaks DKIM has broken the guarantee
@@ -428,7 +428,7 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             ]);
 
         // A message cannot assert its own authentication. When no trusted verifier reported
-        // anything, that absence is recorded as incomplete provenance — never as clean.
+        // anything, that absence is recorded as incomplete provenance, never as clean.
         var provenanceIncomplete = authentication is null ||
                                    authentication.ProvenanceIncomplete ||
                                    trusted.Count == 0;
@@ -475,7 +475,7 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             attributes:
             [
                 // The digest lets the adaptive engine compare this message's host set with a
-                // recipient's baseline. Novelty itself is not decided here — it cannot be.
+                // recipient's baseline. Novelty itself is not decided here, it cannot be.
                 Of("hostSetDigest", Digest(hosts)),
                 Of("distinctHostCount", hosts.Count.ToString()),
                 Of("ipLiteralCount", links.Count(l => l.Target?.IsIpLiteral == true).ToString()),
@@ -667,8 +667,7 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
     }
 
     /// <summary>
-    /// Provenance that was never supplied. Recorded as incomplete and explicitly not as clean —
-    /// "we were not told" and "we were told it was fine" are different facts.
+    /// Provenance that was never supplied. Recorded as incomplete and explicitly not as clean,     /// "we were not told" and "we were told it was fine" are different facts.
     /// </summary>
     private static AuthenticationContext IncompleteProvenance() => new()
     {

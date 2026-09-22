@@ -10,7 +10,7 @@ namespace StyloMail.Assessment.Semantic;
 /// </summary>
 /// <remarks>
 /// <b>The cache key is over the whole input, and this is what "the whole input" means.</b> The
-/// projection below reproduces exactly what the provider receives — the message as the classifier
+/// projection below reproduces exactly what the provider receives, the message as the classifier
 /// sees it, the dimension set it was asked about, and any tagged context that was folded in. Every
 /// element is length-prefixed rather than delimiter-separated, because a body containing the
 /// delimiter must not be able to impersonate a different structure: with plain joining, a body of
@@ -18,8 +18,7 @@ namespace StyloMail.Assessment.Semantic;
 /// cache would then serve one message's assessment for another's.
 ///
 /// <para>
-/// <b>What is deliberately excluded, and why.</b> Envelope fields the classifier never sees —
-/// <c>InternalMessageId</c>, <c>ReceivedAt</c>, <c>PayloadReference</c>, <c>MimeDigest</c> — are
+/// <b>What is deliberately excluded, and why.</b> Envelope fields the classifier never sees, /// <c>InternalMessageId</c>, <c>ReceivedAt</c>, <c>PayloadReference</c>, <c>MimeDigest</c>, are
 /// not part of the projection. Including them would not make the key safer; it would make every
 /// message a unique key, which is a cache that never hits and a feature that does not exist. The
 /// rule this follows is not "hash a convenient subset" but "hash precisely the classifier's
@@ -28,8 +27,7 @@ namespace StyloMail.Assessment.Semantic;
 /// </para>
 ///
 /// <para>
-/// Ordering is canonical throughout. Link and attachment sequences keep their message order —
-/// reordering them is a different message and must key differently — while the tagged-context
+/// Ordering is canonical throughout. Link and attachment sequences keep their message order, /// reordering them is a different message and must key differently, while the tagged-context
 /// dictionary is sorted by key, since dictionary enumeration order is an implementation detail
 /// that would otherwise make the same facts produce two different keys.
 /// </para>
@@ -109,7 +107,7 @@ public static class ClassifierInputCanonicalizer
         canonical.Flag(coverage.ConversationContextMissing);
 
         // Envelope facts the classifier is actually shown. Only trusted-verifier results are
-        // surfaced to it, so only those can change its answer — and therefore only those key.
+        // surfaced to it, so only those can change its answer, and therefore only those key.
         canonical.Field(envelope.MailFrom);
         canonical.Count(envelope.RcptTo.Count);
         foreach (var recipient in envelope.RcptTo)

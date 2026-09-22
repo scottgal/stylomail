@@ -16,17 +16,17 @@ public sealed record SendingIncident
 /// Recipient budget per authenticated principal, over a rolling window.
 /// </summary>
 /// <remarks>
-/// <b>What this bounds is escape volume</b> — how much a compromised principal can send between
+/// <b>What this bounds is escape volume</b>, how much a compromised principal can send between
 /// the compromise starting and the system noticing. That is a property of a window, which is why
 /// the budget reopens on a clock rather than counting up for the lifetime of the process. A
 /// lifetime cap is uncorrelated with escape volume: a sender's 501st recipient is not more
 /// dangerous than their 5th, and treating it as though it were permanently blocks an account for
-/// sending legitimate mail. Worse, the block is self-sustaining — every message it refuses keeps
-/// the quota exhausted — so one newsletter becomes an irreversible stop with no signal.
+/// sending legitimate mail. Worse, the block is self-sustaining, every message it refuses keeps
+/// the quota exhausted, so one newsletter becomes an irreversible stop with no signal.
 ///
 /// <para>
 /// Deliberately <b>not</b> part of profile state. Quotas bound how much damage a late detection
-/// can do, so anything that can reset them also raises that bound — and profile eviction,
+/// can do, so anything that can reset them also raises that bound, and profile eviction,
 /// dehydration and baseline rollback are all routine operations that must not do that. Keeping
 /// the ledger in its own store makes "eviction does not grant a fresh quota" a property of the
 /// structure rather than a rule somebody has to remember.
@@ -42,7 +42,7 @@ public sealed record SendingIncident
 /// tolerable here and would not be if the budget were a lifetime cap: a restart can only ever
 /// advance a window that was going to reopen anyway, whereas resetting a lifetime total would
 /// undo the one thing it was meant to enforce. It stops being tolerable the moment this needs to
-/// bound anything across restarts — at which point it has to become durable, and the window is
+/// bound anything across restarts, at which point it has to become durable, and the window is
 /// the smaller half of that change.
 /// </para>
 /// </remarks>
@@ -114,7 +114,7 @@ public sealed class SendingQuotaLedger
     /// </summary>
     /// <remarks>
     /// The check and the debit are one atomic step. Split apart, two threads can both observe
-    /// enough budget and both spend it — which over-grants, and the budget is the only thing
+    /// enough budget and both spend it, which over-grants, and the budget is the only thing
     /// bounding how much a late detection lets escape.
     ///
     /// <para>
@@ -147,7 +147,7 @@ public sealed class SendingQuotaLedger
     }
 
     /// <summary>
-    /// Returns budget for recipients that were never dispatched — a rejection before
+    /// Returns budget for recipients that were never dispatched, a rejection before
     /// acceptance, not a rollback of something that was sent.
     /// </summary>
     /// <returns>
@@ -163,7 +163,7 @@ public sealed class SendingQuotaLedger
     /// <para>
     /// One benign cause of a shortfall: a reservation that aged out of the window before it was
     /// released. The budget reopened on its own, so there is nothing to give back. That needs the
-    /// window to be shorter than one assessment, which is not true of the default — but it is why
+    /// window to be shorter than one assessment, which is not true of the default, but it is why
     /// the caller should check the window before reading a shortfall as divergence.
     /// </para>
     ///
@@ -171,7 +171,7 @@ public sealed class SendingQuotaLedger
     /// Releasing more than was reserved is deliberately <em>not</em> an error: releasing the same
     /// reservation twice on a retry path is a legitimate thing for a caller to do, and turning that
     /// into an exception would put a crash on a hot path. The budget also clamps at zero rather
-    /// than going negative, because that is the safe direction — it can never manufacture headroom
+    /// than going negative, because that is the safe direction, it can never manufacture headroom
     /// that policy has not granted.
     /// </para>
     /// </remarks>
@@ -190,7 +190,7 @@ public sealed class SendingQuotaLedger
             var returned = 0;
 
             // Most recent first. A release undoes a reservation that was just made and did not
-            // lead to dispatch, so it takes back what was most recently claimed — which also
+            // lead to dispatch, so it takes back what was most recently claimed, which also
             // returns the budget for the longest remaining part of the window. Taking the oldest
             // entries instead would give back capacity that was about to expire anyway, which is
             // relief in the arithmetic and none in practice.
@@ -228,8 +228,7 @@ public sealed class SendingQuotaLedger
     /// <summary>Drops reservations whose window has closed.</summary>
     /// <remarks>
     /// Filters the whole list rather than stopping at the first live entry. Callers supply their
-    /// own instants, and concurrent assessments can present them a few milliseconds out of order —
-    /// so "entries are sorted ascending" is not an invariant this type can enforce, and a prune
+    /// own instants, and concurrent assessments can present them a few milliseconds out of order,     /// so "entries are sorted ascending" is not an invariant this type can enforce, and a prune
     /// that relied on it would leave an expired reservation counted behind a live one. Scanning
     /// the list costs nothing next to the assumption it removes.
     /// </remarks>

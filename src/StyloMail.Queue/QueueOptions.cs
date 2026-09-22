@@ -12,7 +12,7 @@ namespace StyloMail.Queue;
 /// <para>
 /// <b>Time is injected.</b> Lease expiry, retry backoff and terminal expiry are all time-dependent,
 /// and time-dependent durability logic that cannot be driven from a controllable clock is not
-/// verifiable — a test that waits five real minutes for a lease to expire does not get written.
+/// verifiable, a test that waits five real minutes for a lease to expire does not get written.
 /// Nothing in this assembly reads the wall clock directly.
 /// </para>
 /// </remarks>
@@ -43,7 +43,7 @@ public sealed record QueueOptions
     /// <remarks>
     /// The per-message <c>expires_at</c> is stamped at acceptance from this value (or from an
     /// explicit deadline supplied with the submission). At expiry the item becomes
-    /// <c>TerminalFailure</c> — the message is given up on and surfaced, never silently dropped.
+    /// <c>TerminalFailure</c>, the message is given up on and surfaced, never silently dropped.
     /// </remarks>
     public TimeSpan RetryExpiry { get; init; } = TimeSpan.FromHours(48);
 
@@ -86,7 +86,7 @@ public sealed record QueueOptions
     /// How long a terminal item's payload is retained before <c>Purge</c> may delete it.
     /// </summary>
     /// <remarks>
-    /// A configurable engineering default, not legal guidance — the operator owns the real number.
+    /// A configurable engineering default, not legal guidance, the operator owns the real number.
     /// The metadata row survives purge; only the bytes go.
     /// </remarks>
     public TimeSpan TerminalPayloadRetention { get; init; } = TimeSpan.FromHours(24);
@@ -98,7 +98,7 @@ public sealed record QueueOptions
     /// <b>This window is not optional.</b> Acceptance writes the payload and only then commits the
     /// metadata row that references it, so between those two steps the payload of an <em>in-flight</em>
     /// acceptance is indistinguishable from a true orphan. A sweeper acting on a shorter window
-    /// would delete a payload microseconds before its metadata commits — manufacturing exactly the
+    /// would delete a payload microseconds before its metadata commits, manufacturing exactly the
     /// "metadata pointing at a payload that does not exist" state this subsystem exists to prevent.
     /// It must comfortably exceed the acceptance critical section.
     /// </remarks>
@@ -112,7 +112,7 @@ public sealed record QueueOptions
     /// </summary>
     /// <remarks>
     /// Jitter is derived from the queue id rather than a random source, so an item's schedule is a
-    /// pure function of its identity — reproducible in tests and stable across recoveries, while
+    /// pure function of its identity, reproducible in tests and stable across recoveries, while
     /// still de-synchronising items that failed at the same moment.
     /// </remarks>
     public double BackoffJitterFraction { get; init; } = 0.2;

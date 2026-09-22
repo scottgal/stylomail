@@ -12,7 +12,7 @@ namespace StyloMail.Adaptive.Tests;
 /// </summary>
 /// <remarks>
 /// These components were written without knowing how they would be hosted, and the failure mode
-/// when one is shared unsafely is not a crash in this assembly — it is corrupted accounting that
+/// when one is shared unsafely is not a crash in this assembly, it is corrupted accounting that
 /// surfaces later as a message-handling bug somewhere else entirely. So the question "may one
 /// instance be shared?" is answered here, in tests, rather than left to a comment.
 ///
@@ -25,7 +25,7 @@ namespace StyloMail.Adaptive.Tests;
 /// <para>
 /// Two different guarantees, tested two different ways. Types that are <em>immutable</em> are
 /// covered by a reflection tripwire. The quota ledger and the incident log are <em>not</em>
-/// immutable — they exist to be mutated — and are covered behaviourally under contention, which
+/// immutable, they exist to be mutated, and are covered behaviourally under contention, which
 /// is the only thing that actually proves a lock is doing its job.
 /// </para>
 /// </remarks>
@@ -56,7 +56,7 @@ public class SharedStateTests
 
         await Task.WhenAll(workers);
 
-        // A check-then-act race here does not under-grant, it **over-grants** — and the quota is
+        // A check-then-act race here does not under-grant, it **over-grants**, and the quota is
         // the only thing bounding how much a late detection lets escape. Exactly the budget must
         // be handed out: not a recipient more, and all of it.
         Assert.Equal(1000, granted);
@@ -96,7 +96,7 @@ public class SharedStateTests
         await Task.WhenAll(workers);
 
         // Exact arithmetic, not a range check. Whatever order the interleaving landed in, the
-        // budget handed out minus the budget returned must be exactly what is gone — so any
+        // budget handed out minus the budget returned must be exactly what is gone, so any
         // update the ledger loses to a race shows up as a mismatch rather than as a slightly
         // wrong number nobody notices. (A range check here would be toothless: sixteen threads
         // holding five recipients each can never approach a budget of five hundred.)
@@ -164,7 +164,7 @@ public class SharedStateTests
             reassignable.Length == 0,
             $"{type.Name} is shareable, but it now has reassignable instance state "
             + $"({string.Join(", ", reassignable)}). Either make that state immutable, or stop "
-            + "sharing one instance per host — a shared instance carrying per-call state corrupts "
+            + "sharing one instance per host, a shared instance carrying per-call state corrupts "
             + "under load and gets diagnosed in whatever component touches it first.");
     }
 }

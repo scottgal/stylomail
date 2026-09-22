@@ -69,7 +69,7 @@ public sealed record QuarantineReleaseResponse
     public required string QueueId { get; init; }
 
     /// <summary>True when this call performed the release; false when it was already released.
-    /// Either way the message is not quarantined — which is what the caller asked for.</summary>
+    /// Either way the message is not quarantined, which is what the caller asked for.</summary>
     public required bool Released { get; init; }
 
     public required string ReleasedBy { get; init; }

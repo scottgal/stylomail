@@ -13,8 +13,8 @@ namespace StyloMail.Host.Tests;
 /// <remarks>
 /// <para>
 /// <b>These tests talk to the host rather than to a component of it</b>, which is deliberate. The
-/// defects this session has been finding have all had the same shape — a seam that is correct on
-/// both sides and broken between them — and a seam is only observable from outside both ends. The
+/// defects this session has been finding have all had the same shape, a seam that is correct on
+/// both sides and broken between them, and a seam is only observable from outside both ends. The
 /// unit tests above prove what the sink decides; this proves a client on a socket can reach it and
 /// that the answer it receives corresponds to a row that exists.
 /// </para>
@@ -52,7 +52,7 @@ public sealed class SmtpIngressTests
         Assert.NotNull(item);
         Assert.Equal(MailDirection.Inbound, item!.Envelope.Direction);
 
-        // Inbound mail has no principal, so the identity recorded is the boundary's own — never
+        // Inbound mail has no principal, so the identity recorded is the boundary's own, never
         // anything the message supplied.
         Assert.StartsWith("smtp:", item.Envelope.TrustedPrincipalId, StringComparison.Ordinal);
     }
@@ -61,7 +61,7 @@ public sealed class SmtpIngressTests
     public async Task An_external_client_cannot_relay_to_a_domain_this_deployment_does_not_serve()
     {
         // The open-relay refusal, end to end. With no credentials on the connection, the recipient
-        // domain is the entire inbound authorisation model — so this is the check standing between
+        // domain is the entire inbound authorisation model, so this is the check standing between
         // the listener and being a public mail injection endpoint.
         using var host = new TestHost().WithSmtpIngress("example.test");
         using var client = await SmtpClient.ConnectAsync(host.BoundIngressPort);
@@ -111,8 +111,8 @@ public sealed class SmtpIngressTests
         // This test is here because that path was broken and the whole suite was green over it: the
         // failure was an ObjectDisposedException thrown out of a session's own cleanup during host
         // shutdown, and it reproduced roughly once in ten runs. A test that only sometimes fails is
-        // worse than no test, so the point of this one is to make the sequence — session open, host
-        // stopping — happen every time rather than by luck.
+        // worse than no test, so the point of this one is to make the sequence, session open, host
+        // stopping, happen every time rather than by luck.
         var host = new TestHost().WithSmtpIngress("example.test");
         var client = await SmtpClient.ConnectAsync(host.BoundIngressPort);
 
@@ -149,7 +149,7 @@ public sealed class SmtpIngressTests
     public void Enabling_the_listener_with_encryption_required_and_no_certificate_refuses_to_start()
     {
         // Not a bug, and worth pinning. With encryption required there is no STARTTLS and therefore
-        // no AUTH, so no submission could ever be accepted — and a listener that answered 530 to
+        // no AUTH, so no submission could ever be accepted, and a listener that answered 530 to
         // every client would look like a working service that rejects all mail. Refusing to start is
         // the only answer that cannot be mistaken for healthy.
         var host = new TestHost().WithSmtpIngress("example.test");

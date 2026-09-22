@@ -7,7 +7,7 @@ namespace StyloMail.Persistence.Tests;
 /// </summary>
 /// <remarks>
 /// `EnsureCreated` originally set `PRAGMA journal_mode = WAL` inside a transaction. SQLite refuses
-/// that, so the call succeeded the first time and threw the second — a boot-time failure for any
+/// that, so the call succeeded the first time and threw the second, a boot-time failure for any
 /// host that started twice against the same database, and one that only appears on restart.
 /// Reported by `adaptive-`, which hit it while guarding its own startup path.
 /// </remarks>

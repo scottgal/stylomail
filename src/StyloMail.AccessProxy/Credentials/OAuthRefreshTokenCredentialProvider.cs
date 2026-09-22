@@ -23,7 +23,7 @@ public sealed record OAuthRefreshRequest
 /// A seam of its own, and separately injectable, because it is the one place the proxy talks to a
 /// provider's token service over the network. The credential seam itself must stay network-free so
 /// its behaviour (which kind of credential, which mechanism, what fails closed) is testable without
-/// a provider — this is where "no real network in tests" is honoured for the OAuth path.
+/// a provider, this is where "no real network in tests" is honoured for the OAuth path.
 /// </remarks>
 public interface IOAuthTokenEndpoint
 {
@@ -38,7 +38,7 @@ public interface IOAuthTokenEndpoint
 /// The OAuth 2.0 credential kind: a stored refresh token, replayed to the provider as <c>XOAUTH2</c>.
 /// </summary>
 /// <remarks>
-/// This is the implementation spec §9.2 says the stored Gmail credential has to be — Google removed
+/// This is the implementation spec §9.2 says the stored Gmail credential has to be, Google removed
 /// username/password authentication for IMAP, SMTP and POP3, so a refresh token obtained once via a
 /// consent flow is the only durable answer.
 ///
@@ -46,7 +46,7 @@ public interface IOAuthTokenEndpoint
 /// <b>It exists in this first slice precisely to prove the seam.</b> The app-password path is what
 /// the operator ships today, but spec §9.5 requires the migration to be an implementation swap
 /// rather than a redesign, and that claim is only worth anything if both implementations actually
-/// exist and are actually exercised. So this provider is complete and registered — and the test
+/// exist and are actually exercised. So this provider is complete and registered, and the test
 /// suite drives a whole session through it, asserting that the session driver behaves identically
 /// for both kinds.
 /// </para>
@@ -73,7 +73,7 @@ public sealed class OAuthRefreshTokenCredentialProvider : IBackendCredentialProv
     /// <remarks>
     /// This string is the entire migration. Moving a tenant from app passwords to OAuth means
     /// writing this discriminator onto their record (after the consent flow has produced the
-    /// refresh token) and nothing else — no caller changes, no driver changes, no session changes.
+    /// refresh token) and nothing else, no caller changes, no driver changes, no session changes.
     /// </remarks>
     public const string DiscriminatorValue = "oauth-refresh-token";
 
@@ -114,8 +114,8 @@ public sealed class OAuthRefreshTokenCredentialProvider : IBackendCredentialProv
             // catch is to guarantee that a failed exchange becomes a fail-closed credential failure,
             // not an unhandled exception that some caller might be tempted to retry.
             //
-            // The inner exception is carried for diagnosis — "connection refused" versus "certificate
-            // expired" is the difference between a network problem and a configuration problem — but
+            // The inner exception is carried for diagnosis, "connection refused" versus "certificate
+            // expired" is the difference between a network problem and a configuration problem, but
             // only when it is safe to carry. The token endpoint is a seam someone else implements,
             // and its exception messages are not ours to trust; a single interpolated token in one of
             // them would put a refresh token into an exception chain, and every logging framework
@@ -139,8 +139,7 @@ public sealed class OAuthRefreshTokenCredentialProvider : IBackendCredentialProv
     /// <remarks>
     /// The access token goes straight from the endpoint's buffer into this one and is never
     /// rendered as a string. A Gmail rejection of this payload arrives as a <c>+</c> continuation
-    /// carrying a base64 JSON error, which the shared SASL exchange answers with an empty line —
-    /// per the protocol — so the server produces a proper negative reply and the session fails
+    /// carrying a base64 JSON error, which the shared SASL exchange answers with an empty line,     /// per the protocol, so the server produces a proper negative reply and the session fails
     /// closed rather than retrying with a token Google has already refused.
     /// </remarks>
     private static byte[] BuildXOAuth2Payload(string subject, SecretValue accessToken)

@@ -4,7 +4,7 @@ namespace StyloMail.Core;
 /// <remarks>
 /// Displayed-versus-actual mismatch is one of the highest-value deterministic signals, so the
 /// two are recorded separately rather than collapsed. Redirects are <b>not</b> followed in the
-/// MVP — resolving them requires a separately sandboxed, SSRF-resistant fetcher.
+/// MVP, resolving them requires a separately sandboxed, SSRF-resistant fetcher.
 /// </remarks>
 public sealed record LinkObservation
 {
@@ -33,7 +33,7 @@ public sealed record AttachmentMetadata
     public required long SizeBytes { get; init; }
 
     /// <summary>
-    /// False when <see cref="SizeBytes"/> is a partial count — typically bytes hashed before the
+    /// False when <see cref="SizeBytes"/> is a partial count, typically bytes hashed before the
     /// hashing budget was exhausted. Defaults true, so a complete measurement needs no ceremony and
     /// a partial one is explicit rather than silently indistinguishable.
     /// </summary>
@@ -42,7 +42,7 @@ public sealed record AttachmentMetadata
     /// <summary>Digest of the attachment bytes, for campaign grouping by attachment hash.</summary>
     public string? ContentHash { get; init; }
 
-    /// <summary>True when the attachment could not be parsed — encrypted, password-protected or malformed.</summary>
+    /// <summary>True when the attachment could not be parsed, encrypted, password-protected or malformed.</summary>
     public required bool ContentUnavailable { get; init; }
 }
 
@@ -86,7 +86,7 @@ public sealed record AnalysisCoverage
 /// </summary>
 /// <remarks>
 /// This is derived from a copy. The original MIME bytes are retained separately for transport
-/// and signature integrity and are never replaced by this view — rewriting signed content
+/// and signature integrity and are never replaced by this view, rewriting signed content
 /// invalidates DKIM, and a proxy that quietly rewrites mail is a proxy that breaks the
 /// guarantees it was deployed to uphold.
 ///

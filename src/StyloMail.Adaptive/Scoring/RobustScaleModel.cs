@@ -20,7 +20,7 @@ public sealed record RobustScaleOptions
 
     /// <summary>
     /// Trusted samples required before a dimension may be compared at all. Below this the
-    /// dimension is unmodelled — unknown, which is not the same as normal.
+    /// dimension is unmodelled, unknown, which is not the same as normal.
     /// </summary>
     public int MinimumSupport { get; init; } = 3;
 }
@@ -34,7 +34,7 @@ public sealed record DimensionScale
 
     public required double Variance { get; init; }
 
-    /// <summary>Spread actually used for standardization — the variance's root, floored.</summary>
+    /// <summary>Spread actually used for standardization, the variance's root, floored.</summary>
     public required double Scale { get; init; }
 
     public required int Support { get; init; }
@@ -45,7 +45,7 @@ public sealed record DimensionScale
 /// </summary>
 /// <remarks>
 /// <see cref="Distance"/> is <see langword="null"/> when nothing could be compared. That is a
-/// distinct outcome from a distance of zero, which means "compared, and unremarkable" — the
+/// distinct outcome from a distance of zero, which means "compared, and unremarkable", the
 /// difference between an outage and a calm message.
 /// </remarks>
 public sealed record StandardizedProbe

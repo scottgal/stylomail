@@ -7,7 +7,7 @@ namespace StyloMail.AccessProxy.Tests;
 /// Constraint 5: assessment of retrieved messages is optional and non-blocking.
 /// </summary>
 /// <remarks>
-/// The property that matters is not "assessment works" — it is that <em>a client fetching mail is
+/// The property that matters is not "assessment works", it is that <em>a client fetching mail is
 /// never held hostage by the semantic provider</em>. These tests are about the absence of coupling,
 /// which is why several of them assert that something did not happen.
 /// </remarks>
@@ -151,7 +151,7 @@ public sealed class RetrievalObserverTests
         // "Non-blocking" is enforced by the signature rather than by good intentions: Observe returns
         // void, so there is no Task for the relay to await and no way for it to wait on a provider.
         // If this ever becomes Task-returning, the relay gains the ability to block a user's mailbox
-        // on a semantic provider — which is the exact coupling the brief forbids. The assertion is a
+        // on a semantic provider, which is the exact coupling the brief forbids. The assertion is a
         // tripwire for that change, not a style preference.
         var method = typeof(IRetrievalObserver).GetMethod(nameof(IRetrievalObserver.Observe));
 

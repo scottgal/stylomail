@@ -9,7 +9,7 @@ namespace StyloMail.Host.Contracts;
 /// <remarks>
 /// <see cref="QueueId"/> is present if and only if delivery responsibility transferred. It is not
 /// accompanied by a boolean saying so, because a boolean is a second source of truth that can
-/// disagree with the id — and the disagreement would tell a caller their mail was accepted when
+/// disagree with the id, and the disagreement would tell a caller their mail was accepted when
 /// nothing durable exists.
 /// </remarks>
 public sealed record SubmissionResponse
@@ -53,7 +53,7 @@ public sealed record SubmissionResponse
 
 /// <summary>One recipient of a submitted message.</summary>
 /// <remarks>
-/// <see cref="Action"/> is null when the answer came from queue state alone — a replay serves a
+/// <see cref="Action"/> is null when the answer came from queue state alone, a replay serves a
 /// message the queue already holds, and the policy action that put it there belongs to the
 /// original decision rather than to this response.
 /// </remarks>
@@ -119,7 +119,7 @@ public sealed record SubmissionStatusResponse
 /// </summary>
 /// <remarks>
 /// Recipient-scoped by construction. Two recipients of the same message are very often in
-/// different states, and reporting a transaction-level answer would hide that — or worse, leak
+/// different states, and reporting a transaction-level answer would hide that, or worse, leak
 /// one recipient's outcome into another's view.
 /// </remarks>
 public sealed record SubmissionRecipientProgress

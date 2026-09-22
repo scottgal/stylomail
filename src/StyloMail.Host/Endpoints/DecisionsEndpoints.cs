@@ -6,7 +6,7 @@ using StyloMail.Host.Decisions;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>GET /v1/decisions/{id}</c> — evidence, reasons, versions and coverage.
+/// <c>GET /v1/decisions/{id}</c>, evidence, reasons, versions and coverage.
 /// </summary>
 /// <remarks>
 /// Reading the ledger requires the review privilege, which is a separate grant from sending. A

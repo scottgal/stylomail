@@ -4,7 +4,7 @@ namespace StyloMail.Assessment.Semantic;
 /// <remarks>
 /// The distinctions matter for the ledger and for the tests. "Nothing was stored under this key"
 /// and "something was stored, and it is not the same message" are different facts, and folding
-/// them into one miss would hide the second — which is the one that catches a changed bank account.
+/// them into one miss would hide the second, which is the one that catches a changed bank account.
 /// </remarks>
 public enum SemanticCacheLookup
 {
@@ -25,7 +25,7 @@ public enum SemanticCacheLookup
     /// properties.
     /// </summary>
     /// <remarks>
-    /// This should be unreachable while the key digest is correct — the digest covers every field
+    /// This should be unreachable while the key digest is correct, the digest covers every field
     /// the fingerprint does. It is checked anyway, because the cost of being wrong is a changed
     /// payment destination inheriting a previously-assessed verdict, and the cost of checking is
     /// one string comparison.
@@ -72,7 +72,7 @@ public interface ISemanticCacheStore
     /// Discards one entry.
     /// </summary>
     /// <remarks>
-    /// Used when an entry is known to be unusable rather than merely unhelpful — a key collision
+    /// Used when an entry is known to be unusable rather than merely unhelpful, a key collision
     /// whose security-bearing fingerprint disagrees. Leaving it would mean re-reading a wrong
     /// entry on every subsequent message that hashes to the same key.
     /// </remarks>
@@ -90,7 +90,7 @@ public interface ISemanticCacheStore
 /// keeping it forever costs memory that belongs to the message pipeline, and a semantic cache is
 /// an optimisation over a network hop rather than a system of record. Durable retention of the
 /// <em>evidence</em> belongs in the decision ledger, which is a different component with different
-/// retention rules — conflating them would put message-derived content in a cache whose eviction
+/// retention rules, conflating them would put message-derived content in a cache whose eviction
 /// policy was chosen for throughput.
 ///
 /// <para>
@@ -131,7 +131,7 @@ public sealed class InMemorySemanticCacheStore : ISemanticCacheStore
             }
 
             // Version invalidation is checked before expiry, and removes the entry. An answer from a
-            // previous model is not an old version of this answer — it is a different answer — and
+            // previous model is not an old version of this answer, it is a different answer, and
             // reporting it as merely expired would suggest waiting would fix it.
             if (!IsVersionCompatible(entry, options))
             {
@@ -199,8 +199,8 @@ public sealed class InMemorySemanticCacheStore : ISemanticCacheStore
         string.Equals(entry.QuestionSchemaVersion, options.QuestionSchemaVersion, StringComparison.Ordinal)
         && string.Equals(entry.PreprocessingVersion, options.PreprocessingVersion, StringComparison.Ordinal)
         // The resolved model must equal the configured one. An entry whose provider reported some
-        // other model was produced under a classifier that has since moved — exactly the alias-drift
-        // case — and is never served. An absent resolved model cannot be confirmed either, so it
+        // other model was produced under a classifier that has since moved, exactly the alias-drift
+        // case, and is never served. An absent resolved model cannot be confirmed either, so it
         // fails the same check rather than passing on the benefit of the doubt.
         && string.Equals(entry.ResolvedModelVersion, options.ClassifierModelVersion, StringComparison.Ordinal);
 

@@ -74,7 +74,7 @@ public sealed class DecisionLedgerTests
     public async Task A_sender_without_the_review_privilege_cannot_read_the_ledger()
     {
         // Sending and reviewing are separate grants. The sender may submit mail; reading the
-        // ledger — including their own message's entry — is the reviewer's job.
+        // ledger, including their own message's entry, is the reviewer's job.
         using var host = new TestHost();
         var assessmentId = await AssessAsync(host, TestPrincipals.AcmeSenderKey);
 

@@ -5,7 +5,7 @@ namespace StyloMail.Jev;
 /// </summary>
 /// <remarks>
 /// <b>The API key is never stored in source.</b> Supply it from configuration bound to an
-/// environment variable, .NET user-secrets, or a secret store — see
+/// environment variable, .NET user-secrets, or a secret store, see
 /// <see cref="ApiKeyEnvironmentVariable"/> for the conventional name. A key committed to a
 /// repository must be treated as compromised and rotated, not merely deleted.
 /// </remarks>

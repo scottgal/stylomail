@@ -9,7 +9,7 @@ public enum SmtpTlsMode
     /// <remarks>
     /// The default, and the only safe setting for an upstream reached over a network. A refusal to
     /// negotiate TLS is treated as a failure to deliver rather than as a reason to continue in the
-    /// clear — see <see cref="SmtpSession"/> for why a downgrade is never silently accepted.
+    /// clear, see <see cref="SmtpSession"/> for why a downgrade is never silently accepted.
     /// </remarks>
     Required = 0,
 
@@ -28,7 +28,7 @@ public enum SmtpTlsMode
     /// Never use TLS.
     /// </summary>
     /// <remarks>
-    /// <b>Refused outright when credentials are configured</b> — see
+    /// <b>Refused outright when credentials are configured</b>, see
     /// <see cref="SmtpUpstream.Validate"/>. The only defensible use is a loopback relay.
     /// </remarks>
     None = 2,
@@ -62,8 +62,7 @@ public sealed record SmtpCredentials
 /// </summary>
 /// <remarks>
 /// StyloMail delivers to an <b>established upstream</b> and does not resolve MX records itself. That
-/// is the spec's "behind an established MTA" constraint: internet-facing protocol complexity —
-/// MX selection, retry policy, DSN generation, reputation — stays with the MTA that already owns it.
+/// is the spec's "behind an established MTA" constraint: internet-facing protocol complexity, /// MX selection, retry policy, DSN generation, reputation, stays with the MTA that already owns it.
 /// This type therefore names exactly one host and one policy, with no routing table.
 /// </remarks>
 public sealed record SmtpUpstream
@@ -89,7 +88,7 @@ public sealed record SmtpUpstream
     /// <remarks>
     /// Should be a name the upstream recognises as ours. Some relays refuse clients whose EHLO
     /// argument is not a resolvable FQDN, and a stable value makes our sessions identifiable in the
-    /// upstream's own logs — which is what an operator needs when asking "what did StyloMail send?".
+    /// upstream's own logs, which is what an operator needs when asking "what did StyloMail send?".
     /// </remarks>
     public string HeloName { get; init; } = "localhost";
 

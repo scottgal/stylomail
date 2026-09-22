@@ -143,7 +143,7 @@ public sealed class ImapSessionTests
     public async Task ProviderRefusesTheCredential_AttemptsExactlyOnce()
     {
         // The other revoked-credential shape: the credential exists and is presented, and the
-        // provider says no. What must not happen is a retry loop — the proxy would be generating
+        // provider says no. What must not happen is a retry loop, the proxy would be generating
         // failed logins against the user's mailbox on their behalf.
         var harness = new ProxyHarness();
         await harness.EnrolAppPasswordAccountAsync();
@@ -165,7 +165,7 @@ public sealed class ImapSessionTests
     public async Task MessageBytes_AreRelayedVerbatim()
     {
         // Constraint 4: a proxy is not a licence to normalise mail. These bytes are deliberately
-        // awkward — a CRLF pair that is not a line ending, a bare LF, a NUL, and high bytes that a
+        // awkward, a CRLF pair that is not a line ending, a bare LF, a NUL, and high bytes that a
         // normalising layer would re-encode.
         var harness = new ProxyHarness();
         await harness.EnrolAppPasswordAccountAsync();

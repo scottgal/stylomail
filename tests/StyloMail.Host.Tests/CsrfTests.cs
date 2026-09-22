@@ -9,7 +9,7 @@ namespace StyloMail.Host.Tests;
 /// </summary>
 /// <remarks>
 /// The API-key header is not forgeable cross-site: a browser does not attach a custom header to a
-/// request a hostile page caused. A cookie is the opposite — the browser attaches it automatically,
+/// request a hostile page caused. A cookie is the opposite, the browser attaches it automatically,
 /// which is exactly what makes it convenient for a browser UI and exactly what makes it dangerous.
 ///
 /// <para>
@@ -40,7 +40,7 @@ public sealed class CsrfTests
 
         await SignInAsync(client);
 
-        // The cookie is now attached automatically by this client — which is precisely what a
+        // The cookie is now attached automatically by this client, which is precisely what a
         // hostile page would rely on. No token is supplied, so the write must not happen.
         var response = await client.PostAsJsonAsync("/v1/assessments", TestMessages.Request());
 

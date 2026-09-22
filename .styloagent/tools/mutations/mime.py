@@ -1,10 +1,10 @@
-"""Mutation set for the `mime-` lane (StyloMail.Mime — MIME parsing and deterministic evidence).
+"""Mutation set for the `mime-` lane (StyloMail.Mime, MIME parsing and deterministic evidence).
 
 Each entry is (name, file, old_text, new_text, claims_test):
   * `old_text` must appear in the file EXACTLY ONCE, or the entry is INVALID.
   * `new_text` must change behaviour. A no-op replacement is INVALID, never a verdict.
   * `claims_test` names the test whose *name* asserts this behaviour, so the harness can tell
-    CLAIMED (that test went red — the claim is verified) from ELSEWHERE (some other test did, so
+    CLAIMED (that test went red, the claim is verified) from ELSEWHERE (some other test did, so
     the claim is not verified and is either redundant or untested).
 
 All 19 were previously run from a per-lane shell harness and every one was confirmed to go red;
@@ -12,7 +12,7 @@ this file is the port, not a first run. Verdicts from the shared harness are rec
 `.styloagent/channel/saved-context/mime--context.md`.
 
 `R15` needs two edits (declare the static field, then use it); `old`/`new` are lists of equal-length
-pairs for that case. Every mutation in this set now has a reproducible entry — none rest on a
+pairs for that case. Every mutation in this set now has a reproducible entry, none rest on a
 recorded run alone.
 """
 from pathlib import Path

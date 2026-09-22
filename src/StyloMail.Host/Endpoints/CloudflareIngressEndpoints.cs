@@ -7,7 +7,7 @@ using StyloMail.Transport.Cloudflare;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>POST /v1/ingress/cloudflare</c> — inbound mail handed over by a Cloudflare Email Routing Worker.
+/// <c>POST /v1/ingress/cloudflare</c>, inbound mail handed over by a Cloudflare Email Routing Worker.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -46,7 +46,7 @@ public static class CloudflareIngressEndpoints
     /// <remarks>
     /// The body limit is raised to the connector's own maximum on purpose. Kestrel's default is
     /// smaller, so leaving it alone would mean a message between the two sizes is refused by the
-    /// server before the connector ever sees it — a 413 that names no component and reads like the
+    /// server before the connector ever sees it, a 413 that names no component and reads like the
     /// ingress's own limit. The two numbers have to be the same number.
     /// </remarks>
     public static void Map(IEndpointRouteBuilder app, long maxMessageBytes)
@@ -71,8 +71,7 @@ public static class CloudflareIngressEndpoints
         CloudflareEmailRoutingConnector connector,
         CancellationToken cancellationToken)
     {
-        // An unread body is never an accepted one. The connector is deliberately not consulted —
-        // there is nothing to hand it, and building a request record for a message we do not have
+        // An unread body is never an accepted one. The connector is deliberately not consulted,         // there is nothing to hand it, and building a request record for a message we do not have
         // would put it through a decision path that could answer 202.
         //
         // Refused through the connector's own factory rather than by writing a status directly, so

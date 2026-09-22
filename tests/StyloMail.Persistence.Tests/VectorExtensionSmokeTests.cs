@@ -5,7 +5,7 @@ namespace StyloMail.Persistence.Tests;
 /// <summary>
 /// Verifies that the native <c>vec0</c> extension actually loads and answers a KNN query on
 /// this machine. A package reference restoring successfully proves nothing about whether the
-/// native binary is present, correctly architected, and loadable — this test is the difference
+/// native binary is present, correctly architected, and loadable, this test is the difference
 /// between "the dependency is declared" and "vector search works".
 /// </summary>
 public sealed class VectorExtensionSmokeTests

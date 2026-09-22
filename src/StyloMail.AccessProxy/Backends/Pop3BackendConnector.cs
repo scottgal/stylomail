@@ -14,7 +14,7 @@ namespace StyloMail.AccessProxy.Backends;
 /// <para>
 /// <b>Both styles are implemented on purpose.</b> POP3's SASL support is uneven across servers,
 /// which is why the app-password provider chooses the legacy pair for this protocol while the OAuth
-/// provider uses <c>XOAUTH2</c> — a framing decision taken below the seam by the credential
+/// provider uses <c>XOAUTH2</c>, a framing decision taken below the seam by the credential
 /// provider, not above it by this driver or the session. Having both here is what lets that choice
 /// move without touching anything but the provider.
 /// </para>

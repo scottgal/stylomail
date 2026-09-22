@@ -17,8 +17,8 @@ public sealed record CloudflareIngressOptions
     /// <b>This is a secret this deployment generates, not a provider credential.</b> Nothing here
     /// holds an OAuth token, reads a mailbox, or can act on a Cloudflare account. The distinction is
     /// the whole reason this connector was chosen: the default deployment continues to hold zero
-    /// <em>provider</em> secrets, and a compromise of this value lets an attacker submit mail — which
-    /// is exactly what the recipient-domain check already constrains — rather than read anyone's
+    /// <em>provider</em> secrets, and a compromise of this value lets an attacker submit mail, which
+    /// is exactly what the recipient-domain check already constrains, rather than read anyone's
     /// mailbox.
     ///
     /// <para>
@@ -51,7 +51,7 @@ public sealed record CloudflareIngressOptions
     /// </summary>
     /// <remarks>
     /// Defaults to the first entry in <see cref="LocalHostIdentities"/>. It must be one of them or
-    /// the loop guard will not recognise our own hop coming back — which is why a mismatch that is
+    /// the loop guard will not recognise our own hop coming back, which is why a mismatch that is
     /// configured explicitly is refused rather than accepted quietly.
     /// </remarks>
     public string? ByHost { get; init; }
@@ -121,7 +121,7 @@ public sealed record CloudflareIngressRequest
     /// </summary>
     /// <remarks>
     /// Taken from the envelope rather than the <c>To</c> header. The header is message content, and
-    /// message content cannot decide whether we are the destination for this address — that is the
+    /// message content cannot decide whether we are the destination for this address, that is the
     /// check standing between us and an open inbound relay.
     /// </remarks>
     public string? EnvelopeTo { get; init; }
@@ -141,7 +141,7 @@ public sealed record CloudflareIngressResult
     public TimeSpan? RetryAfter { get; init; }
 
     // The three factories are public because a host needs to answer a request it never handed to
-    // the connector — a body it could not read, a route it rejected before ingest. Hand-building the
+    // the connector, a body it could not read, a route it rejected before ingest. Hand-building the
     // record is possible but produces an unenforced combination; these are the sanctioned way to
     // construct one, and they are what keeps "202 requires a queue id" true for every producer
     // rather than only for the connector.
@@ -200,7 +200,7 @@ public sealed record CloudflareIngressResult
 /// <remarks>
 /// <para>
 /// Cloudflare Email Routing sits at the MX level and hands a Worker the raw message; the Worker posts
-/// it here. There is no OAuth, no mailbox read, and no provider SDK — the connector is an
+/// it here. There is no OAuth, no mailbox read, and no provider SDK, the connector is an
 /// authenticated byte intake, which is why the default deployment needs no provider credentials at
 /// all.
 /// </para>
@@ -211,7 +211,7 @@ public sealed record CloudflareIngressResult
 /// <para>
 /// It reuses the same <see cref="ISmtpIngressSink"/> the SMTP listener uses, rather than defining a
 /// second accept path. Two intake paths that could disagree about what acceptance means is precisely
-/// the situation the queue's "acceptance is a queue id" rule exists to prevent — so there is one
+/// the situation the queue's "acceptance is a queue id" rule exists to prevent, so there is one
 /// sink, one decision type, and one rule about what a <c>202</c> may be built from.
 /// </para>
 /// </remarks>
@@ -251,7 +251,7 @@ public sealed class CloudflareEmailRoutingConnector
         {
             // Checked before anything else is read. An unauthenticated accept path would be a public
             // mail injection endpoint, and the cost of refusing genuine traffic is a misconfigured
-            // Worker secret — visible immediately, unlike injected mail.
+            // Worker secret, visible immediately, unlike injected mail.
             return CloudflareIngressResult.Refused(401, "The Worker credential was missing or invalid.");
         }
 
@@ -366,7 +366,7 @@ public sealed class CloudflareEmailRoutingConnector
         // Only two outcomes remain here, and they map cleanly: a deferral makes the Worker retain the
         // message and re-offer it, and a rejection is permanent so it must not. The previous form
         // derived the HTTP status from the decision's SMTP code and could emit a 503, which would
-        // have told the Worker to retry a permanent refusal — and, now that `Refused` insists on a
+        // have told the Worker to retry a permanent refusal, and, now that `Refused` insists on a
         // 4xx, would have thrown instead of answering.
         return decision.Outcome == IngressOutcome.Deferred
             ? CloudflareIngressResult.Deferred(decision.Reason ?? "Deferred.")
@@ -409,7 +409,7 @@ public sealed class CloudflareEmailRoutingConnector
     /// <remarks>
     /// Cloudflare tells us the envelope sender it observed, and that is genuine boundary information.
     /// It is still not authentication: no SPF, DKIM or DMARC evaluation reaches us, and no
-    /// <c>Authentication-Results</c> header from the message is read — a header the sender wrote is
+    /// <c>Authentication-Results</c> header from the message is read, a header the sender wrote is
     /// not evidence. Provenance is therefore recorded as incomplete.
     /// </remarks>
     private static AuthenticationContext BuildAuthenticationContext() => new()

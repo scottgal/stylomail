@@ -10,8 +10,8 @@ public sealed record TrustedLearningRequest
     public required TrustedSample Sample { get; init; }
 
     /// <summary>
-    /// True when an authoritative outcome — an operator decision, an application result, a
-    /// verified delivery event — backs this label.
+    /// True when an authoritative outcome, an operator decision, an application result, a
+    /// verified delivery event, backs this label.
     /// </summary>
     public required bool AuthorizedOutcomePresent { get; init; }
 
@@ -52,15 +52,15 @@ public sealed record TrustedLearningOutcome
 /// <para>
 /// <b>Learning is the highest-value thing an attacker can steal in this system.</b> The trusted
 /// baseline decides what "normal" means for a sender, so a baseline that can be moved by sending
-/// mail is a baseline that has already been captured — the attacker sends, it is learned as
+/// mail is a baseline that has already been captured, the attacker sends, it is learned as
 /// legitimate, and every subsequent message inherits that. Two independent controls therefore stand
 /// between a message and the baseline, and both must open.
 /// </para>
 ///
 /// <list type="number">
 /// <item><b>Authority.</b> Either an authorized outcome, or an explicitly named rule. The
-/// assessment path has neither by construction — an assessment is a question, not a verdict about
-/// what was correct — so an assessment can never teach anything. This is enforced here rather than
+/// assessment path has neither by construction, an assessment is a question, not a verdict about
+/// what was correct, so an assessment can never teach anything. This is enforced here rather than
 /// by the caller remembering not to call.</item>
 /// <item><b>Provenance.</b> The profile applies its own gate, which no caller can bypass: a
 /// <see cref="LabelProvenance.DeliveryOnly"/> or <see cref="LabelProvenance.AbsenceOfComplaint"/>
@@ -90,11 +90,11 @@ public sealed class TrustedLearningGate
     /// </param>
     /// <remarks>
     /// The default is the first provenance that can promote anything at all. Below it sit
-    /// "no authentication", "it was delivered" and "nobody complained" — the three labels an
+    /// "no authentication", "it was delivered" and "nobody complained", the three labels an
     /// attacker generates simply by sending mail, and the three
     /// <see cref="BaselineLabelPolicy"/> already refuses. Checking them here as well is deliberate
     /// duplication: the profile's gate is the authority, and this one exists so that the cheapest
-    /// possible attack on this system — claim a label you did not earn — is refused at the door
+    /// possible attack on this system, claim a label you did not earn, is refused at the door
     /// with a reason, rather than travelling onwards to be refused quietly somewhere else.
     /// </remarks>
     public TrustedLearningGate(LabelProvenance minimumProvenance = LabelProvenance.RecipientPreference) =>

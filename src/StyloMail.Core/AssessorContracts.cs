@@ -27,7 +27,7 @@ public sealed record AssessmentContext
     /// <remarks>
     /// <b>This, and never an internally minted id, is the queue's idempotency key.</b> A client that
     /// retries a submission sends the same key and must receive the same queue id back (§12). An
-    /// internally generated value — an assessment id, for instance — is new on every attempt, so
+    /// internally generated value, an assessment id, for instance, is new on every attempt, so
     /// using it as the key makes every retry a fresh queue entry and defeats replay entirely.
     ///
     /// <para>

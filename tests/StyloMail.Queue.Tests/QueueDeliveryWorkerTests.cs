@@ -7,7 +7,7 @@ namespace StyloMail.Queue.Tests;
 /// </summary>
 /// <remarks>
 /// Records every request it was given so tests can assert on what the worker <em>actually</em>
-/// handed over — the payload bytes and the recipient set — rather than only on what happened after.
+/// handed over, the payload bytes and the recipient set, rather than only on what happened after.
 /// </remarks>
 internal sealed class FakeDeliveryPort : IDeliveryPort
 {
@@ -106,7 +106,7 @@ public class QueueDeliveryWorkerTests
         Assert.Equal("principal-1", request.TrustedPrincipalId);
         Assert.NotNull(request.ExpiresAt);
 
-        // The retry names only the recipient still pending — never both again.
+        // The retry names only the recipient still pending, never both again.
         h.Clock.AdvanceMinutes(30);
         await Worker(h, port).RunOnceAsync();
         Assert.Equal(["b@example.test"], port.Requests[1].Recipients);
@@ -202,7 +202,7 @@ public class QueueDeliveryWorkerTests
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Shutdown arrives mid-flight. Cutting the delivery off here would abandon a message the
-        // upstream may already have accepted — a duplicate manufactured by our own shutdown.
+        // upstream may already have accepted, a duplicate manufactured by our own shutdown.
         shutdown.Cancel();
         gate.SetResult();
 
@@ -318,7 +318,7 @@ public class QueueDeliveryWorkerTests
 
         var entered = new TaskCompletionSource();
 
-        // A port that classifies per recipient and always returns — which is what `transport-`'s
+        // A port that classifies per recipient and always returns, which is what `transport-`'s
         // does now, including when the caller's token is cancelled. It ignores the token
         // deliberately: the point is that a result can still arrive after we have stopped waiting.
         var port = new FakeDeliveryPort(async (_, _) =>
@@ -355,7 +355,7 @@ public class QueueDeliveryWorkerTests
 
         // The drain window closed, but the port still handed back a classified outcome. Discarding
         // it because our own token was cancelled would throw away a per-recipient fact we already
-        // hold — and this is the ambiguity the whole component exists to preserve.
+        // hold, and this is the ambiguity the whole component exists to preserve.
         var item = await h.Store.GetItemAsync(queueId);
         Assert.Equal(DeliveryState.RetryScheduled, QueueHarness.By(item!, "rcpt@example.test").State);
 

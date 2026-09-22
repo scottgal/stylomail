@@ -9,7 +9,7 @@ namespace StyloMail.AccessProxy.Tests;
 /// <remarks>
 /// Constraint 6: a proxy that can be made to hold unbounded resources is a denial-of-service vector
 /// against the mail it protects. That claim is only worth anything if each bound has been seen to
-/// fire — a limit that is configured but never exercised is an assertion, not a defence.
+/// fire, a limit that is configured but never exercised is an assertion, not a defence.
 /// </remarks>
 public sealed class BoundsTests
 {
@@ -25,7 +25,7 @@ public sealed class BoundsTests
         await client.ReadLineAsync();
 
         // No terminator, so without a cap the reader would allocate for as long as the client kept
-        // typing — the classic unbounded-command heap exhaustion.
+        // typing, the classic unbounded-command heap exhaustion.
         await client.SendAsync("a1 LOGIN " + new string('x', 4096));
 
         Assert.Equal(SessionOutcome.ProtocolError, await run);
@@ -80,7 +80,7 @@ public sealed class BoundsTests
         }
 
         // A third session for the same account is refused, and refused immediately rather than
-        // queued — an account at its limit is not a burst to absorb.
+        // queued, an account at its limit is not a burst to absorb.
         var third = new PipeDuplex("client-third");
         var thirdRun = harness.NewImapSession().RunAsync(third, CancellationToken.None);
         await third.ReadLineAsync();

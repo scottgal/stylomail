@@ -72,7 +72,7 @@ public sealed record CampaignDetectionOptions
 /// <remarks>
 /// <b>This produces evidence and can never produce an answer.</b> It reads
 /// <see cref="RecentCampaignWindow"/>, which retains vectors and digests rather than assessments,
-/// so there is no cached result here for a near-duplicate to be served from — the guarantee is
+/// so there is no cached result here for a near-duplicate to be served from, the guarantee is
 /// structural, not procedural. The worst a false match can do is add a signal that policy weighs
 /// with everything else; it cannot skip authentication checks, profile comparison, policy, or
 /// counter accounting for this message.
@@ -109,7 +109,7 @@ public sealed class CampaignNearDuplicateDetector
     /// </summary>
     /// <remarks>
     /// Recording happens before the lookup so that a burst landing concurrently can see its own
-    /// members — a campaign is exactly the case where the interesting comparisons are between
+    /// members, a campaign is exactly the case where the interesting comparisons are between
     /// messages that arrive at the same moment. Self-matching is prevented by excluding the
     /// message's own assessment id rather than by ordering.
     /// </remarks>

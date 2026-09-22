@@ -48,7 +48,7 @@ public sealed class MailPolicyEngineTests
     [Fact]
     public void A_verified_violation_rejects_without_consulting_the_model()
     {
-        // Risk index is low and every dimension is masked — the verified rule still decides.
+        // Risk index is low and every dimension is masked, the verified rule still decides.
         var decision = Decide(
             Risk(0.0, 0.0),
             Context() with { VerifiedSecurityRuleViolations = ["dmarc.reject"] });
@@ -110,7 +110,7 @@ public sealed class MailPolicyEngineTests
     }
 
     /// <summary>
-    /// A total semantic outage yields index 0.0 over coverage 0.0 — under every threshold. Before
+    /// A total semantic outage yields index 0.0 over coverage 0.0, under every threshold. Before
     /// this was fixed, the engine returned Allow, making absence of evidence indistinguishable from
     /// evidence of safety. Reported by `assess-`, which had to guard it in wiring.
     /// </summary>
@@ -233,7 +233,7 @@ public sealed class MailPolicyEngineTests
 
         // Both configured dimensions are masked: one explicitly Unavailable, the other absent
         // entirely. Absence and unavailability must be indistinguishable from each other and from
-        // "not measured" — and distinguishable from a measured zero.
+        // "not measured", and distinguishable from a measured zero.
         Assert.Equal(2, risk.Masked.Count);
         Assert.Contains(risk.Masked, m =>
             m.SignalId == "semantic.credential_request"

@@ -13,14 +13,14 @@ namespace StyloMail.Host.Hosting;
 /// <para>
 /// <b>Enabled is decided here, not at registration.</b> The host's composition root runs before the
 /// test host layers its own configuration in, so a registration-time decision reads the wrong
-/// values — and the whole point of a listener that defaults to off is that enabling it is a
+/// values, and the whole point of a listener that defaults to off is that enabling it is a
 /// deliberate act. The decision therefore belongs where the configuration is final.
 /// </para>
 /// <para>
 /// The listener's own <c>StopAsync</c> waits for in-flight sessions rather than abandoning them, and
 /// that is the property this wrapper exists to preserve: a session interrupted between the queue
-/// commit and its <c>250</c> has accepted mail it never acknowledged, and the client — having
-/// received nothing — will send it again. Waiting is what keeps the duplicate an ambiguity rather
+/// commit and its <c>250</c> has accepted mail it never acknowledged, and the client, having
+/// received nothing, will send it again. Waiting is what keeps the duplicate an ambiguity rather
 /// than a certainty.
 /// </para>
 /// <para>
@@ -34,7 +34,7 @@ namespace StyloMail.Host.Hosting;
 /// <c>StopAsync</c> had already nulled the socket reference, returned early without joining the
 /// drain, and freed the connection semaphore that draining sessions were still returning. This
 /// component worked around it by stopping without disposing, and the workaround is gone because
-/// <c>transport-</c> fixed the cause — a second stop-caller now waits on the same drain task. The
+/// <c>transport-</c> fixed the cause, a second stop-caller now waits on the same drain task. The
 /// history is kept here rather than deleted because the lesson is the lifecycle one: a component
 /// that can only be stopped <em>or</em> disposed, never both, is a component that cannot be hosted.
 /// </para>
@@ -78,8 +78,8 @@ public sealed class SmtpIngressHostedService : IHostedService, IAsyncDisposable
             return Task.CompletedTask;
         }
 
-        // Built here so a misconfiguration — encryption required with no certificate, a ServerName
-        // missing from LocalHostIdentities — refuses to start the host rather than appearing as
+        // Built here so a misconfiguration, encryption required with no certificate, a ServerName
+        // missing from LocalHostIdentities, refuses to start the host rather than appearing as
         // rejected mail later.
         _listener = new SmtpSubmissionListener(
             _transport.SmtpIngress.Build(),
@@ -96,7 +96,7 @@ public sealed class SmtpIngressHostedService : IHostedService, IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// The wait is the point. A session interrupted between the queue commit and its <c>250</c> has
-    /// accepted mail it never acknowledged, and the client — having heard nothing — will send it
+    /// accepted mail it never acknowledged, and the client, having heard nothing, will send it
     /// again. Letting those sessions finish is what keeps that duplicate an ambiguity rather than a
     /// certainty.
     /// </remarks>
@@ -108,7 +108,7 @@ public sealed class SmtpIngressHostedService : IHostedService, IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// This runs after <see cref="StopAsync"/>, which is the order the host guarantees and the order
-    /// the listener now requires — see the class remarks for what that pair used to do.
+    /// the listener now requires, see the class remarks for what that pair used to do.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
@@ -128,8 +128,7 @@ public sealed class SmtpIngressHostedService : IHostedService, IAsyncDisposable
 /// <para>
 /// <b>The stopping token is the whole point.</b> <see cref="QueueDeliveryWorker.RunAsync"/> registers
 /// on the token it is given and, when it fires, stops claiming immediately but lets an in-flight
-/// delivery run out its <see cref="QueueDeliveryWorkerOptions.DrainTimeout"/>. Pass the wrong token —
-/// or none — and that bounded drain never starts: the process either hangs on a wedged upstream or
+/// delivery run out its <see cref="QueueDeliveryWorkerOptions.DrainTimeout"/>. Pass the wrong token, /// or none, and that bounded drain never starts: the process either hangs on a wedged upstream or
 /// cuts a delivery off mid-flight, and the second of those creates the duplicate the drain exists to
 /// avoid. <see cref="BackgroundService.ExecuteAsync"/> receives exactly the token cancelled when the
 /// host begins shutting down, so it is forwarded unchanged and nothing here decides anything.
@@ -137,14 +136,14 @@ public sealed class SmtpIngressHostedService : IHostedService, IAsyncDisposable
 /// <para>
 /// <b>Why an unconfigured deployment runs no worker rather than a refusing one.</b> A worker with no
 /// delivery port would lease every accepted message and burn its retry budget against a target that
-/// cannot work, ending in a terminal failure for mail that was perfectly good — mail loss caused by
+/// cannot work, ending in a terminal failure for mail that was perfectly good, mail loss caused by
 /// the retry policy itself. Not running is the honest alternative, and
 /// <see cref="HostServices.DescribeTransport"/> says so at startup so it is not a silent absence.
 /// </para>
 /// <para>
 /// The port is built here rather than registered, because whether one exists at all is the same
 /// question as whether the worker runs. A container registration would have to answer it at
-/// registration time — before the configuration is final — or return a placeholder port that exists
+/// registration time, before the configuration is final, or return a placeholder port that exists
 /// only to be constructed and never used.
 /// </para>
 /// </remarks>

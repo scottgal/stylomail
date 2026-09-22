@@ -5,7 +5,7 @@ Each entry is (name, file, old_text, new_text, claims_test):
   * `new_text` must change behaviour. A no-op replacement is INVALID, never a verdict.
   * `claims_test` (optional) names the test whose *name* asserts this behaviour. The harness then
     distinguishes CLAIMED (that test went red) from ELSEWHERE (some other test did, so the claim
-    is not actually verified) — see the header of mutate.py.
+    is not actually verified), see the header of mutate.py.
 """
 from pathlib import Path
 
@@ -82,7 +82,7 @@ MUTATIONS = [
                  WHERE queue_id = $queueId AND recipient_key = $recipient;""",
      "An_expired_hold_is_surfaced_as_a_policy_decision_and_not_an_acknowledgement"),
 
-    ("H: spool failure swallowed — row committed against a missing payload",
+    ("H: spool failure swallowed, row committed against a missing payload",
      SRC / "QueueStore.cs",
      """        var payloadReference = PayloadReferences.RequireDurable(await _spool
             .WriteAsync(submission.TenantId, queueId, submission.Payload, cancellationToken)

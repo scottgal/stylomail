@@ -88,7 +88,7 @@ public static class CliCommands
             await WriteLocalAsync(output, command, result, envelope);
 
             await output.WriteLineAsync(
-                "semantic: skipped — no semantic provider requested. Provider usage is opt-in " +
+                "semantic: skipped, no semantic provider requested. Provider usage is opt-in " +
                 "(--semantic) and is not configured by default, so message content was not " +
                 "transmitted anywhere.");
             return Ok;
@@ -289,7 +289,7 @@ public static class CliCommands
             using var connection = database.Open();
             using var cmd = connection.CreateCommand();
 
-            // Keys are tenant-scoped keyed hashes, never raw addresses — so this listing is safe to
+            // Keys are tenant-scoped keyed hashes, never raw addresses, so this listing is safe to
             // print and an operator still cannot read an address out of it.
             cmd.CommandText =
                 """

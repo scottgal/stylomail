@@ -6,7 +6,7 @@ namespace StyloMail.Host.Assessors;
 /// The assessor that stands in when none is configured. It refuses every request.
 /// </summary>
 /// <remarks>
-/// Nothing in the repository implements <see cref="IMailAssessor"/> yet — the composition of
+/// Nothing in the repository implements <see cref="IMailAssessor"/> yet, the composition of
 /// MIME evidence, semantic classification, profile comparison and policy is a separate piece of
 /// work. Until it exists the host must be able to run, be tested, and report honestly that it
 /// cannot assess.

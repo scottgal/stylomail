@@ -34,7 +34,7 @@ public class EwmaTests
 
         var after = state.Observe(1.0, Start, options);
 
-        // No time has passed, so there is no basis for updating — elapsed time is the weight.
+        // No time has passed, so there is no basis for updating, elapsed time is the weight.
         Assert.Equal(0.0, after.Value!.Value, 9);
     }
 
@@ -111,7 +111,7 @@ public class BaselineMovementTests
         var uncapped = ((meanBefore * 10) + 0.9) / 11;
 
         // The dimension's spread is 0.05 (the variance floor), so one sample may move the mean
-        // by at most 0.25 × 0.05 = 0.0125. Uncapped it would have gone to ≈ 0.536 — and a
+        // by at most 0.25 × 0.05 = 0.0125. Uncapped it would have gone to ≈ 0.536, and a
         // baseline a single approved sample can drag is one an attacker only has to convince once.
         Assert.Equal(0.5, meanBefore, 9);
         Assert.True(meanAfter > meanBefore);
@@ -200,7 +200,7 @@ public class ProfileLearningTests
         Assert.False(profile.RegimeCandidate.IsPromotable);
         Assert.False(profile.PromoteRegime());
 
-        // The same shift, sustained, settles — and only then does it replace anything.
+        // The same shift, sustained, settles, and only then does it replace anything.
         for (var i = 0; i < 12; i++)
         {
             profile.Promote(Sample(0.9, Start));
@@ -264,7 +264,7 @@ public class ProfileLearningTests
         Assert.Equal(0.5, profile.Baseline.Dimensions["d1"].Mean, 6);
 
         // Rolling back what we believe is not the same as un-sending mail. The quota stays
-        // spent and the incident stays on the record — otherwise rollback becomes an
+        // spent and the incident stays on the record, otherwise rollback becomes an
         // attacker's reset button.
         Assert.Equal(8, quota.Remaining("tenant-a", "sender", Start));
         Assert.Single(incidents.For("tenant-a", "sender"));
@@ -287,7 +287,7 @@ public class ProfileLearningTests
 
         profile.Dehydrate();
 
-        // Dehydrating frees the expensive state — baseline and trend history — and keeps the
+        // Dehydrating frees the expensive state, baseline and trend history, and keeps the
         // cheap counters. A profile eviction that reset the observed count would hand the
         // sender a fresh quota the moment its profile was evicted, which is a bypass, not
         // housekeeping.

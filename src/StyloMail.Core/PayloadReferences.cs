@@ -7,8 +7,7 @@ namespace StyloMail.Core;
 /// <remarks>
 /// <see cref="MailEnvelope.PayloadReference"/> stays <b>required and non-nullable</b> deliberately.
 /// Making it nullable would push a null-check onto every consumer and would not distinguish
-/// "assessment-only, no payload was ever expected" from "a submission whose payload went missing" —
-/// two situations with opposite urgency. A required reference that names its own scheme keeps the
+/// "assessment-only, no payload was ever expected" from "a submission whose payload went missing", /// two situations with opposite urgency. A required reference that names its own scheme keeps the
 /// two apart and lets the queue assert durability with a precise error.
 ///
 /// <para>

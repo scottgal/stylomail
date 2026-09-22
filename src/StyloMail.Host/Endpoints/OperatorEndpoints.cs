@@ -12,7 +12,7 @@ using StyloMail.Host.Submissions;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>POST /v1/feedback</c> — an authorised label, with the scope it applies to.
+/// <c>POST /v1/feedback</c>, an authorised label, with the scope it applies to.
 /// </summary>
 internal static class FeedbackEndpoints
 {
@@ -87,7 +87,7 @@ internal static class FeedbackEndpoints
 }
 
 /// <summary>
-/// <c>POST /v1/quarantine/{id}/release</c> — audited, idempotent release.
+/// <c>POST /v1/quarantine/{id}/release</c>, audited, idempotent release.
 /// </summary>
 /// <remarks>
 /// Requires the review privilege, which a sending principal does not hold. Releasing your own
@@ -130,7 +130,7 @@ internal static class QuarantineEndpoints
         if (!performed)
         {
             // Nothing was quarantined to release. That is the expected outcome of a retry, so it is
-            // not an error — but the message must genuinely not be quarantined, or we would be
+            // not an error, but the message must genuinely not be quarantined, or we would be
             // reporting a release that did not happen.
             var current = await intake.GetAsync(id, tenantId, cancellationToken).ConfigureAwait(false);
             var stillQuarantined = current is not null
@@ -203,7 +203,7 @@ internal static class ControlsEndpoints
     }
 
     /// <summary>
-    /// <c>POST /v1/controls/senders/{id}/resume</c> — the audited mirror of the pause.
+    /// <c>POST /v1/controls/senders/{id}/resume</c>, the audited mirror of the pause.
     /// </summary>
     /// <remarks>
     /// Same <c>Administer</c> privilege as the pause: lifting an intervention is no less a

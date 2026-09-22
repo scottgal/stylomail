@@ -9,7 +9,7 @@ namespace StyloMail.Persistence.Tests;
 /// <para>
 /// These exist because the previous tests only *created* the schema. SQLite accepts a foreign key
 /// that references a non-unique column at <c>CREATE TABLE</c> time and only rejects it on the first
-/// **write** — so making <c>decision_ledger</c>'s primary key composite silently invalidated two
+/// **write**, so making <c>decision_ledger</c>'s primary key composite silently invalidated two
 /// foreign keys while every existing test stayed green. The failure would have surfaced later, in
 /// production, as "foreign key mismatch" on the first disposition write.
 /// </para>

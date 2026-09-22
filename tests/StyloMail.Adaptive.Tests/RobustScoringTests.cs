@@ -128,7 +128,7 @@ public class RobustScaleModelTests
 
         var probe = model.Standardize(Vector(("d1", 0.6), ("d2", 0.6)));
 
-        // Two dimensions each 1 sd out is a distance of 1, not 2 — otherwise a message
+        // Two dimensions each 1 sd out is a distance of 1, not 2, otherwise a message
         // with wider coverage would look more anomalous for producing more evidence.
         Assert.Equal(1.0, probe.Z["d1"], 6);
         Assert.Equal(1.0, probe.Distance!.Value, 6);
@@ -174,7 +174,7 @@ public class RobustScaleModelTests
 
         // One of the two dimensions was actually compared. Publishing that coverage is what
         // stops a distance computed over half a vector from being read as though it covered
-        // the whole thing — and it is what the drift evidence reports as its sample support.
+        // the whole thing, and it is what the drift evidence reports as its sample support.
         Assert.Equal(1, probe.ComparedDimensionCount);
         Assert.Equal(0.5, probe.Coverage);
         Assert.DoesNotContain("d2", probe.Z.Keys);
@@ -187,8 +187,7 @@ public class RobustScaleModelTests
 
         var probe = model.Standardize(Vector(("d1", 0.5), ("d9", 1.0)));
 
-        // No trusted distribution exists for d9, so there is nothing to compare against —
-        // and inventing a comparison would be worse than admitting the gap.
+        // No trusted distribution exists for d9, so there is nothing to compare against,         // and inventing a comparison would be worse than admitting the gap.
         Assert.Contains("d9", probe.UnmodelledDimensionIds);
         Assert.Equal(1, probe.ComparedDimensionCount);
         Assert.Equal(0.5, probe.Coverage);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared mutation harness — one hardened implementation, not five.
+"""Shared mutation harness, one hardened implementation, not five.
 
 WHY THIS EXISTS
 ---------------
@@ -18,7 +18,7 @@ Add `.styloagent/tools/mutations/<prefix>.py` exporting `PROJECT` (the test cspr
 a list of `(name, file, old_text, new_text)` with an optional 5th element naming the test that
 *claims* to cover it.
 
-**One file per lane, discovered at runtime — never a shared list.** A single module-level list that
+**One file per lane, discovered at runtime, never a shared list.** A single module-level list that
 every lane edits is a collision hazard in two ways: five agents editing one list conflict, and worse,
 a lane rewriting it can silently drop another lane's entries. After that a sweep reports a clean run
 with three lanes' mutations gone, which is a false all-clear produced by the tooling itself.
@@ -35,36 +35,36 @@ THE VERDICT IS THREE-WAY, NOT TWO
 ---------------------------------
 Running the *full* suite finds attribution but has a blind spot of its own: it reports CAUGHT when
 *some* test went red, even if the test whose name claims that behaviour did not. That is the very
-failure mode this harness exists to detect, one level up — so name the claiming test and the
+failure mode this harness exists to detect, one level up, so name the claiming test and the
 harness compares:
 
-  * **CLAIMED**  — the named test went red. The claim is verified.
-  * **ELSEWHERE** — other tests went red, the named one did not. The behaviour is guarded, but NOT
+  * **CLAIMED**, the named test went red. The claim is verified.
+  * **ELSEWHERE**, other tests went red, the named one did not. The behaviour is guarded, but NOT
     by the test that claims it. Investigate: either a redundant guard, or a claim that is untested.
-  * **GAP**      — nothing went red. Toothless.
-  * **INCONCLUSIVE** — did not compile, or exceeded the timeout. Never a pass.
-  * **INVALID**  — anchor missing/ambiguous, or the replacement is a no-op. Never a pass.
+  * **GAP**, nothing went red. Toothless.
+  * **INCONCLUSIVE**, did not compile, or exceeded the timeout. Never a pass.
+  * **INVALID**, anchor missing/ambiguous, or the replacement is a no-op. Never a pass.
 
 THE CONVENTION: ANY SWEEP HARNESS TAKES THE LOCK
 -----------------------------------------------
-**Committed or ad-hoc, in `.styloagent/tools/` or in `/tmp` — every harness that mutates source takes
+**Committed or ad-hoc, in `.styloagent/tools/` or in `/tmp`, every harness that mutates source takes
 `.styloagent/tools/.mutation-sweep.lock` before its first mutation and releases it when it finishes.**
 
 Use `.styloagent/tools/sweep-lock.sh with <your-command>`; it acquires, runs, and releases on
-success, failure, Ctrl-C or SIGTERM. Prefer it over hand-rolled acquire/release — the failure mode of
+success, failure, Ctrl-C or SIGTERM. Prefer it over hand-rolled acquire/release, the failure mode of
 a hand-rolled pair is a harness that exits early and leaves the lock behind, blocking every other
 sweep until somebody works out why.
 
 **This is a convention and not merely a mechanism, on purpose.** An earlier version of this ruling
 covered only this file, and that was not enough: a lane ran mutation rounds from
-`/tmp/assess-mutation-round*.sh` — ephemeral, outside the repository, and therefore **invisible to
+`/tmp/assess-mutation-round*.sh`, ephemeral, outside the repository, and therefore **invisible to
 anyone auditing for sweep tools.** A bystander cannot check for a tool they cannot see, so the lock
 is how a harness announces itself rather than something we hope to find.
 
-This file takes the lock too, even though its isolation means it does not need it — so that **one
+This file takes the lock too, even though its isolation means it does not need it, so that **one
 signal covers every harness**, and "is the lock held?" remains a complete answer.
 
-SWEEPS RUN IN AN ISOLATED COPY — AND WHY THAT IS NOT ABOUT THIS LANE
+SWEEPS RUN IN AN ISOLATED COPY, AND WHY THAT IS NOT ABOUT THIS LANE
 ----------------------------------------------------------------------
 The sweep runs against a filesystem copy of the tree, never in place. **This exists because the
 completion gate is fleet-wide, not because sweeps are dangerous to their own lane.**
@@ -72,11 +72,11 @@ completion gate is fleet-wide, not because sweeps are dangerous to their own lan
 Mutating shared source in place is, from any other lane's point of view, indistinguishable from
 *their* code being broken. That is exactly what happened: `access-` ran the completion gate, saw
 Queue fail for a reason that had nothing to do with Queue, and concluded the suite was
-non-deterministic — a false finding against correct work, recorded as a doubt about the durability
+non-deterministic, a false finding against correct work, recorded as a doubt about the durability
 claims. `dotnet test StyloMail.slnx` is now how every lane certifies, so an in-place sweep makes the
 fleet's verification instrument lie at the precise moment it is used.
 
-The lock file and stale-`.bak` check remain, but they are no longer the mitigation — they are the
+The lock file and stale-`.bak` check remain, but they are no longer the mitigation, they are the
 **detector for the one failure isolation cannot prevent: a sweep violating its own isolation.**
 Defence in depth, and cheap.
 
@@ -98,13 +98,13 @@ THE FIVE GUARDS, AND WHAT BREAKS WITHOUT EACH
    reports nothing; bound it and throw on exceeding the bound.
 
 3. STARTUP REFUSAL ON A STALE .bak, plus restore on SIGINT/SIGTERM and atexit.
-   Being killed mid-iteration leaves a mutation applied. That tree LOOKS clean — the source parses,
-   most tests pass — which makes it the worst state to resume from. Only SIGKILL escapes every
+   Being killed mid-iteration leaves a mutation applied. That tree LOOKS clean, the source parses,
+   most tests pass, which makes it the worst state to resume from. Only SIGKILL escapes every
    mechanism, and that is what the startup check is for.
 
 4. POST-SWEEP GREEN RUN. Restore everything, re-run the untouched suite, require green before
    believing any result above. Without it a mutation can be credited as "caught" by the PREVIOUS
-   mutation's lingering binary — a false positive, which is worse than a false negative because it
+   mutation's lingering binary, a false positive, which is worse than a false negative because it
    makes an unguarded behaviour look guarded.
 
 5. ANALYZERS ARE ERRORS IN THIS REPO. A mutation that fails to build proves nothing. `CA*` and
@@ -113,28 +113,28 @@ THE FIVE GUARDS, AND WHAT BREAKS WITHOUT EACH
 THE RECURRING SHAPE: A GUARD WHOSE CONDITION CANNOT BE FALSE
 ------------------------------------------------------------
 This is the single defect this project keeps producing, and it has now been observed at **three
-different levels** — each time producing confidence rather than a signal:
+different levels**, each time producing confidence rather than a signal:
 
   1. **In test assertions.** A "clamped to 200" claim tested with 5 items; a "counts terminal
      payloads too" claim tested only on non-terminal rows. Both pass whether the behaviour holds or
      not. A claim about a ceiling cannot be tested below the ceiling.
   2. **In verdict extraction.** The `[FAIL]` regex could not match a parameterised `[Theory]` line,
-     so failed-name extraction returned empty while the summary count was non-zero — and the branch
+     so failed-name extraction returned empty while the summary count was non-zero, and the branch
      order fell through to a confident `ELSEWHERE`. My lane had no theories and was right by luck.
   3. **In this harness's own self-check.** The restore verification compared the file against the
      *mutated* text, i.e. against itself. It could never fire.
 
-**The rule:** when you add a guard, ask what input makes it fail — and if you cannot name one,
+**The rule:** when you add a guard, ask what input makes it fail, and if you cannot name one,
 it is decoration. Then check it fails. A verdict branch that has never been seen firing, a restore
 check that has never been seen mismatch, an assertion whose falsifying case you cannot construct:
 all of them are the thing this harness exists to find, and a verifier is not exempt from being
 verified.
 
 A corollary worth applying across lanes: **a defect that shows up only where two lanes differ is
-invisible from inside either one.** My lane could not have found (2) — it needed a lane whose
+invisible from inside either one.** My lane could not have found (2), it needed a lane whose
 fixtures are parameterised. Same insight as "build the solution, not just your project", one layer up.
 
-RECOGNISING A STALE BINARY — THE SYMPTOM
+RECOGNISING A STALE BINARY, THE SYMPTOM
 ----------------------------------------
 **Tests failing with values the source provably cannot produce.**
 
@@ -165,11 +165,11 @@ TOOLS = Path(__file__).resolve().parent
 # The real repository root, used for the lock and for cleanup reporting.
 SOURCE_ROOT = TOOLS.parents[1]
 
-# Where the sweep actually runs — set by main() to an isolated copy.
+# Where the sweep actually runs, set by main() to an isolated copy.
 #
 # **Deliberately None, not SOURCE_ROOT.** Defaulting to the shared tree makes the SAFE value opt-in
-# and the unsafe one the default: any entry point that skips main() — a wrapper script, a REPL, an
-# import-and-call, a refactor that reaches a sweep helper directly — would silently mutate the shared
+# and the unsafe one the default: any entry point that skips main(), a wrapper script, a REPL, an
+# import-and-call, a refactor that reaches a sweep helper directly, would silently mutate the shared
 # tree again. That is the same bug re-entering through the initialiser instead of the write.
 #
 # Found by `access-`, who read the module rather than trusting the fix, and noticed that safety
@@ -182,7 +182,7 @@ def run_root():
     """The tree the sweep operates on. Raises rather than defaulting to the shared tree."""
     if RUN_ROOT is None:
         raise RuntimeError(
-            "RUN_ROOT is unset — the sweep was not set up through main(). Refusing to continue: "
+            "RUN_ROOT is unset, the sweep was not set up through main(). Refusing to continue: "
             "the only safe default would be an isolated copy, and falling back to the shared tree is "
             "the hazard this tool exists to prevent.")
     return RUN_ROOT
@@ -206,7 +206,7 @@ def _restore_if_active():
 
 
 def _on_signal(signum, _frame):
-    print(f"\n!!! signal {signum} — restoring before exit", flush=True)
+    print(f"\n!!! signal {signum}, restoring before exit", flush=True)
     _restore_if_active()
     sys.exit(130)
 
@@ -219,7 +219,7 @@ def as_edits(old, new):
     """Normalise a mutation's replacement into a list of (old, new) pairs.
 
     `old`/`new` may each be a single string, or equal-length lists for a mutation that needs more
-    than one edit — declaring a field and then using it cannot be expressed as one replacement, and
+    than one edit, declaring a field and then using it cannot be expressed as one replacement, and
     without this such a mutation has to be left out of the lane entirely, leaving that test's teeth
     resting on a recorded run instead of a reproducible entry. That is the thing this harness exists
     to avoid, so the expressiveness belongs here.
@@ -272,20 +272,20 @@ def make_isolated_copy():
     """Copy the tree somewhere private and run the whole sweep there.
 
     <b>Why this exists.</b> The sweep mutates source files. Doing that in place is indistinguishable
-    from any other lane's point of view from *that lane's code being broken* — a `dotnet test`
+    from any other lane's point of view from *that lane's code being broken*, a `dotnet test`
     running at the same moment sees a mutated tree and reports failures that belong to this tool.
     That is not hypothetical: it produced a false "your suite is flaky" report against the queue,
     and it made the fleet-wide completion gate (`dotnet test StyloMail.slnx`) lie for every lane at
     the moment they were certifying.
 
     The lock file makes the hazard diagnosable, but only for someone who already knows to look in
-    `.styloagent/tools/` — and a bystander running the gate has no reason to. **Detection does not
+    `.styloagent/tools/`, and a bystander running the gate has no reason to. **Detection does not
     fix a mechanism whose effects appear far from its cause; isolation does.**
 
     `git worktree` would be the better form and is blocked: the repository has no baseline commit,
     so there is nothing to branch from. A filesystem copy is the equivalent today.
 
-    `obj/` and `bin/` are excluded — they are build output, and copying them would be slower and
+    `obj/` and `bin/` are excluded, they are build output, and copying them would be slower and
     could carry a stale binary across, which is the very thing the mtime guard exists to catch.
     """
     global _copy_root
@@ -311,7 +311,7 @@ def remove_isolated_copy():
 def acquire_lock():
     """Refuse to run two sweeps at once, and make the hazard visible to everyone else."""
     if LOCK.exists():
-        print(f"!!! refusing to start: {LOCK.name} exists — another sweep is running, or a")
+        print(f"!!! refusing to start: {LOCK.name} exists, another sweep is running, or a")
         print("    previous one was SIGKILLed. Do not run two sweeps concurrently: they would")
         print("    interleave mutations and attribute each other's failures.")
         return False
@@ -346,7 +346,7 @@ def pre_run_mtime_guard(path, project):
     source = path.stat().st_mtime
     if source <= binary:
         print(f"    !!! PRE-RUN GUARD: {path.name} is older than the build output.")
-        print(f"        source={source:.3f} binary={binary:.3f} — MSBuild would skip the rebuild")
+        print(f"        source={source:.3f} binary={binary:.3f}, MSBuild would skip the rebuild")
         print("        and this run would execute a STALE binary. Touch the source and re-run.")
         return False
     return True
@@ -365,9 +365,9 @@ def parse_trx(path):
                                                           expectedReason: "no-header-fields") [FAIL]
 
     Those parameters contain spaces, commas and escaped newlines, so a name-extraction regex either
-    matches nothing at all — leaving `failed` empty while the summary count is non-zero, which then
+    matches nothing at all, leaving `failed` empty while the summary count is non-zero, which then
     falls through to ELSEWHERE and reports a *false* verdict about a theory that went red exactly as
-    claimed — or grabs a fragment of the parameters as a test name. Found by `mime-` on R10/R13.
+    claimed, or grabs a fragment of the parameters as a test name. Found by `mime-` on R10/R13.
 
     The TRX logger emits the method name as one escaped attribute, so there is nothing to parse
     around. This is the same defect the harness exists to find: a mechanism reporting a verdict its
@@ -435,7 +435,7 @@ def run_lane(name, only=""):
     print(f"=== lane {name} :: baseline ===", flush=True)
     count, _, problem = run_suite(project)
     if count != 0 or problem:
-        print(f"    !!! baseline not green (failed={count} problem='{problem}') — skipping")
+        print(f"    !!! baseline not green (failed={count} problem='{problem}'), skipping")
         return [(f"{name}: baseline", "NOT GREEN")]
 
     for entry in lane.MUTATIONS:
@@ -489,16 +489,16 @@ def run_lane(name, only=""):
                     "build": "did not compile",
                     "mismatch": "console and TRX disagreed",
                 }.get(problem, problem)
-                print(f"--- {mutation_name}\n    INCONCLUSIVE — {reason}", flush=True)
+                print(f"--- {mutation_name}\n    INCONCLUSIVE, {reason}", flush=True)
                 gaps.append((mutation_name, f"INCONCLUSIVE ({problem})"))
             elif count == 0:
-                print(f"--- {mutation_name}\n    GAP — no test went red", flush=True)
+                print(f"--- {mutation_name}\n    GAP, no test went red", flush=True)
                 gaps.append((mutation_name, "GAP"))
             elif claims and claims in failed:
                 print(f"--- {mutation_name}\n    CLAIMED by {claims}", flush=True)
             elif claims:
                 others = sorted(failed)
-                print(f"--- {mutation_name}\n    ELSEWHERE — '{claims}' did NOT go red; caught by:",
+                print(f"--- {mutation_name}\n    ELSEWHERE, '{claims}' did NOT go red; caught by:",
                       flush=True)
                 for t in others[:5]:
                     print(f"      - {t}", flush=True)
@@ -511,7 +511,7 @@ def run_lane(name, only=""):
         finally:
             _restore()
             _restore = None
-            # Against the PRISTINE text, not the mutated one — comparing to `src` here would be
+            # Against the PRISTINE text, not the mutated one, comparing to `src` here would be
             # comparing the mutated file against itself and never fire.
             if path.read_text() != original:
                 print(f"    !!! RESTORE MISMATCH in {path.name}")
@@ -521,7 +521,7 @@ def run_lane(name, only=""):
     count, _, problem = run_suite(project)
     print(f"    failed={count} problem='{problem}'", flush=True)
     if count != 0 or problem:
-        print("!!! tree is NOT green after restore — results above are untrustworthy")
+        print("!!! tree is NOT green after restore, results above are untrustworthy")
         sys.exit(3)
 
     print(f"=== lane {name} done ({time.time() - start:.0f}s) ===", flush=True)
@@ -569,7 +569,7 @@ def main():
 
     print("\n=== summary ===")
     if not all_gaps:
-        print("every mutation verified — no coverage gaps found")
+        print("every mutation verified, no coverage gaps found")
     else:
         for name, verdict in all_gaps:
             print(f"  {verdict}: {name}")

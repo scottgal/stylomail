@@ -8,7 +8,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// </summary>
 /// <remarks>
 /// This reader exists only for the authentication dialogue. Once a session is authenticated it
-/// becomes a byte relay and this type is never touched again — which is why its line bound can be
+/// becomes a byte relay and this type is never touched again, which is why its line bound can be
 /// small (see <see cref="AccessProxyBounds.MaxCommandLineBytes"/>) and why a giant FETCH literal is
 /// not a problem it has to solve.
 ///
@@ -126,7 +126,7 @@ internal sealed class ProtocolLineWriter
     /// </summary>
     /// <remarks>
     /// The text is developer-supplied protocol text or, in one case, a string echoed back from the
-    /// client. That echo is bounded by the caller and never carries a credential — see the IMAP
+    /// client. That echo is bounded by the caller and never carries a credential, see the IMAP
     /// authenticator, which validates the tag before using it.
     /// </remarks>
     internal async ValueTask WriteLineAsync(string line, CancellationToken cancellationToken)
@@ -142,7 +142,7 @@ internal sealed class ProtocolLineWriter
     /// <remarks>
     /// This exists so a credential can be put on the wire without first becoming a
     /// <see cref="string"/>. A <c>string</c> cannot be zeroed, so building <c>$"PASS {password}"</c>
-    /// would leave a copy of the password in managed memory for the life of the session — which is
+    /// would leave a copy of the password in managed memory for the life of the session, which is
     /// exactly the lifetime a mail proxy cannot bound. Taking a span keeps the secret in the buffer
     /// the caller already controls and can clear.
     /// </remarks>
@@ -176,7 +176,7 @@ internal sealed class ProtocolLineWriter
 /// could be altered, because there is no code that could decide to alter one.
 ///
 /// <para>
-/// Memory is constant per session and independent of message size — a client fetching a 100 MB
+/// Memory is constant per session and independent of message size, a client fetching a 100 MB
 /// mailbox and one fetching a 1 KB note both use <see cref="AccessProxyBounds.RelayBufferBytes"/>
 /// in each direction. That is what makes the concurrency bound in
 /// <see cref="AccessProxyBounds.MaxConcurrentSessions"/> a meaningful promise rather than a hope.
@@ -185,7 +185,7 @@ internal sealed class ProtocolLineWriter
 /// <para>
 /// <b>Either direction ending ends the session.</b> A client that disconnects closes the backend
 /// connection with it, and a backend that closes is surfaced to the client as the end of the
-/// stream rather than as a hang — the failure mode spec §9.1 assigns to this subsystem is "the
+/// stream rather than as a hang, the failure mode spec §9.1 assigns to this subsystem is "the
 /// client sees the session drop", and a drop is better than a stall.
 /// </para>
 /// </remarks>
@@ -197,7 +197,7 @@ internal static class ByteRelay
     /// <remarks>
     /// The distinction is reported rather than swallowed because the two mean opposite things to an
     /// operator: a peer closing is a client that finished, while a bound firing is a session that
-    /// had to be reclaimed — a client left open, or a provider that stopped answering. Collapsing
+    /// had to be reclaimed, a client left open, or a provider that stopped answering. Collapsing
     /// them into "relayed" would hide the second inside the first.
     /// </remarks>
     internal static async Task<bool> RunAsync(
@@ -225,7 +225,7 @@ internal static class ByteRelay
 
         // A session cut short by the overall duration bound is also a bound firing, and it shows up
         // as cancellation rather than as a timeout exception. Note this asks whether the *deadline*
-        // elapsed, not whether the linked token is cancelled — the latter is also true when we
+        // elapsed, not whether the linked token is cancelled, the latter is also true when we
         // cancelled deliberately because a peer closed, which is not a bound firing at all.
         return upstreamBounded || downstreamBounded || session.DeadlineElapsed;
     }
@@ -265,7 +265,7 @@ internal static class ByteRelay
 
                 // The observer sees the bytes on their way past and is deliberately given a span
                 // rather than an array: it cannot retain the buffer, so it must copy anything it
-                // wants to keep. Called synchronously — see IRetrievalObserver for why.
+                // wants to keep. Called synchronously, see IRetrievalObserver for why.
                 Observe(bytes: buffer.AsSpan(0, read), observer: observer);
 
                 await to.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
@@ -287,7 +287,7 @@ internal static class ByteRelay
     /// </summary>
     /// <remarks>
     /// <b>An assessment failure must never become a mail failure.</b> The contract on
-    /// <see cref="IRetrievalObserver"/> says implementations must not throw — but a contract that is
+    /// <see cref="IRetrievalObserver"/> says implementations must not throw, but a contract that is
     /// only documented is a contract that will eventually be broken, and the consequence here would
     /// be a user's mailbox dying because a semantic classifier had a bad day. That is precisely the
     /// coupling this whole seam exists to prevent, so it is enforced rather than trusted.
@@ -296,7 +296,7 @@ internal static class ByteRelay
     /// Swallowing is the deliberate choice, and it has a cost worth naming: a broken observer
     /// degrades to no evidence with no signal, which is the "reports success without doing the
     /// thing" shape this fleet has been hunting all session. The mitigation is that the observer is
-    /// responsible for its own error reporting — it is the component that knows what went wrong,
+    /// responsible for its own error reporting, it is the component that knows what went wrong,
     /// and it can report it where it actually believes it belongs. Surfacing it here would mean a
     /// metric dimension on the relay path, which is a decision for whoever wires the first real
     /// observer rather than something to invent now.
@@ -333,8 +333,7 @@ internal static class ByteRelay
         }
         catch (AccessProxyTimeoutException)
         {
-            // An idle session ending is the bound doing its job, not a failure to report upward —
-            // but it is reported as a bound firing rather than as a clean close.
+            // An idle session ending is the bound doing its job, not a failure to report upward,             // but it is reported as a bound firing rather than as a clean close.
             return true;
         }
         catch (IOException)

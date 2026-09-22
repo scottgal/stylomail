@@ -37,7 +37,7 @@ public sealed class HopMarkerTests
     [Fact]
     public void TheDateIsRfc5322WithANumericZone()
     {
-        // Invariant day and month names, and +0100 rather than +01:00 — the grammar wants the
+        // Invariant day and month names, and +0100 rather than +01:00, the grammar wants the
         // numeric form, and a locale-dependent month name would be unparseable elsewhere.
         var line = ReceivedHeader.Build(Stamp());
 
@@ -69,7 +69,7 @@ public sealed class HopMarkerTests
     {
         var line = ReceivedHeader.Build(Stamp(fromHost: null));
 
-        // Nothing to claim as the origin, so neither clause is written — the address alone would
+        // Nothing to claim as the origin, so neither clause is written, the address alone would
         // read as a host we never observed.
         Assert.DoesNotContain("from ", line, StringComparison.Ordinal);
     }
@@ -84,8 +84,8 @@ public sealed class HopMarkerTests
     [InlineData("a\tb")]
     public void AHostileTokenCannotAppearVerbatimInTheValue(string hostile)
     {
-        // Asserted on the whole line, because the grammar's own characters — spaces and the
-        // parentheses around the address comment — are legitimately present. What must not survive
+        // Asserted on the whole line, because the grammar's own characters, spaces and the
+        // parentheses around the address comment, are legitimately present. What must not survive
         // is the untrusted *token*, and that is what this checks.
         var line = ReceivedHeader.Build(Stamp(fromHost: hostile));
 
@@ -103,7 +103,7 @@ public sealed class HopMarkerTests
     public void AnUntrustedTokenIsReducedToThePermittedAlphabet(string hostile)
     {
         // The token set is the control: it excludes whitespace, comment and route delimiters, and
-        // the line terminator — every character that could reframe the value.
+        // the line terminator, every character that could reframe the value.
         var token = ReceivedHeader.Token(hostile);
 
         foreach (var forbidden in new[] { '\r', '\n', ' ', '\t', '(', ')', ';', '<', '>' })
@@ -172,8 +172,7 @@ public sealed class HopMarkerTests
     public void AMessageStampedByUsIsRecognisedAsALoopWhenItComesBack()
     {
         // Before the marker existed this could not work at all: the guard looked for a `by` clause
-        // naming us, and we never wrote one, so our own hop was invisible and only the hop limit —
-        // the backstop, not the mechanism — would ever have caught a loop.
+        // naming us, and we never wrote one, so our own hop was invisible and only the hop limit,         // the backstop, not the mechanism, would ever have caught a loop.
         var original = Encoding.UTF8.GetBytes(
             "Received: from relay.example.net by mta.example.net with ESMTP\r\n"
             + "From: sender@example.net\r\n"

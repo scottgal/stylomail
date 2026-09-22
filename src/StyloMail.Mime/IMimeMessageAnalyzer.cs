@@ -6,7 +6,7 @@ namespace StyloMail.Mime;
 /// <remarks>
 /// Implementations <b>must not</b> perform network I/O of any kind: no fetching links, no loading
 /// remote images, no executing attachments and no resolving redirects. That is a safety property
-/// of the MVP, not a performance choice — resolving a link means touching an attacker-chosen host
+/// of the MVP, not a performance choice, resolving a link means touching an attacker-chosen host
 /// from inside the trust boundary.
 ///
 /// <para>
@@ -18,7 +18,7 @@ namespace StyloMail.Mime;
 public interface IMimeMessageAnalyzer
 {
     /// <summary>
-    /// Parses and analyses one message. Never throws for hostile or malformed input — a message
+    /// Parses and analyses one message. Never throws for hostile or malformed input, a message
     /// that cannot be read comes back as a rejection with an explicit disposition.
     /// </summary>
     MimeAnalysisResult Analyze(MimeAnalysisRequest request);

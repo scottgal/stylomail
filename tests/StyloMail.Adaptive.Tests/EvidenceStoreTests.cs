@@ -103,7 +103,7 @@ public class EvidenceStoreTests
         profile.Observe(Observation(Start.AddHours(2), recipients: 40));
         var result = profile.Promote(Sample(LabelProvenance.AuthenticatedOperator));
 
-        // The account's traffic is still counted — containment needs the rate — but a
+        // The account's traffic is still counted, containment needs the rate, but a
         // suspected-compromise account must not be able to teach us what normal looks like.
         Assert.Equal(PromotionOutcome.RejectedBaselineFrozen, result);
         Assert.Equal(1, profile.Observed.Attempts);

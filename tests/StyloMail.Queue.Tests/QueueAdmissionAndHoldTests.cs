@@ -3,7 +3,7 @@ using StyloMail.Core;
 namespace StyloMail.Queue.Tests;
 
 /// <summary>
-/// Per-tenant admission control, and the hold window — which is a policy question, not a delivery
+/// Per-tenant admission control, and the hold window, which is a policy question, not a delivery
 /// outcome.
 /// </summary>
 public class QueueAdmissionAndHoldTests
@@ -133,7 +133,7 @@ public class QueueAdmissionAndHoldTests
             DefaultHoldWindow = TimeSpan.FromHours(6),
         });
 
-        // A caller that omits the deadline. This is the case a consumer believed threw — a doc
+        // A caller that omits the deadline. This is the case a consumer believed threw, a doc
         // comment claimed the field was "required when Held". It never was, and the behaviour is
         // better than an exception: a hold is defined as a bounded window, so the system cannot
         // represent the indefinite retention the spec forbids, and a missing deadline resolves to
@@ -171,7 +171,7 @@ public class QueueAdmissionAndHoldTests
         var item = await h.Store.GetItemAsync(queueId);
         var recipient = QueueHarness.By(item!, "rcpt@example.test");
 
-        // The queue did not decide anything. The recipient is still held, not delivered — nothing
+        // The queue did not decide anything. The recipient is still held, not delivered, nothing
         // was sent, and an elapsed timer is not evidence that anything was.
         Assert.Equal(DeliveryState.Held, recipient.State);
         Assert.Null(recipient.DeliveredAt);
@@ -259,7 +259,7 @@ public class QueueAdmissionAndHoldTests
         Assert.Empty(recovery.PurgedPayloads);
         Assert.True(h.Spool.Exists((await h.Store.GetItemAsync(queueId))!.Envelope.PayloadReference));
 
-        // Which means it still occupies the tenant's spool budget — quarantine has to be bounded
+        // Which means it still occupies the tenant's spool budget, quarantine has to be bounded
         // somewhere, and admission control is that bound.
         Assert.Equal(
             QueueAdmission.RefusedTenantByteLimit,

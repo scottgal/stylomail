@@ -7,8 +7,8 @@ namespace StyloMail.Host.Auth;
 /// </summary>
 /// <remarks>
 /// The check is conditional on the <em>channel</em>, not on the route. Requiring a token from every
-/// caller would burden API clients that are not exposed to CSRF at all — they authenticate with a
-/// header a browser will not attach on a hostile page's behalf — while doing nothing extra for
+/// caller would burden API clients that are not exposed to CSRF at all, they authenticate with a
+/// header a browser will not attach on a hostile page's behalf, while doing nothing extra for
 /// them. Requiring it only where an ambient credential was used puts the cost exactly where the
 /// risk is.
 ///

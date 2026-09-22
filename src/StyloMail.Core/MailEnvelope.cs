@@ -47,7 +47,7 @@ public sealed record MailEnvelope
     /// <b>Nullable on purpose: <see langword="null"/> means "not observed", not zero.</b> The queue's
     /// hop-limit check reads this, and a non-nullable field defaulting to <c>0</c> would make a sink
     /// that forgot to populate it indistinguishable from a message that genuinely arrived with no
-    /// prior hops — so <c>MaxHops</c> would read as an enforced backstop while never firing. Making
+    /// prior hops, so <c>MaxHops</c> would read as an enforced backstop while never firing. Making
     /// the unknown state representable is the whole reason this field is not an <c>int</c>.
     /// </para>
     /// <para>
@@ -62,7 +62,7 @@ public sealed record MailEnvelope
     /// The message's own <c>Message-ID</c> header.
     /// </summary>
     /// <remarks>
-    /// <b>UNTRUSTED — supplied by the sender.</b> It is recorded for diagnostics and loop
+    /// <b>UNTRUSTED, supplied by the sender.</b> It is recorded for diagnostics and loop
     /// tracing only. It is never an idempotency key, never an identity claim, and never a
     /// deduplication guarantee: SMTP delivery is not exactly-once, and pretending otherwise
     /// hides genuine duplicate-delivery ambiguity instead of surfacing it.

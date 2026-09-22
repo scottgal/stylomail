@@ -103,7 +103,7 @@ public class ProfileScopeTests
         var outbound = ProfileScopes.Relationship(TenantA, MailDirection.Outbound, "sender-h", "recipient-h");
         var inbound = ProfileScopes.Relationship(TenantA, MailDirection.Inbound, "sender-h", "recipient-h");
 
-        // The pair is explicitly linkable — same key — but the statistics never merge,
+        // The pair is explicitly linkable, same key, but the statistics never merge,
         // because direction is part of identity.
         Assert.Equal("sender-h>recipient-h", outbound.Key);
         Assert.Equal(outbound.Key, inbound.Key);

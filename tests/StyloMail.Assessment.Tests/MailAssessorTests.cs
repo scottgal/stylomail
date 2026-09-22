@@ -163,8 +163,7 @@ public sealed class MailAssessorTests
     public async Task AssessmentOnlyIsKeptOutOfAcceptanceEvenWhenItCouldHaveBeenAccepted()
     {
         // The dangerous shape, and the reason the earlier test is not enough on its own: a durable
-        // reference and real bytes mean *nothing else* stands between this message and the queue —
-        // RequireDurable passes, the payload check passes, and only the assessment-only guard keeps
+        // reference and real bytes mean *nothing else* stands between this message and the queue,         // RequireDurable passes, the payload check passes, and only the assessment-only guard keeps
         // it out. With an ephemeral reference the durability assert would refuse it anyway, and the
         // guard would never be shown to be load-bearing.
         var harness = Build(queueThrowsIfReached: true);
@@ -256,7 +255,7 @@ public sealed class MailAssessorTests
             // semantic state by design, so it has to say so in both places: the composition root
             // must stop declining responsibility for an outage that is not an outage, and policy
             // must stop requiring coverage this deployment will never have. Two knobs rather than
-            // one is the right shape — each is a different component stating a different fact, and
+            // one is the right shape, each is a different component stating a different fact, and
             // a single switch would have hidden which of them was being disabled.
             DeclineResponsibilityOnSemanticOutage = false,
             Policy = new PolicyOptions { MinimumCoverageForAllow = 0 },
@@ -387,13 +386,13 @@ public sealed class MailAssessorTests
     {
         // The wire form matters as much as the empty one. My first check was IsNullOrWhiteSpace, which
         // caught "" and missed "<>", so the same message was either refused here before any provider
-        // spend or let through to be refused by the queue afterwards — two outcomes for one input,
+        // spend or let through to be refused by the queue afterwards, two outcomes for one input,
         // decided by notation.
         //
         // Now sourced from `Core.SenderAddresses.IsNullSender`, the single definition, rather than a
         // local mirror. That consolidation found a THIRD behaviour neither of us had noticed: mine
         // also accepted "< >" (blank inside the brackets), which is a malformed address rather than
-        // the null sender. Core is exact on "<>", so "< >" is treated as an ordinary address — an
+        // the null sender. Core is exact on "<>", so "< >" is treated as an ordinary address, an
         // address-syntax gap, documented by queue- rather than fixed inside a rule that is not about
         // it.
         var harness = Build();
@@ -453,7 +452,7 @@ public sealed class MailAssessorTests
     [Fact]
     public async Task AnInboundNullSenderIsLegitimateMailAndNotRefused()
     {
-        // An inbound DSN delivered to a mailbox is ordinary mail — the ruling leaves the inbound path
+        // An inbound DSN delivered to a mailbox is ordinary mail, the ruling leaves the inbound path
         // unaffected. Refusing it here would be refusing bounces people are meant to receive.
         var harness = Build();
         harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
@@ -506,7 +505,7 @@ public sealed class MailAssessorTests
     public async Task EveryMandatoryLimitIsActuallyApplied(string which)
     {
         // One case per rule, because the pattern that keeps recurring here is a limit that is
-        // declared, implemented, and never exercised — so a mutation removing it reddens nothing and
+        // declared, implemented, and never exercised, so a mutation removing it reddens nothing and
         // the limit is only believed to work. MaxRecipients had a test; these three did not.
         var harness = Build();
 
@@ -585,7 +584,7 @@ public sealed class MailAssessorTests
 
         // `RecipientDisposition.RecipientScopedSignalIds` is a Core field with exactly one producer,
         // which is this pipeline. It was never set, so it read as an honest "nothing recipient-specific
-        // here" on every message — a contract field silently always-null rather than a real absence.
+        // here" on every message, a contract field silently always-null rather than a real absence.
         Assert.Equal(2, assessment.RecipientDispositions.Count);
 
         foreach (var disposition in assessment.RecipientDispositions)
@@ -594,7 +593,7 @@ public sealed class MailAssessorTests
             Assert.NotEmpty(disposition.RecipientScopedSignalIds!);
         }
 
-        // Attributed per recipient, not the same flat list copied onto each — a shared list would
+        // Attributed per recipient, not the same flat list copied onto each, a shared list would
         // satisfy "not empty" while telling a reviewer nothing about whose signals these are.
         var first = assessment.RecipientDispositions[0].RecipientScopedSignalIds;
         var second = assessment.RecipientDispositions[1].RecipientScopedSignalIds;
@@ -613,7 +612,7 @@ public sealed class MailAssessorTests
             CancellationToken.None);
 
         // The relationship bound is real, so the second recipient genuinely has no pair profile.
-        // Null is the honest answer for that, and it stays distinguishable from the bug above — a
+        // Null is the honest answer for that, and it stays distinguishable from the bug above, a
         // list that is always null everywere is a defect, a null for one recipient is a fact.
         Assert.NotNull(assessment.RecipientDispositions[0].RecipientScopedSignalIds);
         Assert.Null(assessment.RecipientDispositions[1].RecipientScopedSignalIds);
@@ -764,7 +763,7 @@ public sealed class MailAssessorTests
         var replay = await harness.Assessor.AssessAsync(Submittable(), context, CancellationToken.None);
 
         // The whole point of the seam fix. Two assessments, one queue item, and the same id handed
-        // back both times — the second id is the *existing* item's, not one we would have created.
+        // back both times, the second id is the *existing* item's, not one we would have created.
         Assert.NotNull(first.SubmissionId);
         Assert.Equal(first.SubmissionId, replay.SubmissionId);
         Assert.Equal(1, harness.Queue.DistinctQueueItems);
@@ -833,7 +832,7 @@ public sealed class MailAssessorTests
         await harness.Assessor.AssessAsync(Submittable(), context, CancellationToken.None);
         var replay = await harness.Assessor.AssessAsync(Submittable(), context, CancellationToken.None);
 
-        // Both calls hand back the SAME queue id, correctly — a retry must receive the id it already
+        // Both calls hand back the SAME queue id, correctly, a retry must receive the id it already
         // has. So the id cannot say whether this request created anything, and a route that reports
         // "accepted" on a replay is making a caller-visible claim that is not true.
         Assert.Equal(SubmissionAdmission.Duplicate, replay.Submission);
@@ -858,7 +857,7 @@ public sealed class MailAssessorTests
         var assessment = forceDuplicate ? second : first;
 
         // Two fields that must agree are a smell. The remedy this project uses is to make the
-        // agreement tested rather than hoped for — a caller reading one and not the other would
+        // agreement tested rather than hoped for, a caller reading one and not the other would
         // otherwise get a coherent-looking answer from a pair that had drifted apart.
         Assert.Equal(assessment.SubmissionId is not null, assessment.Submission is not null);
     }
@@ -930,7 +929,7 @@ public sealed class MailAssessorTests
         var harness = Build();
 
         // `spool://pending` passes the scheme check and resolves to nothing. That is not an ordinary
-        // missing payload — it is a caller that believes it spooled something, and the difference
+        // missing payload, it is a caller that believes it spooled something, and the difference
         // cost an hour at the host seam because both cases read as a storage fault.
         var message = Submittable(
             envelope: Builders.Envelope(payloadReference: "spool://pending"));
@@ -1011,7 +1010,7 @@ public sealed class MailAssessorTests
         Assert.Equal(MailAction.Allow, first.Action);
 
         // Exhaustion defers, and the deferral must NOT release. If it did, the quota would
-        // un-exhaust itself on every message and never bind at all — the control would be pure
+        // un-exhaust itself on every message and never bind at all, the control would be pure
         // ceremony. An unsuccessful reservation has nothing to give back, which is exactly why the
         // release is guarded on the reserve having succeeded.
         Assert.Equal(MailAction.Defer, second.Action);
@@ -1055,8 +1054,8 @@ public sealed class MailAssessorTests
     {
         // A characterisation test of a DEPENDENCY's contract, and it exists for one reason: the
         // shortfall counter below is a comparison against what this ledger returns. If the ledger
-        // ever stopped reporting the amount actually given back — returning the amount requested
-        // instead — the counter would become an inert line that always reads zero, and nothing else
+        // ever stopped reporting the amount actually given back, returning the amount requested
+        // instead, the counter would become an inert line that always reads zero, and nothing else
         // in this suite would notice. A check that cannot fail is not a check, including when the
         // thing that broke it is somebody else's code.
         var ledger = new StyloMail.Adaptive.Learning.SendingQuotaLedger(10);
@@ -1084,8 +1083,7 @@ public sealed class MailAssessorTests
             CancellationToken.None);
 
         // Reachable from the operator surface, which is the point: a counter nobody can read is a
-        // comment with a number attached. And a message that learned nothing — the ordinary case —
-        // must show appends only.
+        // comment with a number attached. And a message that learned nothing, the ordinary case,         // must show appends only.
         Assert.True(harness.Assessor.ProfileWrites.Observed > 0);
         Assert.Equal(0, harness.Assessor.ProfileWrites.Mutated);
     }
@@ -1124,7 +1122,7 @@ public sealed class MailAssessorTests
             Builders.Context(harness.Clock),
             CancellationToken.None);
 
-        // Counters moved — the attempt happened. Trusted history did not: an assessment is a
+        // Counters moved, the attempt happened. Trusted history did not: an assessment is a
         // question, not a verdict about what was correct.
         Assert.True(harness.Profiles.ApplyObservationCount > 0);
         Assert.Equal(0, harness.Profiles.UpdateCount);
@@ -1220,7 +1218,7 @@ public sealed class MailAssessorTests
             Builders.Context(harness.Clock, assessmentOnly: true, correlationId: "corr-2"),
             CancellationToken.None);
 
-        // The wording and the semantic vector are identical — only the destination moved. A match
+        // The wording and the semantic vector are identical, only the destination moved. A match
         // here would let the first version of an attack vouch for the second.
         Assert.DoesNotContain(
             second.Evidence.Where(e => e.Availability == EvidenceAvailability.Available),

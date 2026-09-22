@@ -27,8 +27,8 @@ public sealed record RiskDimension
 /// A human-readable justification. Reasons are ordered by significance, most significant first.
 /// </summary>
 /// <remarks>
-/// Reasons must describe the actual evidence — "recipient fan-out rising while payment-redirection
-/// evidence also rises" — rather than restating a scalar. An unexplained score is not an explanation.
+/// Reasons must describe the actual evidence, "recipient fan-out rising while payment-redirection
+/// evidence also rises", rather than restating a scalar. An unexplained score is not an explanation.
 /// </remarks>
 public sealed record ReasonCode
 {
@@ -45,7 +45,7 @@ public sealed record AssessmentVersions
 {
     public required string PolicyVersion { get; init; }
 
-    /// <summary>Resolved classifier model id, e.g. <c>jev-1.13.0</c>. Never an alias — aliases move.</summary>
+    /// <summary>Resolved classifier model id, e.g. <c>jev-1.13.0</c>. Never an alias, aliases move.</summary>
     public string? ClassifierModelVersion { get; init; }
 
     public required string QuestionSchemaVersion { get; init; }
@@ -107,14 +107,13 @@ public sealed record MailAssessment
     /// Whether this request created a durable submission or matched an existing one.
     /// </summary>
     /// <remarks>
-    /// <b>Null exactly when <see cref="SubmissionId"/> is null</b> — that is, when no durable
+    /// <b>Null exactly when <see cref="SubmissionId"/> is null</b>, that is, when no durable
     /// submission was created or matched. A caller must read this rather than infer the answer from
     /// the presence of a reason code: reasons are <em>explanations</em>, and digging a fact out of
     /// prose is how a mechanism's phrasing comes to carry a meaning it does not have.
     ///
     /// <para>
-    /// This exists because a retry must return the same <see cref="SubmissionId"/> it already has —
-    /// so the id alone cannot distinguish "I just created this" from "this already existed", and an
+    /// This exists because a retry must return the same <see cref="SubmissionId"/> it already has,     /// so the id alone cannot distinguish "I just created this" from "this already existed", and an
     /// HTTP caller needs that fact to choose between 201 and 200.
     /// </para>
     /// </remarks>
@@ -125,7 +124,7 @@ public sealed record MailAssessment
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Null when no acceptance occurred</b> — assessment-only traffic, or a decision of
+    /// <b>Null when no acceptance occurred</b>, assessment-only traffic, or a decision of
     /// <see cref="MailAction.Defer"/>/<see cref="MailAction.Reject"/> that declined responsibility
     /// before acceptance. A null here is a meaningful "we did not take this", not a missing value.
     /// </para>

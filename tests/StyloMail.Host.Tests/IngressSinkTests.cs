@@ -13,8 +13,8 @@ namespace StyloMail.Host.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The property under test throughout is the same one the queue imposes on itself — <b>a <c>250</c>
-/// means a durable queue row exists</b> — and most of these tests are ways of trying to make the
+/// The property under test throughout is the same one the queue imposes on itself, <b>a <c>250</c>
+/// means a durable queue row exists</b>, and most of these tests are ways of trying to make the
 /// sink answer <c>250</c> without one. A client that reads a <c>250</c> deletes its copy, so getting
 /// this wrong destroys mail; a deferral costs a retry.
 /// </para>
@@ -128,7 +128,7 @@ public sealed class IngressSinkTests
     public async Task The_hop_count_an_ingress_observed_reaches_the_envelope_the_pipeline_sees(int hopCount)
     {
         // The last link in a chain that has already been inert once, and whose fix is a single
-        // assignment with no visible consequence — which is exactly why its absence would go
+        // assignment with no visible consequence, which is exactly why its absence would go
         // unnoticed a second time. Without this, deleting `HopCount = submission.HopCount` from the
         // sink would leave every other test green while the mail-loop backstop silently stopped
         // firing again.
@@ -169,8 +169,8 @@ public sealed class IngressSinkTests
     public async Task A_repeated_message_identifier_is_deferred_rather_than_overwriting_the_first()
     {
         // The ingress spool name is derived from the message id, and the spool refuses to overwrite.
-        // Two different messages under one id cannot happen from either ingress — both mint a fresh
-        // identifier per transaction — so if it does, the safe answer is to decline rather than to
+        // Two different messages under one id cannot happen from either ingress, both mint a fresh
+        // identifier per transaction, so if it does, the safe answer is to decline rather than to
         // let the second message take the first one's place on disk.
         using var host = new TestHost().CountingSubmissions();
         var sink = host.Services.GetRequiredService<ISmtpIngressSink>();
@@ -229,7 +229,7 @@ public sealed class IngressSinkTests
     public async Task An_unconfigured_assessor_defers_rather_than_throwing()
     {
         // A deployment with no Assessment configuration is a legitimate shape, and the correct
-        // answer to a message is a temporary failure — the client keeps its copy and tries later.
+        // answer to a message is a temporary failure, the client keeps its copy and tries later.
         // An exception reaching the listener would work too, but only by accident of the listener
         // catching everything; being explicit means the intent is on the record.
         using var host = new TestHost().WithoutAssessor();
@@ -245,7 +245,7 @@ public sealed class IngressSinkTests
     public async Task A_message_that_cannot_be_spooled_is_declined_before_anything_is_assessed()
     {
         // Disk full, an unmounted volume, a permissions change. Accepting here would destroy mail we
-        // cannot produce, so the deferral happens before the assessment is even attempted — which
+        // cannot produce, so the deferral happens before the assessment is even attempted, which
         // the assessor-invocation count is what proves.
         var root = Path.Combine(Path.GetTempPath(), "stylomail-sink-tests", Guid.NewGuid().ToString("N"));
 
@@ -301,7 +301,7 @@ public sealed class IngressSinkTests
         // orphan sweep collects it after its minimum age.
         //
         // Deleting it as soon as acceptance succeeds is the remaining work, and deliberately not
-        // done here — two questions are still open with queue- about whether the roots are shared
+        // done here, two questions are still open with queue- about whether the roots are shared
         // and what the measured peak is. This test states the current cost plainly so that the
         // change which removes it has something to fail against.
         using var host = new TestHost();
@@ -345,7 +345,7 @@ public sealed class IngressSinkTests
             },
 
             // The ingress's own observation, passed through rather than invented. Zero means "scanned
-            // and found no prior hops", which is a different claim from "did not look" — the
+            // and found no prior hops", which is a different claim from "did not look", the
             // ingresses own that scan and refuse an over-limit message before ever calling here.
             HopCount = hopCount,
             UntrustedMessageIdHeader = "<abc123@example.com>",

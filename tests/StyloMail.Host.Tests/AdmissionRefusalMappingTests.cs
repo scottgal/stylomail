@@ -19,7 +19,7 @@ namespace StyloMail.Host.Tests;
 /// </para>
 /// <para>
 /// <b>There is no such switch, and that is the better answer.</b> The Host never reads
-/// <c>QueueAdmission</c> — it reads <c>MailAssessment.SubmissionId</c> and <c>MailAction</c>, and its
+/// <c>QueueAdmission</c>, it reads <c>MailAssessment.SubmissionId</c> and <c>MailAction</c>, and its
 /// refresh of the queue's vocabulary stops at the port. So a new enum member cannot change an outcome
 /// here, and the fragility the warning was aimed at does not exist to be fixed.
 /// </para>
@@ -27,7 +27,7 @@ namespace StyloMail.Host.Tests;
 /// That is a claim about the code's shape, which is exactly the kind that turns out to be about a
 /// different version of the code. These tests therefore drive a real <c>RefusedNullSender</c> from the
 /// real <c>QueueStore</c> out through both edges the Host exposes, and assert the outcome is a refusal
-/// — so if anyone ever does introduce an admission switch, a bad default fails here rather than in
+///, so if anyone ever does introduce an admission switch, a bad default fails here rather than in
 /// someone's mail.
 /// </para>
 /// </remarks>
@@ -48,7 +48,7 @@ public sealed class AdmissionRefusalMappingTests
 
         var response = await client.SendAsync(request);
 
-        // The queue refused it — `QueueAdmission.RefusedNullSender` — so no durable row exists and
+        // The queue refused it, `QueueAdmission.RefusedNullSender`, so no durable row exists and
         // nothing may answer 2xx. The exact code is the route's business; that it is a refusal is not.
         Assert.False(
             response.IsSuccessStatusCode,
@@ -98,7 +98,7 @@ public sealed class AdmissionRefusalMappingTests
         Assert.Null(decision.QueueId);
         Assert.True(decision.IsAcceptanceValid);
 
-        // The queue *was* consulted — once — and refused. The count is an attempt count, not an
+        // The queue *was* consulted, once, and refused. The count is an attempt count, not an
         // acceptance count, which is why the claim that nothing was stored is made against the queue
         // rather than against this number.
         Assert.Equal(1, host.Submissions.AcceptAttempts);

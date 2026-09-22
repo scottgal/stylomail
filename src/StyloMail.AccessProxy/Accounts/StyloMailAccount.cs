@@ -19,8 +19,8 @@ namespace StyloMail.AccessProxy.Accounts;
 /// <item>The backend credential lives in a different store entirely (see
 /// <c>IBackendCredentialStore</c>), encrypted under a different scheme with a different key. Nothing
 /// in this type can reach it.</item>
-/// <item><see cref="BackendAccountId"/> is a <em>reference</em> — a pointer to which backend
-/// credential to use — not material. Holding this record tells you nothing about the backend
+/// <item><see cref="BackendAccountId"/> is a <em>reference</em>, a pointer to which backend
+/// credential to use, not material. Holding this record tells you nothing about the backend
 /// secret.</item>
 /// </list>
 ///
@@ -28,8 +28,8 @@ namespace StyloMail.AccessProxy.Accounts;
 /// The consequence that matters for rotation: revoking or re-issuing either secret does not disturb
 /// the other. A user who changes their client password keeps their Gmail connection; a tenant that
 /// rotates onto OAuth does not force every user to re-enrol their client. Had the two been derived
-/// from a common value — which is the tempting shortcut when both are "the credential for this
-/// account" — both rotations would cascade.
+/// from a common value, which is the tempting shortcut when both are "the credential for this
+/// account", both rotations would cascade.
 /// </para>
 /// </remarks>
 public sealed record StyloMailAccount
@@ -55,8 +55,8 @@ public sealed record StyloMailAccount
     /// </summary>
     /// <remarks>
     /// Kept as a separate field rather than assuming it equals <see cref="AccountId"/>, so an
-    /// account can be migrated between backend credentials — or point at a credential shared within
-    /// a tenant — without rewriting client logins.
+    /// account can be migrated between backend credentials, or point at a credential shared within
+    /// a tenant, without rewriting client logins.
     /// </remarks>
     public required string BackendAccountId { get; init; }
 
@@ -86,7 +86,7 @@ public readonly record struct PasswordHash(int Iterations, byte[] Salt, byte[] H
 /// <remarks>
 /// Everything here works on UTF-8 bytes rather than on a <see cref="string"/>. That is not
 /// incidental: a <c>string</c> is immutable, so a password that reaches one cannot be zeroed and
-/// sits in managed memory until the GC happens to collect it — which on a long-lived mail session
+/// sits in managed memory until the GC happens to collect it, which on a long-lived mail session
 /// could be hours. Taking a span lets the caller hand over the bytes it already holds and zero them
 /// the moment verification is done.
 /// </remarks>
@@ -117,7 +117,7 @@ public interface IStyloMailPasswordHasher
 /// this project takes no third-party dependencies. That is a real trade-off and worth stating
 /// plainly: a memory-hard function is meaningfully better against GPU cracking, so the honest
 /// position is that this is adequate and not ideal, and the upgrade path is a new hash algorithm
-/// behind the same <see cref="IStyloMailPasswordHasher"/> seam — which the stored iteration count
+/// behind the same <see cref="IStyloMailPasswordHasher"/> seam, which the stored iteration count
 /// and salt already anticipate.
 ///
 /// <para>
@@ -178,14 +178,14 @@ public sealed class Pbkdf2StyloMailPasswordHasher : IStyloMailPasswordHasher
     /// </summary>
     /// <remarks>
     /// <b>This closes an account-enumeration oracle.</b> The obvious implementation looks the login
-    /// up, returns early when it is unknown, and only then runs PBKDF2 — which means an unknown
+    /// up, returns early when it is unknown, and only then runs PBKDF2, which means an unknown
     /// login answers in microseconds while a known one takes the full derivation cost. An attacker
     /// who can time the response learns which logins exist, and on a mail proxy the login is the
     /// user's email address, so that is a tenant directory leak.
     ///
     /// <para>
     /// Verifying against this constant when the account is missing makes both paths pay the same
-    /// derivation. It is a fixed, published value at the current policy cost — not a secret, and
+    /// derivation. It is a fixed, published value at the current policy cost, not a secret, and
     /// worthless as a credential, since no login is bound to it.
     /// </para>
     /// </remarks>
@@ -214,7 +214,7 @@ public interface IStyloMailAccountStore
 /// An in-process account store.
 /// </summary>
 /// <remarks>
-/// Not durable — the same limitation as <c>InMemoryBackendCredentialStore</c>, and reported for the
+/// Not durable, the same limitation as <c>InMemoryBackendCredentialStore</c>, and reported for the
 /// same reason: the durable implementation belongs with the host's persistence layer, not here.
 /// What it does exercise is the real hasher, so a test asserting "the stored record is not the
 /// password" is testing production code paths.

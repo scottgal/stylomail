@@ -48,8 +48,8 @@ internal sealed class EvidenceBuilder(DateTimeOffset observedAt, MimeParseLimits
     /// Caps the number of attributes and the length of each value.
     /// </summary>
     /// <remarks>
-    /// Repeated names are kept as-is. Several signals are genuinely multi-valued — coverage
-    /// reasons, IDN hosts, homograph lists — and a reader that wants one of them is looking for a
+    /// Repeated names are kept as-is. Several signals are genuinely multi-valued, coverage
+    /// reasons, IDN hosts, homograph lists, and a reader that wants one of them is looking for a
     /// named entry among several, not for a unique key. Collapsing them would silently drop
     /// evidence, which is the failure this list shape exists to prevent.
     /// </remarks>

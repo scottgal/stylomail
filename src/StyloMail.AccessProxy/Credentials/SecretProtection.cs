@@ -21,13 +21,13 @@ public interface ISecretKeyRing
     /// The key for <paramref name="keyId"/>, or null when it is unknown or retired.
     /// </summary>
     /// <remarks>
-    /// Returning null — rather than throwing — is deliberate: an unknown key id means the
+    /// Returning null, rather than throwing, is deliberate: an unknown key id means the
     /// credential cannot be decrypted, which must surface as a fail-closed authentication failure,
     /// not an unhandled crash that a retry loop might hammer.
     ///
     /// <para>
     /// <b>The returned array is borrowed, not owned.</b> The caller must not modify it and must not
-    /// clear it. Ownership of key material stays with the ring — and this is not a formality: an
+    /// clear it. Ownership of key material stays with the ring, and this is not a formality: an
     /// implementation of <see cref="ISecretProtector"/> that cleared the key it was handed would
     /// blank the ring's only copy, so the key would work for exactly one operation and every
     /// credential protected or read afterwards would silently be encrypted under zeros. Returning
@@ -108,7 +108,7 @@ public readonly record struct SecretBinding(string TenantId, string AccountId, s
 /// </para>
 /// <para>
 /// Encryption at rest is necessary and not sufficient (spec §9.4 item 2). This type is the
-/// "necessary" half — the isolation, rotation and breach-path half is a deployment concern and is
+/// "necessary" half, the isolation, rotation and breach-path half is a deployment concern and is
 /// reported as not implemented rather than quietly assumed.
 /// </para>
 /// </remarks>
@@ -141,7 +141,7 @@ public sealed class AesGcmSecretProtector : ISecretProtector
         var ciphertext = blob.AsSpan(HeaderBytes);
 
         // The key is borrowed from the ring, not owned here. Clearing it would blank the ring's only
-        // copy — so the key would work for exactly one operation and every credential protected or
+        // copy, so the key would work for exactly one operation and every credential protected or
         // read afterwards would silently use zeros. Ownership of key material stays with the ring.
         using var aes = new AesGcm(key, TagBytes);
         var aad = binding.ToAad();
@@ -193,7 +193,7 @@ public sealed class AesGcmSecretProtector : ISecretProtector
                 "account or credential kind, or has been tampered with.", ex);
         }
 
-        // The key is borrowed, not owned — see Protect. Zeroing it here would blank the ring.
+        // The key is borrowed, not owned, see Protect. Zeroing it here would blank the ring.
         return SecretValue.FromBytes(plaintext);
     }
 }
@@ -210,7 +210,7 @@ public readonly record struct ProtectedSecret(byte[] Ciphertext, string KeyId)
 /// </summary>
 /// <remarks>
 /// <b>Not a production key store.</b> Keys live in process memory, so they die with the process and
-/// are not protected by a KMS, an HSM or the OS keystore — which means this cannot satisfy the
+/// are not protected by a KMS, an HSM or the OS keystore, which means this cannot satisfy the
 /// "per-tenant key isolation" half of spec §9.4 item 2 on its own. It is here so the store and the
 /// protector are exercised by tests and so the host has something to inject; the deployment step of
 /// replacing it is reported as outstanding rather than assumed done.

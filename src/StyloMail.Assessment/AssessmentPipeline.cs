@@ -19,9 +19,9 @@ namespace StyloMail.Assessment;
 ///
 /// <para>
 /// This exists so that wiring is one call rather than a paragraph of construction order that every
-/// host would get subtly different. The components themselves are supplied by the caller — the
+/// host would get subtly different. The components themselves are supplied by the caller, the
 /// MIME adapter, the classifier behind its cache decorator, the SQLite database, the spool and the
-/// options — because a composition root that also decided where the database lives would be a
+/// options, because a composition root that also decided where the database lives would be a
 /// composition root that could not be pointed at a test's temporary directory.
 /// </para>
 ///

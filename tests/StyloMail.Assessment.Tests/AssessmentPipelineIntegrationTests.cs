@@ -23,7 +23,7 @@ namespace StyloMail.Assessment.Tests;
 /// <remarks>
 /// Exists to force a race that a background thread only sometimes produced. Determinism is the point:
 /// the first version of the test it serves was flaky, and a flaky safety test is not evidence of
-/// anything — it is a red build somebody will eventually call noise.
+/// anything, it is a red build somebody will eventually call noise.
 /// </remarks>
 internal sealed class BurstInterposingProfileStore : StyloMail.Assessment.IAdaptiveProfileStore
 {
@@ -44,7 +44,7 @@ internal sealed class BurstInterposingProfileStore : StyloMail.Assessment.IAdapt
     /// </summary>
     /// <remarks>
     /// The interposed observation is what a sustained burst does to a whole-profile write. It sits
-    /// here rather than on a background thread so the race is deterministic — see the test it serves.
+    /// here rather than on a background thread so the race is deterministic, see the test it serves.
     /// </remarks>
     public T Update<T>(
         StyloMail.Adaptive.Profiles.ProfileKey key,
@@ -109,7 +109,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
             Builders.Options(),
             new QueueOptions { TimeProvider = clock });
 
-        // Written by the spool itself, so the reference is one the spool will recognise — which is
+        // Written by the spool itself, so the reference is one the spool will recognise, which is
         // the assumption the payload source rests on and the one worth proving.
         var payloadReference = await spool.WriteAsync(
             "tenant-1",
@@ -209,7 +209,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
             CancellationToken.None);
 
         // Exactly MaxHops: the mail-loop backstop's first refusing value. Before the envelope carried
-        // a hop count this could not be reached at all — the queue compared a permanent default of 0
+        // a hop count this could not be reached at all, the queue compared a permanent default of 0
         // against the limit, so the guard read as present and was inert end to end.
         var message = Builders.Message(
             "Please update the payment details.",
@@ -305,12 +305,12 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
 
         // The two assertions that make this test load-bearing rather than merely passing. Asserting
         // only that everything landed is not enough: the compare-and-swap retry is quite capable of
-        // absorbing this burst on its own, and it did — a version of this test without the gate
+        // absorbing this burst on its own, and it did, a version of this test without the gate
         // passed in isolation and failed only under full-suite load, which is the least useful kind
         // of regression test there is. These two are deterministic.
         //
         // Observing happened, and no whole-profile write did. The delta write takes the lock before
-        // it reads, so there is nothing for a burst to lose — and asserting the *absence* of the
+        // it reads, so there is nothing for a burst to lose, and asserting the *absence* of the
         // whole-profile path is what proves observations are not quietly back on it, where a burst
         // would be many writers racing one row instead of queueing on one lock.
         Assert.Equal(total, coordinator.Statistics.Observed);
@@ -329,8 +329,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
 
         // Interposes an ingest write before every whole-profile save, which is what a sustained burst
         // does to it. The first version of this test ran a real burst on a background thread instead
-        // and was FLAKY: it passed three runs in a row and then a probe caught the failure —
-        // 4 save attempts, 4 conflicts, the promotion lost. A test that reddens only sometimes is
+        // and was FLAKY: it passed three runs in a row and then a probe caught the failure,         // 4 save attempts, 4 conflicts, the promotion lost. A test that reddens only sometimes is
         // worse than none, because the failure reads as flakiness rather than as a regression, so
         // the race is forced here instead of hoped for.
         var interposing = new BurstInterposingProfileStore(
@@ -364,7 +363,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
         // it, and this now asserts what we actually want.
         Assert.Equal(1, version);
 
-        // The interposed observations all landed too — the write lock is taken before the read, so
+        // The interposed observations all landed too, the write lock is taken before the read, so
         // the burst queued behind the promotion rather than being lost to it.
         var final = store.Load(key)!;
         Assert.True(final.Observed.Attempts >= 1);
@@ -395,7 +394,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
         // Another writer moves the row between this coordinator's load and its save, so the first
         // save loses and the retry must reload. Against the real store the reload reconstructs from
         // the database, so the promotion is applied to the stored state rather than to a live object
-        // the first attempt already mutated — which is the property the fake cannot demonstrate.
+        // the first attempt already mutated, which is the property the fake cannot demonstrate.
         var interloper = new ProfileCoordinator(new SqliteAdaptiveProfileStoreAdapter(store));
         interloper.Mutate(key, clock.GetUtcNow(), profile =>
         {
@@ -422,7 +421,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
         var final = store.Load(key)!;
 
         // The observation beside the promotion survived, the promotion landed exactly once, and the
-        // concurrent freeze is still in force — a whole-profile write that reloaded correctly keeps
+        // concurrent freeze is still in force, a whole-profile write that reloaded correctly keeps
         // everything it did not mean to change.
         Assert.Equal(1, final.Observed.Attempts);
         Assert.Equal(2, final.Observed.Recipients);
@@ -468,7 +467,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
         var store = new StyloMail.Adaptive.Storage.SqliteAdaptiveProfileStore(connections);
         var profiles = store.LoadForTenant("tenant-1");
 
-        // Two profiles per attempt — the sender and the sender-recipient relationship — and every
+        // Two profiles per attempt, the sender and the sender-recipient relationship, and every
         // one of them saw all three attempts. A lost read-modify-write shows up here as a count of
         // two on a profile that was written three times.
         Assert.True(profiles.Count >= 2);

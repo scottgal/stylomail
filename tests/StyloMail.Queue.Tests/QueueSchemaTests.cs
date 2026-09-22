@@ -10,7 +10,7 @@ namespace StyloMail.Queue.Tests;
 /// Raised by `overview-` after a composite-primary-key change silently invalidated two foreign keys:
 /// SQLite accepts a foreign key to a non-unique column at create time and only rejects it on the
 /// first write, so a schema test suite that only ever creates passes while the constraint is broken.
-/// The same shape as every other toothless test — it cannot fail.
+/// The same shape as every other toothless test, it cannot fail.
 /// </remarks>
 public class QueueSchemaTests
 {
@@ -64,7 +64,7 @@ public class QueueSchemaTests
     {
         using var h = new QueueHarness();
 
-        // Someone else's table with the same name and a different shape — exactly the collision
+        // Someone else's table with the same name and a different shape, exactly the collision
         // that happens in a shared SQLite file. CREATE TABLE IF NOT EXISTS silently accepts it.
         await using (var connection = h.Connections.Open())
         {
@@ -74,7 +74,7 @@ public class QueueSchemaTests
         }
 
         // Without a shape check this would stamp the version and then fail at the first accept with
-        // a confusing "no such column" — with mail on the line. It must fail here instead, where
+        // a confusing "no such column", with mail on the line. It must fail here instead, where
         // refusing is still free.
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => h.Store.InitializeAsync());
 

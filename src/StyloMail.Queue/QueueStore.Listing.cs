@@ -35,11 +35,11 @@ public sealed partial class QueueStore
     /// <b>Keyset paging, not OFFSET.</b> Items move between states constantly, and an offset window
     /// over a live queue silently skips or repeats rows as its contents shift underneath. The cursor
     /// names the last row returned, so the next page starts after <em>that</em> item regardless of
-    /// what changed in between — a reviewer paging through held mail sees each item once.
+    /// what changed in between, a reviewer paging through held mail sees each item once.
     /// </para>
     /// <para>
     /// Ordering is <c>(created_at DESC, queue_id DESC)</c>. The id is the tiebreaker because
-    /// timestamps are not unique — several messages can be accepted in the same instant — and
+    /// timestamps are not unique, several messages can be accepted in the same instant, and
     /// without a total order a keyset cursor can loop or drop rows at a page boundary.
     /// </para>
     /// </remarks>

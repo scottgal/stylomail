@@ -55,7 +55,7 @@ internal sealed class FakeSmtpBehaviour
     public string FinalDataText { get; set; } = "OK id=12345";
 
     /// <summary>
-    /// Accepts the body and then never answers — the lost-acknowledgement case that must surface as
+    /// Accepts the body and then never answers, the lost-acknowledgement case that must surface as
     /// in-doubt rather than as a clean failure.
     /// </summary>
     public bool DropAfterDataTerminator { get; set; }
@@ -71,18 +71,18 @@ internal sealed class FakeSmtpBehaviour
     /// was noticed. Measured on loopback:
     /// </para>
     /// <list type="bullet">
-    /// <item><b>≤ 4 KB</b> — the whole message and its terminator fit in the buffer and are written
+    /// <item><b>≤ 4 KB</b>, the whole message and its terminator fit in the buffer and are written
     /// successfully; the client then fails while awaiting the final reply, so the terminator was
     /// written and the outcome is <b>in-doubt</b>. That is honest: the peer may have received
     /// everything.</item>
-    /// <item><b>≥ 64 KB</b> — the buffer overflows, the write itself fails, the terminator was never
+    /// <item><b>≥ 64 KB</b>, the buffer overflows, the write itself fails, the terminator was never
     /// written, and the outcome is a plain <b>temporary failure</b>. Nothing could have been
     /// accepted without a terminator.</item>
     /// </list>
     /// <para>
     /// Both outcomes are correct; the threshold is the socket buffer. So a test wanting the
     /// pre-terminator path must use a payload <em>deliberately larger</em> than any plausible buffer
-    /// and say why — otherwise it silently starts asserting the in-doubt path instead.
+    /// and say why, otherwise it silently starts asserting the in-doubt path instead.
     /// </para>
     /// </remarks>
     public bool CloseAfterDataCommand { get; set; }
@@ -92,17 +92,17 @@ internal sealed class FakeSmtpBehaviour
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Opens a window in which the message is fully transmitted and unanswered — the only state from
+    /// Opens a window in which the message is fully transmitted and unanswered, the only state from
     /// which a <em>cancellation</em> (rather than a connection loss) can land after the terminator.
     /// That is the case where the message may already be accepted and the outcome must be in-doubt.
     /// </para>
     /// <para>
-    /// <b>This is a ceiling, not a wait — set it long and the test still runs fast.</b> It only has
+    /// <b>This is a ceiling, not a wait, set it long and the test still runs fast.</b> It only has
     /// to outlast whatever the test is racing: 30 seconds is fine if the drain window closes in
     /// 300ms, because nothing waits for the full delay. Set it just longer than the event it must
     /// outlive and let <c>WaitForMessagesAsync</c> be the synchronisation point, since the message is
     /// recorded strictly <em>before</em> the delay begins. That combination is what makes the
-    /// cancellation test deterministic and ~400ms rather than a 10-second sleep — worth preserving,
+    /// cancellation test deterministic and ~400ms rather than a 10-second sleep, worth preserving,
     /// because a suite with no clock dependence is a property this one is praised for.
     /// </para>
     /// <para>
@@ -131,7 +131,7 @@ internal sealed record ReceivedMessage(string MailFrom, string Recipient, byte[]
 /// A mock at the <c>Stream</c> seam would prove that the state machine calls the methods it calls,
 /// which is not the question. The questions are whether a byte written by the writer arrives
 /// unchanged, whether a real <c>SslStream</c> handshake succeeds before <c>AUTH</c>, and whether a
-/// dropped connection after the terminator is distinguishable from one before it — and none of
+/// dropped connection after the terminator is distinguishable from one before it, and none of
 /// those survive being mocked out. Loopback costs a few milliseconds and tests the whole path.
 ///
 /// <para>
@@ -182,7 +182,7 @@ internal sealed class FakeSmtpServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Every command with its encryption state — used to prove nothing secret went in the clear.</summary>
+    /// <summary>Every command with its encryption state, used to prove nothing secret went in the clear.</summary>
     public IReadOnlyList<RecordedCommand> RecordedCommands
     {
         get
@@ -500,7 +500,7 @@ internal sealed class FakeSmtpServer : IAsyncDisposable
                     if (Behaviour.DropAfterDataTerminator)
                     {
                         // The body and its terminator were consumed, then the connection dies before
-                        // the verdict is sent. Whether the message was accepted is unknowable — by
+                        // the verdict is sent. Whether the message was accepted is unknowable, by
                         // the client and, deliberately, by this server too. This is the ambiguity the
                         // spec requires us to surface rather than paper over.
                         return;

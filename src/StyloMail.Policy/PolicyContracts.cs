@@ -9,7 +9,7 @@ namespace StyloMail.Policy;
 public sealed record PolicyContext
 {
     /// <summary>
-    /// Operator kill switch. Whatever else is true, this constrains the outcome — an allowlist
+    /// Operator kill switch. Whatever else is true, this constrains the outcome, an allowlist
     /// entry does not bypass an emergency ceiling.
     /// </summary>
     public required bool EmergencyKillSwitchEngaged { get; init; }
@@ -18,7 +18,7 @@ public sealed record PolicyContext
     public required bool OutboundQuotaExhausted { get; init; }
 
     /// <summary>
-    /// Violations established by explicit, verified security rules — not model judgements.
+    /// Violations established by explicit, verified security rules, not model judgements.
     /// These do not require model confidence to act on.
     /// </summary>
     public required IReadOnlyList<string> VerifiedSecurityRuleViolations { get; init; }
@@ -90,7 +90,7 @@ public sealed class PolicyOptions
     /// <para>
     /// This is the other half of <see cref="MinimumCoverageForIrreversibleAction"/>, and without it
     /// the engine fails open. A total semantic outage produces an index of 0.0 over a coverage of
-    /// 0.0 — which is under every threshold, so a threshold-only decision returns Allow. Absence of
+    /// 0.0, which is under every threshold, so a threshold-only decision returns Allow. Absence of
     /// evidence would then be indistinguishable from evidence of safety, and the one failure the
     /// system must never have is silently blessing everything it could not see.
     /// </para>
@@ -114,7 +114,7 @@ public sealed class PolicyOptions
 
     /// <summary>
     /// Weights per semantic signal id for the composite index. Correlated dimensions are summed
-    /// with weights — never multiplied as though independent.
+    /// with weights, never multiplied as though independent.
     /// </summary>
     public Dictionary<string, double> DimensionWeights { get; set; } = new(StringComparer.Ordinal)
     {

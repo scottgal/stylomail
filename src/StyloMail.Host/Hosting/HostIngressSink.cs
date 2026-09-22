@@ -13,7 +13,7 @@ namespace StyloMail.Host.Hosting;
 /// <remarks>
 /// <para>
 /// <b>It does not accept. The assessor accepts.</b> This type is handed an
-/// <see cref="IMailAssessor"/> and a <see cref="SpoolStore"/> and nothing else — there is no queue
+/// <see cref="IMailAssessor"/> and a <see cref="SpoolStore"/> and nothing else, there is no queue
 /// and no intake in its constructor, so the double-accept that cost this project a day of duplicate
 /// mail is not something this class can do even by mistake. A sink that "runs the pipeline, then
 /// accepts" accepts under a second idempotency key, the queue cannot see the two as the same
@@ -26,7 +26,7 @@ namespace StyloMail.Host.Hosting;
 /// reached through <c>MailEnvelope.PayloadReference</c>, and refuses outright to make a non-durable
 /// reference durable. So the bytes have to be on disk <em>before</em> the assessor is called, under
 /// a <c>spool://</c> reference that resolves. The queue then writes its own copy under the queue id
-/// it mints — that second write is the acceptance, and it is the only one that becomes delivery
+/// it mints, that second write is the acceptance, and it is the only one that becomes delivery
 /// state. This ingress copy is therefore never referenced by queue metadata and is left for the
 /// orphan sweep; deleting it once acceptance succeeds is a separate change, deliberately not made
 /// here (see the handover for the two questions still open with <c>queue-</c>).
@@ -47,12 +47,12 @@ public sealed class HostIngressSink : ISmtpIngressSink
     private readonly TimeProvider _clock;
 
     /// <param name="assessor">
-    /// The composition root's assessor. It is the only acceptor — see the class remarks.
+    /// The composition root's assessor. It is the only acceptor, see the class remarks.
     /// </param>
     /// <param name="spool">
     /// <b>The composition root's spool, not a new one.</b> A second instance would put this
     /// component's writes somewhere the assessor's read-back, the queue's orphan sweep and the
-    /// delete-after-accept path do not look — each correct in isolation, together silent. The
+    /// delete-after-accept path do not look, each correct in isolation, together silent. The
     /// composition root asserts the identity; see <see cref="IngressComposition.RequireSharedSpool"/>.
     /// </param>
     public HostIngressSink(IMailAssessor assessor, SpoolStore spool, TimeProvider? timeProvider = null)
@@ -73,8 +73,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
     /// </summary>
     /// <remarks>
     /// Every field says "nothing was extracted here" rather than "nothing was found". The pipeline's
-    /// own parser is authoritative and replaces this view entirely whenever the payload resolves —
-    /// which for an ingress message it always does, because the bytes were just spooled. This value
+    /// own parser is authoritative and replaces this view entirely whenever the payload resolves,     /// which for an ingress message it always does, because the bytes were just spooled. This value
     /// is what remains if that read fails, and it is deliberately not a cheerful one.
     /// </remarks>
     private static readonly AnalysisCoverage Unparsed = new()
@@ -116,7 +115,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
             RcptTo = submission.Recipients,
             ReceivedAt = _clock.GetUtcNow(),
 
-            // Over the bytes as received, including the hop marker the ingress prepended — the
+            // Over the bytes as received, including the hop marker the ingress prepended, the
             // digest has to describe the artefact actually being handed on, not an earlier form of it.
             MimeDigest = Convert.ToHexString(SHA256.HashData(submission.RawMessage.Span)),
             PayloadReference = payloadReference,
@@ -124,8 +123,8 @@ public sealed class HostIngressSink : ISmtpIngressSink
 
             // Always observed, never null. Both ingresses scan the message's own Received headers
             // before they call here and refuse an over-limit message themselves, so by this point a
-            // count exists and is meaningful. The distinction the nullable type carries — "not
-            // observed" is not zero — is for callers that genuinely did not look; this one did, and
+            // count exists and is meaningful. The distinction the nullable type carries, "not
+            // observed" is not zero, is for callers that genuinely did not look; this one did, and
             // reporting null would tell the queue its hop backstop had not run when it had.
             HopCount = submission.HopCount,
         };
@@ -157,7 +156,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
             AssessmentOnly = false,
             CorrelationId = "cor_" + Guid.NewGuid().ToString("N"),
 
-            // Null for every ingress path, deliberately — an SMTP session has no client-supplied key
+            // Null for every ingress path, deliberately, an SMTP session has no client-supplied key
             // and the transport cannot invent one. See the class remarks.
             ClientIdempotencyKey = null,
             TimeProvider = _clock,
@@ -192,7 +191,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
     /// <remarks>
     /// Returns null rather than throwing so the caller has exactly one place where "not durable"
     /// is turned into a deferral. <see cref="SpoolUnavailableException"/> is the spool's own signal
-    /// for disk full, an unmounted volume or a permissions change — every one of which means
+    /// for disk full, an unmounted volume or a permissions change, every one of which means
     /// "do not accept", because accepting here would destroy mail we cannot produce.
     /// </remarks>
     private async Task<string?> SpoolAsync(IngressSubmission submission, CancellationToken cancellationToken)
@@ -205,7 +204,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
 
                     // Prefixed so an ingress payload is distinguishable on sight from the queue's own
                     // copy of the same message, which is named by its queue id. The name comes from
-                    // the ingress's own message id, which is minted per transaction — so a retry of
+                    // the ingress's own message id, which is minted per transaction, so a retry of
                     // the same SMTP transaction is a fresh message here, exactly as it is downstream.
                     "ingress-" + submission.InternalMessageId,
                     submission.RawMessage,
@@ -225,7 +224,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
     /// <b>The queue id decides, and nothing else may.</b> A non-null
     /// <see cref="MailAssessment.SubmissionId"/> is the only evidence that a durable row exists, so
     /// it is the only thing that produces a <c>250</c>. The action is consulted afterwards and only
-    /// to choose between the two ways of declining — never to upgrade a decline into an acceptance,
+    /// to choose between the two ways of declining, never to upgrade a decline into an acceptance,
     /// which is why <c>Allow</c> is not handled as a success case. An action of <c>Allow</c> with no
     /// queue id means the pipeline examined the message and could not take it on; the truthful reply
     /// is a deferral, and answering <c>250</c> there would tell the client to delete mail we do not have.
@@ -247,7 +246,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
     /// </summary>
     /// <remarks>
     /// Reason messages are written for an operator reading the decision ledger and are free to name
-    /// internal facts — a spool path, a tenant, a component. This string is written into an SMTP
+    /// internal facts, a spool path, a tenant, a component. This string is written into an SMTP
     /// reply that goes to whoever is on the other end of the socket, so it carries the stable
     /// identifier and nothing else. The detail stays where it belongs.
     /// </remarks>

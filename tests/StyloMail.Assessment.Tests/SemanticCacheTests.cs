@@ -156,7 +156,7 @@ public sealed class SemanticCacheTests
 
         // Wait until exactly one caller is inside the provider, then let it finish. Without
         // single-flight the other seven would be inside it too, which is what the assertion on
-        // CallCount below would catch — the count is the contract, not the timing.
+        // CallCount below would catch, the count is the contract, not the timing.
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (inner.ConcurrentCalls < 1 && DateTime.UtcNow < deadline)
         {
@@ -219,7 +219,7 @@ public sealed class SemanticCacheTests
 
         // A hand-built entry that collides on the key but describes a different message. The key
         // digest covers every field the fingerprint does, so this cannot happen through the front
-        // door — the check exists so that if it ever does, the answer is "no" rather than a changed
+        // door, the check exists so that if it ever does, the answer is "no" rather than a changed
         // destination inheriting a previous verdict.
         store.Store(
             new CachedSemanticAssessment
@@ -380,7 +380,7 @@ public sealed class SemanticCacheTests
     public async Task TheLeastFrequentlyUsedPolicyEvictsTheColdestEntry()
     {
         // The policy is configurable and this branch was never exercised. It matters because the
-        // first version of it was wrong — it aged nothing and could pin a victim forever.
+        // first version of it was wrong, it aged nothing and could pin a victim forever.
         //
         // The scenario has to make the two policies DISAGREE, or the test proves nothing. My first
         // attempt used a cold key that was also the least recently used, so degrading LFU to LRU

@@ -18,7 +18,7 @@ internal sealed record PreflightResult
     /// <summary>Declared multipart boundary tokens, in the order encountered and capped.</summary>
     public required IReadOnlyList<string> Boundaries { get; init; }
 
-    /// <summary>A boundary that opened parts but was never closed — the message was cut short.</summary>
+    /// <summary>A boundary that opened parts but was never closed, the message was cut short.</summary>
     public required bool BoundaryUnterminated { get; init; }
 
     public required int OpeningDelimiterCount { get; init; }
@@ -140,7 +140,7 @@ internal static partial class RawMessagePreflight
 
             // Nesting depth is checked here, before the real parser runs. Leaving it to the parser
             // would mean a message could be silently truncated at the parser's own depth ceiling
-            // and the readable part handed on as though it were the whole message — the one
+            // and the readable part handed on as though it were the whole message, the one
             // outcome the specification rules out.
             if (structure.MaxDepth > limits.MaxMimeDepth)
             {

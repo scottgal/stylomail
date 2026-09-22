@@ -31,7 +31,7 @@ internal sealed record AttachmentAssessment
 /// </summary>
 /// <remarks>
 /// The map is deliberately a small allow-list of extensions whose type is well known. An extension
-/// that is not in it produces no conclusion at all — "unknown" is a distinct state here as much as
+/// that is not in it produces no conclusion at all, "unknown" is a distinct state here as much as
 /// it is anywhere else in this system, and guessing would manufacture mismatches out of unfamiliar
 /// file types rather than out of deception.
 /// </remarks>
@@ -136,7 +136,7 @@ internal static class AttachmentTypes
         return dot <= 0 || dot == name.Length - 1 ? null : name[dot..];
     }
 
-    /// <summary>All extensions in a file name, outermost last — used to spot <c>invoice.pdf.exe</c>.</summary>
+    /// <summary>All extensions in a file name, outermost last, used to spot <c>invoice.pdf.exe</c>.</summary>
     public static IReadOnlyList<string> ExtensionsOf(string? fileName)
     {
         if (string.IsNullOrEmpty(fileName))

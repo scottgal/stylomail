@@ -9,8 +9,8 @@ namespace StyloMail.Adaptive.Signals;
 /// Produces the behavioural evidence for one profile: drift, trend and fan-out.
 /// </summary>
 /// <remarks>
-/// This is the pipeline's step five — compare against profiles and recent campaign windows,
-/// compute drift and trend evidence — and it is the only place in this engine that asks what
+/// This is the pipeline's step five, compare against profiles and recent campaign windows,
+/// compute drift and trend evidence, and it is the only place in this engine that asks what
 /// time it is. Everything below it takes an explicit instant, so a replay can drive the whole
 /// engine from a fixed clock and get the same answers twice.
 ///

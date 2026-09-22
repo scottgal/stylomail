@@ -15,7 +15,7 @@ namespace StyloMail.Transport.Tests;
 /// against the other. The port contract is new and only its author had tested it, so mine exercised
 /// <em>my</em> reading of the interface against fakes I wrote to that reading, and theirs exercised
 /// theirs. Two readings of one interface agree by inspection; only execution says whether they are
-/// the same reading. These are the failure modes worth finding — an <c>InDoubt</c> that settles, a
+/// the same reading. These are the failure modes worth finding, an <c>InDoubt</c> that settles, a
 /// partial delivery that reads as a full success.
 /// </para>
 /// <para>
@@ -25,7 +25,7 @@ namespace StyloMail.Transport.Tests;
 /// </para>
 /// <para>
 /// <b>Not covered here:</b> a port that <em>throws</em>. The real port returns per-recipient outcomes
-/// for every failure including a closed socket — that is the contract — so a throwing port has to be
+/// for every failure including a closed socket, that is the contract, so a throwing port has to be
 /// a hand-written stub, and it is covered in <c>StyloMail.Queue.Tests</c> where the worker's handling
 /// of it belongs.
 /// </para>
@@ -36,7 +36,7 @@ public class DeliveryWorkerSeamTests
     public async Task An_in_doubt_delivery_from_the_real_port_does_not_settle_the_recipient()
     {
         // The upstream accepts the body and the end-of-data terminator, then drops the connection
-        // before answering. The message is fully on the wire and unanswered — it may already be
+        // before answering. The message is fully on the wire and unanswered, it may already be
         // accepted. This is the ambiguity the whole component exists to preserve.
         var behaviour = new FakeSmtpBehaviour { DropAfterDataTerminator = true };
         await using var server = FakeSmtpServer.Start(behaviour);
@@ -50,7 +50,7 @@ public class DeliveryWorkerSeamTests
 
         var recipient = fixture.Recipient(queueId, "rcpt@example.test");
 
-        // Retried, not settled, and not terminally failed — the port's InDoubt reached the queue
+        // Retried, not settled, and not terminally failed, the port's InDoubt reached the queue
         // intact. If the two readings of the contract had diverged, this is where it shows.
         Assert.Equal(DeliveryState.RetryScheduled, recipient.State);
         Assert.Null(recipient.DeliveredAt);
@@ -62,7 +62,7 @@ public class DeliveryWorkerSeamTests
         // It consumed an attempt: retrying is a real cost, not a free unwind.
         Assert.Equal(1, recipient.Attempts);
 
-        // And it really did reach the wire — otherwise this asserts nothing.
+        // And it really did reach the wire, otherwise this asserts nothing.
         Assert.Single(server.Messages);
     }
 
@@ -96,7 +96,7 @@ public class DeliveryWorkerSeamTests
     public async Task A_cancellation_landing_after_the_terminator_surfaces_as_in_doubt()
     {
         // The upstream consumes the body and its terminator, then waits before giving a verdict. That
-        // is the only state from which a *cancellation* — rather than a connection loss — can land
+        // is the only state from which a *cancellation*, rather than a connection loss, can land
         // after the terminator, which is the case where the message may already be accepted.
         //
         // **The 30s delay is a ceiling, never waited out.** The worker's drain window closes long
@@ -126,7 +126,7 @@ public class DeliveryWorkerSeamTests
         await running.WaitAsync(TimeSpan.FromSeconds(15));
 
         // The upstream may hold the message, so the recipient is retried with the ambiguity recorded
-        // rather than settled — and crucially *not* settled as a plain failure because our own drain
+        // rather than settled, and crucially *not* settled as a plain failure because our own drain
         // window closed. That distinction is the whole point of the port classifying per recipient:
         // the worker cannot know how far the protocol got, and must not guess.
         var recipient = fixture.Recipient(queueId, "rcpt@example.test");
@@ -139,7 +139,7 @@ public class DeliveryWorkerSeamTests
         Assert.True(attempt.IsAmbiguous);
     }
 
-    // RESOLVED AND REMOVED — and the resolution was neither of the two readings offered, which is
+    // RESOLVED AND REMOVED, and the resolution was neither of the two readings offered, which is
     // why it was worth raising rather than guessing.
     //
     // The assertion was wrong, and so was the rig's knob name. `DropDuringDataBody` was not dropping
@@ -150,7 +150,7 @@ public class DeliveryWorkerSeamTests
     // itself fails (terminator never written -> plain temporary failure). The threshold is the
     // socket buffer, not the knob.
     //
-    // Both outcomes are correct, so there was no contradiction to resolve — only a fixture whose
+    // Both outcomes are correct, so there was no contradiction to resolve, only a fixture whose
     // name promised an interruption it could not deliver. The knob is now `CloseAfterDataCommand`
     // and says what it does, and both sides of the boundary are pinned in `SmtpSessionTests`:
     // `AConnectionLostBeforeTheTerminatorIsReached_IsAFailureNotInDoubt` (4 MB, deliberately) and
@@ -209,7 +209,7 @@ internal sealed class SeamFixture : IAsyncDisposable
 
     /// <summary>A worker over the same store and port, with different options.</summary>
     /// <remarks>
-    /// Needed because the drain-window case has to close the window quickly — it is a ceiling the
+    /// Needed because the drain-window case has to close the window quickly, it is a ceiling the
     /// test must reach in hundreds of milliseconds, not a wait it sits through.
     /// </remarks>
     public QueueDeliveryWorker WorkerFor(QueueDeliveryWorkerOptions options)

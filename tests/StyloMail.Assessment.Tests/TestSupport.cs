@@ -333,7 +333,7 @@ internal sealed class FakeProfileStore : IAdaptiveProfileStore
     /// <summary>Every profile currently held. Used to assert that nothing learned.</summary>
     public IReadOnlyCollection<AdaptiveProfile> Profiles => [.. _profiles.Values];
 
-    /// <summary>Total baseline version across every profile — zero until something is genuinely learned.</summary>
+    /// <summary>Total baseline version across every profile, zero until something is genuinely learned.</summary>
     public int TotalBaselineVersion => _profiles.Values.Sum(profile => profile.Baseline.Version);
 }
 

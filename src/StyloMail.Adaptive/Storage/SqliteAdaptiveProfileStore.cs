@@ -15,7 +15,7 @@ namespace StyloMail.Adaptive.Storage;
 /// <remarks>
 /// <b>This is a correctness event, not a transient storage failure.</b> Two writers each loaded
 /// the same revision and both tried to save; the loser's update would have silently dropped the
-/// winner's. Retrying the same in-memory object will fail again — the remedy is to reload, reapply
+/// winner's. Retrying the same in-memory object will fail again, the remedy is to reload, reapply
 /// the change, and save.
 ///
 /// <para>
@@ -57,7 +57,7 @@ public sealed class ProfileVersionConflictException : InvalidOperationException
 /// <b>Safe to share across threads</b>, including for the <em>same</em> profile when writes go
 /// through <see cref="ApplyObservation"/> or <see cref="Update"/>. Both take SQLite's write lock
 /// before reading, so concurrent writers queue and each sees the previous writer's result instead
-/// of conflicting — no caller-side serialisation is needed, and adding one would only serialise
+/// of conflicting, no caller-side serialisation is needed, and adding one would only serialise
 /// work the store already serialises.
 /// </para>
 ///
@@ -103,7 +103,7 @@ public sealed class SqliteAdaptiveProfileStore
         using var transaction = connection.BeginTransaction();
 
         // The compare-and-swap comes first, before anything is written, so a refused write
-        // leaves the stored profile exactly as the winner left it — the counters and the
+        // leaves the stored profile exactly as the winner left it, the counters and the
         // baseline move together or not at all.
         var actualRevision = ReadRevision(connection, transaction, profile.Key);
         if (actualRevision != profile.PersistedRevision)
@@ -159,7 +159,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// <remarks>
     /// A revision rather than <c>baseline_version</c>. The baseline version only advances on
     /// promotion, so an observation-only save would carry an unchanged token and a concurrent
-    /// write would overwrite it unnoticed — the exact lost update this guards against.
+    /// write would overwrite it unnoticed, the exact lost update this guards against.
     /// </remarks>
     private static long ReadRevision(SqliteConnection connection, SqliteTransaction? transaction, ProfileKey key)
     {
@@ -206,8 +206,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// This is the ingest path, and it exists because compare-and-swap alone is not enough for
     /// it. <see cref="Save"/> protects a caller that already holds a profile, but under a burst
     /// many callers hold the <em>same</em> profile, so only one can win a round and the rest must
-    /// reload and retry. Sixteen simultaneous messages from one sender is not a hot edge case —
-    /// it is the shape of the burst this system exists to notice, and the account being written
+    /// reload and retry. Sixteen simultaneous messages from one sender is not a hot edge case,     /// it is the shape of the burst this system exists to notice, and the account being written
     /// by many messages at once is the compromised one.
     ///
     /// <para>
@@ -220,7 +219,7 @@ public sealed class SqliteAdaptiveProfileStore
     ///
     /// <para>
     /// <b>Prefer this over <see cref="Update"/> for an append.</b> The two are equally safe under a
-    /// burst — the difference is shape, not safety, because both take the write lock before
+    /// burst, the difference is shape, not safety, because both take the write lock before
     /// reading. What this buys is that "this is an append" is stated once, here, rather than every
     /// caller reimplementing the merge inside an update delegate and getting it subtly different.
     /// </para>
@@ -279,14 +278,14 @@ public sealed class SqliteAdaptiveProfileStore
     /// </summary>
     /// <remarks>
     /// This is the general form of <see cref="ApplyObservation"/>, for changes that need a
-    /// <em>decision</em> rather than a pure append — a promotion has to consult label provenance,
+    /// <em>decision</em> rather than a pure append, a promotion has to consult label provenance,
     /// freeze state and the regime candidate, and that logic belongs to the caller, not to
     /// persistence. The delegate keeps the decision and this method supplies the transaction.
     ///
     /// <para>
     /// <b>Why this exists rather than compare-and-swap.</b> Under a burst, many callers hold the
     /// same profile, so a CAS-and-retry design lets only one win a round and makes the rest reload
-    /// and retry. A promotion racing a burst is not a corner case — it is an operator intervening
+    /// and retry. A promotion racing a burst is not a corner case, it is an operator intervening
     /// in exactly the incident that produces the burst, deciding that the sender's new behaviour is
     /// legitimate. The moment the operation most needs to succeed is the moment it is most likely
     /// to fail. Taking the write lock up front removes the conflict instead of retrying it.
@@ -297,11 +296,11 @@ public sealed class SqliteAdaptiveProfileStore
     /// writer, so a slow callback serialises every other profile write in the process. Keep it to
     /// in-memory work: no I/O, no calls back into this store (a nested call would deadlock), and no
     /// awaiting anything. If it throws, the transaction rolls back and the exception propagates
-    /// unchanged — nothing is half-applied.
+    /// unchanged, nothing is half-applied.
     /// </para>
     ///
     /// <para>
-    /// <b>It always writes, even when the delegate changes nothing</b> — the revision advances
+    /// <b>It always writes, even when the delegate changes nothing</b>, the revision advances
     /// regardless. That is deliberate (deciding whether a profile "changed" means comparing
     /// everything it holds) but it means this is not a read path: calling it to inspect a profile
     /// takes the write lock and invalidates any other holder's compare-and-swap token. Use
@@ -390,7 +389,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// </summary>
     /// <remarks>
     /// Deleting the row would be simpler, and would silently hand the principal a fresh
-    /// recipient quota — eviction would become a bypass. The counters are the last thing
+    /// recipient quota, eviction would become a bypass. The counters are the last thing
     /// bounding the damage from a late detection, so they are the last thing eviction touches.
     /// </remarks>
     public void Evict(ProfileKey key, DateTimeOffset at)
@@ -697,7 +696,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// </summary>
     /// <remarks>
     /// The shared <c>profiles</c> primary key is (tenant, scope, key) with no direction, but
-    /// this engine keeps inbound and outbound statistics distinct for the same pair — an
+    /// this engine keeps inbound and outbound statistics distinct for the same pair, an
     /// inbound stranger and an outbound authenticated principal mean different things by the
     /// same number. Folding direction into the stored key preserves that separation without
     /// migrating a table another agent owns.
@@ -775,7 +774,7 @@ public sealed class SqliteAdaptiveProfileStore
     /// <remarks>
     /// The shared <c>profiles</c> table keeps the baseline's summary columns (support, version,
     /// regime, frozen) but has nowhere to put the per-dimension moments the baseline is
-    /// actually made of — and the fast/slow/velocity/acceleration JSON columns describe
+    /// actually made of, and the fast/slow/velocity/acceleration JSON columns describe
     /// observed trends, not trusted history. Rather than mislabel one of those, the moments
     /// live in a table this project owns, cascading from the profile row.
     /// </remarks>

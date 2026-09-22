@@ -4,7 +4,7 @@ namespace StyloMail.Transport.Smtp;
 /// The peer violated the SMTP protocol, or exceeded a bound while talking to us.
 /// </summary>
 /// <remarks>
-/// <b>Not a delivery outcome.</b> This says the conversation was malformed or over budget — a
+/// <b>Not a delivery outcome.</b> This says the conversation was malformed or over budget, a
 /// different fact from "the upstream refused the message". The caller maps it to a transient
 /// failure <em>and abandons the connection</em>, because a stream that has been abandoned
 /// mid-reply cannot be resynchronised by guessing where the next reply starts.

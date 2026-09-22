@@ -5,8 +5,7 @@ namespace StyloMail.Core;
 /// </summary>
 /// <remarks>
 /// These are <b>Noul</b> questions in TypeSafe terms: each answers its own yes/no and
-/// several may hold at once. They are deliberately not a <c>Choice</c> across labels —
-/// a message can request credentials <em>and</em> redirect payment, and forcing one
+/// several may hold at once. They are deliberately not a <c>Choice</c> across labels, /// a message can request credentials <em>and</em> redirect payment, and forcing one
 /// mutually exclusive label would discard that.
 ///
 /// <para>

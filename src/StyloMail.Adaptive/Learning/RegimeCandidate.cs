@@ -6,7 +6,7 @@ namespace StyloMail.Adaptive.Learning;
 /// A behaviour pattern that might be the new normal, not yet trusted.
 /// </summary>
 /// <remarks>
-/// A regime change is the honest way to absorb a genuine shift — a company rebrands, a mailing
+/// A regime change is the honest way to absorb a genuine shift, a company rebrands, a mailing
 /// list doubles, a sender's business changes shape. Learning it by dragging the existing
 /// baseline is how an attacker gets their behaviour adopted: they only have to send enough
 /// mail in the new shape and the baseline follows. A candidate must instead earn support from

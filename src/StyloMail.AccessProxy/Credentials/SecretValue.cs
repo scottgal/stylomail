@@ -7,7 +7,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// </summary>
 /// <remarks>
 /// <b>Redaction is a type property, not a discipline.</b> "Never log a credential" is easy to state
-/// and easy to break, because the leak is almost never a deliberate <c>Log(password)</c> — it is a
+/// and easy to break, because the leak is almost never a deliberate <c>Log(password)</c>, it is a
 /// record's generated <c>ToString</c> inside an interpolated string, an object dumped into a
 /// structured log, or an exception message built with <c>$"...{token}..."</c>. A <see cref="string"/>
 /// offers no protection in any of those cases: it is printable, it satisfies every format parameter,
@@ -18,7 +18,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// <see cref="ToString"/> returns a redaction marker rather than the value. There is deliberately
 /// no implicit conversion to <see cref="string"/> and no <see cref="IFormattable"/> implementation,
 /// so interpolating one produces the marker. Reaching the value requires calling
-/// <see cref="Utf8"/> explicitly, which is a visible thing to do in review — and each call site is
+/// <see cref="Utf8"/> explicitly, which is a visible thing to do in review, and each call site is
 /// therefore a place a reviewer can ask "why does this line need the plaintext?".
 /// </para>
 ///
@@ -60,7 +60,7 @@ public sealed class SecretValue : IDisposable
         }
     }
 
-    /// <summary>Number of bytes held. Safe to log — it is a length, not content.</summary>
+    /// <summary>Number of bytes held. Safe to log, it is a length, not content.</summary>
     public int Length
     {
         get
@@ -79,7 +79,7 @@ public sealed class SecretValue : IDisposable
     /// <remarks>
     /// <b>This exists to catch a leak we do not control.</b> Every credential path in this project
     /// is written not to put the value in a message, but one of them hands an exception from
-    /// somewhere else onward — the OAuth token endpoint — and that message is outside our authorship.
+    /// somewhere else onward, the OAuth token endpoint, and that message is outside our authorship.
     /// A single careless <c>throw new HttpRequestException($"failed for {token}")</c> inside an
     /// implementation of that seam would put a refresh token into an exception chain, and exception
     /// chains are logged in full by every framework there is. Rather than trusting the seam's
@@ -89,7 +89,7 @@ public sealed class SecretValue : IDisposable
     /// <para>
     /// The comparison decodes into a stack buffer rather than materialising a <see cref="string"/>,
     /// because a string here would reintroduce the very problem the type exists to avoid. If the
-    /// value cannot be decoded it reports true — the caller drops diagnostic detail it might have
+    /// value cannot be decoded it reports true, the caller drops diagnostic detail it might have
     /// kept, which is the right way round for this particular question.
     /// </para>
     /// </remarks>

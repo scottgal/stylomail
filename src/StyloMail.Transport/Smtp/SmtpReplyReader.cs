@@ -9,7 +9,7 @@ namespace StyloMail.Transport.Smtp;
 /// <remarks>
 /// Deliberately not a <c>StreamReader</c>. <see cref="StreamReader.ReadLineAsync(CancellationToken)"/>
 /// has no line-length limit, so a peer that never sends a line terminator makes it allocate until
-/// the process dies — the exact denial-of-service the transport exists to prevent. This reader
+/// the process dies, the exact denial-of-service the transport exists to prevent. This reader
 /// fails at <see cref="SmtpBounds.MaxReplyLineBytes"/> instead, and fails again at
 /// <see cref="SmtpBounds.MaxReplyLines"/> and <see cref="SmtpBounds.MaxReplyBytes"/> when a hostile
 /// server tries the same trick across continuation lines.
@@ -127,7 +127,7 @@ internal sealed class SmtpReplyReader
     /// </summary>
     /// <remarks>
     /// Accepts both CRLF and a bare LF. RFC 5321 requires CRLF, but a strict reading here would
-    /// reject working servers for a defect that changes nothing about what the line says — and
+    /// reject working servers for a defect that changes nothing about what the line says, and
     /// nothing trusts the framing, because the parsed values are length-bounded either way.
     /// </remarks>
     private async ValueTask<string?> ReadLineAsync(TimeSpan timeout, CancellationToken cancellationToken)
@@ -211,7 +211,7 @@ internal sealed class SmtpReplyReader
     /// </summary>
     /// <remarks>
     /// Scanned manually rather than with a regex: this runs on every reply, and the grammar is a
-    /// single token of three dot-separated integers. It is reported as advisory detail — a reply
+    /// single token of three dot-separated integers. It is reported as advisory detail, a reply
     /// whose code is <c>550</c> is still a 5xx whether or not an enhanced code accompanies it.
     /// </remarks>
     private static string? TryFindEnhancedStatusCode(List<string> lines)

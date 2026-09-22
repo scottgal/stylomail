@@ -6,7 +6,7 @@ namespace StyloMail.Transport.Smtp;
 /// </summary>
 /// <remarks>
 /// <b>Distinct from a per-recipient outcome.</b> This is thrown while setting up the conversation,
-/// before any message is on the table — so it says nothing about any particular recipient and
+/// before any message is on the table, so it says nothing about any particular recipient and
 /// nothing has been committed. Each recipient of the item is then reported as a transport failure
 /// by the caller, rather than this exception being attributed to whichever recipient happened to be
 /// first.
@@ -31,7 +31,7 @@ internal sealed class SmtpSessionException : Exception
     internal SmtpDeliveryStage Stage { get; }
 
     /// <summary>
-    /// True when retrying cannot help without a configuration change — a refusal that will repeat.
+    /// True when retrying cannot help without a configuration change, a refusal that will repeat.
     /// </summary>
     /// <remarks>
     /// A TLS downgrade is deliberately <b>not</b> permanent: an active attacker stripping

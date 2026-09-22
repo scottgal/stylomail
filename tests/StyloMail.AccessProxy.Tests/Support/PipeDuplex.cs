@@ -10,7 +10,7 @@ namespace StyloMail.AccessProxy.Tests.Support;
 /// <remarks>
 /// <b>No socket appears anywhere in this test project.</b> The brief requires that, and it is also
 /// the only way to test the parts that matter: the interesting cases are a backend that refuses a
-/// credential, a provider that never replies, and a client that sends half a command — none of which
+/// credential, a provider that never replies, and a client that sends half a command, none of which
 /// a real server will perform on request.
 ///
 /// <para>
@@ -33,10 +33,10 @@ internal sealed class PipeDuplex : IDuplexChannel
 
     public string Description { get; }
 
-    /// <summary>The test's read end — what the code under test wrote.</summary>
+    /// <summary>The test's read end, what the code under test wrote.</summary>
     internal Stream PeerInput => _fromSession.Reader.AsStream();
 
-    /// <summary>The test's write end — what the code under test will read.</summary>
+    /// <summary>The test's write end, what the code under test will read.</summary>
     internal Stream PeerOutput => _toSession.Writer.AsStream();
 
     /// <summary>Writes text to the session, as a peer would.</summary>

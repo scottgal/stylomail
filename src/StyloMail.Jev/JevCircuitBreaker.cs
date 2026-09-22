@@ -5,7 +5,7 @@ namespace StyloMail.Jev;
 /// delivery path's latency budget on every message.
 /// </summary>
 /// <remarks>
-/// An open circuit makes semantic dimensions report <c>Unavailable</c> — an explicit state.
+/// An open circuit makes semantic dimensions report <c>Unavailable</c>, an explicit state.
 /// It must never be interpreted downstream as "no risk found": an outage is not a clean bill
 /// of health, and the local policy decides allow/hold/quarantine from the remaining evidence.
 /// </remarks>

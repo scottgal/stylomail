@@ -66,7 +66,7 @@ internal static class EndpointResults
             statusCode: StatusCodes.Status503ServiceUnavailable);
 }
 
-/// <summary>An error body. Carries a machine-readable code and a human sentence — never message content.</summary>
+/// <summary>An error body. Carries a machine-readable code and a human sentence, never message content.</summary>
 public sealed record ErrorResponse(string Error, string Detail);
 
 /// <summary>An error body for a message that could not be analysed as a complete message.</summary>

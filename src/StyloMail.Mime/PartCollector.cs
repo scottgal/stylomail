@@ -51,7 +51,7 @@ internal sealed record CollectedContent
 /// </summary>
 /// <remarks>
 /// The walk is iterative rather than recursive so that a deeply nested message cannot exhaust the
-/// stack — a nesting bomb should hit a configured limit, not a thread. It also refuses to descend
+/// stack, a nesting bomb should hit a configured limit, not a thread. It also refuses to descend
 /// into attached <c>message/rfc822</c> payloads: a forwarded message is recorded as an attachment
 /// with its own digest, and its contents are not recursively analysed. That keeps the work per
 /// message proportional to the message rather than to the number of messages someone chose to nest
@@ -258,7 +258,7 @@ internal static class PartCollector
 
     /// <summary>
     /// Records an attached message. Its bytes are hashed through a bounded sink and it is not
-    /// descended into — see the type remarks on why.
+    /// descended into, see the type remarks on why.
     /// </summary>
     private static CollectedAttachment DescribeEmbedded(MessagePart part, MimeParseLimits limits, ref long hashedTotal)
     {
@@ -396,7 +396,7 @@ internal static class PartCollector
     /// </summary>
     /// <remarks>
     /// When a part is larger than the budget the digest is taken over the prefix and flagged as
-    /// partial rather than reported as if it covered the whole file — two different files that
+    /// partial rather than reported as if it covered the whole file, two different files that
     /// share a prefix would otherwise collide under a hash that claimed to be complete.
     /// </remarks>
     private static (string? Hash, long Bytes, bool Partial) HashStream(Stream stream, MimeParseLimits limits, ref long hashedTotal)

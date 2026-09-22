@@ -6,7 +6,7 @@ namespace StyloMail.Assessment;
 /// <remarks>
 /// Stable, machine-readable, and deliberately not prose. These end up in
 /// <see cref="PolicyContext.VerifiedSecurityRuleViolations"/>, which policy treats as established
-/// facts rather than model judgements — so the identifier is the contract, and a message cannot
+/// facts rather than model judgements, so the identifier is the contract, and a message cannot
 /// influence it because none of these are derived from message content.
 /// </remarks>
 public static class AssessmentRules
@@ -17,7 +17,7 @@ public static class AssessmentRules
 
     /// <summary>
     /// A null sender (<c>&lt;&gt;</c>) on the submission path. A null sender means "this is a DSN", and
-    /// we do not originate bounces — DSN policy stays with the upstream MTA.
+    /// we do not originate bounces, DSN policy stays with the upstream MTA.
     /// </summary>
     /// <remarks>
     /// <b>Unconditional, and that is the point.</b> A null sender previously reached the queue's
@@ -116,11 +116,11 @@ public static class AssessmentValidation
         }
 
         // An approved-sender list is a statement about which identities this authenticated principal
-        // may speak as. Only the list's own emptiness disables it — an empty list means "no
+        // may speak as. Only the list's own emptiness disables it, an empty list means "no
         // restriction configured", not "nothing is approved", because reading it the other way would
         // refuse all mail in every deployment that had not configured one.
         // A null sender is refused before anything else looks at identity, and regardless of the
-        // approved list — see the rule's remarks. Outbound only: an inbound DSN delivered to a
+        // approved list, see the rule's remarks. Outbound only: an inbound DSN delivered to a
         // mailbox is ordinary mail, and the ruling leaves the inbound path unaffected.
         if (envelope.Direction == MailDirection.Outbound && SenderAddresses.IsNullSender(envelope.MailFrom))
         {

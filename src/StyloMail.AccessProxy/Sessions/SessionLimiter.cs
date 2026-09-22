@@ -22,7 +22,7 @@ public sealed class SessionLease : IDisposable
 /// Bounds how many sessions run at once, globally and per account.
 /// </summary>
 /// <remarks>
-/// Two caps with two different jobs. The global cap protects this process — sockets, memory,
+/// Two caps with two different jobs. The global cap protects this process, sockets, memory,
 /// schedulers. The per-account cap protects one mailbox, and stops a single compromised client
 /// credential from consuming the entire instance's capacity: without it, one attacker holding one
 /// valid login could open every session slot and deny access to every other user.
@@ -31,7 +31,7 @@ public sealed class SessionLease : IDisposable
 /// The two are acquired separately and at different points, because they become answerable at
 /// different times. The global slot is claimed before the greeting, since accepting a connection at
 /// all costs resources. The account slot cannot be claimed until the client has authenticated and
-/// we know which account it is — so it is a second, later acquisition rather than a single call,
+/// we know which account it is, so it is a second, later acquisition rather than a single call,
 /// and a session that fails the second one is refused after a successful login rather than before.
 /// Collapsing them into one call would mean counting every unauthenticated connection against a
 /// per-account bucket that no account owns yet.
@@ -39,7 +39,7 @@ public sealed class SessionLease : IDisposable
 ///
 /// <para>
 /// The caps behave differently on saturation, and the difference is deliberate. Hitting the
-/// <em>global</em> cap waits — a burst queues rather than failing, which is what the transport does
+/// <em>global</em> cap waits, a burst queues rather than failing, which is what the transport does
 /// for the same reason (<c>SmtpBounds.MaxConcurrentConnections</c>). Hitting the <em>per-account</em>
 /// cap refuses immediately, because an account at its session limit is not a burst to absorb but a
 /// signal to stop: queueing there would only build a backlog of sessions all aimed at one mailbox,

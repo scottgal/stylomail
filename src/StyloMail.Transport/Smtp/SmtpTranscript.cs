@@ -14,7 +14,7 @@ namespace StyloMail.Transport.Smtp;
 /// <list type="number">
 /// <item><b>It redacts.</b> The bytes of an <c>AUTH</c> exchange are base64 of the username and
 /// password. A transcript that recorded them verbatim would put a live credential into whatever
-/// stores transcripts — a log file, a decision ledger, a crash dump. The payload is replaced at the
+/// stores transcripts, a log file, a decision ledger, a crash dump. The payload is replaced at the
 /// point of recording, so there is no path on which the secret is held and merely "not printed".</item>
 /// <item><b>It is bounded.</b> A peer controls how much it says. An unbounded transcript is an
 /// unbounded allocation driven by the remote end, which is the same denial-of-service the reply
@@ -51,7 +51,7 @@ public sealed class SmtpTranscript
     /// <param name="command">The command, without its line terminator.</param>
     /// <param name="isCredentialBearing">
     /// True when the command carries authentication material. Callers must set this for the
-    /// continuation lines of a SASL exchange as well as for the <c>AUTH</c> verb itself — the base64
+    /// continuation lines of a SASL exchange as well as for the <c>AUTH</c> verb itself, the base64
     /// is on the follow-up line for some mechanisms, not on the <c>AUTH</c> line.
     /// </param>
     internal void RecordClient(string command, bool isCredentialBearing = false)
@@ -106,7 +106,7 @@ public sealed class SmtpTranscript
         if (firstSpace < 0)
         {
             // A bare "AUTH" with nothing after it carries nothing, but a bare base64 continuation
-            // line is exactly the credential — so anything reaching here unmarked is blanked whole.
+            // line is exactly the credential, so anything reaching here unmarked is blanked whole.
             return command.Equals("AUTH", StringComparison.OrdinalIgnoreCase)
                 ? command
                 : Redacted;

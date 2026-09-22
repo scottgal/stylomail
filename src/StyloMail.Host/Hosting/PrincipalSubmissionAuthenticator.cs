@@ -9,14 +9,14 @@ namespace StyloMail.Host.Hosting;
 /// <remarks>
 /// <para>
 /// Thin by design, and thin for a reason worth stating. "Who is this and what may they do?" already
-/// has one answer in this process — <see cref="PrincipalDirectory"/>, built from
-/// <see cref="HostAuthOptions"/> — and a transport that kept its own copy of that knowledge would be
+/// has one answer in this process, <see cref="PrincipalDirectory"/>, built from
+/// <see cref="HostAuthOptions"/>, and a transport that kept its own copy of that knowledge would be
 /// a second answer that could disagree. The directory verifies keys by fixed-time digest comparison
 /// and runs to completion even after a match; none of that is re-implemented here.
 /// </para>
 /// <para>
 /// <b>The username must match the principal the key belongs to.</b> The key alone identifies the
-/// principal, so a mismatched username is not an additional secret — but accepting it would let one
+/// principal, so a mismatched username is not an additional secret, but accepting it would let one
 /// principal's key authenticate as another principal's name, and every audit record downstream would
 /// then carry a name that never proved anything.
 /// </para>

@@ -9,7 +9,7 @@ public static class FeatureIds
     /// <summary>Messages per second in the bucket. Normalised by elapsed time, never by count.</summary>
     public const string MessagesPerSecond = "rate.messages_per_second";
 
-    /// <summary>Recipients per second — the fan-out feature.</summary>
+    /// <summary>Recipients per second, the fan-out feature.</summary>
     public const string RecipientsPerSecond = "rate.recipients_per_second";
 }
 
@@ -54,7 +54,7 @@ public sealed class BehaviourBucket
     /// <remarks>
     /// A bucket that is still filling is divided by the time actually elapsed, not by the
     /// bucket width. Dividing by the full width would halve the observed rate for the first
-    /// thirty seconds of every bucket — precisely when a burst is beginning and the rate
+    /// thirty seconds of every bucket, precisely when a burst is beginning and the rate
     /// matters most.
     /// </remarks>
     public double RecipientsPerSecondAt(DateTimeOffset now) => Rate(RecipientCount, now);
@@ -141,7 +141,7 @@ public sealed class BehaviourBucket
         {
             if (sample.Value is null)
             {
-                // Masked samples contribute nothing at all — not a zero, not a carry-forward.
+                // Masked samples contribute nothing at all, not a zero, not a carry-forward.
                 continue;
             }
 
@@ -277,8 +277,8 @@ public sealed class BucketSeries
         ArgumentNullException.ThrowIfNull(window);
         ArgumentOutOfRangeException.ThrowIfLessThan(window.BucketCount, 1);
 
-        // The window ends at the bucket containing `now`. Buckets observed after `now` — a
-        // backfill, or a replay that ran ahead — are deliberately outside it: analysing a
+        // The window ends at the bucket containing `now`. Buckets observed after `now`, a
+        // backfill, or a replay that ran ahead, are deliberately outside it: analysing a
         // window relative to a stated instant is what makes the result reproducible.
         var end = IndexOf(now);
         var start = end - window.BucketCount + 1;

@@ -52,7 +52,7 @@ internal sealed record HtmlAnalysis
 /// <remarks>
 /// This is deliberately a scanner, not a DOM. A real HTML parser would be more faithful, but it
 /// would also be a much larger surface to point at hostile input, and the signals here are
-/// indicators — "the HTML and the text disagree", "there is hidden text" — that do not need DOM
+/// indicators, "the HTML and the text disagree", "there is hidden text", that do not need DOM
 /// fidelity to be useful. Every pattern is compiled with
 /// <see cref="RegexOptions.NonBacktracking"/>, so a crafted body cannot put the scanner into
 /// exponential backtracking, and the per-element sweeps are bounded by explicit counters.
@@ -171,7 +171,7 @@ internal static partial class HtmlExtraction
     /// Cutting the hidden text out of the visible representation is the whole point. A message that
     /// renders one thing and contains another is exactly the trick this signal exists to expose,
     /// and leaving the hidden text in place would hand the classifier the invisible instructions as
-    /// though they were the body — the trick working, reported as a tidy piece of evidence.
+    /// though they were the body, the trick working, reported as a tidy piece of evidence.
     ///
     /// <para>
     /// Bounded on purpose: at most <see cref="MaxHiddenElementScans"/> elements are examined and the

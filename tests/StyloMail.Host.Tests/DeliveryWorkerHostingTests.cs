@@ -9,15 +9,14 @@ namespace StyloMail.Host.Tests;
 /// <remarks>
 /// <para>
 /// <b>The worker existed and was tested but had no caller</b>, which is its own kind of defect: a
-/// component nobody runs is not a component, and the thing it was supposed to do — drain the queue —
-/// simply did not happen in any deployment. These tests are about the hosting rather than about
+/// component nobody runs is not a component, and the thing it was supposed to do, drain the queue, /// simply did not happen in any deployment. These tests are about the hosting rather than about
 /// delivery, which the queue's own suite covers.
 /// </para>
 /// <para>
 /// The other half is the shutdown token. <see cref="QueueDeliveryWorker.RunAsync"/> takes one, and
 /// its bounded drain only happens if the token it is given is the one cancelled when the host begins
 /// shutting down. Passing the wrong one produces either a process that hangs on a wedged upstream or
-/// a delivery cut off mid-flight — and the second of those creates the duplicate the drain exists to
+/// a delivery cut off mid-flight, and the second of those creates the duplicate the drain exists to
 /// prevent.
 /// </para>
 /// </remarks>
@@ -66,8 +65,8 @@ public sealed class DeliveryWorkerHostingTests
     [Fact]
     public void A_deployment_that_accepts_mail_it_cannot_deliver_says_so_at_startup()
     {
-        // Not a startup failure — an inbound-only deployment and a submission-only one are both
-        // legitimate shapes — but a silence here is a configuration mistake discovered as messages
+        // Not a startup failure, an inbound-only deployment and a submission-only one are both
+        // legitimate shapes, but a silence here is a configuration mistake discovered as messages
         // ageing toward their expiry, which is the worst way to find out.
         using var host = new TestHost().WithSmtpIngress("example.test");
 
@@ -116,7 +115,7 @@ public sealed class DeliveryWorkerHostingTests
     /// <para>
     /// This replaced a helper that bound <c>127.0.0.1:0</c>, read the port, and released it before
     /// handing the number to the host. That is a probe-then-release race: between the release and
-    /// whatever binds later — here, a parallel test class — the operating system is free to hand the
+    /// whatever binds later, here, a parallel test class, the operating system is free to hand the
     /// port to someone else. It was a genuine latent bug, flagged by two other lanes. Nothing ever
     /// dialled it, so it never fired, which is exactly what made it worth removing rather than
     /// documenting: a race that cannot fire today is one that fires the day a test acquires a reason

@@ -37,7 +37,7 @@ public sealed class CliTests
     public async Task Assess_does_not_transmit_message_content_by_default()
     {
         // Constraint: CLI assessment must not silently transmit private content externally.
-        // "Silently" is the operative word — the default path stays entirely local.
+        // "Silently" is the operative word, the default path stays entirely local.
         using var host = new TestHost();
         var path = WriteFixture(host, "message.eml", FixtureMessage(SensitiveBody));
 

@@ -23,7 +23,7 @@ public static class AssessmentEvidenceIds
     /// </summary>
     /// <remarks>
     /// Reported rather than omitted. A message assessed without deterministic evidence is a weaker
-    /// assessment than one with it, and the difference has to be visible in the ledger — an absent
+    /// assessment than one with it, and the difference has to be visible in the ledger, an absent
     /// signal reads as "nothing wrong found", which is the opposite of "nothing was looked at".
     /// </remarks>
     public const string DeterministicExtractionUnavailable = "assessment.deterministic_extraction";
@@ -39,8 +39,8 @@ public static class AssessmentEvidenceIds
 /// Counters for the operator surface. Nothing here influences a decision.
 /// </summary>
 /// <remarks>
-/// The recipient budget is a containment control — it bounds how much a compromised account can
-/// send after we have failed to detect it — so a divergence between what this pipeline believes it
+/// The recipient budget is a containment control, it bounds how much a compromised account can
+/// send after we have failed to detect it, so a divergence between what this pipeline believes it
 /// reserved and what the ledger actually gave back is a fact somebody needs, not a detail.
 /// </remarks>
 public sealed class MailAssessorStatistics
@@ -60,15 +60,14 @@ public sealed class MailAssessorStatistics
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Should be zero. A non-zero count means the pipeline's tally and the ledger's have diverged —
-    /// more was given back than this pipeline ever took — and the number bounding escape volume is
+    /// Should be zero. A non-zero count means the pipeline's tally and the ledger's have diverged,     /// more was given back than this pipeline ever took, and the number bounding escape volume is
     /// no longer trustworthy. Counted rather than thrown because the case is a reconciliation
     /// problem, not a reason to fail a message.
     /// </para>
     /// <para>
     /// <b>There is a second, benign cause, and it is worth knowing before assuming divergence.</b>
     /// The ledger's budget rolls over on a window, so a reservation can expire between the reserve
-    /// and its release — which would make a correct release look short. That needs the window to be
+    /// and its release, which would make a correct release look short. That needs the window to be
     /// shorter than the time an assessment takes, so it cannot happen at the default of an hour, but
     /// a deployment that tuned the window down to seconds should check that before treating a
     /// non-zero count as a defect.
@@ -102,8 +101,7 @@ public static class AssessmentReasonCodes
     /// <b>An explanation, not the fact.</b> Whether a submission was created or matched is carried
     /// by <see cref="MailAssessment.Submission"/>, because a caller choosing between <c>201</c> and
     /// <c>200</c> needs a fact and digging one out of prose is how phrasing comes to carry a meaning
-    /// it does not have. This code stays because a replay is genuinely worth a line in the ledger —
-    /// "we were asked for this twice and answered once" is something an operator wants to see — and
+    /// it does not have. This code stays because a replay is genuinely worth a line in the ledger,     /// "we were asked for this twice and answered once" is something an operator wants to see, and
     /// it is read for that reason, never to answer the question the field answers.
     /// </remarks>
     public const string SubmissionDuplicate = "assessment.submission.duplicate";
@@ -131,12 +129,12 @@ public static class AssessmentReasonCodes
 /// <para>
 /// <b>Where the pipeline's steps actually land.</b> The sequence below is the pipeline order. The
 /// one deliberate arrangement inside it is the observed-counter write, which lands at step
-/// three-and-a-half — after the comparison, before policy. It is placed there for two reasons. The
+/// three-and-a-half, after the comparison, before policy. It is placed there for two reasons. The
 /// comparison must see the profile as it was <em>before</em> this message, or the message's own
 /// evidence dilutes the deviation it is being measured against. And the observation carries this
 /// message's semantic vector, which does not exist until step four has run. Reserving the outbound
 /// budget still happens in step three, ahead of any provider spend. The counter write itself
-/// happens exactly once, atomically, carrying everything the attempt turned out to be — including
+/// happens exactly once, atomically, carrying everything the attempt turned out to be, including
 /// whether it was refused.
 /// </para>
 /// </remarks>
@@ -202,19 +200,19 @@ public sealed class MailAssessor : IMailAssessor
     /// </summary>
     /// <remarks>
     /// Exposed because a counter nobody can read is not instrumentation, it is a comment with a
-    /// number attached — the same defect as a method with no callers.
+    /// number attached, the same defect as a method with no callers.
     ///
     /// <para>
     /// <b>What this detects:</b> <see cref="ProfileWriteStatistics.Mutated"/> climbing at message
     /// rates means whole-profile writes have drifted onto the ingest path, which happens if learning
-    /// is being committed per message rather than per authorised outcome — a real operational fact,
+    /// is being committed per message rather than per authorised outcome, a real operational fact,
     /// since learning is the highest-value thing to capture in this system.
     /// </para>
     /// <para>
     /// <b>What it does not detect:</b> a caller misusing the coordinator, as opposed to the
     /// coordinator itself being changed. The counters record which operation this class chose, not
     /// which store method it reached. The store-level assertion in
-    /// <c>ProfileCoordinatorTests</c> covers that, and it is the stronger of the two — do not read a
+    /// <c>ProfileCoordinatorTests</c> covers that, and it is the stronger of the two, do not read a
     /// clean <see cref="ProfileWriteStatistics"/> as proof the split is intact.
     /// </para>
     /// </remarks>
@@ -263,7 +261,7 @@ public sealed class MailAssessor : IMailAssessor
             {
                 // The parser's view is authoritative: it was derived from the original bytes by the
                 // component that owns parsing, and a caller-supplied view is not a substitute for
-                // its evidence — though it stands in for the view itself when no bytes are available.
+                // its evidence, though it stands in for the view itself when no bytes are available.
                 analysis = parsed.Message!;
             }
             else
@@ -307,7 +305,7 @@ public sealed class MailAssessor : IMailAssessor
 
                 // The instant comes from the assessment, not from a clock the ledger owns. A ledger
                 // holding its own clock could be given a different one than the requests it serves,
-                // and a fixed-clock replay would then move the window with the wall clock — a
+                // and a fixed-clock replay would then move the window with the wall clock, a
                 // documented requirement nobody could enforce. With the timestamp passed in there is
                 // no clock to be wrong about.
                 if (_quotaLedger.TryReserve(context.TenantId, principal, recipients, now))
@@ -323,13 +321,13 @@ public sealed class MailAssessor : IMailAssessor
                 {
                     // No spend happened, so there is nothing to give back later. Releasing an
                     // unsuccessful reservation would return budget the principal never parted with,
-                    // and — because exhaustion is what produced the deferral — the quota would
+                    // and, because exhaustion is what produced the deferral, the quota would
                     // un-exhaust itself on every message and never bind at all.
                     quotaExhausted = true;
                 }
             }
 
-            // ---- Step 4: obtain semantic evidence — exact cache hit, provider, or explicit unavailable.
+            // ---- Step 4: obtain semantic evidence, exact cache hit, provider, or explicit unavailable.
             SemanticAssessment semantic;
             try
             {
@@ -347,7 +345,7 @@ public sealed class MailAssessor : IMailAssessor
             }
             catch
             {
-                // The attempt still happened, and observed state counts every attempt — including
+                // The attempt still happened, and observed state counts every attempt, including
                 // one whose assessment blew up, which is exactly the traffic whose rate must be
                 // bounded. Recorded with masked dimensions, never with zeros, and the fault then
                 // continues to its caller rather than being absorbed here.
@@ -371,7 +369,7 @@ public sealed class MailAssessor : IMailAssessor
         else
         {
             // A mandatory limit was breached. The message is refused on established facts, so there
-            // is no reason to spend provider budget or profile state on it — but the ledger must
+            // is no reason to spend provider budget or profile state on it, but the ledger must
             // record that the evaluation was skipped, rather than leaving a reader to infer a clean
             // result from an absent signal.
             evidence.Add(ViolationEvidence(violations, now));
@@ -445,7 +443,7 @@ public sealed class MailAssessor : IMailAssessor
         }
 
         // ---- Step 7: for submissions, durably accept, or decline responsibility before acceptance.
-        // The assessor is the only component that accepts — a second acceptor would double-deliver,
+        // The assessor is the only component that accepts, a second acceptor would double-deliver,
         // and no amount of care at either call site fixes two components each believing they own it.
         var acceptance = await Step7Async(
             analysis,
@@ -466,14 +464,13 @@ public sealed class MailAssessor : IMailAssessor
 
         // Give back a reservation that never turned into a dispatch. Without this the budget is
         // consumed by traffic that was refused or deferred, and since the ledger has no rolling
-        // window, a legitimate principal reaches its ceiling once and is deferred permanently —
-        // a self-inflicted outage in which every message the quota blocked is itself the reason the
+        // window, a legitimate principal reaches its ceiling once and is deferred permanently,         // a self-inflicted outage in which every message the quota blocked is itself the reason the
         // quota stays blocked.
         ReleaseUndispatchedBudget(reservation, acceptance, now);
 
         // ---- Step 8: commit trusted learning, only where authority exists. On the assessment path
         // there is no authorized outcome and, unless an operator has named a rule, no permitted rule
-        // either — so nothing is learned. The gate is what refuses it, not this method's restraint.
+        // either, so nothing is learned. The gate is what refuses it, not this method's restraint.
         CommitAssessmentLearning(context, profiles, dimensionVector, now);
 
         return new MailAssessment
@@ -491,7 +488,7 @@ public sealed class MailAssessor : IMailAssessor
             Coverage = coverage,
             Cache = semanticProvenance,
             // Non-null exactly when a durable queue row exists. Null is a meaningful "we did not
-            // take this" — assessment-only, a policy decline, or a refused acceptance — and the
+            // take this", assessment-only, a policy decline, or a refused acceptance, and the
             // caller's obligation to return a queue id depends on being able to tell.
             SubmissionId = acceptance.SubmissionId,
             Submission = acceptance.Submission,
@@ -519,8 +516,8 @@ public sealed class MailAssessor : IMailAssessor
 
         if (!authorisation.Attempted)
         {
-            // Returned before the store is touched. The store's update always writes — it advances
-            // the profile's revision even when the delegate changes nothing — and it holds the
+            // Returned before the store is touched. The store's update always writes, it advances
+            // the profile's revision even when the delegate changes nothing, and it holds the
             // database's single writer for the duration. A request refused for want of authority is
             // the most common case here, so it should cost neither.
             return Task.FromResult(authorisation);
@@ -569,8 +566,7 @@ public sealed class MailAssessor : IMailAssessor
     /// True when the semantic layer was asked and produced nothing usable.
     /// </summary>
     /// <remarks>
-    /// Distinguishes an outage from a message that was never sent to the classifier. An empty list —
-    /// the message was refused on an established fact before step four — is not an outage, and
+    /// Distinguishes an outage from a message that was never sent to the classifier. An empty list,     /// the message was refused on an established fact before step four, is not an outage, and
     /// treating it as one would turn every hard-limit rejection into a deferral. A list containing
     /// <see cref="EvidenceAvailability.NotApplicable"/> entries is also not an outage: nothing was
     /// asked of the provider, so nothing was lost.
@@ -605,14 +601,14 @@ public sealed class MailAssessor : IMailAssessor
     /// Stands in for the null sender when a profile key is derived.
     /// </summary>
     /// <remarks>
-    /// <b>A null sender is not an identity — it is the absence of one</b>, used by DSNs, and
+    /// <b>A null sender is not an identity, it is the absence of one</b>, used by DSNs, and
     /// `MailEnvelope.MailFrom` documents it as such. It still has to be profiled, because bounce
     /// traffic counts toward observed rates like anything else, and it cannot be hashed as a blank
     /// string: the pseudonymizer rejects an empty identity, so hashing one threw.
     ///
     /// <para>
     /// Every null-sender message therefore shares a single bucket. That is the truthful model rather
-    /// than a compromise — there is no identity there to tell apart — and `&lt;&gt;` is the standard
+    /// than a compromise, there is no identity there to tell apart, and `&lt;&gt;` is the standard
     /// notation for it and is not a valid address, so it cannot collide with a real one.
     /// </para>
     /// </remarks>
@@ -629,7 +625,7 @@ public sealed class MailAssessor : IMailAssessor
         string.IsNullOrWhiteSpace(identity) ? NullSenderIdentity : identity;
 
     /// <summary>
-    /// One profile this attempt is measured against, and — for a pair — the recipient it describes.
+    /// One profile this attempt is measured against, and, for a pair, the recipient it describes.
     /// </summary>
     /// <remarks>
     /// The recipient is carried so that behavioural evidence can be attributed back to the
@@ -807,20 +803,20 @@ public sealed class MailAssessor : IMailAssessor
         var fingerprint = SecurityBearingFingerprint.Compute(message);
         // Same null-sender substitution as the profile key. This was the third site with the same
         // defect: `ProfileKeyHasher` rejects an empty identity, and a DSN carries exactly that, so
-        // every inbound bounce crashed here — and fixing the first site simply moved the crash to the
+        // every inbound bounce crashed here, and fixing the first site simply moved the crash to the
         // next one. Grepped for all three rather than letting the tests walk me through them.
         var senderScope = _options.ProfileKeyHasher.Hash(
             context.TenantId,
             NullSender(message.Envelope.MailFrom));
 
         // Recorded for assessment-only calls too, and the distinction is worth stating. What
-        // assessment-only excludes is live traffic _accounting_ — the observed-rate counters and the
+        // assessment-only excludes is live traffic _accounting_, the observed-rate counters and the
         // recipient budget, which are the things that gate delivery and that a caller could
         // otherwise move without taking responsibility for a message. This window gates nothing: it
         // is bounded per tenant, it holds vectors and digests rather than assessments, and the only
         // thing it can produce is one more piece of evidence for policy to weigh. Excluding
-        // assessment-only traffic from it would make campaign detection — a capability the spec
-        // asks for — simply absent on the assessment path.
+        // assessment-only traffic from it would make campaign detection, a capability the spec
+        // asks for, simply absent on the assessment path.
         return _campaign.ObserveAndEvaluate(
             context.TenantId,
             assessmentId,
@@ -878,8 +874,8 @@ public sealed class MailAssessor : IMailAssessor
                 Submission = alreadyExisted
                     ? SubmissionAdmission.Duplicate
                     : SubmissionAdmission.Created,
-                // Only the replay is explained. A created submission needs no explanation — it is
-                // the ordinary case — and a reason on every acceptance would push the reasons that
+                // Only the replay is explained. A created submission needs no explanation, it is
+                // the ordinary case, and a reason on every acceptance would push the reasons that
                 // actually justify a decision further down a list documented as most-significant
                 // first. The fact is on MailAssessment.Submission; this is colour, and only where the
                 // colour is informative.
@@ -918,7 +914,7 @@ public sealed class MailAssessor : IMailAssessor
         var envelope = analysis.Envelope;
 
         // Assessment-only means assessment only. No delivery state is created and none is implied,
-        // which the empty disposition list records — a disposition is a claim about where a
+        // which the empty disposition list records, a disposition is a claim about where a
         // recipient's copy has got to, and there is no copy.
         if (context.AssessmentOnly)
         {
@@ -934,7 +930,7 @@ public sealed class MailAssessor : IMailAssessor
 
         // The durability invariant, asserted where it matters. A non-durable reference reaching the
         // acceptance path is a caller that wired the assessment path into the delivery path, and
-        // refusing here is still safe — discovering it after a 250 is not.
+        // refusing here is still safe, discovering it after a 250 is not.
         PayloadReferences.RequireDurable(envelope.PayloadReference);
 
         if (payload is not { Length: > 0 } bytes)
@@ -943,7 +939,7 @@ public sealed class MailAssessor : IMailAssessor
             // temporarily and is recoverable; accepting would manufacture mail we could not produce.
             //
             // A reference that passes the scheme check but names no stored payload is worth calling
-            // out separately, because it is not an ordinary "no payload" — it is a caller that
+            // out separately, because it is not an ordinary "no payload", it is a caller that
             // believes it spooled something. That difference cost an hour at the host seam once
             // already: `spool://pending` satisfies the durability check and resolves to nothing, so
             // every message deferred for a reason that looked like a storage fault.
@@ -994,18 +990,18 @@ public sealed class MailAssessor : IMailAssessor
                         Payload = bytes,
                         Recipients = admissions,
                         UntrustedMessageIdHeader = envelope.UntrustedMessageIdHeader,
-                        // Copied faithfully, INCLUDING null — which is not the same as zero. Null means
+                        // Copied faithfully, INCLUDING null, which is not the same as zero. Null means
                         // "no hop count was observed", and the queue records that as the loop backstop
                         // not having run; zero would be a claim that we looked and found no prior
                         // hops. Collapsing the two here would turn "we did not check" into "there were
-                        // no hops" — the failure this field exists to avoid.
+                        // no hops", the failure this field exists to avoid.
                         //
                         // Observed by the ingress, which is the only layer that sees the wire. This
                         // class does not derive it: counting Received: headers would mean
                         // reimplementing parsing that mime- owns, from raw bytes the pipeline should
                         // not be reading.
                         HopCount = envelope.HopCount,
-                        // The caller's key, passed through unchanged — never one we mint.
+                        // The caller's key, passed through unchanged, never one we mint.
                         //
                         // This was `assessmentId`, and that was a bug rather than a naming choice:
                         // an assessment id is fresh on every attempt, so a client retrying a
@@ -1014,7 +1010,7 @@ public sealed class MailAssessor : IMailAssessor
                         // contract; minting one silently replaces that contract with a promise we
                         // cannot keep.
                         //
-                        // Null means the caller supplied none — assessment-only traffic, or a caller
+                        // Null means the caller supplied none, assessment-only traffic, or a caller
                         // not participating in replay. Deliberately no fallback: inventing a key here
                         // would look like replay protection while providing none, which is worse than
                         // an honest absence.
@@ -1040,7 +1036,7 @@ public sealed class MailAssessor : IMailAssessor
         }
 
         // IsAccepted is true for a duplicate replay too, and QueueId is then the *existing* item's
-        // id — which is exactly what the caller must be handed back. Returning the id of the copy we
+        // id, which is exactly what the caller must be handed back. Returning the id of the copy we
         // did not create would point the client at a queue item that does not exist.
         return AcceptanceOutcome.Accepted(
             BuildDispositions(admissions, action, decision, recipientScopedSignals),
@@ -1073,8 +1069,8 @@ public sealed class MailAssessor : IMailAssessor
             DeliveryState = admission.State,
             ReEvaluateBy = admission.ReEvaluateBy,
             // The novelty, relationship and interaction signals that were computed for this pair.
-            // Null rather than empty when this recipient has no pair profile — the relationship
-            // bound means a message past it has none — because "no recipient-scoped signals were
+            // Null rather than empty when this recipient has no pair profile, the relationship
+            // bound means a message past it has none, because "no recipient-scoped signals were
             // computed" and "we computed none for this recipient" are different facts.
             RecipientScopedSignalIds = recipientScopedSignals.TryGetValue(admission.Recipient, out var signals)
                 ? signals
@@ -1183,8 +1179,8 @@ public sealed class MailAssessor : IMailAssessor
         string? resolvedModelVersion) => new()
         {
             PolicyVersion = _options.Policy.Version,
-            // The resolved model, never the configured alias. When no semantic call was made — a
-            // message refused on a hard limit — there is no resolved version to report, and the
+            // The resolved model, never the configured alias. When no semantic call was made, a
+            // message refused on a hard limit, there is no resolved version to report, and the
             // configured one would be a claim about a call that never happened.
             ClassifierModelVersion = resolvedModelVersion,
             QuestionSchemaVersion = _options.SemanticCache.QuestionSchemaVersion,
@@ -1236,7 +1232,7 @@ public sealed class MailAssessor : IMailAssessor
 
         if (returned != reservation.Recipients)
         {
-            // The ledger clamps rather than throwing, deliberately — releasing twice on a retry path
+            // The ledger clamps rather than throwing, deliberately, releasing twice on a retry path
             // is legitimate and should not crash a hot path. But a shortfall means this pipeline's
             // tally and the ledger's have diverged, and the number bounding escape is the one place
             // that must not drift unnoticed. Counted, not thrown; somebody has to reconcile.

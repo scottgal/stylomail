@@ -10,21 +10,20 @@ namespace StyloMail.Transport.Ingress;
 /// <remarks>
 /// <para>
 /// <b>Not a public MX service.</b> The spec is categorical that StyloMail sits behind an established
-/// MTA and does not take on internet-facing protocol complexity — no MX resolution, no reputation
+/// MTA and does not take on internet-facing protocol complexity, no MX resolution, no reputation
 /// management, no DSN generation. What this provides is the one integration the spec does allow:
 /// a trusted handoff, or an authenticated submission relayed to a configured upstream.
 /// </para>
 /// <para>
 /// Its entire job is the boundary. It reads a message under hard bounds, decides whether the peer is
 /// authorised to hand us this message for this recipient, and then asks the composition root to make
-/// it durable — answering <c>250</c> only if that succeeded. It does not assess, does not choose an
+/// it durable, answering <c>250</c> only if that succeeded. It does not assess, does not choose an
 /// action, and does not deliver.
 /// </para>
 /// <para>
 /// <b>The <c>250</c> is the whole point.</b> RFC 5321 makes it a transfer of responsibility: once
 /// sent, the client may delete its copy. So it is emitted from exactly one place, downstream of a
-/// <see cref="IngressDecision.Accepted"/> that names a durable queue row, and every other path —
-/// including an unexpected exception from the sink — answers with a temporary failure.
+/// <see cref="IngressDecision.Accepted"/> that names a durable queue row, and every other path, /// including an unexpected exception from the sink, answers with a temporary failure.
 /// </para>
 /// </remarks>
 public sealed class SmtpSubmissionListener : IAsyncDisposable
@@ -106,7 +105,7 @@ public sealed class SmtpSubmissionListener : IAsyncDisposable
     /// <remarks>
     /// <b>Every caller gets the same task, so a second caller waits for the drain rather than
     /// returning early.</b> That is not a nicety: <see cref="DisposeAsync"/> is a second caller on
-    /// the ordinary host-shutdown path — <c>IHostedService</c> stops and then disposes — and an
+    /// the ordinary host-shutdown path, <c>IHostedService</c> stops and then disposes, and an
     /// early return there disposes the connection semaphore while the drain is still using it. The
     /// in-flight session's <c>finally</c> then calls <c>Release</c> on a disposed semaphore and the
     /// exception surfaces out of the first caller's <c>Task.WhenAll</c>, turning an orderly shutdown

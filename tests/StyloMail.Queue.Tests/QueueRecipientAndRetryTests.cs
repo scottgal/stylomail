@@ -203,7 +203,7 @@ public class QueueRecipientAndRetryTests
 
         // TerminalFailure is reachable several ways, so "it is terminal" does not by itself show
         // *which* bound was hit. Naming the mechanism is what separates exhaustion from the
-        // lifetime expiry — the other path that produces this same state from a retry failure.
+        // lifetime expiry, the other path that produces this same state from a retry failure.
         Assert.NotNull(recipient.LastError);
         var reason = recipient.LastError!;
         Assert.Contains("limit", reason, StringComparison.OrdinalIgnoreCase);
@@ -232,7 +232,7 @@ public class QueueRecipientAndRetryTests
             ],
         });
 
-        // We retry — a duplicate is recoverable and a silent loss is not — but the record says
+        // We retry, a duplicate is recoverable and a silent loss is not, but the record says
         // plainly that the outcome is unknown. Nothing here claims Message-ID deduplication has
         // made this safe.
         var item = await h.Store.GetItemAsync(queueId);

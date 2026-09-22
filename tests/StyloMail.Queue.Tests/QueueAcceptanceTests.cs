@@ -29,7 +29,7 @@ public class QueueAcceptanceTests
     /// <remarks>
     /// Named for what it proves, not for the mechanism it is aimed at. The admission refusal it
     /// exercises happens after the payload was written, but nothing observable in this test shows
-    /// that — a refusal raised before the write would leave the same empty file list. The claim
+    /// that, a refusal raised before the write would leave the same empty file list. The claim
     /// "the payload is deleted after a refusal that happened post-spool" is pinned instead by
     /// <c>Concurrent_replays_of_one_key_produce_exactly_one_message</c>, which is the only path
     /// where a losing writer definitely spools before it is refused.
@@ -180,7 +180,7 @@ public class QueueAcceptanceTests
         Assert.Equal(QueueAdmission.RefusedIdempotencyConflict, conflict.Admission);
         Assert.False(conflict.IsAccepted);
 
-        // One accepted payload and nothing else — the replay and the conflict wrote no bytes.
+        // One accepted payload and nothing else, the replay and the conflict wrote no bytes.
         Assert.Single(Directory.GetFiles(h.SpoolRoot, "*.eml", SearchOption.AllDirectories));
     }
 
@@ -194,7 +194,7 @@ public class QueueAcceptanceTests
         // Task.Run rather than a bare WhenAll: Microsoft.Data.Sqlite's async methods are
         // synchronous under the hood and the spool write often completes inline, so a
         // straightforward WhenAll can run these one after another and let the cheap pre-check
-        // catch every replay — quietly turning this into a test of the sequential path. Forcing
+        // catch every replay, quietly turning this into a test of the sequential path. Forcing
         // each onto the thread pool restores the race, which is the only way some of these get
         // past the pre-check and are settled by the unique index instead.
         var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
@@ -296,13 +296,13 @@ public class QueueAcceptanceTests
     /// <remarks>
     /// <b>Consolidating the predicate changed behaviour, and that is how the drift was found.</b>
     /// This lane's copy also accepted <c>"&lt; &gt;"</c> (brackets with a blank inside); Core's is
-    /// exact and does not. The stricter answer is the right one — RFC 5321's null reverse-path is
-    /// <c>&lt;&gt;</c>, and <c>&lt; &gt;</c> is a malformed address rather than the null sender — but
+    /// exact and does not. The stricter answer is the right one, RFC 5321's null reverse-path is
+    /// <c>&lt;&gt;</c>, and <c>&lt; &gt;</c> is a malformed address rather than the null sender, but
     /// the point is that two copies had already diverged, silently, before anyone looked.
     ///
     /// <para>
     /// Worth knowing what <c>&lt; &gt;</c> does now: it is not a null sender, so it is not refused
-    /// here, and it is not blank, so <c>Require</c> passes it — it is treated as an ordinary
+    /// here, and it is not blank, so <c>Require</c> passes it, it is treated as an ordinary
     /// address. That is an address-syntax gap rather than a null-sender one, and it is recorded
     /// rather than fixed in a rule that is not about it.
     /// </para>
@@ -315,7 +315,7 @@ public class QueueAcceptanceTests
     {
         using var h = new QueueHarness();
 
-        // We do not originate bounces, so an outbound null sender is declined — as a *result*, not
+        // We do not originate bounces, so an outbound null sender is declined, as a *result*, not
         // an exception, so it is distinguishable from a caller construction error.
         var submission = QueueHarness.Submission() with
         {
@@ -339,7 +339,7 @@ public class QueueAcceptanceTests
 
         // The defect this test exists for: a DSN being delivered to one of our users is ordinary,
         // legitimate mail. An earlier version refused it outright via an unconditional
-        // `Require(MailFrom)`, and a reassuring comment claimed inbound was unaffected — which was
+        // `Require(MailFrom)`, and a reassuring comment claimed inbound was unaffected, which was
         // false, and stopped the next reader looking.
         var submission = QueueHarness.Submission() with
         {
@@ -401,7 +401,7 @@ public class QueueAcceptanceTests
         Assert.Empty(Directory.GetFiles(h.SpoolRoot, "*.eml", SearchOption.AllDirectories));
 
         // "Before the spool is touched" needs its own observable. An empty file list does not
-        // distinguish it from "written and then cleaned up" — that assertion would stay green
+        // distinguish it from "written and then cleaned up", that assertion would stay green
         // under a mutation that moved the size check to run *after* the payload write, and the
         // name would then be claiming something the test cannot see. The tenant's spool directory
         // is created only on the first write, so its absence is the difference.

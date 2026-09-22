@@ -58,7 +58,7 @@ public static class HostAuthenticationExtensions
 
         // The cookie scheme is always registered but only ever *used* when the channel is enabled:
         // no session cookie is issued (the route is not mapped) and the selector below never
-        // forwards to it. Registering it unconditionally is not a weakening — the schemes are
+        // forwards to it. Registering it unconditionally is not a weakening, the schemes are
         // configured from options that are resolved per request, so a configuration change takes
         // effect without the registration decision having been made from a half-built
         // configuration at startup.
@@ -82,7 +82,7 @@ public static class HostAuthenticationExtensions
             });
 
         // The channel is chosen by what the request actually presented. A cookie wins when one is
-        // present, because a browser that holds a session means to use it — and because that is the
+        // present, because a browser that holds a session means to use it, and because that is the
         // case that needs the anti-forgery check downstream.
         authentication.AddPolicyScheme(FrontScheme, FrontScheme, options =>
             options.ForwardDefaultSelector = context =>

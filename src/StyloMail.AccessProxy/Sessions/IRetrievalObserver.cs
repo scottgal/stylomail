@@ -12,7 +12,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// <para>
 /// It would be wrong because the pipeline assumes it owns a message: it takes a
 /// <c>MailAnalysisInput</c>, runs parsing and policy, and is content with taking seconds to do it.
-/// Here there is no message — there is a byte stream on its way to a client that is waiting for it.
+/// Here there is no message, there is a byte stream on its way to a client that is waiting for it.
 /// A relay that awaited an assessment would turn every Jev timeout into a stalled mailbox, which is
 /// precisely the coupling this seam exists to avoid.
 /// </para>
@@ -27,7 +27,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// </item>
 /// <item>
 /// <b>It receives a span, not an array.</b> It cannot retain the buffer, so anything worth keeping
-/// must be copied explicitly — which is the moment an implementation confronts how much message
+/// must be copied explicitly, which is the moment an implementation confronts how much message
 /// content it is choosing to hold.
 /// </item>
 /// <item>
@@ -35,7 +35,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// session would drop. An observer that cannot keep up must drop data, not the session.
 /// </item>
 /// <item>
-/// <b>It is absent by default.</b> With no observer configured the relay does no work at all — no
+/// <b>It is absent by default.</b> With no observer configured the relay does no work at all, no
 /// allocation, no copy, no call.
 /// </item>
 /// </list>
@@ -46,7 +46,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// deliberate consequence of the byte pump: identifying which bytes belong to a
 /// <c>FETCH ... BODY[]</c> response requires parsing IMAP, and parsing IMAP on the relay path is
 /// exactly what guarantees we never rewrite a message. So an implementation that wants messages
-/// must parse its own copy, off the critical path, and own the consequences — including the fact
+/// must parse its own copy, off the critical path, and own the consequences, including the fact
 /// that it is now making a privacy decision.
 /// </para>
 ///
@@ -64,7 +64,7 @@ public interface IRetrievalObserver
     /// Observes a chunk of backend-to-client bytes as they are relayed.
     /// </summary>
     /// <param name="bytes">
-    /// The chunk. Valid only for the duration of the call — retaining it requires copying.
+    /// The chunk. Valid only for the duration of the call, retaining it requires copying.
     /// </param>
     /// <remarks>
     /// Called on the relay path. Must not block, must not perform I/O, and must not throw.

@@ -5,7 +5,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// </summary>
 /// <remarks>
 /// <b>Everything timeout-shaped goes through here, and here goes through <see cref="TimeProvider"/>.</b>
-/// The alternative — <c>Task.Delay(timeout)</c> — is untestable in the way that matters: a test for
+/// The alternative, <c>Task.Delay(timeout)</c>, is untestable in the way that matters: a test for
 /// "an unauthenticated client is disconnected after the bound" would have to actually wait out the
 /// bound, so in practice it either does not get written or gets written with a bound small enough to
 /// be meaningless. With an injected clock the test advances a fake timer and the real bound is

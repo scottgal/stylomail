@@ -32,7 +32,7 @@ public sealed record RunningMoments
     /// </param>
     /// <remarks>
     /// The cap is applied in mean space rather than to the incoming value, because dividing by
-    /// the sample count would otherwise shrink the effective limit as support grows — a
+    /// the sample count would otherwise shrink the effective limit as support grows, a
     /// baseline that becomes harder to move the more evidence it has is a baseline that can
     /// never follow a genuine, sustained change.
     /// </remarks>

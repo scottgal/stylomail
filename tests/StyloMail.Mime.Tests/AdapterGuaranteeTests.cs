@@ -162,7 +162,7 @@ public class AdapterGuaranteeTests
         // Host will hold a single analyzer and call it from whatever thread a message arrives on.
         // That is only safe because this type carries no instance state at all: the only shared
         // data is static and read-only after construction. If someone adds a scratch buffer or a
-        // cached list here, this test is the tripwire — sharing would start producing results
+        // cached list here, this test is the tripwire, sharing would start producing results
         // that depend on what else happened to be in flight.
         var instanceFields = typeof(BoundedMimeMessageAnalyzer)
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -171,7 +171,7 @@ public class AdapterGuaranteeTests
             instanceFields.Length == 0,
             "BoundedMimeMessageAnalyzer gained instance state: " +
             string.Join(", ", instanceFields.Select(f => f.Name)) +
-            ". A shared instance is no longer safe for concurrent use — either make it stateless " +
+            ". A shared instance is no longer safe for concurrent use, either make it stateless " +
             "again, or stop sharing one and say so in the constructor.");
     }
 
@@ -179,7 +179,7 @@ public class AdapterGuaranteeTests
     public void NoTypeInTheAdapterHoldsMutableStaticState()
     {
         // The instance-field tripwire above is necessary but not sufficient. The likeliest future
-        // mistake in a parser is not an instance field — it is a *static* cache: a memoised regex,
+        // mistake in a parser is not an instance field, it is a *static* cache: a memoised regex,
         // a reused decode buffer, a lookup table built lazily on first use. That is shared by every
         // thread in the process and would corrupt results under load while looking, from the
         // caller's side, like a message-handling bug somewhere else entirely.
@@ -200,7 +200,7 @@ public class AdapterGuaranteeTests
         Assert.True(
             offenders.Count == 0,
             "Mutable static state found: " + string.Join(", ", offenders) +
-            ". Anything static is shared by every thread using this adapter — make it readonly " +
+            ". Anything static is shared by every thread using this adapter, make it readonly " +
             "and populated at construction, or keep it per-call.");
     }
 

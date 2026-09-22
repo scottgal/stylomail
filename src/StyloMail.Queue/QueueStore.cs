@@ -18,7 +18,7 @@ namespace StyloMail.Queue;
 /// <para>
 /// <b>The ordering contract.</b> Acceptance durably spools the payload <em>before</em> committing
 /// the metadata row that references it. A crash between the two therefore leaves an orphan payload
-/// — sweepable — and never metadata pointing at a payload that does not exist, which would be
+///, sweepable, and never metadata pointing at a payload that does not exist, which would be
 /// unrecoverable loss. Every path that can fail between those two steps deletes the payload it
 /// orphaned.
 /// </para>
@@ -38,7 +38,7 @@ public sealed partial class QueueStore
     /// A reclaimed lease is evidence about the <em>message</em>: the worker died at some unknown
     /// point, so no per-recipient attempt can honestly be attributed. Recording one item-level row
     /// keeps the ambiguity in the history instead of inventing per-recipient detail we never
-    /// observed — and inventing it would also consume the recipients' attempt budget for failures
+    /// observed, and inventing it would also consume the recipients' attempt budget for failures
     /// that may never have happened.
     /// </remarks>
     private const string ItemLevelRecipient = "*";
@@ -107,7 +107,7 @@ public sealed partial class QueueStore
     /// </para>
     /// <para>
     /// The payload is spooled before the metadata transaction opens. If that transaction refuses
-    /// the message — quota, or losing an idempotency race — the payload this call just wrote is
+    /// the message, quota, or losing an idempotency race, the payload this call just wrote is
     /// deleted rather than left as debris.
     /// </para>
     /// </remarks>
@@ -130,11 +130,11 @@ public sealed partial class QueueStore
         }
 
         // A null count means nobody observed it, so the limit *cannot* be checked. The submission
-        // proceeds — refusing on an unobserved value would reject every message until the whole
-        // chain is wired — but the absence is preserved in the row rather than defaulted to 0, so
+        // proceeds, refusing on an unobserved value would reject every message until the whole
+        // chain is wired, but the absence is preserved in the row rather than defaulted to 0, so
         // an operator can see that loop protection did not run for this message.
 
-        // The null sender, direction-dependent — and an earlier version of this got it wrong in the
+        // The null sender, direction-dependent, and an earlier version of this got it wrong in the
         // most damaging direction, refusing a legitimate inbound DSN outright while a comment
         // claimed inbound was unaffected.
         //
@@ -146,7 +146,7 @@ public sealed partial class QueueStore
             && submission.Direction == MailDirection.Outbound)
         {
             // Returned, not thrown: this is a message we decline, and a thrown ArgumentException is
-            // indistinguishable from a caller passing an empty tenant id — one is a client bug, the
+            // indistinguishable from a caller passing an empty tenant id, one is a client bug, the
             // other is ordinary policy. It also means a declined message never leaves the assessor
             // as an unhandled exception.
             return QueueAcceptResult.Refused(
@@ -183,8 +183,8 @@ public sealed partial class QueueStore
             .ConfigureAwait(false));
 
         // The queue mints this reference itself and it is durable by construction, so the assert
-        // above can never fire today. It is here because the alternative — trusting that no future
-        // caller ever supplies the reference — is exactly how an assessment-only input would end up
+        // above can never fire today. It is here because the alternative, trusting that no future
+        // caller ever supplies the reference, is exactly how an assessment-only input would end up
         // as mail that vanishes on restart. Refusing at acceptance is still safe; discovering it at
         // delivery time is not.
 
@@ -198,8 +198,8 @@ public sealed partial class QueueStore
                 // The result does not name the item we just spooled, so nothing will ever
                 // reference these bytes:
                 //
-                //  * refused — quota or a hop limit, caught after the payload was already durable;
-                //  * lost an idempotency race — the winning row names the winner's payload, not
+                //  * refused, quota or a hop limit, caught after the payload was already durable;
+                //  * lost an idempotency race, the winning row names the winner's payload, not
                 //    ours, so ours is debris even though the result reports success.
                 //
                 // Testing IsAccepted here instead would leak a payload on every lost race, since a
@@ -297,7 +297,7 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// Only items that are within their lifetime are claimable. An item past its expiry is left
-    /// alone rather than delivered — the recovery sweep surfaces it — because delivering a message
+    /// alone rather than delivered, the recovery sweep surfaces it, because delivering a message
     /// whose deadline has passed is the one outcome the retry policy exists to prevent.
     /// </remarks>
     public async Task<QueueLease?> ClaimNextAsync(
@@ -440,7 +440,7 @@ public sealed partial class QueueStore
         //
         // The lease is the mutual-exclusion primitive: exactly one worker owns an item's outcome.
         // Its expiry is a *liveness heuristic* that lets the recovery sweep take work away from a
-        // worker presumed dead — it is not a rule about who owns the result. So a worker that is
+        // worker presumed dead, it is not a rule about who owns the result. So a worker that is
         // still alive and reports after its window closed, but before anyone reclaimed the item,
         // still owns its outcome, and applying that report is strictly better than discarding it:
         // discarding would mean redelivering a message we have direct evidence was delivered.
@@ -474,7 +474,7 @@ public sealed partial class QueueStore
 
             if (recipient is null || !recipient.IsWorkable)
             {
-                // Reported by a worker but already settled — a duplicate result, or a worker racing
+                // Reported by a worker but already settled, a duplicate result, or a worker racing
                 // a recovery sweep. Never let it reopen or re-settle a decided recipient.
                 superseded.Add(result.Recipient);
                 continue;
@@ -547,7 +547,7 @@ public sealed partial class QueueStore
     }
 
     /// <summary>
-    /// Schedules the next attempt, or gives up — the bounded-retry decision.
+    /// Schedules the next attempt, or gives up, the bounded-retry decision.
     /// </summary>
     /// <remarks>
     /// Two independent bounds apply: the per-recipient attempt count, and the message's lifetime.
@@ -603,8 +603,8 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// Jitter is a pure function of the item's identity and attempt number rather than a random
-    /// draw. That keeps a given item's schedule reproducible — the same item replayed in a test, or
-    /// re-read after a restart, backs off identically — while still spreading items that failed at
+    /// draw. That keeps a given item's schedule reproducible, the same item replayed in a test, or
+    /// re-read after a restart, backs off identically, while still spreading items that failed at
     /// the same instant.
     /// </remarks>
     public TimeSpan Backoff(string queueId, int attempt)
@@ -651,7 +651,7 @@ public sealed partial class QueueStore
     /// <remarks>
     /// The queue surfaces a lapsed hold and waits; it never resolves one itself. Releasing a hold is
     /// a policy act, and treating the deadline as an automatic release would make "we ran out of
-    /// time" indistinguishable from "we decided to send it" — the conflation the spec forbids.
+    /// time" indistinguishable from "we decided to send it", the conflation the spec forbids.
     ///
     /// <para>
     /// <paramref name="decidedBy"/> is recorded against every recipient the decision applied to.
@@ -758,7 +758,7 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Quarantine has no deadline, so unlike a hold it never resolves itself — it waits for a
+    /// Quarantine has no deadline, so unlike a hold it never resolves itself, it waits for a
     /// person. This is that person's decision, and it is recorded with who made it.
     /// </para>
     /// <para>
@@ -873,7 +873,7 @@ public sealed partial class QueueStore
     /// walk every live row and every spooled file, because finding the one unreferenced file means
     /// knowing about all the referenced ones. That is the right trade for a periodic sweep and the
     /// wrong one for a hot path; it is not intended to run per message. The portions that must
-    /// scale — reclaiming, expiring, hop enforcement and hold surfacing — are all indexed queries.
+    /// scale, reclaiming, expiring, hop enforcement and hold surfacing, are all indexed queries.
     /// </para>
     /// </remarks>
     public async Task<QueueRecoveryReport> RecoverAsync(
@@ -1078,7 +1078,7 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// The recipient stays <see cref="DeliveryState.Held"/>. Marking it delivered, failed or
-    /// released here would answer a question only policy is entitled to answer — and the whole
+    /// released here would answer a question only policy is entitled to answer, and the whole
     /// point of the hold is that the answer is a decision, not an elapsed timer.
     /// </remarks>
     private static void SurfaceExpiredHolds(
@@ -1147,7 +1147,7 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// The <c>purged_at</c> mark is committed <em>before</em> the file is deleted. Deleting first
-    /// would, on a crash between the two, leave a row that claims a payload it no longer has — the
+    /// would, on a crash between the two, leave a row that claims a payload it no longer has, the
     /// integrity fault this component is built to avoid. Marking first means the worst case is a
     /// file with no live reference, which the orphan sweep collects on the next pass.
     /// </remarks>
@@ -1291,8 +1291,8 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// For a route that wants to answer "have I already taken this?" without re-submitting.
-    /// Submission itself is idempotent without this — <see cref="AcceptAsync"/> returns the
-    /// original queue id for a replay — so this is for callers that need the answer before they
+    /// Submission itself is idempotent without this, <see cref="AcceptAsync"/> returns the
+    /// original queue id for a replay, so this is for callers that need the answer before they
     /// have a payload in hand.
     /// </remarks>
     public async Task<SubmissionLookup?> FindSubmissionAsync(
@@ -1316,8 +1316,8 @@ public sealed partial class QueueStore
     /// Reads the append-only history for an item, oldest first.
     /// </summary>
     /// <remarks>
-    /// Covers delivery attempts and the queue's own events — a reclaimed lease, an elapsed hold, a
-    /// reviewer's decision — in the order they happened. This is the record that makes a disputed
+    /// Covers delivery attempts and the queue's own events, a reclaimed lease, an elapsed hold, a
+    /// reviewer's decision, in the order they happened. This is the record that makes a disputed
     /// delivery answerable.
     /// </remarks>
     public async Task<IReadOnlyList<QueueAttempt>> GetAttemptsAsync(
@@ -1530,7 +1530,7 @@ public sealed partial class QueueStore
         string? detail,
         DateTimeOffset now)
     {
-        // INSERT only. History is never updated and never deleted — that is what makes it possible
+        // INSERT only. History is never updated and never deleted, that is what makes it possible
         // to reconstruct what was actually tried when a delivery is later disputed.
         using var cmd = connection.CreateCommand();
         cmd.Transaction = transaction;
@@ -1966,18 +1966,18 @@ public sealed partial class QueueStore
         Require(submission.TenantId, nameof(submission.TenantId));
         Require(submission.InternalMessageId, nameof(submission.InternalMessageId));
         Require(submission.TrustedPrincipalId, nameof(submission.TrustedPrincipalId));
-        // The null sender, and it is DIRECTION-DEPENDENT — which an earlier version of this check got
+        // The null sender, and it is DIRECTION-DEPENDENT, which an earlier version of this check got
         // wrong in the most damaging direction.
         //
         // `Require(submission.MailFrom)` used to run here unconditionally. That threw on "" for
         // *both* directions, and a DSN being delivered to one of our users is ordinary, legitimate
-        // mail — so a routine case was refused outright. That hole predates the null-sender check
+        // mail, so a routine case was refused outright. That hole predates the null-sender check
         // below; the check only made its absence look intentional.
         //
         // `MailEnvelope.MailFrom` is "" for a null sender. `<>` is wire notation, normalised at the
         // parse boundary, and is accepted here too so a caller that passes the wire form is not
         // silently misread as having a real address.
-        // A null sender is not a construction error — it is legitimate on inbound — so `MailFrom` is
+        // A null sender is not a construction error, it is legitimate on inbound, so `MailFrom` is
         // only required to hold a real address when it is *not* one. The direction-dependent refusal
         // lives in AcceptAsync with the other policy refusals, because it returns rather than throws.
         if (!SenderAddresses.IsNullSender(submission.MailFrom))
@@ -2065,8 +2065,7 @@ public sealed partial class QueueStore
     /// </summary>
     /// <remarks>
     /// Everything is normalised to UTC before formatting. The queue compares timestamps as strings
-    /// in SQL, which is only correct while every stored value shares one format and one offset —
-    /// a stray <c>+01:00</c> would sort into the wrong place and silently reorder a lease or an
+    /// in SQL, which is only correct while every stored value shares one format and one offset,     /// a stray <c>+01:00</c> would sort into the wrong place and silently reorder a lease or an
     /// expiry.
     /// </remarks>
     private static string ToDb(DateTimeOffset value)
@@ -2084,8 +2083,7 @@ public sealed partial class QueueStore
 /// we accepted whose payload is gone.
 /// </summary>
 /// <remarks>
-/// This should be unreachable — payload-before-metadata ordering exists precisely to prevent it —
-/// so it is a signal that the durability contract has been violated or the spool was altered. It
+/// This should be unreachable, payload-before-metadata ordering exists precisely to prevent it, /// so it is a signal that the durability contract has been violated or the spool was altered. It
 /// is never retryable and never silently repaired: the bytes it names are mail we took
 /// responsibility for and cannot recover, and only a human can decide what to do about that.
 /// </remarks>

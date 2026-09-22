@@ -10,7 +10,7 @@ namespace StyloMail.AccessProxy.Backends;
 /// </summary>
 /// <remarks>
 /// Every method here exists to keep a secret out of a <see cref="string"/>. The obvious spelling of
-/// these commands — <c>$"A1 LOGIN \"{user}\" \"{password}\""</c> — is wrong for a reason that is
+/// these commands, <c>$"A1 LOGIN \"{user}\" \"{password}\""</c>, is wrong for a reason that is
 /// easy to miss: <see cref="string"/> is immutable, so that copy of the password cannot be zeroed
 /// and survives in managed memory until the garbage collector happens to run. On a mail session
 /// that stays open for hours, "until the GC runs" is not a bound anyone can state.
@@ -28,7 +28,7 @@ internal static class WireCommands
     /// <remarks>
     /// <b>CR and LF in a credential are rejected, not escaped.</b> Neither can appear in a
     /// legitimate username or password, and permitting them would let a credential inject an
-    /// arbitrary second command into the backend dialogue — the classic header-injection shape,
+    /// arbitrary second command into the backend dialogue, the classic header-injection shape,
     /// pointed at a protocol instead of a message. Escaping would be the wrong fix: the protocol
     /// has no representation for them, so the honest response is to refuse.
     /// </remarks>

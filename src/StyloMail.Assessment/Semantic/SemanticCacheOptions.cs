@@ -4,8 +4,8 @@ namespace StyloMail.Assessment.Semantic;
 /// <remarks>
 /// Both policies are offered because they fail differently. LRU is the right default for a
 /// stream of broadly-similar traffic: what mattered a moment ago is the best guess at what
-/// matters now. LFU survives a flood — a burst of a thousand near-identical lures will not
-/// sweep out the frequently-reused entry — but it pins stale entries for as long as they keep
+/// matters now. LFU survives a flood, a burst of a thousand near-identical lures will not
+/// sweep out the frequently-reused entry, but it pins stale entries for as long as they keep
 /// being hit, so it is the wrong default for traffic whose vocabulary drifts.
 /// </remarks>
 public enum SemanticCacheEvictionPolicy
@@ -21,8 +21,7 @@ public enum SemanticCacheEvictionPolicy
 /// Tuning for the semantic cache decorator.
 /// </summary>
 /// <remarks>
-/// <b>This cache stores assessments, never permissions.</b> It memoises one thing —
-/// <see cref="StyloMail.Core.SemanticAssessment"/>, which is evidence — and it is structurally
+/// <b>This cache stores assessments, never permissions.</b> It memoises one thing, /// <see cref="StyloMail.Core.SemanticAssessment"/>, which is evidence, and it is structurally
 /// incapable of returning an action, because the decorated contract
 /// (<see cref="StyloMail.Core.ISemanticMailClassifier"/>) cannot express one. There is no
 /// configuration here that makes "allow this sender" memoizable, because there is no code path
@@ -31,7 +30,7 @@ public enum SemanticCacheEvictionPolicy
 public sealed record SemanticCacheOptions
 {
     /// <summary>
-    /// Version of the classifier's model, as configured — never an alias.
+    /// Version of the classifier's model, as configured, never an alias.
     /// </summary>
     /// <remarks>
     /// Part of the cache key, and re-checked against the model the provider reports it actually
@@ -49,15 +48,15 @@ public sealed record SemanticCacheOptions
     /// </summary>
     /// <remarks>
     /// The same model asked about differently-preprocessed content is a different question. This
-    /// stamp is what makes a preprocessing change — say, changing how links are normalised, or
-    /// how much body is included — invalidate the corpus rather than quietly mixing two regimes.
+    /// stamp is what makes a preprocessing change, say, changing how links are normalised, or
+    /// how much body is included, invalidate the corpus rather than quietly mixing two regimes.
     /// </remarks>
     public string PreprocessingVersion { get; init; } = "assessment-preprocessing/1";
 
     /// <summary>How long an entry may be served. Must be positive.</summary>
     public TimeSpan EntryLifetime { get; init; } = TimeSpan.FromHours(6);
 
-    /// <summary>Maximum retained entries. A bound is a feature here, not tuning — memory is finite.</summary>
+    /// <summary>Maximum retained entries. A bound is a feature here, not tuning, memory is finite.</summary>
     public int MaxEntries { get; init; } = 10_000;
 
     public SemanticCacheEvictionPolicy EvictionPolicy { get; init; } = SemanticCacheEvictionPolicy.LeastRecentlyUsed;
@@ -105,7 +104,7 @@ public sealed record SemanticCacheOptions
     ///
     /// <para>
     /// It exists because an operator may prefer degraded-but-explainable reuse over a pipeline
-    /// that drops to unavailable for every message during a provider incident — that is a
+    /// that drops to unavailable for every message during a provider incident, that is a
     /// legitimate operational call. It is not a safe default, and the decision is recorded on
     /// every assessment it touches rather than being absorbed into the wiring.
     /// </para>

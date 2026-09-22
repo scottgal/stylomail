@@ -56,8 +56,7 @@ public static class SqliteVectorExtension
 
     /// <summary>
     /// Loads <c>vec0</c> onto this connection. Throws rather than degrading, because a store
-    /// that quietly lacks vector search would produce silently worse near-duplicate detection —
-    /// exactly the failure mode that lets a changed bank account slip past the reuse gate.
+    /// that quietly lacks vector search would produce silently worse near-duplicate detection,     /// exactly the failure mode that lets a changed bank account slip past the reuse gate.
     /// </summary>
     internal static void EnsureLoaded(SqliteConnection connection)
     {

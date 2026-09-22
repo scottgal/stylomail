@@ -56,7 +56,7 @@ public sealed class SmtpDeliveryPortTests
     /// A port nothing can be listening on, for the genuine connection-refused case.
     /// </summary>
     /// <remarks>
-    /// Port 1 is in the privileged range, so an unprivileged test process — which this is — cannot
+    /// Port 1 is in the privileged range, so an unprivileged test process, which this is, cannot
     /// bind it, and no other test in the assembly can take it either. That is what makes it a
     /// deterministic refusal rather than the probe-then-release race this helper used to be, where
     /// the port was released before the dial and anyone could claim it in between.
@@ -88,8 +88,7 @@ public sealed class SmtpDeliveryPortTests
     [Fact]
     public async Task EveryReportedOutcomeIsOneTheQueueAccepts()
     {
-        // The port may only report what it genuinely witnessed on the wire. The queue's own events —
-        // an elapsed hold, a lapsed lease, a reviewer's decision — are not ours to invent.
+        // The port may only report what it genuinely witnessed on the wire. The queue's own events,         // an elapsed hold, a lapsed lease, a reviewer's decision, are not ours to invent.
         await using var server = FakeSmtpServer.Start();
         await using var port = Port(server);
 
@@ -349,7 +348,7 @@ public sealed class SmtpDeliveryPortTests
     public async Task AnAlreadyExpiredMessageIsNotAttemptedAtAll()
     {
         // Fail fast rather than consume the budget of a message that will be given up on. Nothing is
-        // sent, and the outcome is a retryable failure — the queue owns expiry and we do not
+        // sent, and the outcome is a retryable failure, the queue owns expiry and we do not
         // pre-empt its decision by declaring a permanent one.
         await using var server = FakeSmtpServer.Start();
         await using var port = Port(server);
@@ -436,7 +435,7 @@ public sealed class SmtpDeliveryPortTests
     public async Task ACallerCancellationMidAttemptYieldsOutcomesNotAnException()
     {
         // A shut-down worker cancelling its in-flight token. The message never got far enough for the
-        // upstream to have an opinion, so nothing is ambiguous — but the caller still learns what
+        // upstream to have an opinion, so nothing is ambiguous, but the caller still learns what
         // happened to each recipient.
         await using var server = FakeSmtpServer.Start(new FakeSmtpBehaviour { Silent = true });
         await using var port = Port(server);
@@ -457,7 +456,7 @@ public sealed class SmtpDeliveryPortTests
     {
         // The sharpest case, and the one a drain window actually produces: the body and its
         // terminator are on the wire, the verdict is outstanding, and the caller pulls the token.
-        // The upstream may have accepted the message, so this is ambiguous — reporting it as a
+        // The upstream may have accepted the message, so this is ambiguous, reporting it as a
         // plain temporary failure would invite a retry with no duplicate risk recorded.
         await using var server = FakeSmtpServer.Start(new FakeSmtpBehaviour
         {

@@ -172,7 +172,7 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
 
         // Single source of truth: ask the question when context is actually present. Also
         // consulting Coverage.ConversationContextMissing would let the two disagree and silently
-        // suppress the question — a missing answer that looks like a negative one.
+        // suppress the question, a missing answer that looks like a negative one.
         var hasConversation = input.Message.ConversationContext is { Count: > 0 };
 
         foreach (var dimension in input.Dimensions)
@@ -211,7 +211,7 @@ public sealed class JevSemanticMailClassifier : ISemanticMailClassifier
     }
 
     /// <summary>
-    /// Builds the bounded, structured state. Content is data here — descriptive field names, no
+    /// Builds the bounded, structured state. Content is data here, descriptive field names, no
     /// instructions, and hard truncation so a single message cannot blow the context budget.
     /// </summary>
     private object BuildState(MailAnalysisInput message, IReadOnlyDictionary<string, string>? taggedContext)

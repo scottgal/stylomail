@@ -26,7 +26,7 @@ namespace StyloMail.Transport.Smtp;
 /// attacker-writable, so a server could claim <c>AUTH</c> support that the encrypted session does
 /// not have. The pre-TLS list is cleared, not merged.</item>
 /// <item><b>Credentials never travel unencrypted.</b> The session refuses to attempt <c>AUTH</c>
-/// on an unencrypted channel — independently of <see cref="SmtpUpstream.Validate"/>, so a channel
+/// on an unencrypted channel, independently of <see cref="SmtpUpstream.Validate"/>, so a channel
 /// that lost its encryption between the two checks still cannot leak a password.</item>
 /// </list>
 /// </remarks>
@@ -126,7 +126,7 @@ internal sealed class SmtpSession : IAsyncDisposable
     /// <remarks>
     /// <b>One recipient per transaction, deliberately.</b> Batching recipients into a single
     /// <c>RCPT TO</c> list is cheaper, but it makes a per-recipient outcome impossible and it
-    /// discloses every recipient to the upstream as a set — which is how a <c>Bcc</c> leaks. The
+    /// discloses every recipient to the upstream as a set, which is how a <c>Bcc</c> leaks. The
     /// queue's own model is per-recipient, so this matches it rather than fighting it.
     ///
     /// <para>
@@ -240,7 +240,7 @@ internal sealed class SmtpSession : IAsyncDisposable
 
             // Ambiguity does not care why we stopped. If the terminator was already written, the
             // upstream may have accepted the message whether the cancellation came from a shutdown
-            // or from the caller's own deadline — and reporting that as a plain cancellation would
+            // or from the caller's own deadline, and reporting that as a plain cancellation would
             // invite a silent drop. Only a cancellation before the terminator is unambiguously
             // "nothing was sent", which is the case the caller handles.
             if (!terminatorStarted)
@@ -273,7 +273,7 @@ internal sealed class SmtpSession : IAsyncDisposable
         }
 
         // QUIT is sent before the disposed flag is set, since SendCommandAsync refuses to run on a
-        // disposed session — setting it first would make the polite goodbye impossible.
+        // disposed session, setting it first would make the polite goodbye impossible.
         if (!_broken)
         {
             try
@@ -344,8 +344,7 @@ internal sealed class SmtpSession : IAsyncDisposable
             return;
         }
 
-        // HELO is the pre-ESMTP fallback. It advertises nothing — no SIZE, no STARTTLS, no AUTH —
-        // so it is only usable when we need none of those.
+        // HELO is the pre-ESMTP fallback. It advertises nothing, no SIZE, no STARTTLS, no AUTH,         // so it is only usable when we need none of those.
         var needsExtensions = _upstream.Tls == SmtpTlsMode.Required || _upstream.Credentials is not null;
 
         if (!allowHeloFallback || needsExtensions)
@@ -414,7 +413,7 @@ internal sealed class SmtpSession : IAsyncDisposable
 
         // Any bytes the reader pulled in beyond the 220 would be plaintext the server should not
         // have sent, and they would be lost when the stream is replaced. Refuse rather than silently
-        // drop them — a peer sending data before the handshake is broken or attacking.
+        // drop them, a peer sending data before the handshake is broken or attacking.
         if (_reader.BufferedByteCount > 0)
         {
             throw new SmtpProtocolException(
@@ -431,7 +430,7 @@ internal sealed class SmtpSession : IAsyncDisposable
 
         // RFC 3207 §4.2: the server MUST discard knowledge from the pre-TLS EHLO, and so must we.
         // Merging would let a pre-handshake response inject capabilities into the authenticated
-        // session — including a fake STARTTLS that hid a real downgrade.
+        // session, including a fake STARTTLS that hid a real downgrade.
         _capabilities.Clear();
         await EhloAsync(allowHeloFallback: false, cancellationToken).ConfigureAwait(false);
     }
@@ -652,7 +651,7 @@ internal sealed class SmtpSession : IAsyncDisposable
         if (_broken)
         {
             throw new InvalidOperationException(
-                "This session is no longer usable — a transport fault left it in an unknown state. " +
+                "This session is no longer usable, a transport fault left it in an unknown state. " +
                 "Open a new one.");
         }
     }
@@ -666,7 +665,7 @@ internal sealed class SmtpSession : IAsyncDisposable
     /// <remarks>
     /// <b>This is a command-injection control, not a format check.</b> An address is interpolated
     /// into <c>MAIL FROM:&lt;…&gt;</c>, so an address containing CR or LF terminates the command and
-    /// starts a new one — letting a crafted envelope recipient append <c>RCPT TO</c> or <c>DATA</c>
+    /// starts a new one, letting a crafted envelope recipient append <c>RCPT TO</c> or <c>DATA</c>
     /// lines of the submitter's choosing. Angle brackets are refused for the same reason: they close
     /// the address early and leave the rest of the line as bare syntax.
     ///
@@ -676,7 +675,7 @@ internal sealed class SmtpSession : IAsyncDisposable
     /// </para>
     ///
     /// <para>
-    /// Returns a reason instead of throwing because the input is <em>data</em> — it comes from a
+    /// Returns a reason instead of throwing because the input is <em>data</em>, it comes from a
     /// submitter and from the queue, not from our own code. A throw here would let one crafted
     /// recipient crash the delivery worker for every other message it was handling.
     /// </para>

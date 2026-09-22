@@ -22,7 +22,7 @@ public sealed record SenderControlState
     /// <summary>Why the pause was lifted.</summary>
     public string? ResumeReason { get; init; }
 
-    /// <summary>Whoever acted last — the pause or the resume.</summary>
+    /// <summary>Whoever acted last, the pause or the resume.</summary>
     public required string UpdatedBy { get; init; }
 
     public required DateTimeOffset UpdatedAt { get; init; }
@@ -33,7 +33,7 @@ public sealed record SenderControlState
 /// </summary>
 /// <remarks>
 /// Scoped by tenant and principal together. A principal identifier is only unique within its own
-/// tenant — two tenants may legitimately use the same one — so an unscoped lookup would let one
+/// tenant, two tenants may legitimately use the same one, so an unscoped lookup would let one
 /// tenant's control-plane action reach the other's senders.
 /// </remarks>
 public interface ISenderControlStore
@@ -66,7 +66,7 @@ public interface ISenderControlStore
 /// <summary>SQLite-backed sender controls.</summary>
 /// <remarks>
 /// Separate from queue state on purpose. Pausing an account is a control-plane fact and resuming
-/// it must not resurrect, discard or reorder any mail — which it would if the pause were
+/// it must not resurrect, discard or reorder any mail, which it would if the pause were
 /// implemented as a queue state rather than alongside it.
 /// </remarks>
 public sealed class SqliteSenderControlStore : ISenderControlStore

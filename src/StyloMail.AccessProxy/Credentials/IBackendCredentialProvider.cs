@@ -7,12 +7,12 @@ namespace StyloMail.AccessProxy.Credentials;
 /// The decrypted credential is handed over here and nowhere else. The provider takes ownership of
 /// <see cref="Secret"/> and must dispose it; <see cref="BackendCredentialResolver"/> disposes it
 /// after the provider returns, so a provider that copies the bytes out and keeps them is a bug the
-/// resolver cannot catch — which is why copying out the plaintext is documented as forbidden rather
+/// resolver cannot catch, which is why copying out the plaintext is documented as forbidden rather
 /// than merely discouraged.
 ///
 /// <para>
 /// <see cref="Protocol"/> is passed in because a provider may legitimately need to know which
-/// protocol it is authenticating for — a mechanism set differs between IMAP and POP3 on the same
+/// protocol it is authenticating for, a mechanism set differs between IMAP and POP3 on the same
 /// provider. It is <em>context</em>, not a branch the caller makes: the caller always passes the
 /// protocol it is already speaking, so no caller ever chooses based on credential kind.
 /// </para>
@@ -44,7 +44,7 @@ public sealed record BackendCredentialContext
 /// ships alongside it as the implementation that takes over when Google winds app passwords down.
 /// Because a provider returns the same <see cref="IBackendAuthenticator"/> abstraction and the same
 /// <see cref="BackendAuthStyle"/> framing, swapping which one a tenant's records point at is a data
-/// change — <b>no caller, no driver and no session changes</b>. That is the test the seam has to
+/// change, <b>no caller, no driver and no session changes</b>. That is the test the seam has to
 /// pass, and it is asserted directly in the test suite rather than asserted in a comment.
 /// </para>
 ///
@@ -74,7 +74,7 @@ public interface IBackendCredentialProvider
 /// <remarks>
 /// <b>Unknown discriminators fail closed.</b> There is no default provider and no "assume app
 /// password" fallback. A record whose discriminator this build does not recognise means the data
-/// came from a newer deployment, or from a downgrade, or from someone editing the store — and in
+/// came from a newer deployment, or from a downgrade, or from someone editing the store, and in
 /// every one of those cases the safe answer is to refuse the session, not to guess at a credential
 /// shape and present it to Google.
 /// </remarks>

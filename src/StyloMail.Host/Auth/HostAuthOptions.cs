@@ -33,7 +33,7 @@ public sealed class HostAuthOptions
 /// One configured principal.
 /// </summary>
 /// <remarks>
-/// <see cref="Key"/> is supplied by configuration — in a real deployment that means an environment
+/// <see cref="Key"/> is supplied by configuration, in a real deployment that means an environment
 /// variable or a secret store, never a literal in this repository. It is compared by digest rather
 /// than by string equality so that comparison time does not reveal how much of a key was correct.
 /// </remarks>
@@ -51,7 +51,7 @@ public sealed class HostPrincipalOptions
     /// Sender identities this principal may use in SMTP <c>MAIL FROM</c>.
     /// </summary>
     /// <remarks>
-    /// <b>Only consulted by the SMTP submission listener</b> — the HTTP surface takes the sender
+    /// <b>Only consulted by the SMTP submission listener</b>, the HTTP surface takes the sender
     /// from the message it is handed, so there is nothing there for this to constrain. It exists
     /// because authenticating proves who you are, not that you may claim any sender: without it
     /// every valid account is a forgery primitive.

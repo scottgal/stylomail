@@ -22,7 +22,7 @@ public sealed record MessageSubmissionRequest
     /// <summary>SMTP <c>RCPT TO</c>. Each recipient is recorded and progressed separately.</summary>
     public IReadOnlyList<string> RcptTo { get; init; } = [];
 
-    /// <summary>The original message bytes, Base64. Never modified — this is the transport artefact.</summary>
+    /// <summary>The original message bytes, Base64. Never modified, this is the transport artefact.</summary>
     public string RawMime { get; init; } = string.Empty;
 
     public string? AuthenticatedAccount { get; init; }
@@ -53,8 +53,7 @@ public sealed record AuthenticationResultRequest
 
     public string? VerifierId { get; init; }
 
-    /// <summary>Whether the named verifier is a configured trusted boundary. Defaults to false —
-    /// a message may not authenticate itself.</summary>
+    /// <summary>Whether the named verifier is a configured trusted boundary. Defaults to false,     /// a message may not authenticate itself.</summary>
     public bool FromTrustedVerifier { get; init; }
 
     public string? Detail { get; init; }

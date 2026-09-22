@@ -6,7 +6,7 @@ namespace StyloMail.Adaptive.Tests;
 /// The recipient budget: what it bounds, and over what period.
 /// </summary>
 /// <remarks>
-/// The budget exists to bound <b>escape volume</b> — how much a compromised principal can send
+/// The budget exists to bound <b>escape volume</b>, how much a compromised principal can send
 /// between the compromise starting and the system noticing. That is a property of a window. A
 /// lifetime cap is uncorrelated with it: a sender's 501st recipient is not more dangerous than
 /// their 5th, and treating it as though it were permanently blocks the account for sending
@@ -99,7 +99,7 @@ public class QuotaLedgerTests
 
         // Nobody sorts these. Each caller supplies its own instant, so a slow concurrent
         // assessment can record a reservation it captured thirty minutes ago *after* a faster
-        // one recorded a more recent entry — and the list is then not in time order.
+        // one recorded a more recent entry, and the list is then not in time order.
         //
         // Pruning must therefore scan the whole list. Stopping at the first live entry would
         // leave the expired reservation sitting behind a live one, counted forever, and the
@@ -152,7 +152,7 @@ public class QuotaLedgerTests
         // would be the t = 30m one and only half the budget would be available.
         //
         // Releasing the most recent entries is the right order because this undoes a
-        // reservation that was just made and did not lead to dispatch — and it returns the
+        // reservation that was just made and did not lead to dispatch, and it returns the
         // budget for the longest remaining part of the window, which is what "never dispatched"
         // should mean. It is pinned here rather than left to whichever end of the list is handy.
         Assert.Equal(200, ledger.Remaining("tenant-a", "sender", _clock.GetUtcNow()));
@@ -189,7 +189,7 @@ public class QuotaLedgerTests
         Assert.True(ledger.TryReserve("tenant-a", "sender", 30, _clock.GetUtcNow()));
 
         // Fifty asked for, thirty ever reserved. A legitimate double-release on a retry path
-        // must not crash, so this clamps rather than throws — but the caller is told.
+        // must not crash, so this clamps rather than throws, but the caller is told.
         Assert.Equal(30, ledger.Release("tenant-a", "sender", 50, _clock.GetUtcNow()));
     }
 

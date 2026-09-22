@@ -41,7 +41,7 @@ public sealed record MaskedDimension
 /// </summary>
 /// <remarks>
 /// <b>Dimension probabilities are combined as a weighted sum, never multiplied.</b> The dimensions
-/// are correlated — a credential-request lure usually also carries urgency — so treating them as
+/// are correlated, a credential-request lure usually also carries urgency, so treating them as
 /// independent likelihoods and multiplying would compound one underlying signal into false
 /// certainty. TypeSafe's own composite-scoring guidance covers weighted sums and is silent on
 /// correlation, so the no-multiplication rule is this project's own policy decision, not a
@@ -86,7 +86,7 @@ public static class CompositeRiskScorer
 
             if (match is null)
             {
-                // Absent entirely — treated exactly like unavailable, not like a zero.
+                // Absent entirely, treated exactly like unavailable, not like a zero.
                 masked.Add(new MaskedDimension
                 {
                     SignalId = signalId,

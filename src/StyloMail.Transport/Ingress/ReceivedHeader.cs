@@ -6,11 +6,11 @@ namespace StyloMail.Transport.Ingress;
 /// <summary>What a hop marker should say.</summary>
 public sealed record ReceivedHeaderStamp
 {
-    /// <summary>The name this system is known by — the <c>by</c> clause, and the anchor for loop detection.</summary>
+    /// <summary>The name this system is known by, the <c>by</c> clause, and the anchor for loop detection.</summary>
     public required string ByHost { get; init; }
 
     /// <summary>
-    /// The name the sending client announced. <b>Untrusted</b> — a client may claim anything.
+    /// The name the sending client announced. <b>Untrusted</b>, a client may claim anything.
     /// </summary>
     public string? FromHost { get; init; }
 
@@ -35,7 +35,7 @@ public sealed record ReceivedHeaderStamp
 /// <b>Why a proxy has to add one.</b> RFC 5321 requires every relay to record its hop, and the
 /// operational reason is sharper than the compliance one: <b>a relay that does not mark its own hop
 /// cannot detect itself in a loop.</b> The inbound loop guard looks for a <c>Received</c> line whose
-/// <c>by</c> clause names us — and if we never write one, our hop is invisible to it, leaving only
+/// <c>by</c> clause names us, and if we never write one, our hop is invisible to it, leaving only
 /// the hop-limit backstop. The mechanism would have been checking for evidence we never produced.
 /// </para>
 /// <para>
@@ -48,7 +48,7 @@ public sealed record ReceivedHeaderStamp
 /// comment.
 /// </para>
 /// <para>
-/// <b>The value is assembled from untrusted input</b> — a client's announced name, an envelope
+/// <b>The value is assembled from untrusted input</b>, a client's announced name, an envelope
 /// address, a connector-supplied recipient. Every interpolated token is reduced to a character set
 /// that cannot contain CR, LF, space, <c>(</c>, <c>)</c>, <c>;</c>, <c>&lt;</c> or <c>&gt;</c>, which
 /// is exactly the set needed to forge a header or a clause. Sanitising after interpolation would be
@@ -131,7 +131,7 @@ public static class ReceivedHeader
     /// <remarks>
     /// Characters outside the set become <c>?</c> rather than being dropped, so a forged value
     /// leaves a visible trace instead of silently becoming a well-formed lie. An empty result
-    /// becomes <c>unknown</c> — a blank clause would be a syntax error in the value.
+    /// becomes <c>unknown</c>, a blank clause would be a syntax error in the value.
     /// </remarks>
     internal static string Token(string? value)
     {

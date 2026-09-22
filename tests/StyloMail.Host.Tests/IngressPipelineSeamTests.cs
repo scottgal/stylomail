@@ -15,13 +15,13 @@ namespace StyloMail.Host.Tests;
 /// <para>
 /// <b>These tests exist because the rest of the ingress suite cannot see this.</b> Every other test
 /// here drives the sink against <see cref="RecordingAssessor"/>, which models the pipeline's
-/// acceptance contract but never runs its first step — so a placeholder analysis view that the real
+/// acceptance contract but never runs its first step, so a placeholder analysis view that the real
 /// pipeline refuses on sight would leave the whole suite green while every message an ingress ever
 /// handled was declined. The fake is kinder than production in exactly one place, and this is it.
 /// </para>
 /// <para>
-/// The sink hands the pipeline a deliberately empty analysis view — no body, no links, no
-/// attachments, coverage saying nothing was parsed — because the pipeline's own MIME parser is
+/// The sink hands the pipeline a deliberately empty analysis view, no body, no links, no
+/// attachments, coverage saying nothing was parsed, because the pipeline's own MIME parser is
 /// authoritative and replaces it from the original bytes. That is only true if the pipeline decides
 /// to run the parser, which it does only after step one has passed. Step one therefore sees the
 /// empty view, and the empty view has to survive it.
@@ -36,7 +36,7 @@ public sealed class IngressPipelineSeamTests
         var sink = host.Services.GetRequiredService<ISmtpIngressSink>();
 
         // The outbound submission shape: an authenticated principal whose sender is in the identity
-        // list it is authorised for. The two have to agree — the transport enforces that before the
+        // list it is authorised for. The two have to agree, the transport enforces that before the
         // sink is reached, and step one enforces it again afterwards.
         await sink.SubmitAsync(
             Submission("msg_seam_out", MailDirection.Outbound, "user-acme-sender",
@@ -77,7 +77,7 @@ public sealed class IngressPipelineSeamTests
     [Fact]
     public async Task An_outbound_null_sender_is_refused_by_the_transport_the_pipeline_and_the_queue()
     {
-        // Three components, one rule — and the reason this test exists is that they did not agree
+        // Three components, one rule, and the reason this test exists is that they did not agree
         // until today. The ingress found `MaySendAs` permitting the null sender while
         // `AssessmentValidation` raised `envelope.unapproved_sender_identity` for it and
         // `ValidateSubmission` rejected it outright: one message, three answers, and no component
@@ -91,7 +91,7 @@ public sealed class IngressPipelineSeamTests
         const string account = "user-acme-sender";
         IReadOnlyList<string> approved = ["user-acme-sender@acme.example"];
 
-        // 1. The transport refuses it — in both the empty and the wire form, since `<>` is what a
+        // 1. The transport refuses it, in both the empty and the wire form, since `<>` is what a
         //    client actually sends and an empty string is what a caller constructs.
         var principal = new AuthenticatedPrincipal
         {
@@ -149,8 +149,8 @@ public sealed class IngressPipelineSeamTests
     public async Task An_inbound_null_sender_is_accepted_end_to_end()
     {
         // The same rule must not apply in the other direction. A DSN delivered to one of our users
-        // arrives with a null sender and no authenticated principal — the listener's inbound path
-        // never consults approved identities — and it is ordinary, legitimate mail.
+        // arrives with a null sender and no authenticated principal, the listener's inbound path
+        // never consults approved identities, and it is ordinary, legitimate mail.
         //
         // This was written to be RED and was, correctly: `Require(submission.MailFrom)` ran
         // unconditionally in `ValidateSubmission` and threw on the empty string for *both*

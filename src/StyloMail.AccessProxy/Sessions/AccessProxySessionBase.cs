@@ -29,7 +29,7 @@ public enum SessionOutcome
     /// </summary>
     /// <remarks>
     /// Deliberately indistinguishable from <see cref="ClientRejected"/> as far as the client is
-    /// concerned — both produce the same negative reply. The distinction exists only for operators,
+    /// concerned, both produce the same negative reply. The distinction exists only for operators,
     /// because the actions differ sharply: a client rejection is a user typing the wrong password,
     /// while this is a revoked or unusable backend credential that needs an operator or the user to
     /// re-enrol. Telling the client which one it was would confirm to an attacker that a login
@@ -55,14 +55,13 @@ public enum SessionOutcome
 /// </summary>
 /// <remarks>
 /// Greet, take the client's credentials, verify them, obtain a backend channel, relay. The protocol
-/// subclasses supply only the parts that actually differ — the greeting text, how a credential is
-/// spelled in that protocol, and how accept/reject is worded — so the security-relevant steps
+/// subclasses supply only the parts that actually differ, the greeting text, how a credential is
+/// spelled in that protocol, and how accept/reject is worded, so the security-relevant steps
 /// happen exactly once, here, rather than once per protocol with three chances to get one wrong.
 ///
 /// <para>
 /// <b>The order of the last two steps is the load-bearing decision.</b> The backend is connected and
-/// authenticated <em>before</em> the client is told its login succeeded. The tempting alternative —
-/// say yes immediately, then connect — reads as friendlier and is wrong twice over: a client told
+/// authenticated <em>before</em> the client is told its login succeeded. The tempting alternative, /// say yes immediately, then connect, reads as friendlier and is wrong twice over: a client told
 /// "OK" proceeds to issue real commands that then go nowhere, and a revoked backend credential
 /// would surface as a mysteriously dead session rather than as an authentication failure. Spec §9.5
 /// risk 4 requires a revoked credential to <em>fail closed and surface as an authentication
@@ -129,8 +128,7 @@ public abstract class AccessProxySessionBase
     /// Reads the client's claimed credentials, or null if it disconnected before offering any.
     /// </summary>
     /// <remarks>
-    /// Implementations must extract only what the protocol carries and must not validate it —
-    /// verification happens once, in <see cref="RunAsync"/>, so every protocol is held to the same
+    /// Implementations must extract only what the protocol carries and must not validate it,     /// verification happens once, in <see cref="RunAsync"/>, so every protocol is held to the same
     /// check.
     /// </remarks>
     private protected abstract ValueTask<ClientCredentials?> ReadClientCredentialsAsync(
@@ -250,7 +248,7 @@ public abstract class AccessProxySessionBase
         catch (CredentialUnavailableException)
         {
             // Spec §9.5 risk 4: revoked, missing or unusable. Fail closed, tell the client its
-            // authentication failed, and do not retry — a rejected credential presented again is a
+            // authentication failed, and do not retry, a rejected credential presented again is a
             // failed login attempt against the user's own account.
             await WriteAuthenticationFailedAsync(cancellationToken).ConfigureAwait(false);
             return SessionOutcome.BackendUnavailable;

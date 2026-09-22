@@ -146,7 +146,7 @@ public sealed class CacheKeyTests
         var right = Builders.Message("body", links: [restyled]);
 
         // Presenting the same destination differently changes what the classifier is asked, so the
-        // key differs — but the message does the same thing, so the fingerprint agrees. That split
+        // key differs, but the message does the same thing, so the fingerprint agrees. That split
         // is what lets campaign comparison call these the same campaign without letting one's
         // assessment answer for the other.
         Assert.NotEqual(
@@ -190,7 +190,7 @@ public sealed class CacheKeyTests
             ContentHash = "hash-abc",
         };
 
-        // A rename with unchanged bytes is the same payload, so the hash — not the name — decides.
+        // A rename with unchanged bytes is the same payload, so the hash, not the name, decides.
         Assert.NotEqual(
             SecurityBearingFingerprint.Compute(Builders.Message(attachments: [original])).Digest,
             SecurityBearingFingerprint.Compute(Builders.Message(attachments: [renamed])).Digest);

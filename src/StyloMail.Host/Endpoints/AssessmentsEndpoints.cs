@@ -11,7 +11,7 @@ using StyloMail.Mime;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>POST /v1/assessments</c> — assess a message with no delivery and no learning.
+/// <c>POST /v1/assessments</c>, assess a message with no delivery and no learning.
 /// </summary>
 /// <remarks>
 /// This route deliberately shares ingress checks with submission and deliberately shares nothing
@@ -53,7 +53,7 @@ internal static class AssessmentsEndpoints
         var internalMessageId = $"msg_{Guid.NewGuid():N}";
 
         // Assessment-only: there is no durable payload, and claiming a spool reference we never
-        // wrote would be a lie. Core's canonical ephemeral reference says exactly that — a single
+        // wrote would be a lie. Core's canonical ephemeral reference says exactly that, a single
         // shared value rather than a per-message string, so "this call stored nothing" is greppable
         // and cannot be mistaken for a reference that resolves to something.
         var (prepared, error) = MessageIngress.Prepare(
@@ -79,7 +79,7 @@ internal static class AssessmentsEndpoints
 
         // Recording the decision is part of assessing, not a delivery side effect: an assessment
         // nobody can look up afterwards is not explainable. If it cannot be recorded we do not
-        // hand back an id that will never resolve — we report the failure instead.
+        // hand back an id that will never resolve, we report the failure instead.
         try
         {
             await ledger.RecordAsync(assessment, cancellationToken);

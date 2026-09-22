@@ -18,7 +18,7 @@ public enum CredentialState
 /// </summary>
 /// <remarks>
 /// <b>Environment variables, not files and not config keys.</b> A secret written into a config key
-/// ends up in an appsettings file, then in a repository, then in an image layer — and a key
+/// ends up in an appsettings file, then in a repository, then in an image layer, and a key
 /// committed to a repository must be treated as compromised and rotated rather than merely
 /// deleted.
 ///
@@ -39,8 +39,7 @@ public static class HostCredentials
     /// high-entropy material, enforced by <c>ProfileKeyHasher</c>.
     ///
     /// <para>
-    /// <b>One deployment-level master key, with the tenant id mixed into the hashed input</b> —
-    /// not one key per tenant. That yields the property that matters (the same address hashes
+    /// <b>One deployment-level master key, with the tenant id mixed into the hashed input</b>,     /// not one key per tenant. That yields the property that matters (the same address hashes
     /// differently in two tenants, so a profile key from one tenant means nothing in another)
     /// without per-tenant key management. Per-tenant keys are a future option if isolation
     /// requirements harden, and changing this construction is a <b>migration</b>: every stored
@@ -55,12 +54,12 @@ public static class HostCredentials
     /// <remarks>
     /// <para>
     /// <b>A secret this deployment generates, not a provider credential.</b> Nothing it unlocks can
-    /// read a mailbox or act on a Cloudflare account — compromising it lets an attacker submit mail,
+    /// read a mailbox or act on a Cloudflare account, compromising it lets an attacker submit mail,
     /// which is what the recipient-domain check already constrains. That is the whole reason this
     /// connector was chosen: the deployment still holds zero <em>provider</em> secrets.
     /// </para>
     /// <para>
-    /// It is still a secret, and the name is part of the privilege model — which is why it is defined
+    /// It is still a secret, and the name is part of the privilege model, which is why it is defined
     /// here beside the others rather than invented at the call site. Environment-only, like the other
     /// two: a value in a config key ends up in an appsettings file, then a repository, then an image
     /// layer.
@@ -78,13 +77,13 @@ public static class HostCredentials
     /// <remarks>
     /// <b>Enabled without a secret is refused at startup rather than serving 401s.</b> A route that
     /// exists and always refuses looks like a misconfigured Worker, so the operator goes and checks
-    /// the Worker — while the actual fault is here. Failing to start names the variable instead.
+    /// the Worker, while the actual fault is here. Failing to start names the variable instead.
     ///
     /// <para>
     /// A <em>disabled</em> connector needs no secret: a deployment that has not opted into this
     /// intake holds nothing for it. Kept as a pure function of its two arguments so the decision is
     /// testable without mutating process environment, which would race against every other test in
-    /// the suite — the same reason <see cref="Resolve"/> is shaped this way.
+    /// the suite, the same reason <see cref="Resolve"/> is shaped this way.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">Enabled, and no secret is configured.</exception>
@@ -113,7 +112,7 @@ public static class HostCredentials
     /// The middle case is the one worth stating: <b>exactly one secret present is a
     /// misconfiguration and refuses to start.</b> Falling back to the unconfigured sentinel there
     /// would leave a deployment that believes it is assessing mail while every assessment returns
-    /// 503 — an outage that looks like an outage, which is at least honest — but the worse reading
+    /// 503, an outage that looks like an outage, which is at least honest, but the worse reading
     /// is a half-configured deployment where the Jev key is live and the pseudonymisation key is
     /// not. Refusing at startup is the only answer that cannot be mistaken for healthy.
     /// </para>

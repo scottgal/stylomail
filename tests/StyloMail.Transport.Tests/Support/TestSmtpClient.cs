@@ -21,7 +21,7 @@ internal sealed record ClientReply(int Code, IReadOnlyList<string> Lines)
 /// </summary>
 /// <remarks>
 /// Deliberately does <b>not</b> reuse the production reply reader. The point of driving the listener
-/// end to end is to check that its framing is what the protocol says — and a client built from the
+/// end to end is to check that its framing is what the protocol says, and a client built from the
 /// same reader would agree with the server about a mistake they shared. This parses independently,
 /// and it is also the only way to assert on a reply <em>prefix</em>, which is how a multi-line EHLO
 /// response is checked for the capabilities it advertises.

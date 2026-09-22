@@ -16,7 +16,7 @@ public sealed record ReadinessResult(bool Ready, IReadOnlyList<string> FailedChe
 /// Readiness is not a liveness check with more steps. It is a claim about the ability to keep the
 /// system's central promise: accept a message and not lose it. A host whose spool cannot be written
 /// must stop advertising itself, because the alternative is a load balancer continuing to hand it
-/// messages that will be refused — turning a local storage fault into a delivery outage.
+/// messages that will be refused, turning a local storage fault into a delivery outage.
 ///
 /// <para>
 /// It probes rather than assumes. Reporting ready because a directory existed at startup would miss

@@ -8,7 +8,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// </summary>
 /// <remarks>
 /// Google removed username/password authentication for IMAP, POP3 and SMTP on 1 May 2025, and an
-/// app password is the one surviving exception — a long random string the user generates in their
+/// app password is the one surviving exception, a long random string the user generates in their
 /// Google account, which requires 2-Step Verification to exist at all. The operator chose it as a
 /// documented transitional path to ship sooner while OAuth verification runs in parallel.
 ///
@@ -16,7 +16,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// <b>It is built to the seam, not to the mechanism.</b> This class is knowingly temporary: Google
 /// has announced app passwords are being wound down, and spec §9.5 risk 5 says Google may disable
 /// the path with little notice. That is tolerable only because replacing this file with
-/// <see cref="OAuthRefreshTokenCredentialProvider"/> changes nothing outside it — the discriminator
+/// <see cref="OAuthRefreshTokenCredentialProvider"/> changes nothing outside it, the discriminator
 /// on stored records changes and this class stops being selected. No session driver, no proxy and
 /// no caller is aware of which one is in play, and the test suite asserts that directly.
 /// </para>
@@ -25,8 +25,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// <b>Onboarding must surface 2-Step Verification.</b> A user without 2SV cannot generate an app
 /// password, and the failure presents as an authentication bug rather than a missing prerequisite
 /// (spec §9.5 risk 2). That is a host/onboarding concern rather than this project's, but the failure
-/// is named precisely here — <see cref="CredentialUnavailableException"/> rather than a rejection —
-/// so a caller can tell "this account was never enrolled" from "Google refused the credential".
+/// is named precisely here, <see cref="CredentialUnavailableException"/> rather than a rejection, /// so a caller can tell "this account was never enrolled" from "Google refused the credential".
 /// </para>
 /// </remarks>
 public sealed class AppPasswordCredentialProvider : IBackendCredentialProvider
@@ -57,7 +56,7 @@ public sealed class AppPasswordCredentialProvider : IBackendCredentialProvider
         }
 
         // SASL PLAIN (RFC 4616): authzid \0 authcid \0 passwd, with an empty authzid because the
-        // user authenticates as themselves. The password is never materialised as a string — it
+        // user authenticates as themselves. The password is never materialised as a string, it
         // goes from the protected bytes into this buffer and no further.
         //
         // POP3 is the exception. Its SASL support is uneven across servers, and USER/PASS is the
@@ -126,7 +125,7 @@ public sealed class AppPasswordCredentialProvider : IBackendCredentialProvider
 /// <remarks>
 /// Used by PLAIN and XOAUTH2, the two mechanisms where the client speaks first. Any server
 /// continuation after the initial response is an error signal in both, so the exchange answers with
-/// an empty line — which both protocols require the client to send — and lets the server's rejection
+/// an empty line, which both protocols require the client to send, and lets the server's rejection
 /// come back as an ordinary negative reply for the driver to translate into a fail-closed refusal.
 /// </remarks>
 internal sealed class SaslInitialResponseAuthenticator : IBackendAuthenticator
@@ -156,7 +155,7 @@ internal sealed class SaslInitialResponseAuthenticator : IBackendAuthenticator
             _started = true;
 
             // A copy per call, so the value the driver sends and disposes is not the buffer this
-            // authenticator still holds — otherwise disposing the token would blank the exchange
+            // authenticator still holds, otherwise disposing the token would blank the exchange
             // and a later call would silently send zeros.
             return ValueTask.FromResult<SecretValue?>(
                 SecretValue.FromBytes((byte[])_initialResponse.Clone()));
@@ -185,7 +184,7 @@ internal sealed class SaslInitialResponseAuthenticator : IBackendAuthenticator
 /// <remarks>
 /// POP3's classical authentication: <c>USER</c> then <c>PASS</c>, each with its own reply. Modelled
 /// as an ordinary token sequence rather than as a special case so the POP3 driver needs no knowledge
-/// of credential kinds — it asks for the next token twice and frames each as the verb its protocol
+/// of credential kinds, it asks for the next token twice and frames each as the verb its protocol
 /// defines.
 /// </remarks>
 internal sealed class LegacyCredentialPairAuthenticator : IBackendAuthenticator

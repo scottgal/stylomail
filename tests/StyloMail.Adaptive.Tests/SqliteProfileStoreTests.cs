@@ -202,7 +202,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         var embedding = Enumerable.Repeat(0.5f, 12).ToArray();
 
         // Two tenants, one identical embedding. A query for one must never return the other's
-        // nearest neighbour — and must return the other's row to nobody.
+        // nearest neighbour, and must return the other's row to nobody.
         centroids.Upsert("tenant-a", "sender", "key-a", embedding, "adaptive-dimensions/1", Start);
         centroids.Upsert("tenant-b", "sender", "key-b", embedding, "adaptive-dimensions/1", Start);
 
@@ -245,7 +245,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         _store.Save(first, Start.AddMinutes(1));
 
         // The second write is a load-modify-save over state that has already moved. Silently
-        // accepting it would drop `first`'s observation — and for observed counters a silent
+        // accepting it would drop `first`'s observation, and for observed counters a silent
         // loss means the abuse-bounding counts read low.
         var conflict = Assert.Throws<ProfileVersionConflictException>(
             () => _store.Save(second, Start.AddMinutes(2)));
@@ -370,7 +370,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         var stored = _store.Load(profile.Key)!;
 
         // An observation moves no baseline version. If the token were the baseline version,
-        // it would be unchanged here — and this write would silently overwrite anything that
+        // it would be unchanged here, and this write would silently overwrite anything that
         // landed in between. The revision has to move on every write to be a usable token.
         Assert.Equal(baselineVersionBefore, stored.Baseline.Version);
         Assert.True(stored.PersistedRevision > revisionBefore);
@@ -432,7 +432,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         var stored = _store.Load(Profile("tenant-a", "brand-new").Key);
 
         // Two writers both reading revision 0 and both passing the swap would both report
-        // success while only one row survives — a silently dropped observation, which is the
+        // success while only one row survives, a silently dropped observation, which is the
         // failure this whole mechanism exists to make impossible. Counting reported successes
         // against what actually landed is what catches it.
         Assert.Equal(0, storageErrors);
@@ -474,7 +474,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
 
         await Task.WhenAll(tasks);
 
-        // Sixteen messages from one sender at once is not a hot edge case — it is the shape of
+        // Sixteen messages from one sender at once is not a hot edge case, it is the shape of
         // the very burst this system exists to notice, and the profile written by many messages
         // at once is the compromised account. A delta path that made the caller retry would
         // strand most of them; every observation must land, and none may be lost.
@@ -637,7 +637,7 @@ public sealed class SqliteProfileStoreTests : IDisposable
         // A promotion racing a burst is not a corner case: it is an operator intervening in
         // exactly the incident that produces the burst, deciding the sender's new behaviour is
         // legitimate. The moment the operation most needs to succeed is the moment it is most
-        // likely to fail under a compare-and-swap-and-retry design — and a lost observation here
+        // likely to fail under a compare-and-swap-and-retry design, and a lost observation here
         // is silent, because the counters simply read low.
         Assert.Empty(failures);
 

@@ -20,19 +20,18 @@ public sealed record AuthenticationResult
     /// <see cref="FromTrustedVerifier"/> is true.
     /// </summary>
     /// <remarks>
-    /// <b>Agreed convention</b> — colon-separated <c>key=value</c> pairs, keys lowercase:
+    /// <b>Agreed convention</b>, colon-separated <c>key=value</c> pairs, keys lowercase:
     /// <list type="bullet">
-    /// <item><c>dkim</c> — <c>d=</c> the signing domain, <c>s=</c> the selector. Both come from the
+    /// <item><c>dkim</c>, <c>d=</c> the signing domain, <c>s=</c> the selector. Both come from the
     /// verifier's own analysis, never from the message's own DKIM-Signature header.</item>
-    /// <item><c>spf</c> — <c>domain=</c> the checked domain, <c>ip=</c> the checked client address.</item>
-    /// <item><c>dmarc</c> — <c>domain=</c> the policy domain, <c>policy=</c> the published policy.</item>
+    /// <item><c>spf</c>, <c>domain=</c> the checked domain, <c>ip=</c> the checked client address.</item>
+    /// <item><c>dmarc</c>, <c>domain=</c> the policy domain, <c>policy=</c> the published policy.</item>
     /// </list>
     /// <para>
     /// The <c>dkim</c> <c>d=</c> value is what makes <b>alignment</b> computable: a passing DKIM
     /// signature whose signing domain does not align with the visible From domain is a real
     /// outbound-compromise cue, because a valid signature then proves only that the message is
-    /// authentic to some <em>other</em> domain. Alignment is deliberately not computed here —
-    /// <c>AuthenticationResult</c> records what a trusted verifier observed, and comparison against
+    /// authentic to some <em>other</em> domain. Alignment is deliberately not computed here,     /// <c>AuthenticationResult</c> records what a trusted verifier observed, and comparison against
     /// the From domain is a separate judgement that belongs with the policy layer.
     /// </para>
     /// <para>
@@ -49,7 +48,7 @@ public sealed record AuthenticationResult
 /// </summary>
 /// <remarks>
 /// <b>A passing SPF or DKIM result is not a benign verdict.</b> A compromised authorised
-/// account authenticates correctly while sending abuse — that is precisely the outbound
+/// account authenticates correctly while sending abuse, that is precisely the outbound
 /// compromise case this system exists to catch. Authentication answers "authorised to send
 /// as this domain", never "safe to deliver".
 ///
@@ -73,7 +72,7 @@ public sealed record AuthenticationContext
     public required IReadOnlyList<string> ApprovedSenderIdentities { get; init; }
 
     /// <summary>
-    /// True when provenance could not be established — no trusted verifier, no connecting IP,
+    /// True when provenance could not be established, no trusted verifier, no connecting IP,
     /// no session telemetry. Recorded explicitly so downstream evidence can report incomplete
     /// coverage. Never treated as though provenance were clean.
     /// </summary>

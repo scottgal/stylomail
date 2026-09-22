@@ -13,7 +13,7 @@ namespace StyloMail.AccessProxy.Credentials;
 /// <para>
 /// <see cref="LegacyUsernamePassword"/> exists because POP3's classical authentication is two bare
 /// commands (<c>USER</c> / <c>PASS</c>) rather than a SASL exchange, and pretending otherwise would
-/// have pushed a credential-kind check up into the POP3 driver — exactly the branch spec §9.5
+/// have pushed a credential-kind check up into the POP3 driver, exactly the branch spec §9.5
 /// forbids. Modelling the framing explicitly keeps that decision below the seam where it belongs.
 /// A future credential kind that reuses either style needs no driver change; only a genuinely new
 /// wire style would, and that is a protocol fact, not a credential fact.
@@ -46,8 +46,8 @@ public enum BackendAuthStyle
 /// <para>
 /// <b>Token semantics.</b> <see cref="NextAsync"/> is called with a null challenge to obtain the
 /// exchange's opening token, and with the server's challenge bytes thereafter. Returning null means
-/// <em>abandon the exchange</em>: the provider has decided that continuing is wrong — an OAuth error
-/// challenge, a credential that turned out to be unusable — and the driver must fail the session
+/// <em>abandon the exchange</em>: the provider has decided that continuing is wrong, an OAuth error
+/// challenge, a credential that turned out to be unusable, and the driver must fail the session
 /// closed rather than prompt again. That null return is how spec §9.5 risk 4 ("fail closed, never a
 /// silent retry loop") is expressed without the driver knowing anything about credentials.
 /// </para>
@@ -62,7 +62,7 @@ public enum BackendAuthStyle
 /// <b>Dispose is part of the contract.</b> An authenticator holds decrypted credential bytes for the
 /// duration of the exchange; disposing zeroes them. The driver disposes in a finally as soon as the
 /// backend has answered, so the window in which a plaintext credential sits in managed memory is
-/// the length of the authentication exchange rather than the length of the mail session — which can
+/// the length of the authentication exchange rather than the length of the mail session, which can
 /// be hours. Given spec §9.4 item 3 (a refresh token is a bearer credential for the whole mailbox),
 /// shrinking that window is worth one interface method.
 /// </para>
@@ -93,8 +93,8 @@ public interface IBackendAuthenticator : IDisposable
 /// The backend rejected the credential we presented.
 /// </summary>
 /// <remarks>
-/// Distinguished from <see cref="CredentialUnavailableException"/> — "we could not produce a
-/// credential" — because the two have different operator actions. This one means the credential was
+/// Distinguished from <see cref="CredentialUnavailableException"/>, "we could not produce a
+/// credential", because the two have different operator actions. This one means the credential was
 /// produced and the provider refused it, which for an app password usually means it was revoked or
 /// mistyped on the Google side, and for OAuth usually means the refresh token was revoked.
 ///

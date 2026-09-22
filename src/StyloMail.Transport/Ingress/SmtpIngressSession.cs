@@ -17,9 +17,9 @@ namespace StyloMail.Transport.Ingress;
 /// The authorisation model is two rules and nothing else:
 /// </para>
 /// <list type="bullet">
-/// <item><b>Authenticated</b> — the principal may send mail, but only with a sender identity it is
+/// <item><b>Authenticated</b>, the principal may send mail, but only with a sender identity it is
 /// authorised to use, and not at all until the connection is encrypted.</item>
-/// <item><b>Unauthenticated</b> — mail is accepted only for a recipient domain this deployment
+/// <item><b>Unauthenticated</b>, mail is accepted only for a recipient domain this deployment
 /// serves. Any other recipient is a third party trying to relay, and is refused.</item>
 /// </list>
 /// <para>
@@ -30,7 +30,7 @@ namespace StyloMail.Transport.Ingress;
 /// <para>
 /// <b>Nothing here reads an <c>Authentication-Results</c> header.</b> A message cannot assert its own
 /// authentication. Results are only ever accepted from a configured trusted boundary verifier, and
-/// this listener is not one — it is downstream of the MTA that actually saw the client connection,
+/// this listener is not one, it is downstream of the MTA that actually saw the client connection,
 /// so it has neither the connecting address nor the domain's policy. Provenance is therefore
 /// recorded as incomplete rather than assumed clean.
 /// </para>
@@ -219,7 +219,7 @@ internal sealed class SmtpIngressSession
         }
 
         // AUTH is advertised only once the connection is encrypted. Advertising it earlier would
-        // invite a client to send credentials we would then refuse — and the refusal would still
+        // invite a client to send credentials we would then refuse, and the refusal would still
         // have disclosed the mechanism to anyone watching.
         if (_encrypted && _authenticator is not null)
         {
@@ -253,7 +253,7 @@ internal sealed class SmtpIngressSession
 
         // Anything the client pipelined behind STARTTLS is plaintext and untrusted; it is discarded
         // rather than carried across the handshake. A client that pipelined will simply be waiting
-        // for a reply that never comes, and time out — which is the safe outcome, not a silent one.
+        // for a reply that never comes, and time out, which is the safe outcome, not a silent one.
         _readPosition = 0;
         _readLength = 0;
 
@@ -623,13 +623,13 @@ internal sealed class SmtpIngressSession
     /// </summary>
     /// <remarks>
     /// Nothing here is derived from the message. An SMTP connection gives us an envelope sender and,
-    /// when authenticated, an account — no more. No <c>Authentication-Results</c> header is read and
+    /// when authenticated, an account, no more. No <c>Authentication-Results</c> header is read and
     /// none would be trusted: results are only accepted from configured trusted boundary verifiers,
     /// and a header the message author wrote is not one.
     ///
     /// <para>
     /// SPF is the clearest case. It needs the original client's connecting address and the domain's
-    /// published policy, and neither is ours to see — we are downstream of the MTA that received the
+    /// published policy, and neither is ours to see, we are downstream of the MTA that received the
     /// connection, so evaluating it here would check our own address instead. Provenance is recorded
     /// as incomplete so that downstream evidence reports a gap rather than assuming the best.
     /// </para>
@@ -699,7 +699,7 @@ internal sealed class SmtpIngressSession
     /// </summary>
     /// <remarks>
     /// Buffered, so a message is not read a byte at a time, but the buffer is refilled only when
-    /// exhausted — which is what keeps a TLS upgrade from stranding plaintext in it.
+    /// exhausted, which is what keeps a TLS upgrade from stranding plaintext in it.
     /// </remarks>
     private async ValueTask<byte[]?> ReadLineAsync(
         TimeSpan timeout,
@@ -778,8 +778,8 @@ internal sealed class SmtpIngressSession
     /// Writes a reply, given as already-prefixed lines.
     /// </summary>
     /// <remarks>
-    /// Every line is sanitised first. Some reply text is built from values the client supplied — a
-    /// queue id, a hop count, a reason string — and a CR or LF smuggled into any of those would
+    /// Every line is sanitised first. Some reply text is built from values the client supplied, a
+    /// queue id, a hop count, a reason string, and a CR or LF smuggled into any of those would
     /// terminate this reply and let the following line be read by the client as a fresh response.
     /// </remarks>
     private async ValueTask ReplyAsync(IReadOnlyList<string> lines, CancellationToken cancellationToken)

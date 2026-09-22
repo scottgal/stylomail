@@ -9,8 +9,7 @@ namespace StyloMail.Assessment.Semantic;
 /// A classifier that can be driven from an explicit clock.
 /// </summary>
 /// <remarks>
-/// <see cref="ISemanticMailClassifier"/> is deliberately free of ambient state, which is right —
-/// but expiry and sampling need to know what time it is, and taking the time from the wall clock
+/// <see cref="ISemanticMailClassifier"/> is deliberately free of ambient state, which is right, /// but expiry and sampling need to know what time it is, and taking the time from the wall clock
 /// would make a replay produce different cache decisions than the run it is replaying. This
 /// interface carries the clock in explicitly at the one call site that has it, which is the
 /// assessment context. The plain <see cref="ISemanticMailClassifier"/> method still exists for
@@ -76,7 +75,7 @@ public sealed class SemanticCacheStatistics
 /// <remarks>
 /// <para>
 /// <b>This decorates evidence, not decisions.</b> What it returns is a
-/// <see cref="SemanticAssessment"/> — the same type the provider returns — so there is no shape in
+/// <see cref="SemanticAssessment"/>, the same type the provider returns, so there is no shape in
 /// which a cache hit could carry an action, a disposition, or a permission. "Never memoise allow
 /// this sender" is enforced by the contract rather than by discipline: the decorated interface
 /// cannot express an allow, so no future edit can store one here.
@@ -91,7 +90,7 @@ public sealed class SemanticCacheStatistics
 ///
 /// <para>
 /// <b>An unavailable answer is never stored.</b> Caching an outage would turn a transient provider
-/// problem into a lifetime-long one — every message for the next few hours would read as a
+/// problem into a lifetime-long one, every message for the next few hours would read as a
 /// confident cache hit with provenance that says "hit" rather than "we could not ask". Results that
 /// produced nothing are returned but not retained.
 /// </para>
@@ -154,7 +153,7 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
         var expired = lookup.Lookup == SemanticCacheLookup.Expired ? lookup.Entry : null;
 
         // Every path below calls the provider, so they all join the same flight key: two concurrent
-        // misses on one key — or a miss and a concurrent sampled refresh — cost one provider call.
+        // misses on one key, or a miss and a concurrent sampled refresh, cost one provider call.
         var fresh = await _flights
             .RunAsync(keyDigest, () => CallProviderAsync(input, keyDigest, cancellationToken))
             .ConfigureAwait(false);
@@ -296,7 +295,7 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
     /// Derived from the key digest rather than drawn from a random number generator so that a
     /// replay makes the same sampling decisions as the run it replays. Without that, a replayed
     /// decision could differ from the original for a reason that has nothing to do with the
-    /// message — which is the one thing a replay must never do.
+    /// message, which is the one thing a replay must never do.
     /// </remarks>
     private bool ShouldReclassify(string keyDigest)
     {

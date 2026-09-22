@@ -1,5 +1,5 @@
 #!/bin/sh
-# Take the sweep lock from ANY mutation harness — including ad-hoc ones.
+# Take the sweep lock from ANY mutation harness, including ad-hoc ones.
 #
 # WHY THIS EXISTS
 # ---------------
@@ -12,12 +12,12 @@
 #
 # This is the convention, and it applies to harnesses nobody can audit for:
 #
-#     Any sweep harness — committed or ad-hoc, in .styloagent/tools/ or in /tmp — takes the lock
+#     Any sweep harness, committed or ad-hoc, in .styloagent/tools/ or in /tmp, takes the lock
 #     before its first mutation and removes it when it finishes.
 #
 # A bystander cannot audit for a tool they cannot see, so the lock is how a harness announces
 # itself. `.styloagent/tools/mutate.py` isolates itself in a copy and does not need the lock to be
-# safe — it takes the lock anyway, so that ONE signal covers every harness.
+# safe, it takes the lock anyway, so that ONE signal covers every harness.
 #
 # USAGE
 # -----
@@ -29,7 +29,7 @@
 # it: the failure mode of hand-rolled acquire/release is a harness that exits early and leaves the
 # lock behind, which blocks every other sweep until somebody works out why.
 #
-# Exits 1 if a sweep already holds the lock. Do not force it — two concurrent sweeps interleave
+# Exits 1 if a sweep already holds the lock. Do not force it, two concurrent sweeps interleave
 # mutations and attribute each other's failures.
 
 set -eu

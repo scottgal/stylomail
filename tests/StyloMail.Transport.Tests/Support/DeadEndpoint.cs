@@ -9,7 +9,7 @@ namespace StyloMail.Transport.Tests.Support;
 /// </summary>
 /// <remarks>
 /// <b>Replaces a "pick a free port and hope it stays free" helper.</b> That version started a probe
-/// listener, read its port, stopped it, and returned the number — so between the release and the
+/// listener, read its port, stopped it, and returned the number, so between the release and the
 /// dial the port belonged to nobody, and any other test in the assembly could take it. If one did,
 /// the connection would be <em>accepted</em> and a test asserting that an unreachable upstream
 /// yields outcomes would quietly be exercising something else. Low probability, and that is the
@@ -17,7 +17,7 @@ namespace StyloMail.Transport.Tests.Support;
 ///
 /// <para>
 /// Owning the endpoint for the test's duration removes the window rather than narrowing it. The
-/// client's connection still fails at session setup — the greeting read sees a closed socket — so
+/// client's connection still fails at session setup, the greeting read sees a closed socket, so
 /// the behaviour under test is unchanged; it simply no longer depends on nobody else wanting the
 /// port.
 /// </para>
@@ -107,7 +107,7 @@ internal sealed class DeadEndpoint : IAsyncDisposable
 
             Interlocked.Increment(ref _accepted);
 
-            // Closed without reading, and without a greeting — the peer's session setup fails at the
+            // Closed without reading, and without a greeting, the peer's session setup fails at the
             // first read, which is the failure this endpoint exists to produce deterministically.
             client.Dispose();
         }

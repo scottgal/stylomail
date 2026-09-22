@@ -30,7 +30,7 @@ public static class QueueSchema
     /// <b>Version mismatch throws rather than proceeding.</b> Every table below is created with
     /// <c>IF NOT EXISTS</c>, so a database written by an older version of this code keeps its old
     /// columns and fails later with a confusing "no such column" deep inside an accept path. Failing
-    /// loudly at startup — when the operation is still safe to refuse — is the kinder behaviour for
+    /// loudly at startup, when the operation is still safe to refuse, is the kinder behaviour for
     /// a component whose job is not to lose mail.
     /// </para>
     /// </remarks>
@@ -95,7 +95,7 @@ public static class QueueSchema
     /// Columns that must exist for the schema to be the one this build understands.
     /// </summary>
     /// <remarks>
-    /// A representative column per table per schema revision, not every column — the point is to
+    /// A representative column per table per schema revision, not every column, the point is to
     /// notice that the table is <em>someone else's</em>, and the newest columns are the ones a
     /// colliding or stale definition will lack.
     /// </remarks>
@@ -116,7 +116,7 @@ public static class QueueSchema
     /// catch it: the version table is ours, so on first run it is simply empty and gets stamped,
     /// while <c>queue_item</c> is whatever someone else created. Every test would pass against a
     /// scratch database and the failure would land on the first real accept as a confusing
-    /// "no such column" — with mail on the line.
+    /// "no such column", with mail on the line.
     /// </para>
     /// <para>
     /// The <c>queue_</c> prefix exists to make this collision unlikely; this check exists because
@@ -165,7 +165,7 @@ public static class QueueSchema
                     $"Table '{table}' exists but is missing column(s) {string.Join(", ", missing)}. This " +
                     "is the signature of a name collision: CREATE TABLE IF NOT EXISTS silently accepts a " +
                     "table of the same name with a different shape, so these rows are NOT the queue's. " +
-                    "Rename one of the tables — do not drop anything until you know whose rows these are.");
+                    "Rename one of the tables, do not drop anything until you know whose rows these are.");
             }
         }
     }

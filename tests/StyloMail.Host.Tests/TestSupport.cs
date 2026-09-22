@@ -31,7 +31,7 @@ internal static class TestPrincipals
     public const string AcmeSenderKey = "test-key-acme-send";
     public const string AcmeSenderPrincipal = "user-acme-sender";
 
-    /// <summary>Reviewer for acme — separately privileged from the sender.</summary>
+    /// <summary>Reviewer for acme, separately privileged from the sender.</summary>
     public const string AcmeReviewerKey = "test-key-acme-review";
     public const string AcmeReviewerPrincipal = "user-acme-reviewer";
 
@@ -120,7 +120,7 @@ internal sealed class TestHost : WebApplicationFactory<Program>
 
     /// <summary>
     /// Makes durable acceptance fail, so the "storage unavailable" path can be exercised without
-    /// depending on the suite's ability to make a directory genuinely unwritable — which varies
+    /// depending on the suite's ability to make a directory genuinely unwritable, which varies
     /// with the user the tests run as.
     /// </summary>
     public TestHost FailSubmissions()
@@ -152,7 +152,7 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     /// <remarks>
     /// <b>Encryption is switched off here, and that is the point rather than a shortcut.</b> With
     /// <c>RequireEncryption</c> left on and no certificate there is no <c>STARTTLS</c> and therefore
-    /// no <c>AUTH</c>, so the listener refuses to be constructed at all — a real deployment wanting
+    /// no <c>AUTH</c>, so the listener refuses to be constructed at all, a real deployment wanting
     /// authenticated submission supplies a certificate. What these tests exercise is the inbound
     /// handoff, which is the path that works without one.
     /// </remarks>
@@ -184,7 +184,7 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     /// <remarks>
     /// <b>The connector is replaced rather than the environment being set.</b> The real secret is read
     /// from <c>STYLOMAIL_CF_INGRESS_SECRET</c>, and mutating process environment from a test would
-    /// race against every other test in the suite — the same hazard <c>HostCredentials.Resolve</c> is
+    /// race against every other test in the suite, the same hazard <c>HostCredentials.Resolve</c> is
     /// shaped to avoid. What is substituted is the credential only: the connector is still built over
     /// the container's own sink and options, so everything except the secret is the production wiring.
     /// The environment-absent path is tested separately and does not need to be faked.
@@ -360,7 +360,7 @@ internal sealed class TestHost : WebApplicationFactory<Program>
 /// </summary>
 /// <remarks>
 /// <b>Attempts, not acceptances.</b> The counter is incremented on entry to the intake, so it counts
-/// every call — including one the queue refuses, and including a second call for a message the first
+/// every call, including one the queue refuses, and including a second call for a message the first
 /// already stored. That is deliberately the thing being counted: the double-accept defect is two
 /// <em>calls</em> under two different idempotency keys, and the queue deduplicates only what it can
 /// see as one submission, so the count is the only place the second call is visible. Whether a row
@@ -386,7 +386,7 @@ internal sealed class AcceptanceCounter
 /// </summary>
 /// <remarks>
 /// Delegates rather than replacing, so the message still lands in the queue exactly as it would in
-/// production — a counting stub that stored nothing would make "accepted exactly once" a claim about
+/// production, a counting stub that stored nothing would make "accepted exactly once" a claim about
 /// the stub. The counter is what the outcome cannot show: the queue deduplicates what it can see as
 /// one submission, so two accepts under two different keys produce two deliveries that each look
 /// correct from the call site that made them.
@@ -509,7 +509,7 @@ internal sealed class RecordingAssessor : IMailAssessor
                 // The real pipeline refuses to accept what it cannot produce rather than
                 // manufacturing mail, so an unresolvable reference becomes a Defer and not an
                 // exception. That is precisely why a host sending a reference naming nothing would
-                // not fail loudly — it would quietly turn every submission into a Defer.
+                // not fail loudly, it would quietly turn every submission into a Defer.
                 action = MailAction.Defer;
             }
             else
@@ -561,7 +561,7 @@ internal sealed class RecordingAssessor : IMailAssessor
 
                 // Model the admission as the real pipeline does, rather than leaving it null and
                 // letting the host infer "created" by default. A fake that omits a field the
-                // pipeline sets makes the host's handling of it untested — the same fidelity gap
+                // pipeline sets makes the host's handling of it untested, the same fidelity gap
                 // that hid the acceptance seam.
                 admission = accepted.Admission == QueueAdmission.DuplicateSubmission
                     ? SubmissionAdmission.Duplicate

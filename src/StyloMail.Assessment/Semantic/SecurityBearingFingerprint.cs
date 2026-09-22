@@ -13,8 +13,8 @@ namespace StyloMail.Assessment.Semantic;
 /// <b>This exists to stop a near-duplicate from being smoothed into a reuse.</b> Two messages can
 /// be nearly identical in wording and completely different in effect: a campaign that reuses a
 /// known-good template while swapping in a new bank account is semantically similar and
-/// operationally new. Any reuse gate that compares presentation — body text, subject, semantic
-/// dimension vector — will consider those the same message, which is exactly the evasion it is
+/// operationally new. Any reuse gate that compares presentation, body text, subject, semantic
+/// dimension vector, will consider those the same message, which is exactly the evasion it is
 /// supposed to catch.
 ///
 /// <para>
@@ -27,7 +27,7 @@ namespace StyloMail.Assessment.Semantic;
 ///
 /// <para>
 /// Only the digest is retained. The components can contain addresses, account numbers and URLs,
-/// and a cache is not a place for any of them — the digest is enough to answer "identical?" and
+/// and a cache is not a place for any of them, the digest is enough to answer "identical?" and
 /// carries nothing readable.
 /// </para>
 /// </remarks>
@@ -76,7 +76,7 @@ public sealed record SecurityBearingFingerprint
         }
 
         // What attachments actually are, by content hash where one was computed and by name
-        // otherwise — a rename with unchanged bytes is the same payload.
+        // otherwise, a rename with unchanged bytes is the same payload.
         foreach (var attachment in message.Attachments)
         {
             Add("attachment.hash", attachment.ContentHash);
@@ -94,8 +94,8 @@ public sealed record SecurityBearingFingerprint
             Add("sender.auth", $"{result.Mechanism.ToLowerInvariant()}={result.Result.ToLowerInvariant()}");
         }
 
-        // Payment destinations the body names. Extracted deterministically — no network, no
-        // resolution — because a changed account number is the canonical example of an identical
+        // Payment destinations the body names. Extracted deterministically, no network, no
+        // resolution, because a changed account number is the canonical example of an identical
         // template with a different effect.
         foreach (var identifier in PaymentIdentifiers.Extract(message.BodyText))
         {
@@ -117,7 +117,7 @@ public sealed record SecurityBearingFingerprint
     /// <remarks>
     /// Scheme and host are case-insensitive and are folded; path, query and fragment are not,
     /// because <c>?account=1</c> and <c>?account=2</c> are different destinations. Redirects are
-    /// never followed — resolving a target means touching an attacker-chosen host from inside the
+    /// never followed, resolving a target means touching an attacker-chosen host from inside the
     /// trust boundary, which the spec forbids in the MVP.
     /// </remarks>
     internal static string NormalizeTarget(string? target)
@@ -147,7 +147,7 @@ public sealed record SecurityBearingFingerprint
     /// <summary>Folds case and surrounding whitespace, and nothing else.</summary>
     /// <remarks>
     /// Plus-addressing and dot-folding are deliberately not applied. They are provider-specific,
-    /// and guessing wrong would merge two genuinely different senders into one — turning a
+    /// and guessing wrong would merge two genuinely different senders into one, turning a
     /// security-bearing difference into an apparent match.
     /// </remarks>
     internal static string NormalizeAddress(string? address) =>
@@ -160,7 +160,7 @@ public sealed record SecurityBearingFingerprint
 /// <remarks>
 /// This is a <em>comparison</em> aid, not a detector: it exists so that two messages naming
 /// different destinations produce different fingerprints, and nothing here decides anything about
-/// a message. It never fetches, resolves or validates — an IBAN checksum would tell us nothing we
+/// a message. It never fetches, resolves or validates, an IBAN checksum would tell us nothing we
 /// need, and the extractor's only job is to be stable.
 ///
 /// <para>
@@ -219,7 +219,7 @@ public static class PaymentIdentifiers
             var digits = new string([.. match.Value.Where(char.IsAsciiDigit)]);
 
             // The digit-run pattern is a superset of an IBAN's tail, so a run that is only a
-            // fragment of an identifier already recorded must not be recorded again — otherwise
+            // fragment of an identifier already recorded must not be recorded again, otherwise
             // one changed digit would look like two changed identifiers.
             if (digits.Length < MinimumDigitRun || seen.Contains(digits))
             {

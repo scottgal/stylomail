@@ -40,13 +40,13 @@ internal static partial class TextTools
     [GeneratedRegex(@"\bhttps?://\S+|\bwww\.\S+", RegexOptions.CultureInvariant)]
     private static partial Regex UrlLike();
 
-    /// <summary>Long hex runs and UUIDs — message ids, tracking ids, tokens.</summary>
+    /// <summary>Long hex runs and UUIDs, message ids, tracking ids, tokens.</summary>
     [GeneratedRegex(@"\b[0-9a-fA-F]{16,}\b|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
         RegexOptions.CultureInvariant)]
     private static partial Regex IdentifierLike();
 
     /// <summary>
-    /// Numbers of three digits or more, with any separators — amounts, order numbers, identifiers,
+    /// Numbers of three digits or more, with any separators, amounts, order numbers, identifiers,
     /// years. Short numbers are left alone: "2 items" and "2pm" are content, not fillers.
     /// </summary>
     [GeneratedRegex(@"\d{3,}(?:[.,:\/\-]\d+)*", RegexOptions.CultureInvariant)]
@@ -192,7 +192,7 @@ internal static partial class TextTools
 
     /// <summary>
     /// A template skeleton: the text with the parts that vary between two sendings of one template
-    /// replaced by placeholders — addresses, URLs, identifiers, numbers and timestamps. Two
+    /// replaced by placeholders, addresses, URLs, identifiers, numbers and timestamps. Two
     /// messages rendered from one template collapse to the same skeleton.
     /// </summary>
     public static string Skeleton(string value)

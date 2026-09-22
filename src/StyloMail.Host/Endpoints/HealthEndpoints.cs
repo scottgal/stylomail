@@ -4,7 +4,7 @@ using StyloMail.Host.Observability;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>/health/live</c>, <c>/health/ready</c> and <c>/metrics</c> — unauthenticated by necessity,
+/// <c>/health/live</c>, <c>/health/ready</c> and <c>/metrics</c>, unauthenticated by necessity,
 /// and therefore carrying no sensitive content at all.
 /// </summary>
 /// <remarks>
@@ -22,7 +22,7 @@ public static class HealthEndpoints
         app.MapGet("/metrics", MetricsAsync);
     }
 
-    /// <summary>Is the process up? Deliberately checks nothing else — a dependency outage is not a
+    /// <summary>Is the process up? Deliberately checks nothing else, a dependency outage is not a
     /// reason to have a container restarted.</summary>
     private static Task<IResult> LivenessAsync()
         => Task.FromResult<IResult>(Results.Ok(new { status = "live" }));

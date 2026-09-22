@@ -4,9 +4,8 @@ namespace StyloMail.AccessProxy.Imap;
 /// A minimal reader for the client commands the proxy has to understand.
 /// </summary>
 /// <remarks>
-/// <b>Deliberately not an IMAP parser.</b> The proxy understands exactly three commands —
-/// <c>LOGIN</c>, <c>AUTHENTICATE</c> and <c>LOGOUT</c>, plus <c>CAPABILITY</c> and <c>NOOP</c> so a
-/// client's pre-login probes get an answer — because those are the only ones that carry or concern
+/// <b>Deliberately not an IMAP parser.</b> The proxy understands exactly three commands, /// <c>LOGIN</c>, <c>AUTHENTICATE</c> and <c>LOGOUT</c>, plus <c>CAPABILITY</c> and <c>NOOP</c> so a
+/// client's pre-login probes get an answer, because those are the only ones that carry or concern
 /// a credential. Everything after authentication is bytes, relayed without inspection.
 ///
 /// <para>
@@ -52,7 +51,7 @@ internal static class ImapLine
     }
 
     /// <summary>
-    /// Reads one astring argument — an atom, or a quoted string with <c>\</c> escapes.
+    /// Reads one astring argument, an atom, or a quoted string with <c>\</c> escapes.
     /// </summary>
     /// <remarks>
     /// Returns false for a literal, and for anything malformed. The caller turns that into a
@@ -119,7 +118,7 @@ internal static class ImapLine
     /// <b>The only client-supplied text the proxy echoes.</b> An IMAP tag is an atom: printable
     /// ASCII, no spaces, no control characters, and not the special <c>+</c> or <c>*</c>. Echoing an
     /// unvalidated tag would let a client inject a response line of its own into the stream the
-    /// proxy writes back — so the check is a security boundary, not a formality.
+    /// proxy writes back, so the check is a security boundary, not a formality.
     /// </remarks>
     internal static bool IsValidTag(string tag)
     {

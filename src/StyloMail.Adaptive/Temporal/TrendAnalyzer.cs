@@ -158,7 +158,7 @@ public static class TrendAnalyzer
         // Fewer than two readings is a position, not a trend.
         //
         // Checked exactly once. There used to be two conditions that both reported
-        // InsufficientSupport — "no populated buckets" and "fewer than two" — and dropping
+        // InsufficientSupport, "no populated buckets" and "fewer than two", and dropping
         // either left the other to add the identical reason, so a mutation of either would
         // have gone undetected. One condition, one place, one reason.
         if (populated.Length < 2)
@@ -170,7 +170,7 @@ public static class TrendAnalyzer
         var (first, last) = Range(populated);
 
         // Sparse means a hole between observations. A leading or trailing empty bucket is not
-        // a hole — it is the beginning or the (not yet happened) end of the window.
+        // a hole, it is the beginning or the (not yet happened) end of the window.
         var interior = grid
             .Where(bucket => bucket.Index >= first && bucket.Index <= last)
             .ToArray();
@@ -227,13 +227,12 @@ public static class TrendAnalyzer
     }
 
     /// <summary>
-    /// Differences the smoothed series. Only reached with at least two populated buckets —
-    /// <see cref="Analyze"/> refuses anything less before calling.
+    /// Differences the smoothed series. Only reached with at least two populated buckets,     /// <see cref="Analyze"/> refuses anything less before calling.
     /// </summary>
     /// <remarks>
     /// There used to be a second "fewer than two readings" guard here as well. It was
     /// unreachable (smoothing yields exactly one entry per populated bucket) and it reported
-    /// the same reason as the check in <see cref="Analyze"/> — so removing either one left the
+    /// the same reason as the check in <see cref="Analyze"/>, so removing either one left the
     /// other to produce an identical result, and a mutation of either would have gone
     /// undetected. One condition, one place. The index arithmetic below relies on that.
     /// </remarks>
@@ -334,7 +333,7 @@ public static class TrendAnalyzer
             }
             else
             {
-                // A fresh dictionary per bucket, not a mutated shared one — every smoothed
+                // A fresh dictionary per bucket, not a mutated shared one, every smoothed
                 // reading has to stay the reading it was, or the whole series collapses to
                 // its final value and every velocity becomes zero.
                 current = new Dictionary<string, double>(previous, StringComparer.Ordinal);

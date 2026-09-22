@@ -3,8 +3,7 @@ using System.Text;
 namespace StyloMail.Mime.Tests;
 
 /// <summary>
-/// Builds messages in memory for the cases a file fixture cannot conveniently express —
-/// nesting bombs, header floods, hidden text.
+/// Builds messages in memory for the cases a file fixture cannot conveniently express, /// nesting bombs, header floods, hidden text.
 /// </summary>
 internal static class SyntheticMessage
 {

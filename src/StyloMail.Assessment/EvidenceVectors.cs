@@ -26,7 +26,7 @@ public static class EvidenceVectors
     /// <param name="evidence">Evidence of any origin; only semantic items are considered.</param>
     /// <param name="expectedDimensionIds">
     /// Dimensions that should be present. Any that are absent from <paramref name="evidence"/>
-    /// entirely are recorded as unavailable rather than omitted — an omitted dimension is
+    /// entirely are recorded as unavailable rather than omitted, an omitted dimension is
     /// indistinguishable from one that does not exist, and coverage would then overstate itself.
     /// </param>
     public static DimensionVector Semantic(

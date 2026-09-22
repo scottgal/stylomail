@@ -11,7 +11,7 @@ namespace StyloMail.AccessProxy.Imap;
 /// </summary>
 /// <remarks>
 /// <b>This is the product argument of spec §9.3 made concrete.</b> Google requires OAuth for IMAP,
-/// and a large amount of deployed client software cannot do OAuth — it speaks <c>LOGIN user pass</c>
+/// and a large amount of deployed client software cannot do OAuth, it speaks <c>LOGIN user pass</c>
 /// and nothing else. Such a client cannot reach Gmail at all any more. Here it speaks that same
 /// command to StyloMail with StyloMail-issued credentials, and StyloMail performs whatever exchange
 /// Gmail actually demands on the far side. The proxy does not merely sit in the path; it restores
@@ -48,7 +48,7 @@ public sealed class ImapAccessProxySession : AccessProxySessionBase
     {
         // The capability list is ours, not the backend's, because this proxy terminates the session
         // and authenticates the client itself. A client that caches it and later issues an extension
-        // the backend lacks will get a BAD from the backend — an accepted consequence of session
+        // the backend lacks will get a BAD from the backend, an accepted consequence of session
         // termination, and the same one every authenticating mail proxy has.
         await Writer.WriteLineAsync(
             "* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN AUTH=LOGIN] StyloMail ready",

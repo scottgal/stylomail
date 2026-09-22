@@ -38,12 +38,12 @@ public enum SmtpDeliveryStage
 /// of information the queue's retry policy runs on:
 ///
 /// <list type="bullet">
-/// <item><see cref="TransientRejection"/> — a 4xx. The upstream says "not now". Retrying is correct.</item>
-/// <item><see cref="PermanentRejection"/> — a 5xx. Retrying cannot help, and the spec forbids
+/// <item><see cref="TransientRejection"/>, a 4xx. The upstream says "not now". Retrying is correct.</item>
+/// <item><see cref="PermanentRejection"/>, a 5xx. Retrying cannot help, and the spec forbids
 /// inventing a bounce to tell the sender, so this is recorded and left to the upstream's DSN policy.</item>
-/// <item><see cref="Failed"/> — we never got far enough for the upstream to have an opinion. A
+/// <item><see cref="Failed"/>, we never got far enough for the upstream to have an opinion. A
 /// connection or protocol fault; nothing was committed.</item>
-/// <item><see cref="InDoubt"/> — <b>the message may have been delivered and we will never know.</b>
+/// <item><see cref="InDoubt"/>, <b>the message may have been delivered and we will never know.</b>
 /// See the remarks on <see cref="SmtpTransactionResult.InDoubt"/>.</item>
 /// </list>
 /// </remarks>
@@ -68,7 +68,7 @@ public enum SmtpTransactionOutcome
     /// <b>The ambiguity the spec requires us to surface rather than eliminate.</b> Upstream may have
     /// accepted the message and lost only the reply. Reporting this as a plain failure would invite
     /// a silent drop; reporting it as success would invite a silent loss. It is reported as what it
-    /// is and the caller decides — the queue records it as <c>InDoubt</c> and retries, because a
+    /// is and the caller decides, the queue records it as <c>InDoubt</c> and retries, because a
     /// duplicate is recoverable and a silent loss is not.
     /// </remarks>
     InDoubt = 4,
@@ -120,8 +120,7 @@ public sealed record SmtpTransactionResult
     /// The transport refused to attempt this recipient, without consulting the upstream.
     /// </summary>
     /// <remarks>
-    /// Reported as a permanent rejection because the reason is a property of the message itself —
-    /// an oversize body, or an envelope address that is not a legal SMTP path. Retrying would repeat
+    /// Reported as a permanent rejection because the reason is a property of the message itself,     /// an oversize body, or an envelope address that is not a legal SMTP path. Retrying would repeat
     /// it exactly, and the spec forbids telling the sender about it with a bespoke bounce, so it is
     /// recorded and left to the upstream's DSN policy.
     /// </remarks>

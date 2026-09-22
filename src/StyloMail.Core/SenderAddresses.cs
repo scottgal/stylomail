@@ -1,12 +1,12 @@
 namespace StyloMail.Core;
 
 /// <summary>
-/// Shared rules about sender addresses — in particular the null sender.
+/// Shared rules about sender addresses, in particular the null sender.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Single-sourced deliberately, for the same reason as <see cref="PayloadReferences"/>.</b> This
-/// predicate previously existed twice — in the queue and in assessment — mirrored by convention with
+/// predicate previously existed twice, in the queue and in assessment, mirrored by convention with
 /// each copy citing the other. That is a divergence class with a silent failure: if the two ever
 /// disagree, the assessor and the queue disagree about whether the *same message* is a DSN, with one
 /// refusing before provider spend and the other after. One copy of it had already been wrong
@@ -39,7 +39,7 @@ public static class SenderAddresses
     /// </summary>
     /// <remarks>
     /// Tolerant of the travelling value (<c>""</c>), surrounding whitespace, and the wire form
-    /// <c>"&lt;&gt;"</c> — a caller passing the un-normalised form must not be misread as having a
+    /// <c>"&lt;&gt;"</c>, a caller passing the un-normalised form must not be misread as having a
     /// real address, because the consequence of that misreading is treating a DSN as ordinary mail.
     /// </remarks>
     public static bool IsNullSender(string? address)

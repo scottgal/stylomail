@@ -6,7 +6,7 @@ namespace StyloMail.Host.Tests;
 
 /// <summary>
 /// The credential model: two secrets, both from the environment, with the two failure modes that
-/// matter — half-configured, and too short to be worth anything.
+/// matter, half-configured, and too short to be worth anything.
 /// </summary>
 public sealed class CredentialTests
 {

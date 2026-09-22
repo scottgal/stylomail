@@ -15,8 +15,7 @@ namespace StyloMail.AccessProxy.Tests.Support;
 /// The stores are the real in-memory implementations and the protector is the real AES-GCM one, so
 /// tests that assert "the stored bytes are not the credential" and "a revoked credential never
 /// reaches the provider" exercise the production code paths rather than stand-ins that would pass
-/// trivially. Only the two genuine boundaries — the provider's socket and its OAuth token service —
-/// are faked, and they are faked because the brief forbids the real thing.
+/// trivially. Only the two genuine boundaries, the provider's socket and its OAuth token service, /// are faked, and they are faked because the brief forbids the real thing.
 /// </remarks>
 internal sealed class ProxyHarness
 {

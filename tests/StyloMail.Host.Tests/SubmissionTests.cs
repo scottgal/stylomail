@@ -62,11 +62,10 @@ public sealed class SubmissionTests
         // Two mechanisms can return the same queue id: the host short-circuiting a replay from its
         // own record, and the pipeline re-running and letting the queue dedupe. A mutation deleting
         // the host fast-path left this test GREEN, because both produce the same id *and* the same
-        // "Duplicate" status — asserting the outcome more loudly distinguished nothing.
+        // "Duplicate" status, asserting the outcome more loudly distinguished nothing.
         //
         // Only the host path can answer without invoking the assessor, so that is what this asserts.
-        // It restates what A_retry_does_not_spend_a_second_assessment covers; that is deliberate —
-        // this test claims a specific mechanism in its name and must be able to fail for it.
+        // It restates what A_retry_does_not_spend_a_second_assessment covers; that is deliberate,         // this test claims a specific mechanism in its name and must be able to fail for it.
         Assert.Equal(1, host.Assessor.CallCount);
     }
 
@@ -128,7 +127,7 @@ public sealed class SubmissionTests
     public async Task A_submission_without_an_idempotency_key_is_refused()
     {
         // Tightened by overview-'s ruling. Accepting it would have meant a client that retries
-        // after a lost response — the ordinary case — silently delivering a second copy, and the
+        // after a lost response, the ordinary case, silently delivering a second copy, and the
         // route cannot keep §12's replay promise for a caller that supplies no key to replay with.
         using var host = new TestHost();
         using var client = host.ClientAs(TestPrincipals.AcmeSenderKey);
@@ -180,7 +179,7 @@ public sealed class SubmissionTests
     public async Task A_submission_refused_by_admission_control_is_not_reported_as_accepted()
     {
         // Quota refusal is a decision to decline, not a storage failure, but it is still not an
-        // acceptance — and the boundary between "declined" and "accepted" is the one that matters.
+        // acceptance, and the boundary between "declined" and "accepted" is the one that matters.
         using var host = new TestHost().WithQueueOptions(new QueueOptions { MaxQueuedItemsPerTenant = 1 });
         using var client = host.ClientAs(TestPrincipals.AcmeSenderKey);
 

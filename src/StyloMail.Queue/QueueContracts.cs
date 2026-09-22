@@ -36,7 +36,7 @@ public sealed record RecipientAdmission
     /// This paragraph previously read "required when Held", which was never true of the code and
     /// misled a consumer into building a submit path around an exception that does not exist. If a
     /// caller needs a missing policy deadline to be <em>loud</em>, that belongs in the caller's
-    /// validation of policy output — not inferred from the queue.
+    /// validation of policy output, not inferred from the queue.
     /// </para>
     /// </remarks>
     public DateTimeOffset? ReEvaluateBy { get; init; }
@@ -70,7 +70,7 @@ public sealed record QueueSubmission
     /// </summary>
     /// <remarks>
     /// <b>The null sender is refused here, and that is not the same claim as "the null sender cannot
-    /// occur".</b> A bounce genuinely arrives carrying <c>&lt;&gt;</c> — but it arrives at the
+    /// occur".</b> A bounce genuinely arrives carrying <c>&lt;&gt;</c>, but it arrives at the
     /// <em>ingress</em>, where it is assessed, and never reaches this submission path. The spec
     /// records permanent failures and leaves bounce policy to the upstream MTA; we do not originate
     /// bounces, so accepting one for delivery would mean generating a bounce on someone else's
@@ -78,7 +78,7 @@ public sealed record QueueSubmission
     ///
     /// <para>
     /// This property previously read "may be the null sender, as in a bounce", which was true of the
-    /// wire and false of this path — a comment that contradicted the validation two files away.
+    /// wire and false of this path, a comment that contradicted the validation two files away.
     /// Worth stating which one is meant, because the next reader reconciles that contradiction in
     /// whichever direction they happen to approach from.
     /// </para>
@@ -94,7 +94,7 @@ public sealed record QueueSubmission
     public required IReadOnlyList<RecipientAdmission> Recipients { get; init; }
 
     /// <summary>
-    /// The message's own <c>Message-ID</c> header. <b>UNTRUSTED</b> — sender-supplied, recorded for
+    /// The message's own <c>Message-ID</c> header. <b>UNTRUSTED</b>, sender-supplied, recorded for
     /// diagnostics and loop tracing only. Never a key, never a deduplication guarantee.
     /// </summary>
     public string? UntrustedMessageIdHeader { get; init; }
@@ -105,7 +105,7 @@ public sealed record QueueSubmission
     /// <remarks>
     /// A replay with the same key and the same <see cref="MimeDigest"/> returns the existing
     /// submission; the same key with a different digest is a conflict and is refused. This makes
-    /// submission replay-safe, which is a different question from SMTP's delivery ambiguity — see
+    /// submission replay-safe, which is a different question from SMTP's delivery ambiguity, see
     /// <see cref="DeliveryAttemptOutcome.InDoubt"/>.
     /// </remarks>
     public string? IdempotencyKey { get; init; }
@@ -114,10 +114,10 @@ public sealed record QueueSubmission
     /// Hops this message has already taken. Refused once it reaches <see cref="QueueOptions.MaxHops"/>.
     /// </summary>
     /// <remarks>
-    /// <b>Nullable, and <c>null</c> means "not observed" — never encode it as 0.</b> Zero is a real
+    /// <b>Nullable, and <c>null</c> means "not observed", never encode it as 0.</b> Zero is a real
     /// observation: a message that genuinely arrived with no prior hops. "Nobody looked" is a
     /// different fact, and collapsing the two is how a backstop comes to read as enforced while
-    /// never firing. That was the defect here — <c>MaxHops</c> compared a permanent 0 for as long as
+    /// never firing. That was the defect here, <c>MaxHops</c> compared a permanent 0 for as long as
     /// nothing supplied a value, and no test in this lane could see it because the tests construct
     /// their own count.
     ///
@@ -142,7 +142,7 @@ public enum QueueAdmission
     /// <summary>An idempotent replay of a submission already held; returns the original queue id.</summary>
     DuplicateSubmission = 1,
 
-    /// <summary>Hop limit reached — a mail loop. Refused before acceptance.</summary>
+    /// <summary>Hop limit reached, a mail loop. Refused before acceptance.</summary>
     RefusedLoopLimit = 2,
 
     /// <summary>Admission control: the tenant already holds its maximum number of live items.</summary>
@@ -154,7 +154,7 @@ public enum QueueAdmission
     /// <summary>The message exceeds the maximum payload size.</summary>
     RefusedPayloadTooLarge = 5,
 
-    /// <summary>Same idempotency key, different payload — a client error, not a delivery.</summary>
+    /// <summary>Same idempotency key, different payload, a client error, not a delivery.</summary>
     RefusedIdempotencyConflict = 6,
 
     /// <summary>
@@ -174,7 +174,7 @@ public enum QueueAdmission
 /// <remarks>
 /// <b>The acceptance gate is <see cref="QueueId"/>.</b> It is non-null if and only if a durable
 /// metadata row referencing a durably spooled payload exists. Deriving acceptance from the presence
-/// of the queue id — rather than from a boolean set alongside it — means no future edit can report
+/// of the queue id, rather than from a boolean set alongside it, means no future edit can report
 /// success without the durable record that success is a claim about.
 ///
 /// <para>
@@ -275,7 +275,7 @@ public sealed record QueueRecipientState
 /// <remarks>
 /// Deliberately separate from <see cref="DeliveryState"/>. <see cref="PartiallyDelivered"/> has no
 /// single-state representation, and collapsing it would mean either reporting a partial delivery as
-/// a success or reporting it as a total failure — both of which hide the subset the spec requires
+/// a success or reporting it as a total failure, both of which hide the subset the spec requires
 /// us to surface. This is a derived view, not a stored state, so it cannot drift from the
 /// per-recipient rows it summarises.
 /// </remarks>
@@ -314,7 +314,7 @@ public sealed record QueueItem
     /// <remarks>
     /// Stored nullable rather than collapsed to <c>0</c> at rest. A message accepted without the
     /// count being observed is <em>knowable-but-unobserved</em>, and writing <c>0</c> would erase
-    /// that distinction permanently — the row would claim we looked and found no prior hops. The
+    /// that distinction permanently, the row would claim we looked and found no prior hops. The
     /// null is the record that the loop backstop did not run for this message.
     /// </remarks>
     public required int? HopCount { get; init; }
@@ -341,7 +341,7 @@ public sealed record QueueItem
     public required IReadOnlyList<QueueRecipientState> Recipients { get; init; }
 
     /// <summary>
-    /// Recipients that have not settled yet. May include ones still backing off — use
+    /// Recipients that have not settled yet. May include ones still backing off, use
     /// <see cref="QueueLease.PendingRecipients"/> to decide what to actually attempt.
     /// </summary>
     public IReadOnlyList<QueueRecipientState> UnsettledRecipients =>
@@ -365,7 +365,7 @@ public sealed record QueueItem
 
             // A recipient is still owed work unless it has settled as Delivered or TerminalFailure.
             // That includes holds and quarantines, which wait on a policy decision rather than on
-            // a delivery attempt — the message is not finished with us just because it is not
+            // a delivery attempt, the message is not finished with us just because it is not
             // currently being delivered.
             if (Recipients.Any(r => !r.IsTerminalForDelivery()))
             {
@@ -408,7 +408,7 @@ public sealed record QueueLease
 /// Most of these are reported by a delivery worker, but not all: the queue records its own events
 /// (a lapsed lease, an elapsed hold, an expiry, a reviewer's decision) into the same history, so
 /// that a recipient's story is complete in one place and in one order. A worker may not report the
-/// queue-owned values — <see cref="QueueStore.CompleteAsync"/> rejects them — because that would
+/// queue-owned values, <see cref="QueueStore.CompleteAsync"/> rejects them, because that would
 /// let an elapsed timer or a policy decision be passed off as something observed on the wire.
 /// </remarks>
 public enum DeliveryAttemptOutcome
@@ -423,7 +423,7 @@ public enum DeliveryAttemptOutcome
     PermanentFailure = 2,
 
     /// <summary>
-    /// The upstream may or may not have accepted — the acknowledgement was lost.
+    /// The upstream may or may not have accepted, the acknowledgement was lost.
     /// </summary>
     /// <remarks>
     /// <b>This is the ambiguity the spec requires us to surface rather than eliminate.</b> SMTP
@@ -435,7 +435,7 @@ public enum DeliveryAttemptOutcome
 
     /// <summary>
     /// A lease outlived its worker and was reclaimed. Whether the dead worker delivered the message
-    /// is unknown — the same ambiguity as <see cref="InDoubt"/>, from a different cause.
+    /// is unknown, the same ambiguity as <see cref="InDoubt"/>, from a different cause.
     /// </summary>
     LeaseExpired = 4,
 
@@ -449,14 +449,14 @@ public enum DeliveryAttemptOutcome
     /// </remarks>
     HoldExpired = 5,
 
-    /// <summary>The hop limit was reached — a mail loop.</summary>
+    /// <summary>The hop limit was reached, a mail loop.</summary>
     HopLimitExceeded = 6,
 
     /// <summary>
     /// The message reached its configured lifetime with delivery still unfinished.
     /// </summary>
     /// <remarks>
-    /// A delivery outcome in the sense that an attempt was owed and is now abandoned — distinct
+    /// A delivery outcome in the sense that an attempt was owed and is now abandoned, distinct
     /// from <see cref="HoldExpired"/>, where nothing was ever owed.
     /// </remarks>
     Expired = 7,
@@ -476,7 +476,7 @@ public enum DeliveryAttemptOutcome
 /// Quarantine is a hold with a different audience: a hold is a bounded observation window, whereas
 /// quarantine is "retained for authenticated review, not delivered" and has no deadline. It is
 /// therefore resolved by a reviewer rather than expiring, and the decision is recorded with who
-/// made it — a release is a privileged act, and an audit trail that omits the actor cannot carry
+/// made it, a release is a privileged act, and an audit trail that omits the actor cannot carry
 /// the weight the spec puts on it.
 /// </remarks>
 public enum QuarantineResolution
@@ -555,7 +555,7 @@ public enum QueueCompletionStatus
     /// Not an error and not a no-op. A worker whose lease lapsed may still have delivered, so
     /// discarding its report would lose the only evidence that it did; applying it would let a
     /// superseded worker overwrite a newer attempt. Recording without applying keeps the history
-    /// complete and the state authoritative — the ambiguity is preserved instead of resolved by
+    /// complete and the state authoritative, the ambiguity is preserved instead of resolved by
     /// guesswork.
     /// </remarks>
     LeaseNotHeld = 1,

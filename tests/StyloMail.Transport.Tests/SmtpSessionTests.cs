@@ -75,7 +75,7 @@ public sealed class SmtpSessionTests
     public async Task ALineBeginningWithADotSurvivesDotStuffing()
     {
         // Without stuffing, a line that is exactly "." would end the message early and silently
-        // truncate it — a real content-integrity failure, not a formatting nicety.
+        // truncate it, a real content-integrity failure, not a formatting nicety.
         await using var server = FakeSmtpServer.Start();
         await using var session = await SmtpTestRig.OpenAsync(server);
 
@@ -211,7 +211,7 @@ public sealed class SmtpSessionTests
     //
     // Both are correct. The first is honest because the peer may have received everything; the
     // second is honest because nothing can be accepted without a terminator. A test that pins the
-    // pre-terminator path MUST exceed the socket buffer, and say so — otherwise it quietly starts
+    // pre-terminator path MUST exceed the socket buffer, and say so, otherwise it quietly starts
     // asserting the other case, which is exactly how this was mistaken for a contradiction.
 
     [Fact]

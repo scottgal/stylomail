@@ -7,7 +7,7 @@ namespace StyloMail.AccessProxy.Tests.Support;
 /// A token service that never touches the network.
 /// </summary>
 /// <remarks>
-/// The OAuth path is fully implemented and exercised, but the exchange itself is faked here — which
+/// The OAuth path is fully implemented and exercised, but the exchange itself is faked here, which
 /// is the point of <see cref="IOAuthTokenEndpoint"/> being a seam of its own. It means the OAuth
 /// credential kind can be tested end to end, including its failure modes, with no Google account
 /// and no outbound request anywhere in the suite.
@@ -76,7 +76,7 @@ internal sealed class RecordingRetrievalObserver : IRetrievalObserver
 /// </summary>
 /// <remarks>
 /// The relay documents that an observer must not throw. A contract that is only documented is a
-/// contract that will eventually be broken by someone wiring up a real assessment hook — so the
+/// contract that will eventually be broken by someone wiring up a real assessment hook, so the
 /// behaviour when it happens is worth pinning down rather than leaving to chance.
 /// </remarks>
 internal sealed class ThrowingRetrievalObserver : IRetrievalObserver

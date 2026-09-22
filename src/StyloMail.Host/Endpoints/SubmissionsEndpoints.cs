@@ -21,7 +21,7 @@ namespace StyloMail.Host.Endpoints;
 /// <b>The host does not accept.</b> Acceptance happens inside the assessment pipeline (spec §4
 /// step 7), and the assessor reports the resulting id on <see cref="MailAssessment.SubmissionId"/>.
 /// An earlier revision of this route called the queue itself; with the assessor also accepting,
-/// that produced two acceptances under two different idempotency keys — one message, two
+/// that produced two acceptances under two different idempotency keys, one message, two
 /// deliveries. The route's job is to hand over a durable payload, read back the id, and map the
 /// outcome to HTTP.
 ///
@@ -74,7 +74,7 @@ internal static class SubmissionsEndpoints
         //
         // §12 requires that a retry with the same key returns the existing submission, which is a
         // promise this route cannot keep for a caller that supplies no key. Accepting the request
-        // anyway would mean a client that retries after a lost response — the ordinary case — gets
+        // anyway would mean a client that retries after a lost response, the ordinary case, gets
         // a second copy of their mail delivered, and never learns why. An HTTP client that can
         // send a body can send a header.
         //
@@ -101,7 +101,7 @@ internal static class SubmissionsEndpoints
         var digest = Convert.ToHexString(SHA256.HashData(rawBytes));
 
         // Replay check before any parsing or provider spend. A client retrying because a response
-        // was lost should cost nothing on the second attempt — no parse, no assessment, no provider
+        // was lost should cost nothing on the second attempt, no parse, no assessment, no provider
         // call. This is the host's own record and is the only thing that can short-circuit that
         // work; the queue's dedup would stop the duplicate but only after the whole pipeline ran.
         if (idempotencyKey is not null)
@@ -131,7 +131,7 @@ internal static class SubmissionsEndpoints
 
         // Spool the original bytes before assessing. The pipeline's durable-acceptance path reads
         // them back through the envelope's reference, and refuses to accept a message whose bytes
-        // it cannot produce — so an unresolvable reference here would not fail loudly, it would
+        // it cannot produce, so an unresolvable reference here would not fail loudly, it would
         // quietly turn every submission into a Defer.
         string payloadReference;
         try
@@ -147,7 +147,7 @@ internal static class SubmissionsEndpoints
             //
             // SpoolUnavailableException comes from the queue's spool and its messages name the spool
             // directory, the errno, and the queue item the payload was being written for. None of
-            // that belongs in an HTTP response to a caller — it is an internal path and an internal
+            // that belongs in an HTTP response to a caller, it is an internal path and an internal
             // identifier handed to whoever can reach this route. StorageUnavailableException, which
             // the handler above does surface, is this host's own type and carries a fixed sentence
             // with the underlying fault as its inner exception.
@@ -262,7 +262,7 @@ internal static class SubmissionsEndpoints
                 new ErrorResponse("rejected", detail),
                 statusCode: StatusCodes.Status422UnprocessableEntity),
 
-            // Declined temporarily — including a durable-storage failure, which the pipeline
+            // Declined temporarily, including a durable-storage failure, which the pipeline
             // reports as Defer rather than accepting mail it could not persist. The caller may
             // retry, so this is a 503 and never a 202.
             MailAction.Defer => Results.Json(

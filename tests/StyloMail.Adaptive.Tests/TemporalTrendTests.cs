@@ -186,7 +186,7 @@ public class TrendAnalyzerTests
             series.Add(T0.AddMinutes(i).AddSeconds(1), Vector(("semantic.payment_redirection", 0.05)));
         }
 
-        // Every bucket is populated, so nothing here is sparse — the only way to reach
+        // Every bucket is populated, so nothing here is sparse, the only way to reach
         // LongGap alone. A max gap shorter than the bucket width is unusual but legitimate,
         // and it is the case that pins the check to elapsed time rather than to an index count.
         var trend = TrendAnalyzer.Analyze(new TrendRequest
@@ -268,7 +268,7 @@ public class TrendAnalyzerTests
         var trend = Analyze(series, T0.AddMinutes(3));
 
         // The final smoothed payment-redirection z is 4.4903 and the previous is 1.8964; over
-        // the 60s between them that is 0.0432 per second — not the 2.594 per-bucket difference,
+        // the 60s between them that is 0.0432 per second, not the 2.594 per-bucket difference,
         // which would scale with the bucket width and quietly mean something else entirely.
         var perBucket = 4.4903442 - 1.8963617;
         Assert.Equal(0.043233, trend.Velocity["semantic.payment_redirection"], 6);
@@ -295,7 +295,7 @@ public class TrendAnalyzerTests
     {
         var trend = Analyze(RisingSeries(), T0.AddMinutes(3));
 
-        // "Explained" by a bare acceleration number is not explained at all — the operator
+        // "Explained" by a bare acceleration number is not explained at all, the operator
         // needs to know what moved.
         Assert.Equal(
             "recipient fan-out rising while payment-redirection evidence also rises",

@@ -4,8 +4,7 @@ using StyloMail.Mime;
 namespace StyloMail.Mime.Tests;
 
 /// <summary>
-/// The cases where the adapter cannot do its job. Each must produce an explicit disposition —
-/// never a partial parse presented as a complete message.
+/// The cases where the adapter cannot do its job. Each must produce an explicit disposition, /// never a partial parse presented as a complete message.
 /// </summary>
 public class CoverageAndLimitTests
 {
@@ -37,7 +36,7 @@ public class CoverageAndLimitTests
 
         // The bare reason is the pre-scan's. An "-after-parse" suffix would mean the parser had
         // already been handed the message, which is the outcome the structural scan exists to
-        // prevent — so asserting the bare reason is what gives this test teeth.
+        // prevent, so asserting the bare reason is what gives this test teeth.
         Assert.Equal("part-count", result.Rejection!.Reason);
         Assert.True(result.Rejection.Observed > 10);
     }
@@ -121,7 +120,7 @@ public class CoverageAndLimitTests
 
         // The reason is asserted, not just the disposition, because two different things can
         // produce "Malformed": our own header-block validation refusing the input, and the parser
-        // throwing on headers we let through. Only the first is a guarantee we control — the
+        // throwing on headers we let through. Only the first is a guarantee we control, the
         // second depends on MimeKit happening to be strict here, which is not a property to rely
         // on for hostile input.
         Assert.Equal(expectedReason, result.Rejection!.Reason);
@@ -201,7 +200,7 @@ public class CoverageAndLimitTests
     {
         // This is the bug the list-shaped Attributes contract was changed to fix. Encrypted
         // ciphertext with no provenance and no conversation context reduces coverage for several
-        // independent reasons, and a dictionary silently kept only the final one — so the ledger
+        // independent reasons, and a dictionary silently kept only the final one, so the ledger
         // reported a single cause for a message that had four.
         var result = Analyzer.Analyze(FixtureMessage.Request(
             "encrypted-smime.eml",

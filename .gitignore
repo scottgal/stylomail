@@ -99,6 +99,11 @@ quarantine/
 *.eml
 !tests/**/fixtures/**/*.eml
 
+# Python bytecode (the mutation harness is Python)
+__pycache__/
+*.pyc
+*.pyo
+
 # =============================================================================
 # OS / editor cruft
 # =============================================================================

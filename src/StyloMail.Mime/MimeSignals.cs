@@ -11,7 +11,7 @@ namespace StyloMail.Mime;
 ///
 /// <para>
 /// <b>Scope honesty.</b> Several features the source specification lists are <em>novelty</em>
-/// judgements — "URL host novelty", "new correspondence relationships", "Reply-To novelty". A
+/// judgements, "URL host novelty", "new correspondence relationships", "Reply-To novelty". A
 /// novelty judgement is a comparison against a baseline, so it cannot be computed from one
 /// message and is not fabricated here. This adapter emits the local, reproducible half (the
 /// observable fact plus a stable grouping key) and leaves the baseline comparison to the
@@ -70,7 +70,7 @@ public static class MimeSignals
     /// <summary>
     /// One per attachment: its digest, so a campaign can be grouped by attachment hash. The
     /// evidence value is the number of bytes hashed, which for an attachment over the hashing
-    /// budget is a prefix rather than the file's size — <c>hashPartial</c> says which.
+    /// budget is a prefix rather than the file's size, <c>hashPartial</c> says which.
     /// </summary>
     public const string AttachmentHash = "deterministic.attachment_hash";
 
@@ -116,7 +116,7 @@ public static class MimeSignals
     /// <summary>
     /// Markup that collects or contacts something: forms, password inputs, remote images and
     /// tracking pixels. Reported even when the message has no form, because a remote image is
-    /// itself an observation — the reader's client will contact a host the sender chose.
+    /// itself an observation, the reader's client will contact a host the sender chose.
     /// </summary>
     public const string HtmlMarkupObservation = "deterministic.html_markup_observation";
 }

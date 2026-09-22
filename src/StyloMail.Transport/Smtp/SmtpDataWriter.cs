@@ -36,7 +36,7 @@ internal static class SmtpDataWriter
     /// <remarks>
     /// Just <c>.\r\n</c>, with no leading CRLF, because <see cref="WriteBodyAsync"/> has already
     /// guaranteed the body ends with one. Prefixing another would put a blank line at the end of
-    /// every message — invisible in a rendered client, and a silent modification of the bytes the
+    /// every message, invisible in a rendered client, and a silent modification of the bytes the
     /// receiver compares against a DKIM body hash.
     /// </remarks>
     internal static ReadOnlyMemory<byte> Terminator { get; } = ".\r\n"u8.ToArray();
@@ -123,7 +123,7 @@ internal static class SmtpDataWriter
     /// <remarks>
     /// <b>Test and diagnostic use only.</b> This is what a receiving MTA does to recover the
     /// message, and having it here is what makes "the original bytes survived the handoff" a
-    /// property a test can assert rather than a claim in a comment — the fake server in the suite
+    /// property a test can assert rather than a claim in a comment, the fake server in the suite
     /// de-stuffs with this and the assertion compares against the stored payload.
     /// </remarks>
     internal static byte[] RecoverBody(ReadOnlySpan<byte> wire)

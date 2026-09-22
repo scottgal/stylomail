@@ -8,7 +8,7 @@ namespace StyloMail.Core.Tests;
 /// This predicate previously existed in two components as mirrored copies. Within an hour of being
 /// written twice they had silently diverged: one accepted <c>"&lt; &gt;"</c> (brackets with a blank
 /// inside) as the null sender and the other did not. Consolidating to one source is what surfaced it
-/// — under the "ping me if it changes" convention it would have sat there until someone passed a
+///, under the "ping me if it changes" convention it would have sat there until someone passed a
 /// <c>"&lt; &gt;"</c> and got one outcome from the assessor and another from the queue.
 /// </para>
 /// <para>
@@ -43,8 +43,8 @@ public sealed class SenderAddressesTests
     }
 
     /// <summary>
-    /// A null reference is not the null sender. They are different statements — "no address supplied
-    /// at all" versus "the empty reverse-path" — and collapsing them would make an absent field look
+    /// A null reference is not the null sender. They are different statements, "no address supplied
+    /// at all" versus "the empty reverse-path", and collapsing them would make an absent field look
     /// like a DSN.
     /// </summary>
     [Fact]

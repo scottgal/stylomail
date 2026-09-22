@@ -8,14 +8,14 @@ namespace StyloMail.Assessment.Semantic;
 /// <remarks>
 /// <b>Why this is not the same thing as the cache.</b> A cache removes a provider call that has
 /// already happened; single-flight removes one that is happening now. Without it, a campaign
-/// arriving as fifty simultaneous copies — which is precisely what a campaign is — spends fifty
+/// arriving as fifty simultaneous copies, which is precisely what a campaign is, spends fifty
 /// provider calls to learn one answer, and the duplicates arrive faster than any cache can be
 /// populated. The two mechanisms compose: single-flight bounds concurrent work, the cache bounds
 /// repeated work.
 ///
 /// <para>
 /// The first caller to claim a key performs the work; everyone else awaits that same task and
-/// receives the same result. Failures are shared too — a group of identical requests failing
+/// receives the same result. Failures are shared too, a group of identical requests failing
 /// together is the honest outcome of one failing provider call, and retrying each one separately
 /// would multiply load on a provider that is already struggling.
 /// </para>

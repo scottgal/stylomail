@@ -168,7 +168,7 @@ public sealed class JevSemanticMailClassifierTests
         await Assert.ThrowsAsync<JevContractException>(
             async () => await classifier.ClassifyAsync(Input(), CancellationToken.None));
 
-        // 422 is our bug, not a transient condition — retrying would just repeat it.
+        // 422 is our bug, not a transient condition, retrying would just repeat it.
         Assert.Single(handler.Requests);
     }
 

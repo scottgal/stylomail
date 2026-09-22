@@ -10,7 +10,7 @@ public static class HostClaims
     public const string Privilege = "stylomail:privilege";
 
     /// <summary>
-    /// How the credential was presented — <c>header</c> or <c>cookie</c>. Recorded because the
+    /// How the credential was presented, <c>header</c> or <c>cookie</c>. Recorded because the
     /// CSRF exposure differs between the two: a cookie is attached by the browser automatically.
     /// </summary>
     public const string Channel = "stylomail:channel";

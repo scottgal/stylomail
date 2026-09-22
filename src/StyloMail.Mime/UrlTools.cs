@@ -39,7 +39,7 @@ internal sealed record IdnObservation
     /// <summary>Characters that render like an ASCII letter but are not one, mapped to what they mimic.</summary>
     public required IReadOnlyList<string> Confusables { get; init; }
 
-    /// <summary>The host with confusables folded to ASCII — what the host appears to say to a reader.</summary>
+    /// <summary>The host with confusables folded to ASCII, what the host appears to say to a reader.</summary>
     public required string AsciiSkeleton { get; init; }
 }
 
@@ -320,7 +320,7 @@ internal static class UrlTools
     /// an SMTP envelope carries <c>xn--pypal-4ve.com</c> while a header may carry the Unicode
     /// <c>pаypal.com</c>. Comparing them as written would report a mismatch on every
     /// internationalised domain, which is a false positive about encoding rather than about
-    /// identity — and false positives are how a signal gets turned off.
+    /// identity, and false positives are how a signal gets turned off.
     /// </remarks>
     public static string ToAsciiDomain(string? domain)
     {

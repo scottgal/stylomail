@@ -8,7 +8,7 @@ namespace StyloMail.Adaptive.Temporal;
 /// <remarks>
 /// A newsletter sending five hundred copies and a compromised account sending five hundred
 /// lures produce identical arithmetic. The only thing that separates them is the class the
-/// traffic was declared in — which is why the class is a first-class input here rather than a
+/// traffic was declared in, which is why the class is a first-class input here rather than a
 /// threshold that quietly encodes one class's expectations for all of them.
 /// </remarks>
 public sealed record TrafficClassExpectation

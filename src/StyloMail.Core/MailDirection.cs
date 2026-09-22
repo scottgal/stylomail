@@ -5,7 +5,7 @@ namespace StyloMail.Core;
 /// </summary>
 /// <remarks>
 /// Inbound and outbound statistics are kept distinct in profiles and are never
-/// merged into one pool — an inbound stranger and an outbound authenticated
+/// merged into one pool, an inbound stranger and an outbound authenticated
 /// principal carry entirely different meaning for the same numeric value.
 /// Relationship linkage between the two is permitted, but explicit.
 /// </remarks>

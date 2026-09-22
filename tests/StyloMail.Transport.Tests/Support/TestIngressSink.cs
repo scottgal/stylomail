@@ -8,7 +8,7 @@ namespace StyloMail.Transport.Tests.Support;
 /// <remarks>
 /// Injectable failure is the point: "durable storage was unavailable" is the one condition that must
 /// never produce a <c>250</c>, and manufacturing a genuinely unwritable spool in a test is
-/// environment-dependent — it depends on the user the suite runs as and on whether /tmp is full.
+/// environment-dependent, it depends on the user the suite runs as and on whether /tmp is full.
 /// A sink that defers, or that throws, expresses the condition exactly.
 /// </remarks>
 internal sealed class TestIngressSink : ISmtpIngressSink
@@ -21,7 +21,7 @@ internal sealed class TestIngressSink : ISmtpIngressSink
     /// <summary>Every submission the listener handed over, in order.</summary>
     public List<IngressSubmission> Submissions { get; } = [];
 
-    /// <summary>When set, throwing this instead of deciding — the sink failing in an unclassified way.</summary>
+    /// <summary>When set, throwing this instead of deciding, the sink failing in an unclassified way.</summary>
     public Exception? ThrowOnSubmit { get; set; }
 
     public ValueTask<IngressDecision> SubmitAsync(

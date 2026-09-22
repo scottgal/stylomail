@@ -5,7 +5,7 @@ using StyloMail.Host.Auth;
 namespace StyloMail.Host.Endpoints;
 
 /// <summary>
-/// <c>POST /v1/session</c> — exchanges an API key for a browser session cookie.
+/// <c>POST /v1/session</c>, exchanges an API key for a browser session cookie.
 /// </summary>
 /// <remarks>
 /// Mapped only when the browser channel is enabled. The exchange requires the key in a request
@@ -15,7 +15,7 @@ namespace StyloMail.Host.Endpoints;
 /// <para>
 /// The session cookie carries a protected ticket, not the API key. Putting the key in the cookie
 /// would mean a long-lived credential sitting in browser storage where script and extensions can
-/// reach it, and it would make sign-out meaningless — the credential would still be valid.
+/// reach it, and it would make sign-out meaningless, the credential would still be valid.
 /// </para>
 /// </remarks>
 public static class SessionEndpoints
@@ -67,7 +67,7 @@ public static class SessionEndpoints
         // SignInAsync writes the session cookie; it does not change who this request is. An
         // anti-forgery token is bound to the authenticated identity that generated it, so a token
         // minted while the request still looked anonymous would be rejected by every later request
-        // that is correctly authenticated — protection that refuses the legitimate caller.
+        // that is correctly authenticated, protection that refuses the legitimate caller.
         context.User = signedIn;
 
         // GetAndStoreTokens both issues the anti-forgery cookie and returns the token the page must

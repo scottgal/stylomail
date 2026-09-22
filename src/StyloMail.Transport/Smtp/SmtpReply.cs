@@ -28,7 +28,7 @@ public sealed record SmtpReply
     /// </summary>
     /// <remarks>
     /// Recorded because it distinguishes "rejected: relay not permitted" from "rejected: mailbox
-    /// does not exist" — both arrive as a bare <c>550</c>, and only one of them means we are
+    /// does not exist", both arrive as a bare <c>550</c>, and only one of them means we are
     /// misconfigured.
     /// </remarks>
     public string? EnhancedStatusCode { get; init; }
@@ -38,13 +38,13 @@ public sealed record SmtpReply
     /// <summary>True for 2xx.</summary>
     public bool IsPositive => Class == SmtpReplyClass.Positive;
 
-    /// <summary>True for 3xx — the server wants more input (e.g. the DATA payload).</summary>
+    /// <summary>True for 3xx, the server wants more input (e.g. the DATA payload).</summary>
     public bool IsIntermediate => Class == SmtpReplyClass.Intermediate;
 
-    /// <summary>True for 4xx — retryable.</summary>
+    /// <summary>True for 4xx, retryable.</summary>
     public bool IsTransientNegative => Class == SmtpReplyClass.TransientNegative;
 
-    /// <summary>True for 5xx — not retryable.</summary>
+    /// <summary>True for 5xx, not retryable.</summary>
     public bool IsPermanentNegative => Class == SmtpReplyClass.PermanentNegative;
 
     /// <summary>The reply text joined for diagnostics. Never parsed; use the fields instead.</summary>
@@ -52,7 +52,7 @@ public sealed record SmtpReply
 
     /// <summary>
     /// The reply as it would appear on the wire, for transcripts and tests. No credentials are ever
-    /// echoed into a transcript — see <see cref="SmtpTranscript"/>.
+    /// echoed into a transcript, see <see cref="SmtpTranscript"/>.
     /// </summary>
     public override string ToString()
     {
@@ -66,16 +66,16 @@ public sealed record SmtpReply
 /// <summary>The four RFC 5321 reply classes.</summary>
 public enum SmtpReplyClass
 {
-    /// <summary>2xx — the command succeeded.</summary>
+    /// <summary>2xx, the command succeeded.</summary>
     Positive = 2,
 
-    /// <summary>3xx — the server requires further input.</summary>
+    /// <summary>3xx, the server requires further input.</summary>
     Intermediate = 3,
 
-    /// <summary>4xx — a transient failure. The correct response is to retry later.</summary>
+    /// <summary>4xx, a transient failure. The correct response is to retry later.</summary>
     TransientNegative = 4,
 
-    /// <summary>5xx — a permanent failure. Retrying cannot help.</summary>
+    /// <summary>5xx, a permanent failure. Retrying cannot help.</summary>
     PermanentNegative = 5,
 }
 

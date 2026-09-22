@@ -112,7 +112,7 @@ public class QueueListingTests
             cursor = page.NextCursor;
             pages++;
 
-            Assert.True(pages < 50, "Paging did not terminate — the cursor is not advancing.");
+            Assert.True(pages < 50, "Paging did not terminate, the cursor is not advancing.");
         }
         while (cursor is not null);
 
@@ -130,7 +130,7 @@ public class QueueListingTests
         using var h = new QueueHarness();
 
         // More rows than the ceiling. Important: with only a handful of items this claim is
-        // untestable — a page smaller than the ceiling proves nothing about clamping, and the
+        // untestable, a page smaller than the ceiling proves nothing about clamping, and the
         // test would pass identically if `Limit` were ignored entirely.
         var total = QueueListingLimits.MaxPageSize + 5;
         for (var i = 0; i < total; i++)

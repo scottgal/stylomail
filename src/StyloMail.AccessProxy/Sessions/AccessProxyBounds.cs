@@ -7,7 +7,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// <b>These are features, not tuning.</b> Constraint 6 of this component's brief is explicit: a
 /// proxy that can be made to hold unbounded resources is a denial-of-service vector against the
 /// mail it exists to protect. The difference from the store-and-forward path is the exponent. A
-/// hostile SMTP peer costs a worker for the length of one transaction — seconds. A hostile client
+/// hostile SMTP peer costs a worker for the length of one transaction, seconds. A hostile client
 /// holds a session open for as long as it likes, and a proxy that lets it do that with unbounded
 /// memory per session falls over at a far lower request rate than any MTA would.
 ///
@@ -16,7 +16,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// <list type="bullet">
 /// <item>A client that connects and never authenticates pins a session slot indefinitely.</item>
 /// <item>A client that authenticates and then goes silent holds both a client and a backend
-/// connection — the backend one against a real provider with its own per-user session limits, so a
+/// connection, the backend one against a real provider with its own per-user session limits, so a
 /// handful of stuck clients can lock the user out of their own Gmail.</item>
 /// <item>A client that sends an endless authentication command makes the line reader allocate
 /// without limit.</item>
@@ -29,7 +29,7 @@ namespace StyloMail.AccessProxy.Sessions;
 /// <b>Bounded memory is structural, not a number.</b> There is no "maximum message size" here,
 /// because the relay never buffers a message: it pumps fixed-size buffers in both directions, so a
 /// client fetching a 100 MB mailbox uses the same memory as one fetching a 1 KB note. The bounds
-/// below cap what <em>is</em> accumulated — command lines during authentication — and the numbers
+/// below cap what <em>is</em> accumulated, command lines during authentication, and the numbers
 /// that are deliberately absent are as much a part of the design as the ones present.
 /// </para>
 ///
@@ -75,8 +75,8 @@ public sealed record AccessProxyBounds
     /// Maximum bytes in one client command line during authentication.
     /// </summary>
     /// <remarks>
-    /// Small on purpose. This reader only ever consumes authentication commands — a login, a SASL
-    /// exchange — never message data, because after authentication the session becomes a byte relay.
+    /// Small on purpose. This reader only ever consumes authentication commands, a login, a SASL
+    /// exchange, never message data, because after authentication the session becomes a byte relay.
     /// A limit generous enough for a FETCH literal would be a limit that lets a client starve the
     /// proxy, and it would be answering a question the relay design already makes moot.
     /// </remarks>
@@ -114,7 +114,7 @@ public sealed record AccessProxyBounds
     /// <remarks>
     /// Smaller than the global cap by orders of magnitude, because the failure it prevents is
     /// different: a global cap protects this process, while a per-account cap protects one user's
-    /// mailbox from being hammered — and stops one compromised client credential from consuming the
+    /// mailbox from being hammered, and stops one compromised client credential from consuming the
     /// whole instance's capacity.
     /// </remarks>
     public int MaxSessionsPerAccount { get; init; } = 8;

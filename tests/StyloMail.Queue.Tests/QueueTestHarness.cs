@@ -9,8 +9,8 @@ namespace StyloMail.Queue.Tests;
 /// A clock the test drives by hand.
 /// </summary>
 /// <remarks>
-/// Every time-dependent behaviour in the queue — lease expiry, retry backoff, hold windows, message
-/// lifetime — is tested by moving this clock, never by waiting. A suite that slept for real minutes
+/// Every time-dependent behaviour in the queue, lease expiry, retry backoff, hold windows, message
+/// lifetime, is tested by moving this clock, never by waiting. A suite that slept for real minutes
 /// would be slow enough that nobody would write the tests that matter.
 /// </remarks>
 internal sealed class TestClock(DateTimeOffset start) : TimeProvider
@@ -68,7 +68,7 @@ internal sealed class QueueHarness : IDisposable
     /// </summary>
     /// <remarks>
     /// Used to model an operator changing a bound, or a different worker process picking up the
-    /// same queue — the state has to behave correctly for a reader that did not write it.
+    /// same queue, the state has to behave correctly for a reader that did not write it.
     /// </remarks>
     public QueueStore Reopen(Func<TestClock, QueueOptions> configure)
         => new(Connections, new SpoolStore(SpoolRoot), configure(Clock));

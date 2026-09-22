@@ -18,7 +18,7 @@ Please include:
 
 **Never include a live credential in a report.** Describe where it lives
 (`env:TYPESAFE_API_KEY`, `keychain://item`, a vault path) and never the value. If you have already
-sent one, say so without repeating it — that is the useful part and the rest can wait.
+sent one, say so without repeating it, that is the useful part and the rest can wait.
 
 ## What is treated as a vulnerability
 
@@ -27,7 +27,7 @@ sent one, say so without repeating it — that is the useful part and the rest c
   message, a decision record, or a metric.
 - Any means by which a message is delivered twice, accepted without being durably stored, or
   silently dropped.
-- Any case where the system reports success while the outcome did not happen — including a guarantee
+- Any case where the system reports success while the outcome did not happen, including a guarantee
   that is documented but not enforced.
 - Any bound (size, rate, hop, concurrency) that reads as enforced and is not.
 
@@ -46,7 +46,7 @@ recorded here rather than left for a reader to discover.
 | **The AccessProxy credential store is in-memory.** | A restart loses credentials; every session then fails closed. A durable store is required before real use. |
 | **Per-tenant key isolation is unmet** for the credential store. | Key compromise has a wider blast radius than intended. |
 | **One mechanism is known-unverified by tests.** `SqliteAdaptiveProfileStore.ApplyObservation`'s `BEGIN IMMEDIATE` is not discriminated by any test; SQLite's refusal to upgrade a stale snapshot is what protects the deferred form. | Documented in code as *"the tests will not tell you."* A refactor around it will not be caught. |
-| **Thresholds are unvalidated defaults**, not measured values. They require representative replay data. | Tuning-quality, not correctness — but they are not evidence of tuning. |
+| **Thresholds are unvalidated defaults**, not measured values. They require representative replay data. | Tuning-quality, not correctness, but they are not evidence of tuning. |
 | **Cloud content leaves the box** when the hosted classifier is enabled. | An operator decision per tenant, not a default. Tenants that prohibit it use the local evidence path with an explicit *semantic-unavailable* state. |
 
 ## Handling of secrets in this repository
@@ -55,10 +55,10 @@ recorded here rather than left for a reader to discover.
   this tree, and none is written to one.
 - `STYLOMAIL_PROFILE_KEY` rotation is a **migration**: every stored profile key becomes unreadable.
   Rotating it requires a re-key, not a restart.
-- Credential-shaped types (`SecretValue`) make redaction a **type property** — no string conversion,
-  and `ToString()` returns a redaction marker — so accidental interpolation cannot leak a value.
+- Credential-shaped types (`SecretValue`) make redaction a **type property**, no string conversion,
+  and `ToString()` returns a redaction marker, so accidental interpolation cannot leak a value.
 - If a secret is ever committed: **rotate it.** Removing the file, or adding an ignore rule, does not
-  un-leak it — the history is the exposure.
+  un-leak it, the history is the exposure.
 
 ## Scope
 

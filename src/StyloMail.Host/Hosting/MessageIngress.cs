@@ -24,7 +24,7 @@ internal static class MessageIngress
     /// Rejects a body that names a tenant other than the caller's own.
     /// </summary>
     /// <remarks>
-    /// An empty or absent tenant is fine — the caller simply did not repeat itself. A
+    /// An empty or absent tenant is fine, the caller simply did not repeat itself. A
     /// <em>conflicting</em> tenant is refused outright rather than overridden. Silently ignoring it
     /// would teach an integrating system that its tenant field works, and the day the check moved
     /// or was refactored away, that field would quietly become an authority grant.
@@ -56,7 +56,7 @@ internal static class MessageIngress
     /// </summary>
     /// <remarks>
     /// A message that cannot be parsed within limits produces an explicit disposition and no
-    /// analysis view — never a fragment analysed as though it were a complete message.
+    /// analysis view, never a fragment analysed as though it were a complete message.
     /// </remarks>
     internal static (PreparedMessage? Prepared, IResult? Error) Prepare(
         ClaimsPrincipal user,
@@ -167,7 +167,7 @@ internal static class MessageIngress
             CorrelationId = $"cor_{Guid.NewGuid():N}",
 
             // The client's key is handed to the assessor rather than acted on here. Acceptance
-            // happens inside the pipeline, so the key has to travel with it — the host minting or
+            // happens inside the pipeline, so the key has to travel with it, the host minting or
             // managing its own key would guarantee two accepts under two different keys, which is
             // exactly how one message becomes two deliveries.
             ClientIdempotencyKey = clientIdempotencyKey,

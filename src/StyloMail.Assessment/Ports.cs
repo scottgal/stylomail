@@ -9,7 +9,7 @@ namespace StyloMail.Assessment;
 /// </summary>
 /// <remarks>
 /// The pipeline parses an analysis copy from the original bytes, and those bytes live wherever the
-/// transport boundary put them — the spool for an accepted message, an in-memory buffer for a
+/// transport boundary put them, the spool for an accepted message, an in-memory buffer for a
 /// caller that already holds them. This port is how the composition root reaches them without
 /// knowing which.
 ///
@@ -40,7 +40,7 @@ public sealed class NullRawMessageSource : IRawMessageSource
 /// </summary>
 /// <remarks>
 /// Reuses <see cref="SpoolStore"/> rather than reimplementing payload addressing, because the
-/// spool's layout, its atomic write and its orphan sweep are one contract — a second implementation
+/// spool's layout, its atomic write and its orphan sweep are one contract, a second implementation
 /// that agreed with the first by coincidence would disagree eventually, and the disagreement would
 /// look like a message that was accepted and then could not be read.
 /// </remarks>
@@ -140,7 +140,7 @@ public sealed class InMemoryRawMessageSource : IRawMessageSource
 /// <remarks>
 /// A port rather than a direct dependency on <c>SqliteAdaptiveProfileStore</c>, so the composition
 /// root is testable without a database. Both mutating operations take the store's write lock before
-/// they read, which is what makes them safe under the burst a compromised account produces — and
+/// they read, which is what makes them safe under the burst a compromised account produces, and
 /// the reason this port has no whole-profile save: an optimistic write would put back the retry
 /// loop that a burst defeats.
 /// </remarks>
@@ -153,7 +153,7 @@ public interface IAdaptiveProfileStore
     /// </summary>
     /// <remarks>
     /// This is a merge under the store's own write lock, so concurrent observations of one profile
-    /// queue rather than race — no retry loop, and no lost update. Synchronous because the underlying
+    /// queue rather than race, no retry loop, and no lost update. Synchronous because the underlying
     /// SQLite work is; wrapping it in a task would move the block to another thread, not remove it.
     /// </remarks>
     void ApplyObservation(ProfileKey key, ProfileObservation observation, DateTimeOffset at);
@@ -163,7 +163,7 @@ public interface IAdaptiveProfileStore
     /// </summary>
     /// <remarks>
     /// The general form of <see cref="ApplyObservation"/>, for changes that must consult current
-    /// state — a promotion checks label provenance, freeze state and the regime candidate, and that
+    /// state, a promotion checks label provenance, freeze state and the regime candidate, and that
     /// judgement belongs to the caller rather than to persistence. The delegate keeps the decision;
     /// the store supplies the transaction and the write lock.
     ///
@@ -174,7 +174,7 @@ public interface IAdaptiveProfileStore
     ///
     /// <para>
     /// This replaces an optimistic compare-and-swap with a bounded retry, which could not survive a
-    /// burst — under many concurrent writers only one wins a round, so the bounded budget loses the
+    /// burst, under many concurrent writers only one wins a round, so the bounded budget loses the
     /// rest, and a promotion racing a burst is an operator intervening in the very incident that
     /// produced it.
     /// </para>
@@ -208,7 +208,7 @@ public sealed class SqliteAdaptiveProfileStoreAdapter : IAdaptiveProfileStore
 /// <remarks>
 /// A port so the acceptance step can be observed and refused in tests without a spool on disk, and
 /// so the assessment-only path can be shown to reach no acceptance at all. The production adapter
-/// is <c>QueueStore</c> unchanged — this is a seam, not a reimplementation.
+/// is <c>QueueStore</c> unchanged, this is a seam, not a reimplementation.
 /// </remarks>
 public interface IMessageAcceptanceQueue
 {
@@ -236,7 +236,7 @@ public sealed class QueueStoreAcceptanceQueue : IMessageAcceptanceQueue
 /// <remarks>
 /// The kill switch, quota posture, allowlists and recipient preferences are configuration and
 /// operational state. They are read through a port so that nothing in the assessment path can
-/// discover them from message content — a message that could set its own kill-switch state would
+/// discover them from message content, a message that could set its own kill-switch state would
 /// be a message that could authorise itself.
 /// </remarks>
 public interface IAssessmentPolicyContextSource
@@ -258,7 +258,7 @@ public sealed record PolicyContextInput
     /// <remarks>
     /// <b>Supply this from live state, and never cache it across requests.</b> The budget rolls over
     /// on a window, so an exhaustion flag held for longer than the window keeps deferring traffic
-    /// after the budget has reopened on its own — the pipeline would be refusing mail on the
+    /// after the budget has reopened on its own, the pipeline would be refusing mail on the
     /// strength of a fact that stopped being true up to an hour ago. Re-read it, or leave it false
     /// and let the pipeline discover exhaustion itself: the assessor attempts the reservation and
     /// derives the same answer from the attempt, which is always current.
@@ -295,7 +295,7 @@ public sealed record PolicyContextInput
 /// <remarks>
 /// Every field defaults to the conservative value: no kill switch, no quota exhaustion, no verified
 /// violations, no allowlist, no preference. The exception is the traffic class, which is absent
-/// rather than assumed — an unnamed class makes fan-out evidence unavailable instead of silently
+/// rather than assumed, an unnamed class makes fan-out evidence unavailable instead of silently
 /// judging every sender against a default expectation that belongs to nobody.
 /// </remarks>
 public sealed class StaticPolicyContextSource : IAssessmentPolicyContextSource

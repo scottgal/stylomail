@@ -15,7 +15,7 @@ public class QueueThreadSafetyTests
     /// <remarks>
     /// This is an allow-list rather than a rule because the interesting failure is a *new* field.
     /// A scratch buffer or a cached list added here would work perfectly in every single-threaded
-    /// test and corrupt state under load — and it would be diagnosed as a message-handling bug
+    /// test and corrupt state under load, and it would be diagnosed as a message-handling bug
     /// somewhere else entirely. Naming the exceptions forces the next person to decide.
     /// </remarks>
     private static readonly Dictionary<Type, string[]> AllowedMutableState = new()
@@ -56,7 +56,7 @@ public class QueueThreadSafetyTests
             "\n\nThe host holds one instance and calls it from every delivery thread. If the new " +
             "field is genuinely safe (write-once, immutable-after-construction), add it to " +
             "AllowedMutableState with the reason. Otherwise make it readonly, or register the " +
-            "component per-scope — do not leave it unstated.");
+            "component per-scope, do not leave it unstated.");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class QueueThreadSafetyTests
         await DrainAsync(h, "seq", workers: 1);
         await DrainAsync(h, "con", workers: 8);
 
-        // Not "neither threw" — the same end state.
+        // Not "neither threw", the same end state.
         Assert.Equal(await StateDistributionAsync(h, "seq"), await StateDistributionAsync(h, "con"));
 
         // And the invariant contention is most likely to break: every message delivered exactly
@@ -118,8 +118,8 @@ public class QueueThreadSafetyTests
     /// Drains a tenant with the given number of contending workers.
     /// </summary>
     /// <remarks>
-    /// <b>Bounded on purpose.</b> If claim or completion ever stops making progress — a lease that
-    /// is never released, a completion that is silently not applied — an unbounded loop here does
+    /// <b>Bounded on purpose.</b> If claim or completion ever stops making progress, a lease that
+    /// is never released, a completion that is silently not applied, an unbounded loop here does
     /// not fail, it <em>hangs</em>, taking the whole run with it and reporting nothing at all. The
     /// cap converts that into a named failure. This was found by mutation: a mutation that dropped
     /// the state change on claim made every completion a no-op, and this test hung the suite for
@@ -154,7 +154,7 @@ public class QueueThreadSafetyTests
 
             throw new InvalidOperationException(
                 $"Worker '{workerId}' made {maxClaimsPerWorker} claims without the queue draining. " +
-                "Claim or completion is not making progress — check that a claim actually takes the " +
+                "Claim or completion is not making progress, check that a claim actually takes the " +
                 "lease and that a completion under a held lease is applied.");
         })));
     }

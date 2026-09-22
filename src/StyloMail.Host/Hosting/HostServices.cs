@@ -26,7 +26,7 @@ namespace StyloMail.Host.Hosting;
 /// </summary>
 /// <remarks>
 /// Shared deliberately. A CLI that assembled its own dependencies would be a second, quietly
-/// divergent definition of what the system is — and the first thing to drift would be a safety
+/// divergent definition of what the system is, and the first thing to drift would be a safety
 /// default like the storage path or the refusing assessor.
 /// </remarks>
 public static class HostServices
@@ -89,13 +89,13 @@ public static class HostServices
     /// <para>
     /// Everything here is driven by configuration and everything defaults to off. An unconfigured
     /// deployment is the HTTP host and the CLI with no SMTP port open, no connector, and nothing
-    /// dialling an upstream — which is the right default for a component whose whole purpose is to
+    /// dialling an upstream, which is the right default for a component whose whole purpose is to
     /// sit on a mail boundary.
     /// </para>
     /// <para>
     /// <b>The two composition assertions run here, when the components are built</b>, not per
     /// request. Both describe a property of a <em>pair</em> of components that no reader of either
-    /// one can see, and both fail with the two values named — see <see cref="IngressComposition"/>.
+    /// one can see, and both fail with the two values named, see <see cref="IngressComposition"/>.
     /// </para>
     /// </remarks>
     private static void AddTransport(IServiceCollection services, IConfiguration configuration)
@@ -123,7 +123,7 @@ public static class HostServices
                 sp.GetRequiredService<TimeProvider>());
 
             // Passes today by construction, and exists so that the day someone gives the sink its
-            // own spool it fails here — loudly, with both roots named — rather than as mail the
+            // own spool it fails here, loudly, with both roots named, rather than as mail the
             // assessor cannot read back.
             IngressComposition.RequireSharedSpool(sink.Spool, spool, "the assessment pipeline");
             IngressComposition.RequireSpoolRoot(
@@ -137,7 +137,7 @@ public static class HostServices
 
         // The Cloudflare connector is a request-shaped intake, not a listener: nothing here opens a
         // port for it. Registered so the composition root owns exactly one of it, built over the
-        // same sink as the SMTP path — two intake paths that could disagree about acceptance is the
+        // same sink as the SMTP path, two intake paths that could disagree about acceptance is the
         // situation the queue's "acceptance is a queue id" rule exists to prevent.
         //
         // Its secret comes from the environment and never from configuration: see
@@ -177,7 +177,7 @@ public static class HostServices
     /// <remarks>
     /// Checked for both ingresses whether or not they are enabled, because the values are
     /// configuration and a drift between them is a configuration mistake. It is the pair that is
-    /// wrong, and neither component can see the other — which is why this is asserted rather than
+    /// wrong, and neither component can see the other, which is why this is asserted rather than
     /// left to the symptom, a capacity deferral that looks like spool pressure.
     /// </remarks>
     private static void RequireIngressBounds(HostTransportOptions transport, QueueOptions queueOptions)
@@ -214,8 +214,8 @@ public static class HostServices
     /// </summary>
     /// <remarks>
     /// <b>A deployment that accepts mail and cannot deliver it must say so out loud.</b> Nothing
-    /// below is an error the host refuses to start over — an inbound-only deployment and a
-    /// submission-only one are both legitimate shapes — but a listener that writes mail into a queue
+    /// below is an error the host refuses to start over, an inbound-only deployment and a
+    /// submission-only one are both legitimate shapes, but a listener that writes mail into a queue
     /// nothing drains is a configuration mistake that is otherwise discovered as messages ageing
     /// toward their expiry. Stated at startup, it is a line in a log instead.
     /// </remarks>
@@ -257,7 +257,7 @@ public static class HostServices
     ///
     /// <para>
     /// The sentinel is not a placeholder to delete. It is the correct behaviour for a deployment
-    /// with no Assessment configuration — and its 503-with-a-reason is the whole point: an
+    /// with no Assessment configuration, and its 503-with-a-reason is the whole point: an
     /// unexamined message reported as "Allow" would be worse than a visible outage, because
     /// everything downstream treats an assessment as having happened.
     /// </para>
