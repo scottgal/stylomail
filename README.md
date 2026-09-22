@@ -9,7 +9,7 @@ It is a security edge that sits in front of back-end mail servers, terminates TL
 senders, bounds their volume, and **owns the queue**: it accepts a message only once that message is
 durably stored, and after that the mail is its responsibility.
 
-> **Status: pre-release.** Eleven components, 915 tests, every safety claim mutation-audited. Not
+> **Status: pre-release.** Twelve components, 1,465 tests, every safety claim mutation-audited. Not
 > production-hardened, see [Status](#status) for exactly what that does and does not mean.
 
 ---
@@ -123,7 +123,7 @@ git clone https://github.com/scottgal/stylomail.git
 cd stylomail
 
 dotnet build StyloMail.slnx          # builds everything
-dotnet test  StyloMail.slnx          # 915 tests
+dotnet test  StyloMail.slnx          # 1,465 tests
 ```
 
 ### Running the host
@@ -228,12 +228,13 @@ dotnet test StyloMail.slnx
 
 | Project | Tests | Project | Tests |
 | --- | ---: | --- | ---: |
-| Core | 15 | Queue | 96 |
-| Jev | 15 | Assessment | 116 |
-| Policy | 19 | Adaptive | 140 |
-| Persistence | 20 | Host | 150 |
-| AccessProxy | 61 | Transport | 192 |
-| Mime | 91 | **Total** | **915** |
+| Core | 39 | Queue | 97 |
+| Jev | 15 | Assessment | 150 |
+| Policy | 19 | Adaptive | 181 |
+| Persistence | 20 | Host | 345 |
+| AccessProxy | 64 | Transport | 192 |
+| Mime | 91 | Desktop | 197 |
+| Chat | 55 | **Total** | **1,465** |
 
 ### Mutation testing
 
@@ -262,7 +263,7 @@ ad-hoc, takes the lock via `.styloagent/tools/sweep-lock.sh`:
 
 ## Status
 
-**Built and audited:** all eleven components, 915 tests green, mutation-audited.
+**Built and audited:** all twelve components, 1,465 tests green, mutation-audited.
 
 **Not yet done, deliberately:**
 
