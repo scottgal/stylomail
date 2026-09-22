@@ -20,6 +20,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\StyloMail.Jev\StyloMail.Jev.csproj" />
+    <!--
+      The corpus fixtures are .eml files, and a recording has to be made over the message the real
+      MIME adapter produces from them. Parsing here rather than hand-building an input is what keeps
+      the recording a record of the sample message rather than of what we imagined it contained.
+    -->
+    <ProjectReference Include="..\..\src\StyloMail.Mime\StyloMail.Mime.csproj" />
   </ItemGroup>
 
 </Project>

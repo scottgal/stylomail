@@ -2,9 +2,10 @@
 #
 # Records the Jev corpus from a live call to the semantic provider.
 #
-# The credential is read from the environment or from jevkey.pvt, and is NEVER printed, echoed,
-# logged, or passed on a command line. This script reports which of the two places supplied it and
-# nothing about its value. Do not add a debug line that echoes it, including a "temporarily" one.
+# The credential is read from the TYPESAFE_API_KEY environment variable and nowhere else, and is
+# NEVER printed, echoed, logged, or passed on a command line. This script reports that the variable
+# was set and nothing about its value. Do not add a debug line that echoes it, including a
+# "temporarily" one.
 #
 # Nothing is recorded without a credential: the script refuses rather than producing an empty corpus
 # that looks like a finished recording.
@@ -16,23 +17,20 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-has_environment=0
-if [ -n "${TYPESAFE_API_KEY:-}" ]; then
-    has_environment=1
-fi
-
-has_key_file=0
-if [ -f jevkey.pvt ]; then
-    has_key_file=1
-fi
-
-if [ "$has_environment" -eq 0 ] && [ "$has_key_file" -eq 0 ]; then
+# The environment variable is the only source. There is deliberately no file fallback: a key file
+# at the repository root is a hard prohibition in the mission this lane grew out of, and the spec
+# reserves that file for the overview's own live verification runs. Two rules pointing opposite
+# ways would mean somebody deciding which wins, so this script reads one place and says so.
+if [ -z "${TYPESAFE_API_KEY:-}" ]; then
     cat >&2 <<'MISSING'
 No semantic provider credential is available, so nothing can be recorded.
 
-Supply it as the TYPESAFE_API_KEY environment variable, or place it in jevkey.pvt at the
-repository root. The key is never printed, logged, written into a fixture or committed, and
-.pvt files are gitignored, which must not be relaxed.
+Supply it as the TYPESAFE_API_KEY environment variable. To avoid the value reaching a command
+line or any output, export it from a file:
+
+    export TYPESAFE_API_KEY="$(cat /path/to/key)"
+
+The key is never printed, logged, written into a fixture or committed.
 
 Refusing rather than recording nothing: an empty corpus that looks like a result is worse than
 no corpus.
@@ -40,12 +38,8 @@ MISSING
     exit 2
 fi
 
-# Presence only. Never the value.
-if [ "$has_environment" -eq 1 ]; then
-    echo "credential source: TYPESAFE_API_KEY environment variable"
-else
-    echo "credential source: jevkey.pvt at the repository root"
-fi
+# Presence only, never the value.
+echo "credential source: TYPESAFE_API_KEY environment variable"
 
 # dotnet is not on PATH in this environment.
 export DOTNET_ROOT=/usr/local/share/dotnet
