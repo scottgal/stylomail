@@ -1,4 +1,5 @@
 using StyloMail.Adaptive.Learning;
+using StyloMail.Adaptive.Profiles;
 using StyloMail.Adaptive.Scoring;
 using StyloMail.Adaptive.Temporal;
 
@@ -49,6 +50,12 @@ public sealed record AdaptiveOptions
 
     /// <summary>Largest weight one observation may have on a trend average.</summary>
     public double MaxEventContribution { get; init; } = 0.25;
+
+    /// <summary>Recipient keys tracked per principal. <b>Unvalidated</b>, as are all thresholds here.</summary>
+    public int RecipientHistoryCapacity { get; init; } = RecipientHistory.DefaultCapacity;
+
+    /// <summary>How long a recipient stays counted towards distinct-ness. <b>Unvalidated</b>.</summary>
+    public TimeSpan RecipientHistoryWindow { get; init; } = RecipientHistory.DefaultWindow;
 
     /// <summary>
     /// Largest distance, in units of a dimension's own spread, that one approved sample may

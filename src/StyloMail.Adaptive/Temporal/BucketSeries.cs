@@ -11,6 +11,18 @@ public static class FeatureIds
 
     /// <summary>Recipients per second, the fan-out feature.</summary>
     public const string RecipientsPerSecond = "rate.recipients_per_second";
+
+    /// <summary>
+    /// True when a dimension is derived by the bucket rather than observed per message.
+    /// </summary>
+    /// <remarks>
+    /// These are computed from counts over elapsed time, so the bucket's derivation is the
+    /// authoritative definition and a caller has no reason to supply one. See
+    /// <see cref="BehaviourBucket.Add"/> for why supplying one anyway is ignored rather than
+    /// rejected.
+    /// </remarks>
+    public static bool IsSynthetic(string dimensionId) =>
+        dimensionId is MessagesPerSecond or RecipientsPerSecond;
 }
 
 /// <summary>
@@ -142,6 +154,18 @@ public sealed class BehaviourBucket
             if (sample.Value is null)
             {
                 // Masked samples contribute nothing at all, not a zero, not a carry-forward.
+                continue;
+            }
+
+            if (FeatureIds.IsSynthetic(sample.DimensionId))
+            {
+                // The bucket derives this one from its counts and elapsed time, so an observed
+                // value for it is a redundant restatement and the derivation is authoritative.
+                //
+                // Ignored rather than rejected deliberately: rejecting would turn ordinary caller
+                // data into an exception thrown from the trend analysis two layers away, where the
+                // cause is unrecognisable. Ignoring means the worst case is a feature that was
+                // going to be computed correctly anyway.
                 continue;
             }
 

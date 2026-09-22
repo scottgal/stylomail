@@ -698,6 +698,69 @@ public sealed class SqliteProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public void TheRecipientHistorySurvivesARoundTrip()
+    {
+        var key = Profile("tenant-a", "sender-a").Key;
+        _store.Update(key, Start, profile =>
+        {
+            profile.Observe(new ProfileObservation
+            {
+                ObservedAt = Start,
+                RecipientCount = 2,
+                WasRejected = false,
+                RecipientKeys = ["alice", "bob"],
+                Dimensions = DimensionVector.Create(
+                    DimensionSample.Available("semantic.credential_request", 0.05)),
+            });
+
+            return true;
+        });
+
+        var reloaded = _store.Load(key)!;
+
+        // Without this the filter starts empty on every load, and an empty filter reports every
+        // recipient as never seen — manufacturing alarm on the strongest signal the profile
+        // carries, on every single load.
+        Assert.True(reloaded.Recipients.IsComplete);
+        Assert.Equal(2, reloaded.Recipients.Count);
+        Assert.Equal(0, reloaded.Recipients.NovelCount(["alice"]));
+        Assert.Equal(2, reloaded.Recipients.NovelCount(["stranger-one", "stranger-two"]));
+    }
+
+    [Fact]
+    public void AProfileWithHistoryButNoStoredFilterReportsNoveltyAsUnknown()
+    {
+        var profile = Profile("tenant-a", "sender-a");
+        profile.Observe(new ProfileObservation
+        {
+            ObservedAt = Start,
+            RecipientCount = 1,
+            WasRejected = false,
+            RecipientKeys = ["alice"],
+        });
+
+        _store.Save(profile, Start);
+
+        // Rewrite the state document without the membership filter, which is exactly what a row
+        // written before recipient tracking existed looks like: real observed traffic, no filter.
+        using (var connection = _factory.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "UPDATE profiles SET bucket_state_json = '{}' WHERE tenant_id = $t AND profile_key LIKE 'sender-a%';";
+            command.Parameters.AddWithValue("$t", "tenant-a");
+            command.ExecuteNonQuery();
+        }
+
+        var reloaded = _store.Load(profile.Key)!;
+
+        // Whatever the cause, a filter that was not restored cannot answer "have we ever seen
+        // them", and answering "no" for everyone is the alarm we must not manufacture.
+        Assert.False(reloaded.Recipients.IsComplete);
+        Assert.Null(reloaded.Recipients.NovelCount(["stranger"]));
+    }
+
+    [Fact]
     public void EnsureCreatedIsSafeToRunRepeatedly()
     {
         _store.EnsureCreated();

@@ -147,6 +147,17 @@ public sealed class SqliteAdaptiveProfileStore
         ],
         FirstObservedAtUnixMs = profile.Observed.FirstObservedAt?.ToUnixTimeMilliseconds(),
         RejectedAttempts = profile.Observed.RejectedAttempts,
+        RecipientsTruncated = profile.Recipients.Truncated,
+        SeenRecipients = Convert.ToBase64String(profile.Recipients.Seen.ToBytes()),
+        Recipients =
+        [
+            .. profile.Recipients.Entries.Select(entry => new RecipientDocument
+            {
+                Key = entry.Key,
+                FirstSeenUnixMs = entry.FirstSeen.ToUnixTimeMilliseconds(),
+                LastSeenUnixMs = entry.LastSeen.ToUnixTimeMilliseconds(),
+            }),
+        ],
         FrozenAtUnixMs = profile.Baseline.FrozenAt?.ToUnixTimeMilliseconds(),
         FreezeReason = profile.Baseline.FreezeReason,
         LastPromotedAtUnixMs = profile.Baseline.LastPromotedAt?.ToUnixTimeMilliseconds(),
@@ -602,7 +613,8 @@ public sealed class SqliteAdaptiveProfileStore
             initialRegimeId: regimeId ?? DefaultRegimeId,
             observed,
             baseline,
-            RestoreSeries(document));
+            RestoreSeries(document),
+            RestoreRecipients(document, observed));
 
         profile.RestoreAverages(DeserializeAverages(fastJson), DeserializeAverages(slowJson));
 
@@ -644,6 +656,62 @@ public sealed class SqliteAdaptiveProfileStore
         }
 
         return moments;
+    }
+
+    /// <summary>
+    /// Rebuilds the recipient history, or records honestly that it could not be rebuilt.
+    /// </summary>
+    /// <remarks>
+    /// <b>The empty case is the dangerous one.</b> A profile with observed traffic whose
+    /// membership filter was not stored would come back with an empty filter, and an empty filter
+    /// reports every recipient as never seen — manufacturing the most alarming signal in the
+    /// profile, at scale, on every restart, for exactly the senders with the most history.
+    ///
+    /// <para>
+    /// So a history is only <em>complete</em> when it was actually restored, or when the principal
+    /// genuinely has no past to cover. Anything in between is marked incomplete, which makes
+    /// novelty unknown rather than falsely alarming.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Known limitation, deliberately left.</b> This restores with
+    /// <see cref="RecipientHistory.DefaultCapacity"/> and <see cref="RecipientHistory.DefaultWindow"/>
+    /// rather than the host's <c>AdaptiveOptions</c>, because <c>Load</c> is not given the options —
+    /// consistent with the rest of this store, but now load-bearing for a bound rather than
+    /// cosmetic. A host configured with a smaller capacity would restore into a history that
+    /// saturates sooner.
+    /// </para>
+    ///
+    /// <para>
+    /// Left in place because <b>the failure direction is the safe one</b>: saturating sooner sets
+    /// the floor flag sooner and makes the membership filter report more false positives, which
+    /// means <em>missing</em> novelty rather than inventing it — and both are reported honestly
+    /// rather than lied about. Worth fixing when a deployment actually configures a non-default
+    /// capacity.
+    /// </para>
+    /// </remarks>
+    private static RecipientHistory RestoreRecipients(ProfileStateDocument document, ObservedState observed)
+    {
+        var history = document.SeenRecipients is null
+            ? new RecipientHistory()
+            : RecipientHistory.Restore(
+                RecipientHistory.DefaultCapacity,
+                RecipientHistory.DefaultWindow,
+                document.Recipients.Select(entry => new RecipientEntry
+                {
+                    Key = entry.Key,
+                    FirstSeen = DateTimeOffset.FromUnixTimeMilliseconds(entry.FirstSeenUnixMs),
+                    LastSeen = DateTimeOffset.FromUnixTimeMilliseconds(entry.LastSeenUnixMs),
+                }),
+                RecipientBloomFilter.FromBytes(Convert.FromBase64String(document.SeenRecipients)),
+                document.RecipientsTruncated);
+
+        if (document.SeenRecipients is null && observed.Attempts > 0)
+        {
+            history.MarkIncomplete();
+        }
+
+        return history;
     }
 
     private static Dictionary<string, BucketSeries>? RestoreSeries(ProfileStateDocument document)
@@ -825,6 +893,29 @@ public sealed class SqliteAdaptiveProfileStore
         public string? FreezeReason { get; init; }
 
         public long? LastPromotedAtUnixMs { get; init; }
+
+        /// <summary>
+        /// Recipient keys held for distinct counting, with their first and last sighting.
+        /// </summary>
+        public List<RecipientDocument> Recipients { get; init; } = [];
+
+        /// <summary>
+        /// The membership filter, base64. Absent means novelty cannot be answered for this
+        /// principal — the restore path marks the history incomplete rather than starting it empty.
+        /// </summary>
+        public string? SeenRecipients { get; init; }
+
+        /// <summary>Whether the distinct-count set had already stopped being complete.</summary>
+        public bool RecipientsTruncated { get; init; }
+    }
+
+    internal sealed record RecipientDocument
+    {
+        public string Key { get; init; } = string.Empty;
+
+        public long FirstSeenUnixMs { get; init; }
+
+        public long LastSeenUnixMs { get; init; }
     }
 
     internal sealed record EwmaDocument(double? Value, long? UpdatedAtUnixMs, int Updates)
