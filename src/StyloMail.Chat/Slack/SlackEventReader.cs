@@ -9,7 +9,10 @@ public enum SlackEventIgnored
     NotJson,
     NotAnEventCallback,
     NotAPlainMessage,
-    FromABot,
+
+    /// <summary>Our own app posted it. Read would mean assessing our own output and acting on it.</summary>
+    FromOurBot,
+
     MissingFields,
 }
 
@@ -34,8 +37,13 @@ public enum SlackEventIgnored
 /// why that still throws while malformed <em>data</em> never does.
 /// </para>
 /// <para>
-/// <b>The system's own posts are ignored.</b> A bot's messages come back as message events, so
-/// reading them would make the system assess its own output and act on it.
+/// <b>Our own app's posts are refused; every other bot's are read.</b> The rule "never assess and act
+/// on our own output" is a loop prevention and cannot be an obligation a caller might forget, so the
+/// deployment's identity is a parameter here and a caller that supplies none cannot obtain a
+/// <see cref="ChatMessage"/> at all. Refusing our own output is not judging bots in general: another
+/// integration's post is read and carries <c>BotId</c>, because a workspace whose integration token
+/// has been stolen posts phishing through one, and that is the inbound traffic this extension exists
+/// to catch.
 /// </para>
 /// <para>
 /// <b>Edits and deletions are ignored, and that is a decision rather than an omission.</b> Slack
@@ -49,8 +57,14 @@ public static class SlackEventReader
 
     private static readonly long MaxUnixSeconds = DateTimeOffset.MaxValue.ToUnixTimeSeconds();
 
-    public static bool TryRead(string json, out ChatMessage message, out SlackEventIgnored reason)
+    public static bool TryRead(
+        string json,
+        SlackBotIdentity ownIdentity,
+        out ChatMessage message,
+        out SlackEventIgnored reason)
     {
+        ArgumentNullException.ThrowIfNull(ownIdentity);
+
         message = null!;
 
         JsonDocument document;
@@ -80,12 +94,6 @@ public static class SlackEventReader
                 return false;
             }
 
-            if (evt.TryGetProperty("bot_id", out _))
-            {
-                reason = SlackEventIgnored.FromABot;
-                return false;
-            }
-
             // Absent type and a present subtype are the same refusal, so both are read the same way
             // and neither can dereference an element that was never there.
             if (SafeString(evt, "type") != "message" || SafeString(evt, "subtype") is not null)
@@ -97,8 +105,29 @@ public static class SlackEventReader
             if (!TryString(root, "event_id", out var eventId)
                 || !TryString(root, "team_id", out var workspaceId)
                 || !TryString(evt, "channel", out var channelId)
-                || !TryString(evt, "user", out var authorId)
                 || !TryString(evt, "ts", out var ts))
+            {
+                reason = SlackEventIgnored.MissingFields;
+                return false;
+            }
+
+            // A bot's post does not always carry a user: the platform has attributed it to the bot
+            // itself, so the bot id is the author. Requiring `user` would drop those messages as
+            // malformed, which is a policy about bots hiding inside an error path.
+            var botId = SafeString(evt, "bot_id");
+            var userId = SafeString(evt, "user");
+
+            // Checked before the message is built, so our own output cannot be constructed let alone
+            // assessed. See SlackBotIdentity for why this is the reader's job rather than a rule the
+            // caller is trusted to apply.
+            if (ownIdentity.IsOurOwnPost(botId, userId))
+            {
+                reason = SlackEventIgnored.FromOurBot;
+                return false;
+            }
+
+            var authorId = userId ?? botId;
+            if (string.IsNullOrEmpty(authorId))
             {
                 reason = SlackEventIgnored.MissingFields;
                 return false;
@@ -123,6 +152,7 @@ public static class SlackEventReader
                 ChannelId = channelId,
                 ThreadId = SafeString(evt, "thread_ts"),
                 AuthorId = authorId,
+                BotId = botId,
                 Text = SafeString(evt, "text") ?? string.Empty,
                 OccurredAt = DateTimeOffset.FromUnixTimeSeconds((long)unixSeconds),
             };

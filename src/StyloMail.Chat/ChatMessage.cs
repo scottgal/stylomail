@@ -31,6 +31,24 @@ public sealed record ChatMessage
 
     public required string AuthorId { get; init; }
 
+    /// <summary>
+    /// The platform's id for the bot that posted this, when a bot posted it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Recorded, never judged here.</b> Whether this bot is <em>us</em> is a decision that needs
+    /// the deployment's own identity, which this layer does not have, so the fact is carried and the
+    /// caller compares it. That keeps "we must not assess our own output" a rule the caller enforces
+    /// rather than a rule this reader silently applies to every bot.
+    /// </para>
+    /// <para>
+    /// The distinction matters: a workspace whose integration token has been stolen posts phishing
+    /// through a bot, and that is inbound traffic worth assessing. Dropping every bot message because
+    /// one of them might be ours would hide exactly the traffic this extension was built for.
+    /// </para>
+    /// </remarks>
+    public string? BotId { get; init; }
+
     /// <summary>The message text as posted, unmodified.</summary>
     public required string Text { get; init; }
 
