@@ -240,3 +240,65 @@ actions:
   - type: Screenshot
     value: "08-blocked-pane"
     description: "The blocked Decisions pane, naming the route it needs"
+
+  # ---- the connection screen ----------------------------------------------
+  #
+  # The screen that makes a first run possible. It is a dialog rather than a
+  # pane, so every action against it names its window: an unnamed target is
+  # resolved against the main window, which cannot see a modal's controls, and
+  # the capture is composite because that is the only way to photograph a
+  # window over its owner.
+  #
+  # The assertions are about what this screen refuses to do as much as what it
+  # does: it never shows a stored key, and it refuses a remote plain-http
+  # address, because every request carries that key in a header.
+
+  - type: Click
+    target: "type=Button:has-text(Connection)"
+    description: "Open the connection screen"
+
+  - type: Wait
+    value: "700"
+
+  - type: Expect
+    target: "text='Connect to a Host'"
+    window_id: ApiKeyDialog
+    matcher: IsVisible
+    timeout: 5000
+
+  # Says whether a key is held, and never what it is.
+  - type: Expect
+    target: "text='A key is stored. Its value cannot be shown, here or anywhere else.'"
+    window_id: ApiKeyDialog
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "09-connection"
+    composite: true
+    description: "The connection screen over the console"
+
+  # A remote plain-http Host is refused, because the key would travel in clear
+  # text and that key can read every decision and release every quarantine.
+  - type: TypeText
+    target: "name=HostAddressBox"
+    window_id: ApiKeyDialog
+    value: "http://stylomail.example.test"
+
+  - type: Click
+    target: "name=SaveKeyButton"
+    window_id: ApiKeyDialog
+
+  - type: Expect
+    target: "name=HostRefusalText"
+    window_id: ApiKeyDialog
+    matcher: IsVisible
+    timeout: 5000
+
+  - type: Screenshot
+    value: "10-connection-refused"
+    composite: true
+    description: "A remote plain-http address refused, with the reason"
+
+  - type: Click
+    target: "name=CancelKeyButton"
+    window_id: ApiKeyDialog

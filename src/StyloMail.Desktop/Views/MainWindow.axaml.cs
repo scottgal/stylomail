@@ -21,7 +21,13 @@ namespace StyloMail.Desktop.Views;
 /// </remarks>
 public partial class MainWindow : Window
 {
-    private readonly AppServices? _services;
+    /// <summary>
+    /// Not readonly: the connection screen replaces it when the address or the
+    /// key changes, because both are baked into the client and the connection
+    /// pool it owns.
+    /// </summary>
+    private AppServices? _services;
+
     private readonly ShellModel _model;
 
     /// <summary>
@@ -86,6 +92,9 @@ public partial class MainWindow : Window
             }
         };
     }
+
+    /// <summary>The sidebar entry that opens the connection screen.</summary>
+    public const string ConnectionSectionTitle = "Connection";
 
     /// <summary>
     /// What the window is showing, and a way to drive the same selections an
@@ -608,7 +617,74 @@ public partial class MainWindow : Window
     {
         if (sender is not Control { DataContext: SidebarItem item }) return;
 
+        // Connection opens a dialog rather than filling a pane: it has nothing
+        // to list, and the one thing it does is a form.
+        if (item.Title == ConnectionSectionTitle)
+        {
+            await OpenConnectionDialogAsync().ConfigureAwait(true);
+            return;
+        }
+
         await SelectAsync(item).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens the connection screen and, when something changed, reconnects.
+    /// </summary>
+    /// <remarks>
+    /// The client is rebuilt rather than patched, because the address is its
+    /// base address and the key is read through the provider it holds. A
+    /// patched client would be one whose connection pool was opened against a
+    /// different Host.
+    /// </remarks>
+    public async Task OpenConnectionDialogAsync()
+    {
+        if (_services is null) return;
+
+        var current = _services;
+
+        var dialog = new ApiKeyDialog(current.Settings, current.ApiKey);
+
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+
+        if (!dialog.KeyChanged) return;
+
+        await ReconnectAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>
+    public async Task ReconnectAsync()
+    {
+        if (_services is null) return;
+
+        var previous = _services;
+
+        try
+        {
+            _services = AppServices.Create(
+                ConsoleEnvironment.HostAddress(previous.Settings),
+                previous.Keychain,
+                settings: previous.Settings);
+
+            previous.Dispose();
+
+            await OnUiThreadAsync(() => _model.SetHostAddress(_services.HostAddress.ToString()))
+                .ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            // The address is refused by policy. Report it and keep the old
+            // connection rather than leaving the console with no client at all.
+            Console.Error.WriteLine($"[Connection] {ex.Message}");
+
+            await OnUiThreadAsync(() => _model.CompleteAction(ex.Message, failed: true))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await RefreshHostAsync().ConfigureAwait(true);
+        await LoadSendersAsync().ConfigureAwait(true);
+        await LoadSelectionAsync().ConfigureAwait(true);
     }
 
     private async void OnPauseSenderClick(object? sender, RoutedEventArgs e)

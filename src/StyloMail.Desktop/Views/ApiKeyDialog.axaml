@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StyloMail.Desktop.Views.ApiKeyDialog"
+        Title="Connect to a Host"
+        Width="560" Height="380"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <DockPanel Margin="24">
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="ClearKeyButton" Content="Remove stored key" Click="OnClearClick" />
+            <Button x:Name="CancelKeyButton" Content="Cancel" Click="OnCancelClick" />
+            <Button x:Name="SaveKeyButton" Classes="primaryButton" Content="Save and connect" Click="OnSaveClick" />
+        </StackPanel>
+
+        <StackPanel Spacing="10">
+            <TextBlock Classes="paneTitle" Text="Connect to a Host" />
+
+            <TextBlock Classes="cardBody" TextWrapping="Wrap"
+                       Text="This console talks to a StyloMail Host and nothing else. It holds no credential but this one, which is stored in your keychain and never written to a file, a log or a screen after this." />
+
+            <TextBlock Classes="actionLabel" Text="Host address" Margin="0,6,0,0" />
+            <TextBox x:Name="HostAddressBox" Watermark="https://stylomail.example.test" />
+            <TextBlock x:Name="HostRefusalText" Classes="cardWarningText" TextWrapping="Wrap" IsVisible="False" />
+
+            <TextBlock Classes="actionLabel" Text="API key" Margin="0,6,0,0" />
+            <TextBox x:Name="ApiKeyBox" PasswordChar="•" Watermark="Paste the key the Host issued" />
+
+            <!--
+                Says whether a key is already held, and never what it is.
+                There is deliberately no reveal control: the value is not
+                recoverable from this screen, which is also what makes it
+                useless in a screenshot.
+            -->
+            <TextBlock x:Name="KeyStateText" Classes="cardBody" />
+
+            <TextBlock x:Name="ResultText" Classes="cardBody" TextWrapping="Wrap" Margin="0,6,0,0" />
+        </StackPanel>
+    </DockPanel>
+</Window>

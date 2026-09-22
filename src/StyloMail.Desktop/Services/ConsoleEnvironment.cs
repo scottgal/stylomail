@@ -4,11 +4,11 @@ namespace StyloMail.Desktop.Services;
 /// Where the console points, and which keychain it uses.
 /// </summary>
 /// <remarks>
-/// Both answers are constants in a Release build. The overrides below exist
-/// only in a Debug build and only for the verification harnesses, in the same
-/// spirit as mylo's <c>MYLO_DATA_DIR</c>: a screenshot or a smoke run needs a
-/// known Host and a key it put there itself, and it must not be pointed at
-/// whatever the person running it happens to have configured.
+/// Both answers are ordinary configuration in a Release build. The overrides
+/// below exist only in a Debug build and only for the verification harnesses, in
+/// the same spirit as mylo's <c>MYLO_DATA_DIR</c>: a screenshot or a smoke run
+/// needs a known Host and a key it put there itself, and it must not be pointed
+/// at whatever the person running it happens to have configured.
 /// </remarks>
 public static class ConsoleEnvironment
 {
@@ -21,24 +21,70 @@ public static class ConsoleEnvironment
     /// </summary>
     /// <remarks>
     /// <b>This is not how an operator configures a key.</b> The production path
-    /// is the keychain, entered once through the app and never shown again. An
-    /// environment variable is a config file that leaks through a process
-    /// listing, which is exactly what spec 10.3 rules out, so this is compiled
-    /// out of a Release build rather than merely discouraged.
+    /// is the keychain, entered once through the connection screen and never
+    /// shown again. An environment variable is a config file that leaks through
+    /// a process listing, which is exactly what spec 10.3 rules out, so this is
+    /// compiled out of a Release build rather than merely discouraged.
     /// </remarks>
     public const string KeyVariable = "STYLOMAIL_SMOKE_KEY";
 
     private const string DefaultHost = "http://127.0.0.1:5000";
 
-    public static Uri HostAddress()
+    /// <summary>
+    /// Whether a harness is driving this run.
+    /// </summary>
+    /// <remarks>
+    /// When it is, the console keeps its settings in memory rather than on
+    /// disk. A harness run must not read a developer's chosen Host, and must
+    /// not leave one behind for them either.
+    /// </remarks>
+    private static bool IsHarnessRun =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(HostVariable))
+        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(KeyVariable));
+
+    /// <summary>The console's own settings: a host address, and nothing secret.</summary>
+    public static IConsoleSettings Settings()
     {
 #if DEBUG
-        var configured = Environment.GetEnvironmentVariable(HostVariable);
-        if (!string.IsNullOrWhiteSpace(configured) && Uri.TryCreate(configured, UriKind.Absolute, out var uri))
+        if (IsHarnessRun) return new InMemoryConsoleSettings();
+#endif
+
+        return JsonConsoleSettings.Load(DefaultSettingsPath());
+    }
+
+    /// <summary>Where the settings file lives, under the platform's application data.</summary>
+    public static string DefaultSettingsPath()
+        => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "StyloMail",
+            "console.json");
+
+    /// <summary>
+    /// The address to use, in precedence order: a harness override, then what
+    /// the operator chose, then the default.
+    /// </summary>
+    public static Uri HostAddress(IConsoleSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+#if DEBUG
+        var overridden = Environment.GetEnvironmentVariable(HostVariable);
+        if (!string.IsNullOrWhiteSpace(overridden) && Uri.TryCreate(overridden, UriKind.Absolute, out var harness))
         {
-            return uri;
+            // Not validated against HostAddressPolicy on purpose: a harness
+            // run's Host is on loopback by construction, and a Debug-only
+            // override that refused to start would make a scripted run fail
+            // somewhere less obvious than here.
+            return harness;
         }
 #endif
+
+        if (!string.IsNullOrWhiteSpace(settings.HostAddress)
+            && Uri.TryCreate(settings.HostAddress, UriKind.Absolute, out var stored))
+        {
+            return stored;
+        }
+
         return new Uri(DefaultHost);
     }
 

@@ -52,7 +52,14 @@ public sealed class ShellModel : ObservableObject
     }
 
     /// <summary>Where this console points, shown at the right of the status bar.</summary>
-    public string HostAddress { get; private init; } = string.Empty;
+    public string HostAddress { get; private set; } = string.Empty;
+
+    /// <summary>Records a new Host address, after the connection screen changes it.</summary>
+    public void SetHostAddress(string address)
+    {
+        HostAddress = address;
+        Raise(nameof(HostAddress));
+    }
 
     public ShellModel()
     {
@@ -368,6 +375,19 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem("Loading", SidebarItemState.NotBuilt, "GET /v1/senders"));
 
         model.Sections.Add(model.SendersSection);
+
+        // Spec 2 names an Operator / tenant admin whose job is configuring the
+        // system, and 10.2's five areas are all review work. This is where that
+        // second job lives.
+        model.Sections.Add(new SidebarSection("Management",
+        [
+            new SidebarItem(
+                "Connection",
+                SidebarItemState.Available,
+                "Enter or replace this console's API key",
+                "The console holds one credential: the API key for the Host it is pointed at. "
+                    + "It is stored in your keychain and cannot be shown again after it is saved."),
+        ]));
 
         model.Sections.Add(new SidebarSection("Review",
         [

@@ -98,8 +98,15 @@ enabled it loses nothing but immediacy.
 ## Transport security
 
 The console refuses a non-loopback `http` Host. Loopback is the only case where plain http is
-defensible, and the default changes regardless: `http://127.0.0.1:5000` is macOS AirPlay Receiver on
-this machine, which is a confusing thing to hand someone as a default.
+defensible, because every request carries the operator's API key in a header.
+
+**The default address stays at the Host's documented port.** An earlier draft of this section said it
+should move because `127.0.0.1:5000` is macOS AirPlay Receiver on this machine. That was the wrong
+call: `docs/running.md` tells an operator to run the Host there, so a console defaulting somewhere
+else would contradict the documentation and send someone to the wrong place twice. The collision is
+a diagnosis problem rather than a default problem, and it is handled as one: a refusal that carries
+neither the Host's error code nor its sentence now reports that the address is probably not a
+StyloMail Host and says to check the port. See `HostStatus.FromFailure`.
 
 ## The console surface
 

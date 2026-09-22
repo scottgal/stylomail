@@ -38,12 +38,28 @@ public sealed class AppServices : IDisposable
     private readonly HttpClient _http;
     private bool _disposed;
 
-    private AppServices(Uri hostAddress, HttpClient http, KeychainApiKeyProvider apiKey)
+    private AppServices(
+        Uri hostAddress,
+        HttpClient http,
+        KeychainApiKeyProvider apiKey,
+        IConsoleSettings settings,
+        IKeychain keychain)
     {
         HostAddress = hostAddress;
         _http = http;
         ApiKey = apiKey;
+        Settings = settings;
+        Keychain = keychain;
     }
+
+    /// <summary>
+    /// The console's own settings and keychain, kept so the connection screen
+    /// can rebuild these services against a different Host without the caller
+    /// having to hold them separately.
+    /// </summary>
+    public IConsoleSettings Settings { get; }
+
+    public IKeychain Keychain { get; }
 
     /// <summary>Where this console points.</summary>
     public Uri HostAddress { get; }
@@ -64,10 +80,24 @@ public sealed class AppServices : IDisposable
     /// tests and the screenshot harness, which need the console's own decisions
     /// exercised without a Host running.
     /// </param>
-    public static AppServices Create(Uri hostAddress, IKeychain keychain, HttpMessageHandler? transport = null)
+    public static AppServices Create(
+        Uri hostAddress,
+        IKeychain keychain,
+        HttpMessageHandler? transport = null,
+        IConsoleSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(hostAddress);
         ArgumentNullException.ThrowIfNull(keychain);
+
+        // Refused before a client is built, so a misconfigured address cannot
+        // send a single request. In a Release build the only way to reach this
+        // with a remote plain-http address is to type one, which the connection
+        // screen also refuses; this is the backstop for a path that does not go
+        // through that screen.
+        if (!HostAddressPolicy.IsAcceptable(hostAddress, out var refusal))
+        {
+            throw new ArgumentException(refusal, nameof(hostAddress));
+        }
 
         var http = new HttpClient(transport ?? new SocketsHttpHandler
         {
@@ -96,7 +126,12 @@ public sealed class AppServices : IDisposable
         };
 
         var provider = new KeychainApiKeyProvider(keychain);
-        var services = new AppServices(hostAddress, http, provider);
+        var services = new AppServices(
+            hostAddress,
+            http,
+            provider,
+            settings ?? new InMemoryConsoleSettings(),
+            keychain);
 
         services.Client = new StyloMailApiClient(http, provider);
 

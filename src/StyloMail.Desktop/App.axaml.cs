@@ -21,7 +21,13 @@ public sealed class App : Application
         {
             InstallGlobalExceptionHooks();
 
-            _services = AppServices.Create(ConsoleEnvironment.HostAddress(), ConsoleEnvironment.Keychain());
+            // The settings are loaded once and handed to the services, so the
+            // connection screen can rebuild against a new address without the
+            // window having to hold them separately.
+            _services = AppServices.Create(
+                ConsoleEnvironment.HostAddress(ConsoleEnvironment.Settings()),
+                ConsoleEnvironment.Keychain(),
+                settings: ConsoleEnvironment.Settings());
 
             desktop.MainWindow = new MainWindow(_services);
 

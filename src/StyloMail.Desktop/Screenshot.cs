@@ -51,7 +51,12 @@ internal static class Screenshot
         {
             Program.BuildHeadlessApp().SetupWithoutStarting();
 
-            var services = AppServices.Create(ConsoleEnvironment.HostAddress(), ConsoleEnvironment.Keychain());
+            var harnessSettings = ConsoleEnvironment.Settings();
+
+            var services = AppServices.Create(
+                ConsoleEnvironment.HostAddress(harnessSettings),
+                ConsoleEnvironment.Keychain(),
+                settings: harnessSettings);
             var window = new MainWindow(services);
 
             window.Show();
