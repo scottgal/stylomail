@@ -151,6 +151,29 @@ Slack's markup parsing is new and belongs in `StyloMail.Chat`.
 **Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
 shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
 
+### The EvidenceBuilder move: DONE, frozen, reported (2026-09-22). Not committed.
+
+Approved by overview- on the same reasoning as `UrlTools`: one construction site for a convention.
+
+- new `src/StyloMail.Core/EvidenceBuilder.cs` — `EvidenceBuilder` + `EvidenceAttributeLimits`.
+  **The producer version is a constructor parameter now**, which is what lets each channel share the
+  stamping while stamping its own rules.
+- new `src/StyloMail.Mime/Attr.cs` — `Attr` moved unchanged (trivial constructor, no convention, so it
+  stays out of Core's public surface).
+- deleted `src/StyloMail.Mime/EvidenceBuilder.cs`; `MimeParseLimits` gained `AttributeBudget`;
+  the one `new EvidenceBuilder(...)` site updated; Chat's producer now stamps through the shared builder.
+
+Evidence: **Mime 91, Chat 47, Assessment 124 all unchanged.** Diffed the moved bodies first: only the
+version parameter and the limits rename differ. **Checked the literal `…` in `Truncate` byte for byte
+(0x2026 in both)** because non-ASCII in moved text is exactly where this session's transcription bug
+would strike.
+
+Also fixed an imprecision in my own test: the shared builder APPENDS the truncation marker, so a
+truncated value is bound+1 chars; the assertion now says "within the bound or visibly marked as cut".
+And corrected Task 2's line in `docs/chat-pipeline-design.md` (overview- invited it).
+
+Measured: build 0/0, solution **1388 passed, 0 failed, 23 skipped** (unchanged, as a refactor should be).
+
 ### 2b Task 2: DONE, frozen, reported (2026-09-22). Not committed.
 
 **Note: overview- ruled Task 1 landed as `ed79342`, and `SlackBotIdentity.None` must be a startup
