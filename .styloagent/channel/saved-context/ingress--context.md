@@ -475,6 +475,36 @@ a hole rather than a gap. With context pressure flagged and the guards above bei
 rather than one, this belongs in a **fresh context**, started from this section. Everything else is
 landed and green, so stopping here is clean rather than a degraded handoff.
 
+## HANDOFF — the hub, and where emission belongs in this lane
+
+`overview-` ruled the hub approved last, flag-off, and that **emission belongs at my boundary before
+anyone else is asked for a hook**. I am handing it off rather than half-building it (same reasoning as
+the key CLI, and `overview-` offered the choice explicitly). Whoever picks it up needs these facts,
+because they are the part only this lane knows.
+
+**The console's four event types and where each is produced, all inside this lane:**
+
+| Event | Produced at |
+| --- | --- |
+| assessment completed (id, action, risk, message id) | `SqliteDecisionLedger.RecordAsync` — the ledger write is the completion boundary, immediately after `AssessmentsEndpoints` / `SubmissionsEndpoints` call it |
+| message state changed | `QueueDeliveryHostedService` (hosting is mine; the state transaction itself is `queue-`'s) and `QuarantineEndpoints` |
+| sender paused / resumed | `ControlsEndpoints.PauseSenderAsync` / `ResumeSenderAsync` |
+| readiness changed | `ReadinessProbe.Check` / `ProviderCredentialHealth` — a transition, not every poll |
+
+**The hard rule, first and above everything:** no pipeline code may depend on the hub. Emission is
+fire-and-forget and **must not be able to throw into an assessment or a delivery** — a hub outage is
+invisible to mail flow. The shape that satisfies it: an `ITrafficEvents` port with a no-op default
+implementation (the flag-off path), and every implementation wrapping its own body so nothing escapes.
+Do **not** call a hub context directly from an endpoint or a worker.
+
+**If a change is genuinely produced inside another lane**, ask that lane for **one call at its
+completion boundary and nothing more**. The hub must not become a reason for two lanes to know about
+each other.
+
+**Auth:** the key never goes in a query string. Header on **both** the negotiate request and the
+WebSocket handshake — SignalR's usual `access_token` pattern puts the credential in the URL, where it
+lands in access logs, proxies and crash reports. `wss://` for anything not loopback.
+
 ## Follow-up work landed after the first report
 
 - **CS0168 cleared** (`SubmissionsEndpoints.cs`). `overview-` asked whether the discarded exception

@@ -1,3 +1,37 @@
+> ## ⚠ CURRENT STATE — re-verified 2026-09-22 07:40, read this before the rest
+>
+> **The project has been substantially extended by other agents since much of this file was
+> written.** `src/StyloMail.Host/` grew from ~94 tests to **213**, all green.
+>
+> ```
+> dotnet test tests/StyloMail.Host.Tests/  ->  213/213 passing
+> dotnet build StyloMail.slnx              ->  Build succeeded
+> no .mutation-sweep.lock, 0 *.bak         ->  tree clean
+> ```
+>
+> **New surface I did not write — read before editing, never revert:**
+> - `Endpoints/`: `CloudflareIngressEndpoints.cs`, `ListingEndpoints.cs`, `ManagementEndpoints.cs`
+> - `Hosting/`: `HostIngressSink.cs`, `IngressComposition.cs`, `HostTransportOptions.cs`,
+>   `CredentialAwareSemanticClassifier.cs`
+> - `Auth/`: `HostPolicies.SendOrReview` (a deliberately justified union — read its remarks before
+>   reusing; it is not a general facility) and `PrincipalDirectory.ForTenant`
+> - `Submissions/PrincipalSubmissionAuthenticator.cs`; `HostAuthOptions.ApprovedSenderIdentities`
+>
+> **`Endpoints/` and `Hosting/` are shared surfaces.** The ingress sink is correct on the point that
+> matters most: it routes through `AssessAsync` with `AssessmentOnly = false` and lets the assessor
+> accept — it does **not** call `QueueStore.AcceptAsync`, so the double-accept trap is avoided.
+>
+> **Before believing ANY test failure, run the sweep pre-flight:**
+> ```
+> ls .styloagent/tools/.mutation-sweep.lock    # present  => a sweep is running
+> find src -name '*.bak'                       # residue  => a sweep was interrupted
+> ```
+> An in-place mutation sweep makes failures that are real, reproducible, and not in your code.
+>
+> `overview-` is **idle, not exited**.
+
+---
+
 # `host-`, saved context (authoritative)
 
 > Supersedes `saved-context/host--context.md`, which now carries a SUPERSEDED banner and is
@@ -18,9 +52,10 @@
 
 | Check | Result |
 | --- | --- |
-| `dotnet test tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj` | **94/94 green** |
+| `dotnet test tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj` | **213/213 green** (re-verified 2026-09-22 07:40) |
 | `dotnet build StyloMail.slnx` | **Build succeeded** |
 | Committed | **Nothing**, `git add`/`git commit` forbidden by my mission |
+| Sweep pre-flight | no `.mutation-sweep.lock`, 0 `*.bak` — clean | |
 
 ```
 export DOTNET_ROOT=/usr/local/share/dotnet && export PATH="/usr/local/share/dotnet:$PATH"
@@ -93,8 +128,14 @@ Coordinate before editing `Hosting/`, it is a shared surface now.
   and every failure recorded in this lane was in a test that calls into Queue, which is the
   varying-victim signature we read as "flaky" and spent two hours on. It was never flaky.
 
-  **Corroboration in my own evidence:** `mutate.py` has mtime **07:24**, inside the 07:15–07:25
-  window `assess-` identified as when my failures occurred.
+  **Evidence, stated at the strength it deserves:** `mutate.py` mtime **07:24** and the
+  `tools/mutations/` entries at 06:53–07:13 give a **tooling-authorship window that brackets** the
+  failures. That is consistent with sweeps running; it is **not** a run log and no run log exists.
+  (`assess-` corrected me on this: a sweep rewrites `src/StyloMail.Queue/*.cs` and never touches
+  `mutate.py`, so its mtime is not a record of a sweep at all. I had stated it a notch too strong,
+  and it was favourable evidence for a conclusion I already held — the kind that never gets
+  checked. The causation does not need it: Host references Queue, and `access-` independently
+  verified the in-place rewrite.)
 
   **ALWAYS RUN THIS BEFORE BELIEVING A FAILURE**, cheaper than the debugging it replaces:
   ```

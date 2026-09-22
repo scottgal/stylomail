@@ -111,13 +111,15 @@ Raised with `overview-`; `adaptive-` was hitting the same thing. Awaiting a flee
 Shared harness: **`python3 .styloagent/tools/mutate.py mime`** (my per-lane harness is retired). My
 set is `.styloagent/tools/mutations/mime.py`, **do not edit `queue.py`**.
 
-**Sweeps now run in an isolated copy of the tree** (2026-07-22, from my copy-tree precedent), so it
+**Sweeps now run in an isolated copy of the tree** (2026-09-22, from my copy-tree precedent), so it
 is safe to run one while other lanes, or I, are working. Two consequences: a sweep no longer
 leaves the real tree's build output warm for a manual run, and `obj`/`bin` are deliberately excluded
 from the copy so a stale binary cannot ride across and defeat the mtime guard. Verified empirically:
 real-tree hash identical before and after a full sweep, 20/20 CLAIMED.
 
-**Current: 20 mutations, 20/20 CLAIMED, no gaps** across 5 consecutive sweeps; post-sweep green.
+**Current: 20 mutations, 20/20 CLAIMED, no gaps** — on every full sweep run, including the one
+used to verify isolation. Post-sweep verification green each time. (The shared harness now reports
+**44 CLAIMED across both lanes**, 24 queue + 20 mime.)
 
 Each mutation names the test whose *name* claims the behaviour, which is what makes `CLAIMED` a
 stronger statement than "something went red". **When adding a mutation, always name the claiming
