@@ -298,6 +298,24 @@ implemented" cannot read as "looked at and clean". 3 tests, red-first.
 **dropped lines and printed 1428 where the truth was 1447**. Always print per-project lines and sum
 them by eye or from a saved file.
 
+**OPTION A IMPLEMENTED (2026-09-22). Solution 1450 passed, 0 failed.**
+
+**Two gates, not one.** `overview-` authorised changing the DETECTOR's `MinimumComparedDimensions`
+floor. Implementing it found a **second gate in `RecentCampaignWindow.FindNear`**: `if (compared == 0
+|| similarity < minimumSimilarity) continue;` skips every zero-dimension comparison before the
+detector's floor is reached. Both changed. Fingerprint fallback guarded on **both sides having
+`ComponentCount > 0`** ("a fingerprint over nothing is not agreement").
+
+**THE MEASUREMENT overview- demanded:** the email suite is **unchanged**. That is NOT proof of
+inertness; it means nothing covered the case. I proved the behaviour moved by **reverting the window
+change and watching the new test fail**. So it IS the "behaviour changed" case: an email message
+assessed during a **semantic outage** now matches on its fingerprint where it previously could not
+match at all. Must be stated in the commit message as deliberate with its own justification.
+3 new tests in `CampaignFingerprintFallbackTests`.
+
+**NOT DONE YET (overview- required it):** the comparison output must **state that no dimensions were
+compared** when it matched on the fingerprint alone.
+
 **CADENCE RULE from overview-:** when mid-edit, say the tree is mid-edit and give the last measured
 numbers as the last measured numbers, never as the current state.
 
