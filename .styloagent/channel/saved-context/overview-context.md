@@ -21,11 +21,14 @@ Operator corrections that bind, all of them blunt:
   drifting here, and it is the drift that sounds most like care.
 - **Do not over-claim context pressure.** The cockpit's notices are guidance, not a stop signal. Keep
   working until a decision or a real limit stops you.
-- **Reuse agents. Every task does not need a new agent.** I reached for a spawn for the Jev corpus
-  while `access-`, who built exactly that pattern, was live, and while the work sat in my own lane.
-  The roster is the resource: route to the agent already adjacent to the work, rehydrate a parked one,
-  or do it yourself when it is your component. Spawn only when nothing that exists can own it, and
-  check `list_fleet` before assuming nothing can.
+- **Reuse agents, and route to the one that WROTE the code, because that is where the context is.**
+  The operator corrected me twice here and the second was the sharper one. I reached for a spawn for
+  the Jev corpus, then routed it to `access-` because it had built the *pattern*; both were wrong for
+  the same reason, that neither agent held the context the work needs. The right owner is whoever
+  wrote the code it touches, then a parked agent that can be rehydrated, then me. **Check `list_fleet`
+  and `who_touched` before deciding, and never spawn to avoid the question.** I then compounded it by
+  starting the work myself while `access-` was already 264 lines into it, and had to delete my own
+  file to stop the collision. Duplicating a live agent is worse than idling.
 - **Verify a claim you inherit.** I told the article agent the repository was private, from a line in
   this very file, and it was public. The same class as everything else here: a document is not a
   measurement.
