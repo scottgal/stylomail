@@ -1,0 +1,25 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sty="using:FluentAvalonia.Styling"
+             x:Class="StyloMail.Desktop.App"
+             Name="StyloMail Console"
+             RequestedThemeVariant="Light">
+
+    <!--
+        Name is not decoration. On macOS the leftmost item in the system menu
+        bar is drawn by AppKit from the application's name, and Avalonia's
+        default for that name is the literal string "Avalonia Application".
+        This is what an unbundled run of the binary has to go on.
+    -->
+
+    <Application.Styles>
+        <!--
+            The same theme stack the sibling mylo reader ships on this SDK. It
+            is chosen for that reason rather than for the look: this exact
+            combination is known to build and run here, which is worth more
+            than a marginally closer match to a WinUI or macOS default.
+        -->
+        <sty:FluentAvaloniaTheme />
+        <StyleInclude Source="avares://StyloMail.Desktop/Styles/Console.axaml" />
+    </Application.Styles>
+</Application>

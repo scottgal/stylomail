@@ -1,0 +1,182 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        The console's palette and type, in one file so the three panes read as
+        one window rather than three.
+
+        The shape is Apple Mail's: a tinted sidebar, a white list, a white
+        detail pane, hairline separators, and one accent colour used only for
+        selection and state. The accent is deliberately rare. In a console whose
+        job is explaining why something was held, a screen full of colour is a
+        screen where the one thing that matters has nowhere to stand out.
+    -->
+
+    <Styles.Resources>
+        <SolidColorBrush x:Key="ConsoleChrome" Color="#E9E9EC" />
+        <SolidColorBrush x:Key="ConsoleSidebar" Color="#E9E9EC" />
+        <SolidColorBrush x:Key="ConsoleSurface" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="ConsoleSeparator" Color="#D4D4D9" />
+        <SolidColorBrush x:Key="ConsoleText" Color="#1D1D1F" />
+        <SolidColorBrush x:Key="ConsoleTextSecondary" Color="#86868B" />
+        <SolidColorBrush x:Key="ConsoleAccent" Color="#0A84FF" />
+        <SolidColorBrush x:Key="ConsoleWarning" Color="#E8A33D" />
+        <SolidColorBrush x:Key="ConsoleDanger" Color="#D7443E" />
+        <SolidColorBrush x:Key="ConsoleGood" Color="#34A853" />
+
+        <FontFamily x:Key="ConsoleFont">SF Pro Text,Helvetica Neue,Segoe UI,Inter,sans-serif</FontFamily>
+    </Styles.Resources>
+
+    <Style Selector="Window">
+        <Setter Property="FontFamily" Value="{StaticResource ConsoleFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Background" Value="{StaticResource ConsoleSurface}" />
+    </Style>
+
+    <!-- ================= panes ================= -->
+
+    <Style Selector="Border.sidebar">
+        <Setter Property="Background" Value="{StaticResource ConsoleSidebar}" />
+    </Style>
+
+    <Style Selector="Border.list">
+        <Setter Property="Background" Value="{StaticResource ConsoleSurface}" />
+    </Style>
+
+    <Style Selector="Border.detail">
+        <Setter Property="Background" Value="{StaticResource ConsoleSurface}" />
+    </Style>
+
+    <Style Selector="Border.separator">
+        <Setter Property="Background" Value="{StaticResource ConsoleSeparator}" />
+    </Style>
+
+    <Style Selector="Border.statusbar">
+        <Setter Property="Background" Value="{StaticResource ConsoleChrome}" />
+        <Setter Property="Padding" Value="12,5" />
+    </Style>
+
+    <!-- ================= type ================= -->
+
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource ConsoleText}" />
+    </Style>
+
+    <Style Selector="TextBlock.windowTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="16,10,16,8" />
+    </Style>
+
+    <Style Selector="TextBlock.sectionHeader">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="Margin" Value="20,10,20,4" />
+    </Style>
+
+    <Style Selector="TextBlock.rowTitle">
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
+    <Style Selector="TextBlock.rowSubtitle">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style Selector="TextBlock.paneTitle">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="TextBlock.paneDetail">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+    </Style>
+
+    <Style Selector="TextBlock.status">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TextBlock.emptyTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TextBlock.emptyDetail">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="MaxWidth" Value="320" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- ================= sidebar rows ================= -->
+
+    <Style Selector="Button.navRow">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Margin" Value="8,1" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <Style Selector="Button.navRow:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#DCDCE1" />
+    </Style>
+
+    <Style Selector="Button.navRow.selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource ConsoleAccent}" />
+    </Style>
+
+    <Style Selector="Button.navRow.selected TextBlock.rowTitle">
+        <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="Button.navRow.selected TextBlock.rowSubtitle">
+        <Setter Property="Foreground" Value="#D6E9FF" />
+    </Style>
+
+    <!--
+        The blocked marker. A small dot rather than a lock icon or a badge:
+        it has to be legible at a glance in a list of nine entries, and it has
+        to survive being the only coloured thing in an otherwise grey sidebar.
+    -->
+    <Style Selector="Ellipse.blockedMarker">
+        <Setter Property="Width" Value="6" />
+        <Setter Property="Height" Value="6" />
+        <Setter Property="Fill" Value="{StaticResource ConsoleWarning}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+
+    <!-- ================= detail placeholder ================= -->
+
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="#F7F7F9" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style Selector="TextBlock.cardTitle">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <Style Selector="TextBlock.cardBody">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+</Styles>

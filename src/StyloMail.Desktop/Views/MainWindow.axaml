@@ -1,0 +1,177 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:StyloMail.Desktop.Views.Controls"
+        x:Class="StyloMail.Desktop.Views.MainWindow"
+        Title="StyloMail"
+        Width="1180" Height="720"
+        MinWidth="900" MinHeight="520"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <controls:StatusBrushConverter x:Key="StatusBrush" />
+    </Window.Resources>
+
+    <!--
+        The three-pane shape, modelled on Apple Mail: sidebar, list, detail.
+        The grid lines are 1px separators rather than border thickness, so the
+        divider between panes is the same hairline at every window size.
+    -->
+    <DockPanel>
+
+        <!-- ============ status bar ============ -->
+        <Border DockPanel.Dock="Bottom" Classes="statusbar">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Ellipse Grid.Column="0"
+                         Width="8" Height="8"
+                         Margin="0,0,8,0"
+                         VerticalAlignment="Center"
+                         Fill="{Binding Status.Kind, Converter={StaticResource StatusBrush}}" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="status" Text="{Binding StatusHeadline}" />
+                    <TextBlock Classes="status" Text="·" />
+                    <TextBlock Classes="status" Text="{Binding StatusDetail}" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="2"
+                           Classes="status"
+                           Text="{Binding HostAddress}" />
+            </Grid>
+        </Border>
+
+        <Grid ColumnDefinitions="228,1,340,1,*">
+
+            <!-- ============ 1. sidebar ============ -->
+            <Border Grid.Column="0" Classes="sidebar">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Classes="windowTitle" Text="StyloMail" />
+
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Sections}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Classes="sectionHeader" Text="{Binding Title}" />
+
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Classes="navRow"
+                                                            Classes.selected="{Binding IsSelected}"
+                                                            Click="OnSidebarItemClick">
+                                                        <Grid ColumnDefinitions="Auto,*">
+                                                            <Ellipse Grid.Column="0"
+                                                                     Classes="blockedMarker"
+                                                                     IsVisible="{Binding IsBlocked}" />
+
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                                                <TextBlock Classes="rowSubtitle" Text="{Binding Detail}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="separator" />
+
+            <!-- ============ 2. list ============ -->
+            <Border Grid.Column="2" Classes="list">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="16,12,16,10">
+                        <StackPanel>
+                            <TextBlock Classes="paneTitle" Text="{Binding SelectedPaneTitle}" />
+                            <TextBlock Classes="paneDetail" Text="{Binding SelectedPaneDetail}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border DockPanel.Dock="Top" Height="1" Classes="separator" />
+
+                    <!-- Shown when the pane has nothing to list, and says why. -->
+                    <StackPanel VerticalAlignment="Center"
+                                Spacing="8"
+                                IsVisible="{Binding !HasMessages}">
+                        <TextBlock Classes="emptyTitle" Text="Nothing to list" />
+                        <TextBlock Classes="emptyDetail" Text="{Binding EmptyListDetail}" />
+                    </StackPanel>
+
+                    <ListBox ItemsSource="{Binding Messages}"
+                             SelectedItem="{Binding SelectedMessage}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             IsVisible="{Binding HasMessages}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="rowTitle" Text="{Binding Sender}" />
+                                        <TextBlock Classes="rowSubtitle" Text="{Binding Recipients}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                        <TextBlock Classes="rowTitle" Text="{Binding ActionLabel}" />
+                                        <TextBlock Classes="rowSubtitle" Text="{Binding DeliveryLabel}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="3" Classes="separator" />
+
+            <!-- ============ 3. detail ============ -->
+            <Border Grid.Column="4" Classes="detail">
+                <ScrollViewer>
+                    <StackPanel Margin="20" Spacing="0">
+                        <TextBlock Classes="paneTitle" Text="Decision" />
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,2,0,14"
+                                   Text="Why a message was held, or allowed." />
+
+                        <Border Classes="card">
+                            <StackPanel>
+                                <TextBlock Classes="cardTitle" Text="Evidence, then reasons" />
+                                <TextBlock Classes="cardBody"
+                                           Text="Ordered reason codes, each linked to the evidence signals that produced it. A reason with no visible evidence is an assertion, so the operator can follow every one back to the observation behind it." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel>
+                                <TextBlock Classes="cardTitle" Text="Versions and coverage" />
+                                <TextBlock Classes="cardBody"
+                                           Text="Policy, classifier model and question schema versions, with what the analysis actually saw. Coverage is the qualifier on every number above it." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel>
+                                <TextBlock Classes="cardTitle" Text="Unavailable is not zero" />
+                                <TextBlock Classes="cardBody"
+                                           Text="A dimension nobody could measure is shown as absent, never as a low score. Semantic answers carry a probability and no confidence field at all, so a missing confidence is the documented shape rather than data to wait for." />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card">
+                            <StackPanel>
+                                <TextBlock Classes="cardTitle" Text="This pane is not built yet" />
+                                <TextBlock Classes="cardBody"
+                                           Text="It needs a message to show. Selecting one requires the message list, which needs a Host route that does not exist yet." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

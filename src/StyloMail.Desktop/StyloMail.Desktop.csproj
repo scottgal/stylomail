@@ -12,6 +12,13 @@
     <Nullable>enable</Nullable>
     <RootNamespace>StyloMail.Desktop</RootNamespace>
     <AssemblyName>StyloMail.Desktop</AssemblyName>
+    <!--
+      Reflection bindings, matching mylo. The alternative compiles every binding
+      against a declared type, which is stricter and better in a large app; here
+      the cost is an x:DataType on every DataTemplate, and the benefit is caught
+      only at build time in a window whose shapes are still moving.
+    -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <!--
@@ -32,10 +39,36 @@
     prove nothing.
   -->
 
-  <!--
-    The Avalonia UI packages land with the shell window. They are absent here
-    because the first deliverable is a headless client whose tests must not
-    need a display, a dispatcher or an application instance to run.
-  -->
+  <ItemGroup>
+    <!--
+      Pinned to the versions the sibling mylo reader (lucidview/LucidReader)
+      ships on this same SDK, which is the only reason to pick these exact
+      numbers: that combination is known to build and run here.
+    -->
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="FluentAvaloniaUI" Version="2.5.0" />
+    <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.321" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12" Condition="'$(Configuration)' == 'Debug'" />
+
+    <!--
+      Override transitive Tmds.DBus.Protocol 0.21.2 (GHSA-xrw6-gwf8-vvr9), the
+      same override mylo and MarkdownViewer carry.
+    -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <!--
+      Debug only, and it is the harness in Screenshot.cs rather than anything
+      the app needs to run. It renders the window into a bitmap with no display
+      and no window on screen, which is what lets a screenshot be taken without
+      stealing focus on every build. Pinned to the app's Avalonia version: a
+      mismatch here fails at startup with a TypeLoadException inside the
+      headless clipboard stub, which reads as anything but a version problem.
+    -->
+    <PackageReference Include="Avalonia.Headless" Version="11.3.12" />
+  </ItemGroup>
 
 </Project>
