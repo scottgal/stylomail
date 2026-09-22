@@ -148,6 +148,7 @@ internal sealed class RecordingMimeAnalyzer : IMimeMessageAnalyzer
     {
         Envelope = envelope,
         Authentication = Builders.AuthenticationContext(),
+        Channel = ChannelContext.Email,
         Subject = "subject",
         BodyText = "body",
         Links = [],
@@ -508,6 +509,7 @@ internal static class Builders
         {
             Envelope = envelope ?? Envelope(),
             Authentication = AuthenticationContext(),
+            Channel = ChannelContext.Email,
             Subject = subject,
             BodyText = bodyText,
             QuotedText = null,

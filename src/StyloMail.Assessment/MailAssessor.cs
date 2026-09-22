@@ -518,6 +518,7 @@ public sealed class MailAssessor : IMailAssessor
             RiskIndex = risk.Index,
             Action = action,
             ProposedActionInShadow = proposedInShadow,
+            DeliveryTiming = DeliveryTiming.PreAcceptance,
             Reasons = [.. outageReasons, .. decision.Reasons, .. acceptance.Reasons],
             Versions = BuildVersions(profiles, resolvedModelVersion),
             Coverage = coverage,

@@ -102,6 +102,15 @@ public sealed record MailAnalysisInput
 
     public required AuthenticationContext Authentication { get; init; }
 
+    /// <summary>
+    /// The channel this message arrived on, and what it tells us about reach.
+    /// </summary>
+    /// <remarks>
+    /// Required, so the adapter that produced this input names the channel rather than leaving a
+    /// reader to infer it from the shape of the message.
+    /// </remarks>
+    public required ChannelContext Channel { get; init; }
+
     public string? Subject { get; init; }
 
     /// <summary>New body text, with quoted history removed where it could be identified.</summary>

@@ -133,6 +133,7 @@ public sealed class HostIngressSink : ISmtpIngressSink
         {
             Envelope = envelope,
             Authentication = submission.Authentication,
+            Channel = ChannelContext.Email,
             Subject = null,
             BodyText = string.Empty,
             QuotedText = null,

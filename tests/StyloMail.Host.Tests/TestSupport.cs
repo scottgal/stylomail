@@ -732,6 +732,7 @@ internal sealed class RecordingAssessor : IMailAssessor
         RiskIndex = action == MailAction.Allow ? 0.05 : 0.95,
         Action = action,
         ProposedActionInShadow = context.ShadowMode ? action : null,
+        DeliveryTiming = DeliveryTiming.PreAcceptance,
         SubmissionId = submissionId,
 
         // Core pins the invariant that this is null exactly when SubmissionId is; the fake must

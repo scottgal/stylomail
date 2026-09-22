@@ -104,6 +104,15 @@ public sealed record MailAssessment
     public MailAction? ProposedActionInShadow { get; init; }
 
     /// <summary>
+    /// Whether this assessment could have stopped the message or only reacts to it.
+    /// </summary>
+    /// <remarks>
+    /// Required, so it is stated at every construction site rather than defaulted. See
+    /// <see cref="DeliveryTiming"/> for why a default is the dangerous option.
+    /// </remarks>
+    public required DeliveryTiming DeliveryTiming { get; init; }
+
+    /// <summary>
     /// Whether this request created a durable submission or matched an existing one.
     /// </summary>
     /// <remarks>

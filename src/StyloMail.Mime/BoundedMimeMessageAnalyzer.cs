@@ -374,6 +374,7 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
         {
             Envelope = envelope,
             Authentication = request.Authentication ?? IncompleteProvenance(),
+            Channel = ChannelContext.Email,
             Subject = message.Subject,
             BodyText = quoted.NewText.Length > 0 ? quoted.NewText : effectivePlain,
             QuotedText = quoted.QuotedText.Length > 0 ? quoted.QuotedText : null,

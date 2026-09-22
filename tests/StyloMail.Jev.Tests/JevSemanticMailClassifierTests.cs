@@ -348,6 +348,7 @@ public sealed class JevSemanticMailClassifierTests
                 ApprovedSenderIdentities = [],
                 ProvenanceIncomplete = true,
             },
+            Channel = ChannelContext.Email,
             Subject = "Invoice attached",
             BodyText = "Please confirm your password to view the invoice.",
             Links = [],
