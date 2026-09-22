@@ -205,6 +205,35 @@ presenting a screenshot from it. It exists because no route can reach the pane w
    is a plain object and is safe.
 4. Reading the live Host's state back (`GET /v1/senders`) is the only way to prove a write landed.
 
+## The management surface (in progress, agreed with the operator)
+
+Design doc: **`docs/console-management-design.md`** (commit a16174c). Spec 2's Operator / tenant admin
+row is the sixth console area; 10.2's five are all review work.
+
+Landed: the **Connection screen** (37f853a), a Management sidebar section, `IConsoleSettings`
+(host address only, never a credential, in a small JSON file), `HostAddressPolicy`, and the four-state
+decision lookup. Screenshots `desktop-connection.png`, `desktop-connection-refused.png`.
+
+Asked `ingress-` for the rest: sender settings routes, company routes, `companyId` + `label` on the
+sender rows, the key CLI with a principal store, and a SignalR hub. **Nothing else is buildable until
+those land.**
+
+Rules from the design that are not negotiable:
+- **Pushed events are a hint, never state.** The console re-reads the affected row. A dropped or
+  reordered event rendered directly is a permanently wrong screen.
+- **The console must visibly distinguish live from stale.** A feed that silently freezes looks exactly
+  like a quiet system.
+- **The key never goes in a query string** (SignalR's usual `access_token` pattern puts it in a URL,
+  where it lands in logs). Header on the negotiate request and the handshake.
+- `posture` and `notificationTarget` are stored and shown but read by nothing yet, and the UI says so.
+
+## Harness notes for a second window
+
+A dialog is addressable with `window_id:` (matches the window's Name, Title or type name), and needs
+`composite: true` to photograph. An unnamed target resolves against the main window, which cannot see
+a modal's controls. Also: `InitializeComponent()` from the name generator assigns the `x:Name` fields;
+`AvaloniaXamlLoader.Load(this)` loads the XAML but leaves them null.
+
 ## Next
 
 **Spec 10.2's five areas all have a surface.** Nothing is assigned or half-built.
