@@ -11,7 +11,79 @@ Hard boundaries: do not edit `StyloMail.Core`, `StyloMail.Persistence`, `StyloMa
 
 ## State
 - Branch: `main` (no worktree, spawned with `worktree: false`, so no `wrap_up()`).
-- Status: **complete and green**. `dotnet test tests/StyloMail.Adaptive.Tests` → 140 passed, 0 failed.
+- Status: **complete and green**. `dotnet test tests/StyloMail.Adaptive.Tests` → 149 passed, 0 failed.
+
+## `BehaviouralProfileEncoder` (2026-09-22, spec §11)
+`BehaviouralProfileEncoder.Encode(profile, at, options?)` → `Core.BehaviouralProfile`. Gives the semantic
+classifier the behavioural context it was judging without. `at` per call; no clock inside.
+`ProfileAvailable: false` ⇒ **every observation field null**, never zero. Availability needs *both*
+observed attempts and trusted support empty; approved history alone counts as knowing a sender.
+`ColdStart` stays false when unavailable (the record's own doc says "exists but too little support").
+
+**RECIPIENT TRACKING LANDED (2026-09-22).** `RecipientHistory`: capacity 256, window 30 days, both
+**unvalidated**. `ProfileObservation.RecipientKeys` (additive, nullable, hashed). Encoder fills
+`DistinctRecipientsLastHour`, `DistinctRecipientsLast30Days`, `RecipientsNovelToSender`
+(via `Encode(profile, at, messageRecipients)`).
+
+**The rule that matters:** novelty is `null` once the set saturates for room **or** ages an entry
+out — and truncation is permanent. `Truncated` covers both. A count may under-state; novelty may not
+over-state. `FanoutLastHour` stays **addresses**, deliberately distinct from distinct-people — the
+*gap* between them is the fan-out signal.
+
+**BLOOM FILTER LANDED (2026-09-22).** Novelty is now answered by `RecipientBloomFilter` — SHA-256
+double hashing (**deterministic**; `string.GetHashCode()` is per-process seeded and would break against
+a persisted filter), sized from capacity + FPR, serialisable via `ToBytes`/`FromBytes`. Defaults 4096
+@ 1% — **unvalidated**. The capped set keeps distinct counts (floors); the filter keeps novelty. So
+novelty **no longer goes dark** when the set saturates or ages entries out.
+
+**THE HAZARD THAT MADE PERSISTENCE MANDATORY:** an empty filter reports **every** recipient as novel,
+and `ApplyObservation` loads from the store on *every call*. Unpersisted, it would have manufactured
+the loudest signal in the profile, constantly, for the most-established senders. Persistence is part of
+the guarantee, not an optimisation. `RecipientHistory.IsComplete` is false when a history was not
+restored; the store marks it incomplete for a row with observed traffic but no stored filter.
+
+`RecipientDistinctnessIsFloor` (landed in Core by `overview-`) is wired and tested.
+
+Mutations (all RED, none toothless): incomplete history answers novelty → 2; keys never reach filter
+→ 8; recorded key not remembered → 4; floor flag never set → 1; filter not persisted → 1.
+**181 tests green**, solution 0 errors / 0 warnings.
+
+**Known limitation — DECIDED, leave it (2026-09-22, `overview-`):** the store's restore path uses
+`RecipientHistory.DefaultCapacity/DefaultWindow`, not the host's `AdaptiveOptions`, because `Load` has
+no options. **Safe failure direction:** a smaller-than-configured history saturates sooner → floor flag
+set sooner → more filter false positives → *misses* novelty rather than inventing it, and both report
+honestly. Documented in the code. Fix only if a deployment actually configures a non-default capacity.
+
+**Lane complete.** `overview-` signed it off: 181 green, solution 0 errors / 0 warnings, five mutations
+RED and none toothless. Standing by.
+
+**DEPENDENCY:** `BaselineFanoutPerHour` / `BaselineMessagesPerHour` / the fan-out *narrative* all need
+the trusted baseline to model `rate.*` features. Rate features are synthesised per bucket, not observed,
+so a promotion path approving only `semantic.*` leaves them unmodelled → null, and no fan-out movement
+is ever reported. Asked `assess-` whether anything promotes them. Do **not** fabricate a baseline.
+
+**Encoder contract for `assess-` (answered 2026-09-22):** `Encode` is **total — no path returns null**.
+So `SemanticMailInput.Profile == null` means "the pipeline did not populate it"; a non-null profile with
+`ProfileAvailable: false` means "we looked and found nothing". `ColdStart` is false whenever unavailable
+(check availability first). **Measured cost: 6.95 µs mean** (20k iterations, 500 observations + 50
+promotions, 3 semantic + 2 rate dimensions) — ~0.03% of the 20 ms local p95 target. Probe deleted;
+no timing assertion shipped.
+
+**`assess-`'s `MaxRelationshipsObserved = 10` novelty hazard does not arise** here — those fields are
+null, so a sender fanning out to 500 cannot be misreported as less novel. A plausible-looking `0` would
+now be inside a cache key. `assess-` also found that `Profile` landed in Core while their cache
+canonicaliser ignored it — a live bug that would have shared cached assessments across different
+sender behaviour.
+
+**Bug found by this work (fixed):** observing a dimension whose id is a `rate.*` feature made
+`BehaviourBucket.FeatureVector` throw `Dimension '...' appears more than once`, from `TrendAnalyzer`,
+two layers from the cause. The bucket now owns those ids (`FeatureIds.IsSynthetic`) and ignores an
+observed value for one rather than rejecting it — rejecting keeps the crash with a better message.
+Mutation-verified: guard removed → 3 RED.
+
+The "no verdict-shaped field" guard is **self-verifying** — the detector is asserted to fire on
+`RiskDimension`, `MailAssessment` and `RecipientDisposition`. (I mispredicted `Evidence` as
+verdict-shaped; it is not, correctly.)
   **Whole suite green** (`dotnet test StyloMail.slnx`): 812 tests, 0 failures, all 11 projects, as of
   2026-09-22 07:1x. `dotnet build StyloMail.slnx` → 0 errors, 1 warning (CS0168 in Host, not mine).
 

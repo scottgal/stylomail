@@ -42,6 +42,27 @@ the 30s delay is a *ceiling never waited out* and the drain window closes inside
 (passing the cancelled token to `CompleteAsync` reddens it). Keep it fast, this suite is the one with
 no clock dependence.
 
+## `ListAsync` paging cursor — FIXED (found by ingress-)
+
+**The cursor took its timestamp from the PROBE row and its id from the last KEPT row.** Ordering is
+`created_at DESC`, so the probe's timestamp is older — every row between the two was skipped on the
+next page, silently, while the listing reported itself complete. A console paging a queue got two of
+three messages, no error. Rows are now held as `(QueueId, CreatedAt)` **pairs**; both halves come from
+one row.
+
+**The reason the existing test could not see it is the important part.** `Paging_visits_every_item_
+exactly_once` gives every item the *same* `created_at` — deliberately, to exercise the `queue_id`
+tiebreaker — and with equal timestamps the probe's `created_at` and the kept row's are **identical**,
+so the mispairing is invisible. **The two halves must differ for the defect to appear.** Proven by
+re-introducing the defect: old test PASSES, new test FAILS.
+
+`Paging_visits_every_item_exactly_once_with_distinct_timestamps` advances the clock between accepts.
+Guarded by mutation **Y**. **Do not merge the two paging tests** — they cover opposite halves
+(tiebreaker vs distinct ordering), and the one that hid this bug is the one that looks redundant.
+
+**After changing code a mutation anchors to, re-run that mutation** — M went INVALID when this fix
+removed its anchor line.
+
 ## MailFrom / null sender, direction-dependent (DO NOT RE-REVERSE)
 
 **`MailEnvelope.MailFrom` is `""` for a null sender** (`<>` is wire notation, normalised at the parse

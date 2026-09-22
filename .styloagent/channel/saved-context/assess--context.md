@@ -459,6 +459,72 @@ no verification was the one I reported as done. **Use `Edit` (errors on a non-ma
 one-off edits, and grep for the thing you claim to have written**, a mutation harness asserts its
 anchor, but an ad-hoc edit helper must too, or it lies.
 
+## Behavioural profile threaded into the semantic call (overview-, 2026-09-22)
+
+**DONE. 121 tests green, solution builds.** `BehaviouralProfileEncoder.Encode(snapshot, now)` is
+called at step 4 from the **sender** snapshot; the result goes into `SemanticMailInput.Profile`.
+
+**The cache-key trap was live and is fixed.** `SemanticMailInput.Profile` landed in Core and *nothing
+included it in the canonicaliser*, so the key digested only the message — two messages with identical
+content and different sender behaviour would have shared one cached assessment. All **18**
+`BehaviouralProfile` fields plus 3 on `DimensionMovement` are encoded, with **null distinct from
+zero**. Tests: differing only in `MessagesObserved` → different keys; **null vs `ProfileAvailable:
+false` → different keys**; a **field-count tripwire** so a Core field added and not encoded fails the
+build with "encode it". Mutation-verified.
+
+**My "no behavioural context" marker was UNREACHABLE, found by writing its test.** It fired only on a
+null profile, but the encoder returns the *unavailable shape* (`ProfileAvailable: false`) for an
+unknown principal — so the ledger silently claimed an informed judgement on every cold-start message.
+`overview-`'s instruction was explicit and I had read past it: *"either way the assessment must record
+that it was made without behavioural context."* Now fires on null **or** `!ProfileAvailable`.
+Mutation-verified.
+
+**ANSWERED AND HALF-FIXED — `rate.*` features were never promoted.** `overview-` asked directly; the
+answer is **no, on both paths**. Fixed **path 1** (assessment-path rule promotion): it now promotes the
+window's **`FeatureVector`** (semantic means + both rate features) from the **pre-event** snapshot's
+bucket, falling back to semantic-only for a first observation. Mutation-verified.
+
+**Path 2 — `BuildTrustedSample` helper BUILT per `overview-`'s ruling** ("documenting a pitfall is not
+the same as removing it"). Two overloads: one taking `(tenantId, direction, senderIdentity, at,
+provenance, label)` which derives the pseudonym itself, and one taking a resolved `ProfileKey`.
+**Outbound only** — an inbound sender key is qualified by authentication provenance, so a caller cannot
+name it from the identity alone; that overload throws rather than guessing a key and teaching the wrong
+profile. Path 1 now promotes through the same `LearningVector`, so **one definition** serves both.
+
+**The key-derivation pitfall was one layer below the rate-feature one, and my first test hit it:** I
+assembled a `ProfileKey` by hand from the raw address, named a profile that did not exist, and got a
+dimension-less sample that taught nothing — silently. Same shape, same fix: do not make the caller know
+an internal detail.
+
+**THE FIELD-COUNT TRIPWIRE FIRED, within the hour.** `adaptive-` added
+`RecipientDistinctnessIsFloor` (bool) to `BehaviouralProfile`; my tripwire failed with "declares 19
+properties but EncodeProfile encodes 18". Encoded it — **a truncated count and an exact one are
+different observations even when the number matches**, so the flag is as load-bearing as the value.
+That tripwire is the single best-value thing I wrote today.
+
+*(Original note preserved below.)*
+**Path 2 (`CommitTrustedOutcomeAsync`) was open with `overview-`**: it promotes a
+caller-supplied vector, so a caller assembling one from evidence omits rates exactly as I did — and
+that is the path that runs in production. I have **not** made it inject rates silently (that would
+override what the caller said they were teaching). Two shapes offered; awaiting their pick.
+
+Test lesson: `FeatureVector` omits rate features when **zero time has elapsed in the bucket** (a rate
+over zero elapsed time is undefined, not zero), so a frozen test clock produces a rate-less sample and
+a green assertion over nothing. The test now advances the clock.
+
+*(Original note preserved below.)*
+My two promotion paths carry `semantic.*` only, so `BaselineMessagesPerHour` / `BaselineFanoutPerHour`
+encode as **null for every sender** and no fan-out movement is ever named. The classifier gets "40
+messages this hour" and never "against an established 1.7" — most of the value of passing a profile.
+`adaptive-` deliberately did not work around it; an unmodelled baseline is not a baseline of zero.
+Fix is a decision about *what we learn from*: `overview-`'s, alongside the `DistinctRecipients*`
+question.
+
+**Also open:** `DistinctRecipientsLastHour/30Days` and `RecipientsNovelToSender` are null by design
+(adaptive- keeps no recipient set on the sender). Handled correctly by the key. **When bounded
+recipient tracking lands, my `MaxRelationshipsObserved` (10) bound returns as a correctness issue** —
+a sender fanning out to 500 would look less novel than they are. Settle the two together.
+
 ## Declared-but-unexercised surface sweep (round 11)
 
 Applying the "an interface member with no callers reads as a supported path" discipline across my

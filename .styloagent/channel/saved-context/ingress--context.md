@@ -14,9 +14,15 @@ and is still worth reading for the host's own history.
 ## State, 2026-09-22
 
 Repo `stylomail`, branch `main`. **Nothing committed** (the repo has no commits at all; mission
-forbids `git add`/`git commit`). **150 Host tests, green, 0 failures across 20 consecutive runs on a
-tree verified clean before every run.** `dotnet build StyloMail.slnx`: **0 errors, 0 warnings.**
-Live probe: **31/31 checks** (`/tmp/stylomail-probe/probe.py`).
+forbids `git add`/`git commit`). **213 Host tests, green.** `dotnet build StyloMail.slnx`: **0 errors, 0 warnings.**
+
+Two verification scripts, both run against the real binary:
+`/tmp/stylomail-probe/docs_probe.py` — **49/49** (startup, CLI, config, listings, credential
+readiness; backs `docs/running.md`) and `/tmp/stylomail-probe/probe.py` — **31/31** (the SMTP ingress
+and the Cloudflare route end to end). Counts drift; re-run rather than trusting these numbers.
+
+*(This line said 150 tests and 31/31 until it was corrected — a checkpoint that outlives its truth is
+the same defect as a stale doc comment, and worse here because a fresh reader cold-starts from it.)*
 
 **Measure with the tree signals, not with your eyes.** Six agents edit this tree at once and `queue-`'s
 mutation harness rewrites `src/` **in place**. A Host failure is far more likely to be someone else's
@@ -84,11 +90,12 @@ disabled → 404, over-maximum body refused, **no oversized payload reached the 
 ingress copy byte-identical to the Worker's bytes after exactly one `Received` line. Plus the check
 the suite cannot make: **a 32 MB body returned 503, not 413**, the endpoint's limit raise works.
 
-**What the probe could not prove, and why:** the *acceptance* mapping needs a working assessor, and
-this deployment has no provider secrets, `JevOptions.Endpoint` exists but `HostServices.BuildAssessor`
-never reads it, so the real classifier can only be pointed at the live TypeSafe endpoint. Acceptance
-is therefore proven in the suite instead, against the container-wired fake assessor with a **real
-queue row on disk**. Do not read the probe as having exercised a 250, every live message deferred.
+**What this probe could not prove, and why:** the *acceptance* mapping needs a working assessor, and
+this deployment has no provider secrets. (`JevOptions.Endpoint` IS bindable now — see the credential
+section — so the classifier can be pointed at a local stub; what is still missing is a stub that
+answers *successfully* with valid Noul answers, which is why acceptance remains proven in the suite
+against the container-wired fake assessor with a **real queue row on disk**. Do not read the probe as
+having exercised a 250 — every live message deferred or was refused.)
 
 ## The transport defect, found, fixed by its owner, workaround now reverted
 
@@ -196,6 +203,277 @@ Two caught in one afternoon, both mine, both the same class as the stale comment
   defect is two *calls*, so that is the only place the second one is visible.
 - `IngressComposition.RequireSharedSpool` compares by reference, which is correct, but a reader could
   take "shared" to mean same-path; the doc says why it must be identity.
+
+## `docs/running.md` — the executable's operating documentation
+
+Written from a **34-check verification script** (`/tmp/stylomail-probe/docs_probe.py`) that starts the
+real binary and drives real sockets and HTTP requests. `overview-`'s instruction was to verify each
+claim by running, not by reading `Program.cs`, and that is the whole value of the document: a comment
+is a claim about code, not evidence about it.
+
+What running changed, versus what reading would have given me:
+
+- **Startup refusals abort with `SIGABRT`** — shell exit `134`, not a tidy `1`. Worth stating, because
+  a script checking `$?` sees 134. Five misconfigurations run and each names the fix.
+- **Readiness is a probe, not a startup flag** — verified by `chmod 500` on the spool *underneath a
+  running process*: `503 {"failedChecks":["spool"]}`, and back to `200` when restored.
+- **A CLI command does not start hosted services** — the sharp discriminator is a config that makes
+  the SMTP listener's *construction* throw: a command that started it would fail, and `assess`/`profiles`
+  exit 0 under it. Deterministic rather than timing-based.
+- **`Port: 0`** — confirmed via `lsof` against the process rather than trusting the option.
+- **Empty `RecipientDomains` refuses inbound** (`550 5.7.1`), run rather than reasoned.
+
+**One self-correction worth keeping:** my first empty-domains check configured a domain and then
+asserted the empty behaviour against it. It failed, and the system was right. Also one transient probe
+failure during a rebuild window — re-ran three times on a verified-clean tree, 34/34.
+
+**Still open from `overview-`: the sender-listing route `desktop-` will ask for.** Held deliberately —
+nothing is built until the request arrives, and nothing speculative.
+
+## The operator-console read routes (`desktop-`'s ask)
+
+Both built at `desktop-`'s request via `overview-`. `ListingEndpoints.cs` + `Contracts/ListingResponses.cs`,
+both `Review`, both tenant-scoped **from the principal with no tenant parameter at all** — a
+cross-tenant read is *absent* rather than forbidden.
+
+- **`GET /v1/senders`** — the tenant's configured principals joined with `ISenderControlStore` state
+  (new `ListAsync`, one query rather than N). `PrincipalDirectory.ForTenant` added. **The response
+  names each field rather than serialising `HostPrincipalOptions`** — that type holds the API key, so
+  a serialisation would publish every credential on the host. A test asserts none of the seven test
+  keys appears in the body; do not "simplify" it into a serializer.
+- **`GET /v1/messages`** — `QueueStore.ListAsync` with `state=awaiting_decision|held|quarantined`,
+  `limit`, `after`. Rows are `SubmissionStatusResponse`, the same projection the single-message route
+  serves, so a console renders list and detail from one shape.
+
+**`state=queued` is refused with `400 unknown_state`, deliberately.** `QueueListingFilter` enumerates
+by *disposition*, not delivery progress, and post-filtering a cut page would produce short pages and a
+wrong `hasMore`. A `queued` filter would be a `queue-` change; asked rather than faked.
+
+**OPEN, reported to `overview-`: a privilege asymmetry I inherited.** `GET /v1/submissions/{id}`
+requires `Send` while `POST /v1/quarantine/{id}/release` requires `Review` — on the same queue id. A
+pure reviewer can release a quarantined message but cannot read it first. It predates this work; the
+new listing is what exposed it. I recommended adding `Review` to the submission detail route and did
+not change it unilaterally.
+
+## The `GET /v1/submissions/{id}` privilege ruling
+
+`overview-` ruled: **add `Review` to the route**, on the argument that *reading is strictly weaker
+than releasing* — `POST /v1/quarantine/{id}/release` (Review) addresses the same queue id, so requiring
+the greater capability for the lesser act was incoherent and produced an operator acting on a message
+they could not inspect.
+
+- New `HostPolicies.SendOrReview`. **It needed its own policy, not two names on the route:**
+  `RequireAuthorization("a", "b")` is an **AND** in ASP.NET Core, so naming both privileges would
+  require both and lock out exactly the caller the ruling exists to admit. That trap is in the
+  policy's comments.
+- The union is documented as **an exception needing justification each time, not a facility**.
+- Three tests: a Review-only principal reads a submission it can already release (same id, then the
+  release); an assess-only principal still reads nothing; and nothing else widened (a reviewer still
+  cannot submit or pause).
+
+## The queue's paging defect — found, fixed, verified in the same hour
+
+`QueueStore.ListAsync` built its next-cursor from **two different rows**: `lastCreatedAt` was
+overwritten on every row the reader yielded, so it held the *probe* row's timestamp while the id
+paired with it was the last row *kept*. The next page skipped every row whose timestamp fell between
+them, and the probe row survived only on a GUID tiebreak.
+
+- **Silent** (fewer rows, `hasMore: false`, no error) and **intermittent** (~half of runs). Both
+  properties matter: the first is why a duplicate-only assertion misses it, the second is why it reads
+  as a flaky test.
+- `queue-` fixed it; **6 failures in 12 runs → 0 in 15** on the same measurement.
+- My test's comment said "KNOWN RED, intermittently" and became **false the moment it was fixed** —
+  rewritten in the same change. Same failure class as the stale `MailFrom` doc comments.
+
+**The discriminator for real-vs-phantom intermittency — `queue-` sharpened my version, and theirs is
+better.** Mine was "systematic vs varying". Theirs names what varies:
+
+> **The signals that were real did not change with the input; the ones that were not real varied with
+> an *input*.** Mine and theirs: same test, same property, every time. `access-`'s three retractions:
+> the victim changed with *which mutation happened to be live*, and the other two with *payload size*.
+> That is a sharper test than "does it look flaky", and it is now the first question to ask.
+
+**AND A NEAR-MISS IN MY OWN MEASUREMENT HARNESS — read this before trusting any loop of mine.**
+My gated stress loop counted a `dotnet test` that **never executed** as a pass: the shell cwd had been
+left in `.styloagent/channel/inbox` by an earlier `cd`, so the command failed with "project file does
+not exist", produced no `Failed!` line, and the loop recorded a green run. A measured "12 clean runs"
+was briefly 12 runs of nothing.
+
+The fix, now in every loop: **a run that did not print `Passed!`/`Failed!` is counted as `not executed`
+and excluded, not as a pass.** Any loop that counts only failures is blind to its own silence — the
+same defect shape as an unfed `MaxHops` or a doc comment nobody re-read.
+
+## `GET /v1/decisions` — the ledger listing
+
+Third console route. `Review`, tenant-scoped from the principal with **no tenant parameter**, keyset-paged,
+bounded at 50/100 (lower than the queue's 200 — a ledger row is a whole decision, not a queue row).
+
+- **Rows are summaries**: action, ordered reasons (code *and* message), versions, coverage. Full
+  explanation + evidence is one `GET /v1/decisions/{id}` away. A page of complete decisions is
+  unbounded because evidence volume is per-message.
+- `action` filters by equality on the ledger's own indexed column — it filters the *query*, not the
+  page, which is what makes it honest to offer. Unknown action → `400 unknown_action` naming what
+  exists. Bad cursor → `400 invalid_cursor`; **treating a bad cursor as "no cursor" would answer page
+  one, so a client would loop on page one forever with nothing saying why.**
+- The shared `Reasons`/`Versions`/`Coverage` mappings are now single factories used by both the
+  listing and the detail, so two projections of one decision cannot drift.
+- **Paging is tested with a clock the test controls** (`TestHost.WithClock`). Two decisions in the
+  same millisecond tie on the cursor's tiebreak, so a test *meaning* to exercise distinct-timestamp
+  paging can quietly become a same-timestamp one and stop covering its own case — exactly how
+  `queue-`'s test was blind. **Mutation-verified: reintroducing the queue's cursor bug (probe row's
+  timestamp + kept row's id) turns `Paging_returns_every_decision_exactly_once` red, alone.**
+
+## The AirPlay documentation defect, and what it says about "verified"
+
+`docs/running.md` used `127.0.0.1:5000` in its examples. **On macOS that is AirPlay Receiver
+(`ControlCenter`), which answers `403`** — so a reader following the doc gets a plausible refusal from
+a process that has nothing to do with StyloMail and concludes the host is refusing them. Confirmed with
+`lsof`, fixed to `8080` (checked free *and* verified serving), and the hazard is now documented beside
+the `lsof` command that settles it.
+
+**The lesson is sharper than the fix.** The document's opening claim — "every claim was checked against
+a running process" — was true, and still let this through, because I verified the *claims* and never
+the *example the reader actually copies*. "Verified" has to name its scope: **an example is a claim.**
+
+## A rejected provider credential was invisible to readiness (fixed)
+
+The failure the project exists to eliminate: a rotated Jev key made every assessment 500 while
+`/health/ready` answered `200 ready`, so a load balancer kept routing mail to a host that could not
+assess any of it. The adapter's 401 throw was deliberate and correct; **nothing read it**.
+
+- `ProviderCredentialHealth` — a latching singleton. `CredentialAwareSemanticClassifier` observes the
+  exception on its way past and **rethrows unchanged**: the fix was a reader, not a quieter exception.
+- `ReadinessProbe` gained a `provider_credential` failed check. **Liveness stays 200** — a rotated key
+  is a config fault and a restart fixes nothing, so failing liveness would turn a bad deploy into a
+  restart loop.
+- **Only a real answer clears the latch.** The reliable signal is `ResolvedModelVersion`, null on
+  every failure path and set only when the provider answered. Do **not** use "has evidence" or "has a
+  cache object": both are non-empty/null-free even on an `Unavailable` result, which would clear a
+  rejection on the very result that proves the key is still bad. `An_unavailable_result_does_not_clear_a_rejection`
+  exists because of that near-miss.
+- A 422 is deliberately *not* a credential problem — it is our bug, and making the host not-ready for
+  it would take a service out of rotation over something a restart cannot fix.
+
+**Verified against a real 401**, both live (endpoint pointed at a refusing stub: ready → 503
+`provider_credential`, live → 200) and in-process through the **whole real pipeline** (real adapter,
+real decorator, real `AssessmentPipeline.Create`, real `MailAssessor`).
+
+**A mistake worth remembering: my probe lied to me for three rounds.** It pointed the endpoint at a
+Python `http.server` stub returning 401, and the host *degraded* instead of rejecting — so I became
+convinced the fix was unwired. **The stub was at fault:** Python's `BaseHTTPRequestHandler` defaults to
+HTTP/1.0 and answered without reading the request body, so the client saw a connection fault, which the
+adapter correctly turns into `Unavailable`. The host was right throughout. Set `protocol_version =
+"HTTP/1.1"` and read `Content-Length` bytes before answering. **When a probe disagrees with a passing
+unit test, suspect the probe.**
+
+## `JevOptions.Endpoint` and `Model` now bind
+
+They were hardcoded while `IConfiguration` sat in scope as a parameter, so both could be set and were
+silently ignored. `HostServices.BuildJevOptions` is public (like `DescribeTransport`) so it is
+directly testable. A non-default endpoint logs a **WARNING naming the destination** — it decides who
+receives the mail this deployment processes, so the silence was the wrong part rather than the
+override. The API key is asserted never to appear in that log.
+
+## The message→decision link
+
+The console's headline use case — "I see a quarantined message, why was it held" — had no path.
+`assessmentId` appeared only on the `POST /v1/submissions` response, which a reviewer working from a
+list never saw, and the queue carries no assessment id.
+
+- `SubmissionStatusResponse` gains **`internalMessageId`**; `GET /v1/decisions?messageId=` filters on
+  it (new index `ix_host_decision_ledger_message`).
+- **Chose the read-side route over a queue-row schema change**, which would have needed `queue-` and
+  `assess-` too. It also returns a *list*: a message can legitimately be assessed more than once, and
+  a single column could hold only one.
+- The full chain is tested end to end: submit → quarantine → list → join → fetch evidence, asserting
+  the queue id and the decision describe the same message.
+
+## The operator management surface (`desktop-`'s four asks)
+
+Agreed with the operator; design at `docs/console-management-design.md` (theirs, committed).
+
+**Built (asks 1 and 2):** `Controls/OperatorMetadataStore.cs` + `Endpoints/ManagementEndpoints.cs` +
+`Contracts/ManagementContracts.cs`; tables `sender_profile` and `company` in `HostDatabase` (additive,
+`IF NOT EXISTS`).
+
+- `GET/PUT /v1/senders/{id}/settings` (Review / Administer) and `GET/POST /v1/companies`,
+  `PUT /v1/companies/{id}` (Review / Administer). Tenant from the principal, **no tenant parameter**.
+- **`GET /v1/senders` rows now carry `label` and `companyId`** (joined from one profile query, not one
+  per sender) so the sidebar groups without a request storm.
+- **A sender nobody described is `200` with nulls, not `404`** — the principal exists; 404 would read
+  as "no such sender". **`PUT` is a full replace, not a merge** — a merge makes clearing a field
+  impossible. **`posture` is a closed set**, refused by name otherwise: a stored stance nothing
+  recognises looks like a decision someone made. **`updatedBy` comes from the principal, never the
+  body.** Unrecognised posture → `400 unknown_posture` naming the valid values.
+- **`posture` and `notificationTarget` are stored and read by nothing.** `desktop-` asked for that on
+  the record rather than discovered, and the "not yet acted on" wording is in the **API field docs**
+  as well as their UI, because a console is not the only client.
+
+**Escalated, not built — ask `overview-` before proceeding:**
+- **The key CLI / principal store.** Moves API keys out of plaintext configuration into a digest store
+  with `PrincipalDirectory` store-first. Right direction, but it changes the **authentication path for
+  both HTTP and SMTP submission**, so it is a credential-model change. Three specifics put to
+  `overview-`: two sources of identity (store + env fallback); **`key revoke` against an
+  env-configured principal would be a silent no-op** and should refuse instead; printing a key to
+  stdout once as the intended channel.
+- **The SignalR hub.** The four constraints `desktop-` proposes are right and should be held exactly
+  (events are a **hint never state**; live-vs-stale visibly distinguished; **no key in a query string**;
+  `wss://` off loopback). It adds a dependency and a transport, and the events would have to be emitted
+  from `assess-`'s and `queue-`'s paths — so it is the one item that cannot be done in this lane alone.
+  Lands last.
+
+## RULING RECEIVED — the key CLI and the hub are both approved (guards below)
+
+`overview-` ruled on both, 2026-09-22. Neither direction reopened; these are the guards that must
+ship with them. **The key CLI has NOT been started** — see the note at the end.
+
+### 1. Minted API keys — approved, five guards
+
+`HostPrincipalOptions.Key` plaintext in configuration goes; a store holds digests. **All five are
+requirements, not preferences:**
+
+- **(a) Precedence is total, never merged.** Store first, environment as fallback, and where a
+  principal exists in both the store entry wins **wholesale** — never union privileges, never union
+  keys. A union lets an environment entry silently re-widen a privilege the operator deliberately
+  narrowed.
+- **(b) Two sources is acceptable only because it is visible.** `key list` must report, per principal,
+  whether `store` or `environment` resolved it. Freeze environment principals **read-only** — not
+  editable, not revocable, from CLI or console. Do **not** schedule a deprecation; revisit when there
+  is a second deployment.
+- **(c) `key revoke` refuses on an environment principal and names the configuration that owns it.** A
+  refusal that does not say where to go is a no-op with better manners.
+- **(d) The digest is a slow KDF, not a bare hash.** Per-key salt, iterated or memory-hard,
+  constant-time comparison. A single SHA-256 is offline-crackable from the store — a store of
+  crackable digests is a plaintext store with extra steps.
+- **(e) Revocation takes effect immediately.** If `PrincipalDirectory` caches resolutions, state the
+  cache lifetime in the design and make `revoke` evict. A revocation a cache serves past its moment is
+  guard (c) one layer down.
+- **Printing:** `key create` prints **once, to stdout, and to nothing else** — no `--output`, no file
+  flag, never a log, never stderr — plus a line saying it will not be shown again.
+
+### 2. The hub — approved, last, default off
+
+Four rules adopted as written, with the third (no key in a query string) and fourth (`wss://` off
+loopback) as **hard rules**. The two that decide whether it is a feature: **events are a hint never
+state** (the console re-reads the row over HTTP), and **live is visibly different from stale**.
+
+- **SignalR enters behind a configuration flag, default off.** A deployment that has not enabled it
+  loses immediacy and nothing else.
+- **THE HARD RULE: no pipeline code may depend on the hub.** Emission is fire-and-forget; an emission
+  that can throw into an assessment or a delivery is wrong regardless of how the events are shaped. A
+  hub outage must be invisible to mail flow.
+- **Emit at my own boundary first** — the Host's ledger writes, the listing routes, the delivery-worker
+  hosting — before asking `assess-` or `queue-` for anything. Where a change is genuinely produced in
+  another lane, ask for **one call at its completion boundary and nothing more**. The hub must not
+  become a reason for two lanes to know about each other.
+
+### Why the key CLI is not started
+
+It changes the **authentication path for both HTTP and SMTP submission**, and it has to land whole:
+a half-built credential path is worse than none, because a partially-working authentication change is
+a hole rather than a gap. With context pressure flagged and the guards above being five requirements
+rather than one, this belongs in a **fresh context**, started from this section. Everything else is
+landed and green, so stopping here is clean rather than a degraded handoff.
 
 ## Follow-up work landed after the first report
 
