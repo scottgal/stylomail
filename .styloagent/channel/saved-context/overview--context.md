@@ -108,48 +108,59 @@ overwritten. Content is intact; the record is not. Plain `git add` of an explici
 
 | Owner | Owns | State |
 | --- | --- | --- |
-| `mime-` | Mime plus deterministic evidence | complete, 91 |
-| `adaptive-` | Profiles, drift, velocity, learning | idle, committed at `9be37c1` |
-| `queue-` | Queue, spool, delivery worker | idle, committed at `05f3e31` |
-| `host-` | Host, handed over on budget | stopped |
-| `ingress-` | **Host current owner** | working: management surface; lane committed at `1f9cf98` |
-| `assess-` | Composition root plus semantic cache | idle, committed at `0a62690` |
-| `transport-` | SMTP/MTA plus Cloudflare | complete, 192 |
-| `access-` | IMAP/POP3 proxy, credential seam | complete, 61 |
-| `desktop-` | **Avalonia operator console** | working; commits its own lane |
+| `chat-` | **The chat channel extension**: Core contract, Slack ingress and evidence, assessment path, later triage and Discord | **working, plan 2b Task 3** |
+| `desktop-` | Avalonia operator console | idle |
+| `hub-` | Live traffic events, the `ITrafficEvents` seam | idle, lane merged at `e06e7d8` |
+| `access-` | IMAP/POP3 proxy **and the protocol harness** | idle, both lanes complete |
+| `mime-`, `adaptive-`, `queue-`, `host-` | their lanes, all merged | exited |
+| `assess-`, `transport-`, `ingress-` | their lanes, all merged | dehydrated |
+| `keys-` | minted API keys, principal store, `stylomail key` CLI | **exited, lane merged; unowned now, so route to me** |
 
-## Ruled this session (delivered to `ingress-`)
+## Ruled this session, and still binding
 
-Minted API keys, direction already decided by the operator, approved with guards: precedence is total
-and **never merged** across store and environment (a privilege union is a silent escalation);
-`key list` reports which source resolved each principal; `key revoke` refuses on an environment
-principal and names the config that owns it; the digest is a **slow KDF** with per-key salt and
-constant-time comparison, not a bare hash; revocation must defeat any resolution cache; `key create`
-prints once to stdout and to nothing else.
+**Minted keys:** precedence total and never merged across store and environment; `key list` reports
+the resolving source; `key revoke` refuses an environment principal and names the config that owns it;
+a slow KDF with per-key salt and constant-time comparison; revocation defeats any cache; `key create`
+prints once to stdout.
 
-SignalR hub: approved **last**, behind a **default-off** flag, with the hard rule that **no pipeline
-code may depend on it** and an emission must never be able to fail an assessment or a delivery.
-Emission belongs at `ingress-`'s own boundary (ledger writes, listing routes, delivery-worker hosting)
-before any other lane is asked for a hook.
+**SignalR hub:** last, behind a default-off flag, no pipeline code depending on it, and an emission
+that cannot fail an assessment or a delivery. Built and merged.
 
-Also adopted: `posture` and `notificationTarget` are stored and shown but read by nothing, and are
-labelled as not yet acted on. A control that looks like it works is a false statement about the system.
+**Chat:** `DeliveryTiming` and `Channel` are `required`, never defaulted, because a default would let
+a chat assessment claim it could have stopped a message it only reacted to. `MailDirection` is
+**derived from membership, never defaulted**: inbound and outbound statistics are never merged into
+one pool. The external author gets a **distinct scope kind with no provenance**, because the platform
+asserts the identity rather than the message claiming it. The **target of "where it went" fills the
+recipient slot with its conversation type in the key**, so "talking to new people" and "posting in new
+channels" are never merged into one number. The emergency kill switch must reach chat.
+
+**Posture and `notificationTarget`** are stored and shown but read by nothing, labelled as such. A
+control that looks like it works is a false statement about the system.
 
 ## In flight
 
-- `ingress-`: the management slice (sender settings, companies). `docs/console-management-design.md`
-  is the design of record, committed at `a16174c`.
-- `desktop-`: the API key entry screen and the connection screen.
+- **`chat-`, plan 2b Task 3** (`docs/chat-pipeline-design.md`): the member path, velocity and drift,
+  and the external author's explicit `Unavailable` are in. The observed-state write, the fan-out half
+  and the external scope follow the rulings above. **The cross-path drift pin I required is currently
+  red** while it is mid-work, which is red-first as asked.
+- Plans 2b Tasks 4 and 5 remain: the Slack events endpoint in the Host, and the tests that make the
+  decisions real. Then plan 3, triage.
+- The **protocol harness** is complete for tier one (`docs/protocol-harness-plan-01.md`). Its next
+  tiers, SMTP and the upstream MTA handoff, then Cloudflare and OAuth, are **not yet written**.
 
 ## Open for the operator
 
 - **LICENSE** for the repository: not chosen.
-- **Desktop distribution**: self-contained single-file like mylo, or developer-only.
-- ~~Desktop console authentication~~: answered, API key entry screen plus a `stylomail key` CLI.
-- **AccessProxy**: durable credential store unowned, per-tenant key isolation unmet, SMTP submission
-  deferred behind retrieval.
+- **Desktop distribution**: self-contained single-file, or developer-only.
+- **AccessProxy**: durable credential store unowned, per-tenant key isolation unmet, and SMTP
+  submission deferred behind retrieval. The harness wrote the untested Gmail behaviour down:
+  `tests/StyloMail.Integration.Tests/UNTESTED-GMAIL.md`, and the gap is at session establishment,
+  because the proxy advertises its own capability list.
+- **The fleet cap.** `.styloagent/fleet.yaml` says 16 but the running cockpit enforces 12 and does not
+  re-read the file, so only the operator can raise it.
 
 ## Next step
 
-Get `ingress-`'s management slice committed when it is green, and have `desktop-` run the live console
-smoke (`ux-scripts/run-console-smoke.sh`) against the committed Host rather than the working tree.
+`chat-` finishes Task 3 and the lane is committed when green. After that: Task 4, the Slack events
+endpoint, where the recorded platform payloads settle `user_team`, `bot_id` versus `bot_user_id`, and
+the conversation type, and where the own-post drop finally has a production home.

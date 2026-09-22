@@ -211,6 +211,16 @@ signal still recorded.
 cannot serve chat. Chat builds a stated `PolicyContext`; **the emergency kill switch does not reach
 chat**. A gap, not a decision, and it is written into the code as one.
 
+**ADAPTIVE INCREMENT DONE (Assessment 133).** `ChatAssessor` takes `IAdaptiveProfileStore` ->
+`ProfileCoordinator`. **Member path wired**: `ProfileKeyHasher.Hash(tenantId, authorId)` ->
+`ProfileScopes.OutboundSender(tenantId, pseudonym)` -> `BehaviouralEvidenceEvaluator.Evaluate(
+snapshot, ProfileScopeKind.OutboundSender.ToString())` -> velocity/drift evidence. No traffic class is
+declared for chat, so the fan-out question is not asked (matches the mail path's rule).
+**External author path is an explicit gap**: `AssessmentReasonCodes.ChatBehaviouralUnavailable`
+(new const in `MailAssessor.cs`), with the behavioural ids present but `Unavailable` and a reason
+naming the missing qualification. Signal id consts are on **`BehaviouralEvidenceIds`**; `SourceVersion`
+is on `BehaviouralEvidence`. Adaptive namespace for the evaluator is `StyloMail.Adaptive.Signals`.
+
 **STILL TO DO in Task 3:** (a) adaptive recipient/velocity evidence via `ProfileCoordinator` +
 `ProfileKey` (needs MailAssessor's `BuildProfileTargets`/`ReadSnapshots` as the template), and
 (b) the cross-path drift test (push equivalent evidence down both paths, assert the same action).
