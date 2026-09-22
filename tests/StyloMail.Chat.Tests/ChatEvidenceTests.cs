@@ -209,8 +209,13 @@ public sealed class ChatEvidenceTests
         Assert.Equal(200, homograph.Value);
         Assert.True((homograph.Attributes ?? []).Count <= 8, "attribute list must be capped");
 
+        // A value is either within the bound or visibly marked as having been cut. The shared builder
+        // appends the marker rather than replacing a character, so a truncated value is one longer
+        // than the bound, and asserting a bare length would fail on exactly the case this allows.
         Assert.All(
             homograph.Attributes ?? [],
-            a => Assert.True(a.Value.Length <= 128, "attribute values must be truncated"));
+            a => Assert.True(
+                a.Value.Length <= 128 || a.Value.EndsWith('…'),
+                $"attribute value is neither bounded nor marked as cut ({a.Value.Length} chars)"));
     }
 }

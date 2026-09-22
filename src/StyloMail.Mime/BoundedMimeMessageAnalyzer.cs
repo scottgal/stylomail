@@ -58,7 +58,7 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
 
         var limits = request.Limits ?? MimeParseLimits.Default;
         var observedAt = request.TimeProvider.GetUtcNow();
-        var builder = new EvidenceBuilder(observedAt, limits);
+        var builder = new EvidenceBuilder(observedAt, MimeSignals.SourceVersion, limits.AttributeBudget);
         var raw = request.RawMessage.Span;
 
         if (raw.Length > limits.MaxMessageBytes)

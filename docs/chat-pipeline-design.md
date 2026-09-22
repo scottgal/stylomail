@@ -67,7 +67,9 @@ reports a frozen tree.
    `ConversationContext`, and the platform's bounded membership facts. Plus `MailAssessment.Channel`,
    required, so the decision records the channel it is about. Existing email call sites state
    `ChannelContext.Email`, exactly as they did for `MailAnalysisInput.Channel` in plan 1.
-2. **A deterministic evidence producer for chat**, producing `Evidence` from a `ChatMessage`. Link
+2. **A deterministic evidence producer for chat**, producing `Evidence` from a `ChatAnalysisInput`.
+   The input record is what Task 1 added for Tasks 2 and 3 to share, so a producer reading the raw
+   `ChatMessage` would leave that record unused and rebuild the link observations itself. Link
    and homograph analysis comes from the MIME adapter and must be reused rather than reimplemented;
    if it is not reachable without dragging MIME structure along, report that as a finding rather than
    copying it.
