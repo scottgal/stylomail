@@ -274,21 +274,32 @@ in the unprivileged range). **The key move was reading the image's own config vi
 of guessing at 2.4 syntax**; eight iterations failed because I *replaced* `dovecot.conf`, which
 discards `vendor.d/rootless.conf` and the only user the image has (`vmail`). Never replace it. Extend it.
 
-**FINDING #2, the sharper one, REPORTED not fixed.** With Dovecot working the IMAP test still fails:
-the proxy returns **`ProtocolError`** and drops the connection when a real client uses the
-**challenge/response form** of `AUTHENTICATE`. Exact bytes MailKit sends:
+**FINDING #2 WAS WRONG. RETRACTED (sent `urgent` to `overview-`).** I reported that the proxy
+mishandled the challenge/response form of `AUTHENTICATE` and filed it high. **It does not.** The
+client parser handles those bytes correctly; the unit regression I wrote for it **passed on first
+run**. The whole failure was **my own harness config**: `DovecotServer` used `WithResourceMapping`,
+which was accepted without error and **never placed the file**, so Dovecot kept its defaults,
+advertised `LOGINDISABLED` with no `AUTH=PLAIN`, and refused with
+`NO [PRIVACYREQUIRED] Cleartext authentication disallowed`. A backend refusing and a proxy
+mis-parsing both surface as "the IMAP server has unexpectedly disconnected". Fixed with
+`WithBindMount`. **IMAP now passes end to end.**
 
-```
-A00000000 AUTHENTICATE PLAIN\r\n
-AGFsaWNlQGV4YW1wbGUuY29tAGNsaWVudC1zaWRlLXBhc3N3b3JkLTlmM2E=\r\n
-```
+**The lesson, and it is the sharpest one of the session:** my unit regression **passed on first run**
+and I explained the contradiction away as "socket versus pipe" instead of following it. I had a
+measurement refuting my diagnosis and I rationalised past it. **When a test written to reproduce a
+defect passes, the diagnosis is wrong until proven otherwise.** What actually found it was bisecting
+by driving the backend connector directly with no client in front of it.
 
-The unit suite covers only `AUTHENTICATE PLAIN <inline base64>` (SASL-IR) and **passes**, because the
-fake client in `PipeDuplex` was written by us and chose the convenient spelling. **Not yet bisected to
-the exact line**: `ProtocolError` is returned from both the client-facing parse and
-`ImapBackendConnector`, since both throw `AccessProxyProtocolException`. Evidence points at the client
-side (the backend was driven by hand successfully), but that is an inference, not a measurement.
-**NEXT STEP: bisect it, then report precisely.**
+**The real finding that survives (low/medium, reported):** `ImapBackendConnector` treats an
+**untagged** status line as a protocol error. Dovecot sent `* BAD [ALERT] ...` before its tagged
+`S1 NO`, and the loop only matches `+` or `S1`-prefixed OK/NO/BAD, so an untagged line falls through to
+`throw new AccessProxyProtocolException("unexpected authentication reply")`. RFC 3501 permits untagged
+responses at any time, so any server emitting an informational line during auth gets a protocol error
+where a rejection was correct. **Not the cause of the IMAP failure.**
+
+**New tests, both worth keeping:** `BackendConnectorTests` (integration) drives `ImapBackendConnector`
+alone against Dovecot, the only test pointing our hand-written IMAP client side at a server nobody
+here wrote; `ImapClientChallengeResponseTests` (unit) replays the captured MailKit bytes as a guard.
 
 **NOT done:** Task 2's IMAP leg; the plan's `git commit` steps (the plan contradicts itself, Global
 Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are

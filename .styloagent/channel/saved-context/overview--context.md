@@ -64,6 +64,38 @@ checkpoint message ("Checkpoint desktop- context: management surface started", `
 overwritten. Content is intact; the record is not. Plain `git add` of an explicit path list, then
 `git commit`, and nothing else.
 
+## Rules this session produced, all of them paid for
+
+1. **When a measurement contradicts a diagnosis, the measurement wins, and an explanation that
+   preserves the diagnosis is the thing to distrust.** `access-` wrote a regression test that passed
+   while its diagnosis said it should fail, explained it away as "socket versus pipe", and filed a
+   high-severity defect that did not exist. Bisecting found the truth. The cost was a fabricated
+   workstream committed to `149f25e` and retracted an hour later.
+2. **A completion report describes a frozen tree, and its numbers are the numbers measured on it.**
+   A lane mid-cycle is indistinguishable from a lane that is broken, and only the freeze
+   distinguishes them. When a report and my measurement disagree, re-run before concluding either way:
+   a single failure followed by two clean runs is a flake or a moving tree, not a result.
+3. **Verify in a detached clone, never in a working tree that compiles.** A working tree that builds
+   cannot see a file that was never committed, and it cannot see a required member that breaks
+   deserialisation. Eight Adaptive sources were absent from every commit in this repo's history while
+   every local build passed.
+4. **Never `git commit --amend` or `git reset` here.** Several agents share this tree. I destroyed a
+   commit `desktop-` landed between my commit and my amend. Plain path-list `git add`, then `git
+   commit`, nothing else.
+5. **Agents do not commit; I commit their lanes.** Eight of nine missions forbid it. Report done, I
+   verify the solution, then commit. The previous session skipped that job and reported the tree
+   "in sync" with thirty modified source files in it.
+6. **A gap must be visible in the output, not in a conversation.** A red test whose reason lives only
+   in a message thread is not visible to the next person. `[BlockedHarnessFact(reason)]` is the shape
+   that works: it skips, and the reason prints where a reader looks.
+7. **Never duplicate a security-relevant heuristic.** The IDN and homograph analysis moves to Core
+   rather than being copied into the chat connector: two copies drift, and the one that drifts is the
+   one nobody re-reads.
+8. **An in-memory fake is ours, and that is its limit.** The protocol harness found two defects that
+   no in-memory suite could have: the first because the fake backend was ours, and the second because
+   the fake client was ours. Put real clients on real sockets against real servers, or the suite only
+   tests our assumptions about them.
+
 ## The fleet
 
 | Owner | Owns | State |
