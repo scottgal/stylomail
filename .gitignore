@@ -93,9 +93,18 @@ BenchmarkDotNet.Artifacts/
 *.db-wal
 *.sqlite
 *.sqlite3
-spool/
-profiles/
-quarantine/
+# Anchored, and deliberately so. Unanchored, `profiles/` also matched
+# src/StyloMail.Adaptive/Profiles/ and silently excluded eight source files from
+# the repository, so every commit up to and including 3aee47a failed to build
+# from a fresh clone with CS0234/CS0246. Runtime state is written under a data
+# root, so match that and keep the root-level form for a host started at the
+# repository root. Never re-add a bare `profiles/` here.
+**/data/spool/
+**/data/profiles/
+**/data/quarantine/
+/spool/
+/profiles/
+/quarantine/
 *.eml
 !tests/**/fixtures/**/*.eml
 
