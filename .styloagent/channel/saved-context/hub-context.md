@@ -25,46 +25,53 @@ dotnet test tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj
 python3 /tmp/stylomail-hub-probe/probe.py     # the live probe, 15/15
 ```
 
-## OPEN: one intermittent failure, and one uncommitted diagnostic
+## RESOLVED: the subscription window, measured and fixed in the harness
 
-**Read this first, it is the only unresolved thing in the lane.**
+**Read this before writing another hub test.**
 
-On the first full-suite run on the merged `main`, `TrafficEmissionTests.
-A_pause_and_a_resume_are_announced_as_the_same_kind_of_change` **failed once**, timing out after
-15s waiting for the second of two notices. Everything before and after it has been green:
+One full-suite run on merged `main` failed once: a test timed out after 15s waiting for the second
+of two notices. I made the failure name what it had actually received (committed by `overview-` as
+`1bc343e`), then probed it directly rather than waiting for a rare window, on `overview-`'s
+instruction, because a flake that is never measured becomes folklore.
 
-- 6/6 passes with that test run alone.
-- 4 sequential full-suite runs green, then **8 more full-suite runs with two instances running
-  concurrently** (deliberately, to raise load) all green. 300/300 each.
-- 3 full-suite runs green before the merge on the fork, and 5 clean runs earlier in the lane.
-- So: **1 failure in 23 full-suite runs**, and it has not reproduced since the diagnostic below.
+| Arm | Cycles | Missed |
+| --- | --- | --- |
+| Publish immediately after `StartAsync`, tenant-scoped | 900 (3 runs) | **7** |
+| Publish 250ms after `StartAsync`, tenant-scoped | 300 | **0** |
+| Publish immediately after `StartAsync`, broadcast | 300 | **0** |
 
-**The mechanism is not established, and I did not guess it.** The two candidates, and what would
-tell them apart:
+**7 losses in 900 immediate tenant cycles, 0.78%**, every one with the subscriber having received
+**nothing at all**. That is what a notice addressed to a group the connection has not joined looks
+like: delivered to nobody, not queued. So the window is the **tenant group**, and it is specifically
+that: the transport tracks a connection earlier than the hub's connection callback runs, so the
+broadcast path is clean in 300 cycles, and 250ms is enough for the join every time.
 
-1. **The client-side subscription race.** `Hub.OnConnectedAsync` adds the connection to its tenant
-   group *after* the client's `StartAsync` returns, so a notice published in that window is lost to
-   a subscriber that has not joined yet. The failing test connects and then immediately publishes
-   two changes; losing the first would leave exactly the observed shape, a second `NextAsync` timing
-   out with one notice already consumed. **This predicts the failure message says one notice
-   arrived.**
-2. **A notice lost in delivery**, either in the fire-and-forget send or in the long-poll transport.
-   **This predicts an empty list.**
+**It is a dropped hint and not a production defect.** Rule 1 is that events are a hint and never
+state, and the console renders from its own HTTP re-reads, so a missed notice cannot produce a wrong
+screen. That is the property the rule buys, and this is the first time it was exercised rather than
+asserted. **The test had been asserting a stronger property than the contract**: the contract is
+"announced to whoever is subscribed", not "every subscriber is subscribed the instant it connects".
 
-The failure message could not distinguish them, so I improved it: `TrafficSubscriber.NextAsync`
-now names **what it actually received before giving up**, kinds and subject ids, instead of only
-saying nothing arrived. That change is **uncommitted in the main tree**:
-`tests/StyloMail.Host.Tests/TrafficTestSupport.cs`, +19/-4. It is the only dirty file. It is a real
-improvement and it is what makes the next occurrence diagnosable in one line; it was left
-uncommitted deliberately rather than committed to `main` without authority.
+**The fix is in `TrafficSubscriber.ConnectAsync`**: it waits until the connection has demonstrably
+heard a **tenant-scoped** notice before returning, retries if the first is lost, and forgets what it
+consumed so assertions still read only what the test published. Hearing a tenant-scoped notice *is*
+proof of membership, because the group is the only way it can arrive. It is in the helper so no test
+has to know, and the reasoning and the table above are in its remarks.
 
-**If it fires again:** read the message, and it tells you which of the two it is. If it is (1), the
-honest fixes are either a `Subscribed` confirmation sent to `Clients.Caller` in `OnConnectedAsync`
-(which is also the thing a live/stale indicator would want, but it is a fifth wire kind and a change
-to a contract `desktop-` already has) or making each affected test establish membership by
-publishing until one arrives and then draining, scoped by a `Mark()`. **Do not "fix" it by raising
-the timeout**: the test waits 15 seconds for a notice, so more time is not the missing thing, and a
-longer window only makes a real defect rarer rather than absent.
+Verified: **12 full-suite runs green** with the fix, 4 sequential and 8 with two instances
+concurrent, which is the load the original failure appeared under. 300/300 each.
+
+`overview-` declined a fifth wire kind (a `Subscribed` confirmation to `Clients.Caller`) for now:
+it would strengthen a contract `desktop-` already consumes in order to satisfy a test, for a
+guarantee the design deliberately does not make. If `desktop-` wants one for the live/stale
+indicator, that is a different argument with its own evidence and it is theirs to bring.
+
+The probe harness (`TrafficSubscriptionRaceProbe`) was scaffolding and has been deleted. It wrote
+per-arm reports to `/tmp/hub-subscription-race-<arm>.txt`; the arithmetic is above and in the
+helper's remarks.
+
+**Never "fix" this by raising the timeout.** The test already waits 15 seconds, so time is not the
+missing thing.
 
 ## What the feature is
 
