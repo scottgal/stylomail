@@ -477,11 +477,19 @@ public sealed class ShellModel : ObservableObject
                 // to be clickable.
                 var title = string.IsNullOrWhiteSpace(sender.Label) ? sender.PrincipalId : sender.Label!;
 
-                var item = new SidebarItem(title, SidebarItemState.Available, DescribeControl(sender.Control))
+                // Provenance travels with the row, because it changes what the
+                // console can offer: a store principal was minted here and is
+                // revocable from the key CLI, an environment one is a
+                // configuration entry this host does not own.
+                var detail = $"{DescribeControl(sender.Control)} \u00b7 "
+                    + PrincipalSource.Describe(sender.Source);
+
+                var item = new SidebarItem(title, SidebarItemState.Available, detail)
                 {
                     IsPaused = sender.Control.Paused,
                     IsSender = true,
                     PrincipalId = sender.PrincipalId,
+                    Source = sender.Source,
                 };
 
                 section.Items.Add(item);

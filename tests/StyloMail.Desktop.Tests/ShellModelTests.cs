@@ -87,6 +87,49 @@ public sealed class ShellModelTests
         Assert.Contains(senders, item => item.PrincipalId == "compromised@example.test");
     }
 
+    /// <summary>
+    /// Provenance travels with the row, because it changes what can be offered.
+    /// </summary>
+    /// <remarks>
+    /// A <c>store</c> principal was minted here and is revocable from the key
+    /// CLI; an <c>environment</c> one is a configuration entry this host does
+    /// not own. A console that could not tell them apart could not say which
+    /// it was looking at.
+    /// </remarks>
+    [Fact]
+    public void A_row_carries_where_its_authority_came_from()
+    {
+        var model = ShellModel.CreateDefault();
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var rows = model.Sections.SelectMany(section => section.Items).ToList();
+
+        var minted = rows.Single(row => row.PrincipalId == "compromised@example.test");
+        Assert.Equal(PrincipalSource.Store, minted.Source);
+        Assert.Contains("minted on this host", minted.Detail!, StringComparison.Ordinal);
+
+        var configured = rows.Single(row => row.PrincipalId == "untouched@example.test");
+        Assert.Equal(PrincipalSource.Environment, configured.Source);
+        Assert.Contains("configured in the host", configured.Detail!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A provenance this build does not know is shown, never folded into a
+    /// default.
+    /// </summary>
+    /// <remarks>
+    /// The Host has been through one bug already where a principal vanished
+    /// from this listing entirely. A console that hid a row it could not
+    /// classify would be that bug arriving by a different route.
+    /// </remarks>
+    [Theory]
+    [InlineData("store", "minted on this host")]
+    [InlineData("environment", "configured in the host")]
+    [InlineData("federated", "not recognised")]
+    [InlineData(null, "not reported")]
+    public void An_unrecognised_provenance_is_shown_rather_than_defaulted(string? source, string expected)
+        => Assert.Contains(expected, PrincipalSource.Describe(source), StringComparison.OrdinalIgnoreCase);
+
     // ===================== grouping senders into companies =====================
 
     private static readonly IReadOnlyDictionary<string, string> CompanyNames =
