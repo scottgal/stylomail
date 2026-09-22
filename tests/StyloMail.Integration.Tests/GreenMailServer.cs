@@ -1,3 +1,5 @@
+using MailKit.Net.Imap;
+using MailKit.Security;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
@@ -79,7 +81,60 @@ public sealed class GreenMailServer : IAsyncDisposable
             .Build();
 
         await container.StartAsync();
-        return new GreenMailServer(container);
+
+        var server = new GreenMailServer(container);
+        await server.WaitUntilTheAccountCanAuthenticateAsync();
+        return server;
+    }
+
+    /// <summary>
+    /// Blocks until the configured account can actually log in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The TCP wait strategy is not enough, and this was measured rather than guessed.</b>
+    /// <c>UntilInternalTcpPortIsAvailable</c> returns as soon as something accepts a connection on
+    /// 3143, which GreenMail does before it has finished creating the user from
+    /// <c>-Dgreenmail.users</c>. A test that connects in that window gets
+    /// <c>AuthenticationException: Invalid login/password for user id alice@example.com</c>, which
+    /// reads like a credential defect and is a startup race.
+    /// </para>
+    /// <para>
+    /// <b>It was intermittent, which is why it survived the first reports.</b> Measured over ten
+    /// consecutive runs, nine failed, and the two GreenMail-backed tests failed in different
+    /// combinations. A single green run proves nothing about this fixture.
+    /// </para>
+    /// <para>
+    /// <b>Dovecot does not need the equivalent</b> because its shipped <c>auth.conf</c> uses a static
+    /// passdb: there is no account to create, so there is no window.
+    /// </para>
+    /// </remarks>
+    private async Task WaitUntilTheAccountCanAuthenticateAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        Exception? last = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var client = new ImapClient();
+                await client.ConnectAsync(Host, ImapPort, SecureSocketOptions.None);
+                await client.AuthenticateAsync(Login, AppPassword);
+                await client.DisconnectAsync(true);
+                return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+            }
+
+            await Task.Delay(200);
+        }
+
+        throw new InvalidOperationException(
+            $"GreenMail did not accept '{Login}' within 30 seconds of the container starting. "
+            + $"Last error: {last?.GetType().Name}: {last?.Message}");
     }
 
     public ValueTask DisposeAsync() => new(_container.DisposeAsync().AsTask());

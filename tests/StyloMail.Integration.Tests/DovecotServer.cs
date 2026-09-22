@@ -71,7 +71,13 @@ public sealed class DovecotServer : IAsyncDisposable
 
         var container = new ContainerBuilder("dovecot/dovecot:latest")
             .WithEnvironment("USER_PASSWORD", AppPassword)
-            .WithResourceMapping(dropIn, "/etc/dovecot/conf.d/99-harness.conf")
+            // A bind mount, not WithResourceMapping. The resource mapping was accepted without error
+            // and the file never reached conf.d, so Dovecot kept its defaults, advertised
+            // LOGINDISABLED with no AUTH=PLAIN, and refused cleartext with
+            // "NO [PRIVACYREQUIRED] Cleartext authentication disallowed". That failure looks exactly
+            // like a proxy defect from the test, and it cost a misdiagnosis: see the note in
+            // ImapThroughProxyTests. The bind mount is the form verified against this image by hand.
+            .WithBindMount(dropIn.FullName, "/etc/dovecot/conf.d/99-harness.conf")
             .WithPortBinding(InternalImapPort, assignRandomHostPort: true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(InternalImapPort))
             .Build();
