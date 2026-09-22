@@ -139,6 +139,17 @@ internal sealed class TrafficSubscriber : IAsyncDisposable
     /// test. The wait is short and the retry is what makes it deterministic: the first attempt is
     /// usually heard, and an unheard one is gone rather than late.
     /// </para>
+    /// <para>
+    /// <b>Two subscribers on the same tenant in one test will hear each other's probes.</b> The
+    /// probe is addressed to the tenant group, because that is the only thing this seam can address
+    /// that proves membership, and there is deliberately no per-connection address to use instead.
+    /// So a second console on the same tenant will find a <c>DecisionRecorded</c> notice for
+    /// <c>subscription_probe_0</c> waiting in its history, published before the test did anything.
+    /// Nothing hits this today, and only because the one test with two subscribers uses Acme and
+    /// Globex. Whoever writes the first same-tenant two-console test should expect that notice and
+    /// scope their assertions from after the connect, rather than spend the hour it otherwise costs
+    /// to work out where an assessment they never made came from.
+    /// </para>
     /// </remarks>
     private async Task EstablishSubscriptionAsync(ITrafficEvents events, string tenantId)
     {
