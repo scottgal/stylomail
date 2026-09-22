@@ -104,12 +104,27 @@ internal sealed class TrafficSubscriber : IAsyncDisposable
     }
 
     /// <summary>The next notice, waiting for it if it has not arrived yet.</summary>
+    /// <remarks>
+    /// The failure names what this subscriber actually received before it gave up. A timeout that
+    /// only says "nothing arrived" cannot distinguish a lost notice from a lost connection, and both
+    /// from a subscription that was never established, so the next reader would have to reproduce
+    /// the whole thing to learn what one line here would have told them.
+    /// </remarks>
     public async Task<JsonElement> NextAsync()
     {
-        Assert.True(
-            await _arrived.WaitAsync(ArrivalWindow).ConfigureAwait(false),
-            $"No notice arrived within {ArrivalWindow.TotalSeconds:F0}s. Either nothing was "
-            + "published, or the subscription is not receiving what was published to it.");
+        if (!await _arrived.WaitAsync(ArrivalWindow).ConfigureAwait(false))
+        {
+            var heard = Received;
+            var described = heard.Count == 0
+                ? "nothing at all"
+                : string.Join(
+                    ", ",
+                    heard.Select(n => $"{n.GetProperty("kind").GetString()} {n.GetProperty("subjectId").GetString()}"));
+
+            Assert.Fail(
+                $"No notice arrived within {ArrivalWindow.TotalSeconds:F0}s. What this subscriber "
+                + $"received before giving up was: {described}.");
+        }
 
         Assert.True(_pending.TryDequeue(out var notice));
         return notice;
