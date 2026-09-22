@@ -59,6 +59,15 @@ rather than an obstacle: a headless deployment needs the same routes.
 | `GET /v1/companies` | Review | List groups |
 | `POST /v1/companies`, `PUT /v1/companies/{id}` | Administer | Create and edit |
 | `GET /v1/senders` (extend) | Review | Carry `companyId` and `label` on each row, so the sidebar groups without a second call per sender |
+| `GET /v1/senders` (extend) | Review | Carry `source` on each row: `store` or `environment`, so the console can show whether a sender was minted or configured. Owned by `keys-`; the console mirrors it. |
+
+**On `source`, and the bug that prompted it.** `keys-` found that a name which is both configured and
+minted currently **disappears from the listing entirely**: wholesale precedence means the configured
+entry can no longer authenticate, and the listing already excludes principals that cannot. So the
+console would show a sender simply gone, with nothing anywhere saying a conflict existed. That is the
+same shape as the `.gitignore` finding of the same afternoon, a thing that looks healthy because
+something is quietly absent, and it is why `source` is worth carrying rather than dropping: a sender
+whose row says where it came from is one an operator can reason about when the two disagree.
 
 ## The key CLI
 
@@ -66,10 +75,19 @@ Minting is a bootstrap action rather than a screen, so it belongs to the executa
 That also keeps the console's rule intact: the CLI is the other way to do it.
 
 ```
-stylomail key create --principal ops@acme --tenant acme --privileges Review,Administer
+stylomail key create --principal ops@acme --tenant acme --privileges Review,Administer --by ops@acme
 stylomail key list
-stylomail key revoke --principal ops@acme
+stylomail key revoke --principal ops@acme --by ops@acme
 ```
+
+**`--by` is required on create and revoke, and this document was wrong to omit it.** `keys-`
+implemented it that way and `overview-` ruled the document correct rather than the code. The rule is
+the one this CLI already established with `quarantine release --by`: **a mutating command with no
+identity to sign with must not invent one.** Minting is how access is granted and revoking is how it
+is withdrawn, so an entry that records neither is an audit trail with a hole exactly where the
+interesting events are.
+
+`key list` takes no `--by` because it mutates nothing.
 
 Constraints: the value is printed once and never recoverable; only a digest is stored; `key list`
 shows the principal, tenant and privileges and never the key or its digest.
