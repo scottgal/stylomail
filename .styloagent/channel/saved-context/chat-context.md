@@ -221,6 +221,18 @@ declared for chat, so the fan-out question is not asked (matches the mail path's
 naming the missing qualification. Signal id consts are on **`BehaviouralEvidenceIds`**; `SourceVersion`
 is on `BehaviouralEvidence`. Adaptive namespace for the evaluator is `StyloMail.Adaptive.Signals`.
 
+**DRIFT PIN (Assessment 134).** The both-paths version **does not exist** and I tried it four ways.
+Evidence sets differ structurally at three points unrelated to composition: chat always records 12
+semantic dimensions unavailable + 3 deterministic signals; mail's relationship profiles and acceptance
+step change what it carries; and mail's semantic-outage override turns an outage into a declined
+responsibility chat has no counterpart for (`Defer` vs `Hold`, and it persisted after switching the
+override off because the acceptance step also produces `Defer`). **Delivered instead:** a pin that
+chat's proposal and risk index equal what `CompositeRiskScorer` + `MailPolicyEngine` over
+`Builders.Options()` produce for chat's own evidence with `Direction.Outbound`. **If chat drifts to
+other weights, another engine or another direction, it fails.** Gotcha found doing it:
+`Builders.Envelope()` **defaults to `Inbound`** - match the direction or you compare two paths being
+asked about different things.
+
 **STILL TO DO in Task 3:** (a) adaptive recipient/velocity evidence via `ProfileCoordinator` +
 `ProfileKey` (needs MailAssessor's `BuildProfileTargets`/`ReadSnapshots` as the template), and
 (b) the cross-path drift test (push equivalent evidence down both paths, assert the same action).
