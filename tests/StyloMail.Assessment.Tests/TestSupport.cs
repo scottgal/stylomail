@@ -188,6 +188,9 @@ internal sealed class RecordingSemanticClassifier : ISemanticMailClassifier
         ["semantic.credential_request"] = 0.1,
     };
 
+    /// <summary>The most recent input, so a test can assert what actually reached the classifier.</summary>
+    public SemanticMailInput? LastInput { get; private set; }
+
     public int ConcurrentCalls { get; private set; }
 
     public int MaxConcurrentCalls { get; private set; }
@@ -200,6 +203,7 @@ internal sealed class RecordingSemanticClassifier : ISemanticMailClassifier
         CancellationToken cancellationToken)
     {
         CallCount++;
+        LastInput = input;
         _recorder?.Record("semantic");
 
         ConcurrentCalls++;
@@ -289,6 +293,9 @@ internal sealed class FakeProfileStore : IAdaptiveProfileStore
     /// <summary>Whole-profile updates applied through the store's transactional path.</summary>
     public int UpdateCount { get; private set; }
 
+    /// <summary>Every observation the store was handed, so a test can assert what was passed.</summary>
+    public List<ProfileObservation> Observations { get; } = [];
+
     /// <summary>
     /// The delta write: merge into whatever is stored, creating the profile if nobody has seen it.
     /// </summary>
@@ -302,6 +309,7 @@ internal sealed class FakeProfileStore : IAdaptiveProfileStore
     {
         ApplyObservationCount++;
         _recorder?.Record("profile.observe");
+        Observations.Add(observation);
 
         var profile = _profiles.TryGetValue(key, out var existing) ? existing : new AdaptiveProfile(key);
         profile.Observe(observation);

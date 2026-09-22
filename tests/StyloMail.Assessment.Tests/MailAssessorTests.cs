@@ -1,5 +1,6 @@
 using StyloMail.Assessment.Campaign;
 using StyloMail.Assessment.Semantic;
+using StyloMail.Adaptive.Profiles;
 using StyloMail.Core;
 using StyloMail.Policy;
 using StyloMail.Queue;
@@ -87,6 +88,60 @@ public sealed class MailAssessorTests
         // Policy is never a queue call before the acceptance step: responsibility is decided first.
         Assert.Contains("mime", steps);
         Assert.Contains("semantic", steps);
+    }
+
+    [Fact]
+    public async Task AFirstMessageFromAnUnknownSenderReportsNoBehaviouralContext()
+    {
+        var harness = Build();
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            Submittable(),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        // Recorded rather than omitted. A classifier that saw only the words cannot answer "is this
+        // unusual for this sender", and an assessment made without that is a different question's
+        // answer, not a weaker version of the same one. The ledger has to say which was asked.
+        //
+        // Fires on the FIRST message from a principal, which is the case it was written for: the
+        // profile row is created by the observation in step three, so by step four there is a
+        // snapshot to encode — but it carries no history yet, and the encoder reports it as
+        // ProfileAvailable: false rather than as a quiet sender.
+        var marker = Assert.Single(
+            assessment.Evidence,
+            e => e.SignalId == AssessmentEvidenceIds.BehaviouralContextUnavailable);
+
+        Assert.Equal(EvidenceAvailability.Unavailable, marker.Availability);
+        Assert.Null(marker.Value);
+    }
+
+    [Fact]
+    public async Task ASenderWithHistoryReachesTheClassifierAndStopsTheMarkerFiring()
+    {
+        var harness = Build();
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        // First message: establishes the profile. Second: the sender now has history, so the
+        // classifier is told about it and the "we were not informed" marker must not fire.
+        await harness.Assessor.AssessAsync(
+            Submittable(), Builders.Context(harness.Clock, correlationId: "corr-1"), CancellationToken.None);
+
+        var second = await harness.Assessor.AssessAsync(
+            Submittable(Builders.Envelope(internalMessageId: "msg-2")),
+            Builders.Context(harness.Clock, correlationId: "corr-2"),
+            CancellationToken.None);
+
+        // A profile reached the classifier, so the ledger no longer claims the judgement was
+        // uninformed. This is the assertion that would catch the encoder being wired but its result
+        // dropped on the floor somewhere between step three and step four.
+        Assert.DoesNotContain(
+            second.Evidence,
+            e => e.SignalId == AssessmentEvidenceIds.BehaviouralContextUnavailable);
+
+        // And it was the classifier that got it, not just the ledger that stopped saying otherwise.
+        Assert.True(harness.Classifier.LastInput?.Profile is not null);
     }
 
     [Fact]
@@ -1141,6 +1196,110 @@ public sealed class MailAssessorTests
             CancellationToken.None);
 
         Assert.True(harness.Profiles.TotalBaselineVersion > 0);
+    }
+
+    [Fact]
+    public async Task ApprovedLearningPromotesRateFeaturesAndNotJustSemanticOnes()
+    {
+        var harness = Build(Builders.Options(assessmentPathLearningRuleId: "rule.replay-training/1"));
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        // Two messages, so the sender has a bucket with something in it by the time a sample is
+        // promoted. The rate features exist ONLY in the bucket synthesis, so a sample built from this
+        // message's semantic evidence alone can never model them — and the consequence is invisible:
+        // the encoder reports the baselines as null and nothing here looks wrong.
+        await harness.Assessor.AssessAsync(
+            Submittable(Builders.Envelope(direction: MailDirection.Outbound)),
+            Builders.Context(harness.Clock, correlationId: "corr-1"),
+            CancellationToken.None);
+
+        // The clock must move. `FeatureVector` adds the rate features only once some time has elapsed
+        // in the bucket, because a rate over zero elapsed time is undefined rather than zero. Real
+        // traffic advances the clock; a frozen test clock does not, and would silently produce a
+        // sample with no rates and a green-looking assertion about nothing.
+        harness.Clock.Advance(TimeSpan.FromSeconds(30));
+
+        await harness.Assessor.AssessAsync(
+            Submittable(Builders.Envelope(direction: MailDirection.Outbound, internalMessageId: "msg-2")),
+            Builders.Context(harness.Clock, correlationId: "corr-2"),
+            CancellationToken.None);
+
+        var sender = harness.Profiles.Profiles.Single(p => p.Key.Scope == ProfileScopeKind.OutboundSender);
+
+        // The baseline modelled the rate features, which is the whole point: without them the
+        // classifier is told "40 messages this hour" with nothing to compare it against.
+        Assert.True(
+            sender.Baseline.Dimensions.ContainsKey(StyloMail.Adaptive.Temporal.FeatureIds.MessagesPerSecond),
+            "the promoted baseline has no rate.messages_per_second, so no sender ever has a modelled "
+            + "normal volume.");
+
+        Assert.True(
+            sender.Baseline.Dimensions.ContainsKey(StyloMail.Adaptive.Temporal.FeatureIds.RecipientsPerSecond));
+    }
+
+    [Fact]
+    public async Task TheObservationCarriesPseudonymisedRecipientsAndNeverAddresses()
+    {
+        var harness = Build();
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        await harness.Assessor.AssessAsync(
+            Submittable(Builders.Envelope(
+                direction: MailDirection.Outbound,
+                recipients: ["alice@example.com", "bob@example.com"])),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        // Distinct *people*, not addresses. Passing these is what lets the profile answer novelty at
+        // all; passing nothing leaves RecipientsNovelToSender null forever, and the encoder will not
+        // invent a claim it cannot support.
+        // Every profile this attempt touched records the same recipients: the sender's, and each
+        // relationship's. The set is a property of the message, not of which profile is looking.
+        Assert.All(harness.Profiles.Observations, o => Assert.Equal(2, o.RecipientKeys?.Count ?? 0));
+
+        var keys = harness.Profiles.Observations[0].RecipientKeys!;
+
+        // Pseudonymised, not raw. A profile that holds recipient addresses cannot honour a deletion
+        // request without knowing every derived copy.
+        Assert.DoesNotContain(keys, k => k.Contains("example.com", StringComparison.Ordinal));
+        Assert.DoesNotContain(keys, k => k.Contains("alice", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ThePublicHelperBuildsASampleWithRateFeaturesForACaller()
+    {
+        // The helper exists because path 2 is the path that runs in production, and documenting a
+        // pitfall is not the same as removing it: a caller who assembles their own vector omits rates
+        // exactly as path 1 did, and gets a silently unmodelled baseline.
+        var harness = Build();
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        await harness.Assessor.AssessAsync(
+            Submittable(Builders.Envelope(direction: MailDirection.Outbound)),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        harness.Clock.Advance(TimeSpan.FromSeconds(30));
+
+        // By identity, not by key. A caller who assembles the key from the raw address names a
+        // profile that does not exist and gets a dimension-less sample that teaches nothing —
+        // silently. The overload exists so the caller never has to know about the pseudonym.
+        var sample = harness.Assessor.BuildTrustedSample(
+            "tenant-1",
+            MailDirection.Outbound,
+            "principal-1",
+            harness.Clock.GetUtcNow(),
+            LabelProvenance.AuthenticatedOperator,
+            label: "operator review");
+
+        Assert.NotEmpty(sample.Dimensions.Dimensions);
+        Assert.Contains(
+            sample.Dimensions.Dimensions,
+            d => d.DimensionId == StyloMail.Adaptive.Temporal.FeatureIds.MessagesPerSecond);
+
+        // And it did not decide what to teach. Provenance carries authority and stays the caller's.
+        Assert.Equal(LabelProvenance.AuthenticatedOperator, sample.Provenance);
+        Assert.Equal("operator review", sample.Label);
     }
 
     [Fact]

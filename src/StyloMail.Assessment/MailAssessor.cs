@@ -31,6 +31,23 @@ public static class AssessmentEvidenceIds
     /// <summary>A mandatory limit was breached, so the message was refused before being assessed.</summary>
     public const string HardLimitViolation = "assessment.hard_limit_violation";
 
+    /// <summary>
+    /// The semantic classifier judged this message without any behavioural context about its sender.
+    /// </summary>
+    /// <remarks>
+    /// <b>Recorded so a reader can tell an informed judgement from an uninformed one.</b> A classifier
+    /// that saw only the words cannot answer "is this unusual <em>for this sender</em>", and an
+    /// assessment made without that is not a weaker version of the same verdict. It is a different
+    /// question's answer, and the ledger has to say which was asked.
+    ///
+    /// <para>
+    /// Emitted as unavailable rather than omitted, for the same reason as
+    /// <see cref="DeterministicExtractionUnavailable"/>: an absent signal reads as "nothing wrong
+    /// found", which is the opposite of "nothing was known".
+    /// </para>
+    /// </remarks>
+    public const string BehaviouralContextUnavailable = "assessment.behavioural_context";
+
     /// <summary>Producer version for everything the composition root emits.</summary>
     public const string SourceVersion = "assessment/1";
 }
@@ -328,6 +345,20 @@ public sealed class MailAssessor : IMailAssessor
             }
 
             // ---- Step 4: obtain semantic evidence, exact cache hit, provider, or explicit unavailable.
+            var behaviouralProfile = BuildBehaviouralProfile(
+                profiles, now, HashedRecipients(analysis.Envelope, context));
+
+            // Two shapes mean the same thing to a reader: no profile at all, and a profile that
+            // positively says we looked and found nothing. `overview-` is explicit that BOTH must be
+            // recorded, because either way the classifier judged the words without knowing the
+            // sender. Recording only the null case made this marker unreachable — the encoder
+            // returns the unavailable shape rather than null for an unknown principal, so the ledger
+            // would have claimed an informed judgement on every cold-start message.
+            if (behaviouralProfile is null || !behaviouralProfile.ProfileAvailable)
+            {
+                evidence.Add(BehaviouralContextUnavailable(now));
+            }
+
             SemanticAssessment semantic;
             try
             {
@@ -338,6 +369,10 @@ public sealed class MailAssessor : IMailAssessor
                             Message = analysis,
                             Dimensions = _options.Dimensions,
                             TaggedContext = null,
+                            // Part of the classifier input, and therefore part of the semantic cache
+                            // key. The canonicaliser encodes it, and a tripwire test fails if Core
+                            // adds a field that the encoder does not carry.
+                            Profile = behaviouralProfile,
                         },
                         clock,
                         cancellationToken)
@@ -577,6 +612,62 @@ public sealed class MailAssessor : IMailAssessor
         && semanticEvidence.All(item => item.Availability
             is not (EvidenceAvailability.Available or EvidenceAvailability.ReducedCoverage));
 
+    /// <summary>
+    /// The behavioural profile this message is judged against, or null when there is none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Encoded from the <b>sender's</b> snapshot, and from the observed state rather than the trusted
+    /// baseline alone, which is `adaptive-`'s rule for what this describes: the classifier is being
+    /// told what this principal has been doing, not what we have approved.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Null only when there is no sender snapshot to encode.</b> Note that this is distinct from
+    /// the profile the encoder returns for a principal we know nothing about: that comes back with
+    /// <c>ProfileAvailable: false</c> and every observation null, which is the positive statement
+    /// that we looked and found nothing. Both reach the classifier as behavioural context; only the
+    /// first leaves the assessment with no context at all. Core keeps the two apart and so does this.
+    /// </para>
+    /// </remarks>
+    private BehaviouralProfile? BuildBehaviouralProfile(
+        IReadOnlyList<(ProfileTarget Target, AdaptiveProfile Snapshot)> profiles,
+        DateTimeOffset now,
+        IReadOnlyList<string> messageRecipients)
+    {
+        var sender = profiles.FirstOrDefault(entry =>
+            entry.Target.Scope is ProfileScopeKind.OutboundSender or ProfileScopeKind.InboundSenderIdentity);
+
+        return sender.Snapshot is null
+            ? null
+            // `messageRecipients` is what makes novelty answerable at all: "have we ever addressed this
+            // person" is a question about this message's recipients, not a property of the profile.
+            : BehaviouralProfileEncoder.Encode(
+                sender.Snapshot,
+                now,
+                messageRecipients,
+                _options.Adaptive);
+    }
+
+    private static Evidence BehaviouralContextUnavailable(DateTimeOffset now) => new()
+    {
+        SignalId = AssessmentEvidenceIds.BehaviouralContextUnavailable,
+        Origin = EvidenceOrigin.Deterministic,
+        Availability = EvidenceAvailability.Unavailable,
+        Value = null,
+        SourceVersion = AssessmentEvidenceIds.SourceVersion,
+        ObservedAt = now,
+        ObservedScope = "message",
+        Attributes =
+        [
+            new EvidenceAttribute
+            {
+                Name = "reason",
+                Value = "no behavioural profile was available to the classifier",
+            },
+        ],
+    };
+
     private static Evidence ViolationEvidence(IReadOnlyList<string> violations, DateTimeOffset now) => new()
     {
         SignalId = AssessmentEvidenceIds.HardLimitViolation,
@@ -727,6 +818,11 @@ public sealed class MailAssessor : IMailAssessor
             RecipientCount = message.Envelope.RcptTo.Count,
             WasRejected = wasRejected,
             Dimensions = dimensions,
+            // Distinct *people*, not addresses: one message to fifty colleagues is not fan-out, and
+            // the profile cannot tell the two apart from a count alone. Hashed with the same
+            // tenant-scoped pseudonym as every other identifier, so the profile never holds a raw
+            // recipient address.
+            RecipientKeys = HashedRecipients(message.Envelope, context),
         };
 
         foreach (var (target, _) in profiles)
@@ -1111,8 +1207,17 @@ public sealed class MailAssessor : IMailAssessor
             Label = ruleId,
         };
 
-        foreach (var (target, _) in profiles)
+        foreach (var (target, snapshot) in profiles)
         {
+            // The vector promoted is the window's feature vector, not this message's semantic
+            // readings. A trusted baseline has to model the sender's behaviour over time, and the
+            // `rate.*` features exist ONLY in the bucket synthesis: promoting semantic dimensions
+            // alone leaves every rate unmodelled, so the baseline encodes as null and the classifier
+            // is told "40 messages this hour" with nothing to compare it against.
+            //
+            // The snapshot's series is the pre-event one, which is deliberate on two counts: the
+            // message being judged must not vouch for its own trust, and the window it contributes to
+            // is the history it was measured against rather than one it just moved.
             var authorisation = _learningGate.Authorise(new TrustedLearningRequest
             {
                 Key = target.Key,
@@ -1128,7 +1233,10 @@ public sealed class MailAssessor : IMailAssessor
                 continue;
             }
 
-            _profiles.Mutate(target.Key, now, profile => profile.Promote(sample));
+            _profiles.Mutate(
+                target.Key,
+                now,
+                profile => profile.Promote(sample with { Dimensions = LearningVector(snapshot, now) }));
         }
     }
 
@@ -1194,6 +1302,137 @@ public sealed class MailAssessor : IMailAssessor
                     .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             RegimeId = profiles.Count > 0 ? profiles[0].Snapshot.CurrentRegimeId : null,
         };
+
+    /// <summary>
+    /// Builds a trusted sample for a sender, with the dimensions a baseline actually needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Use this rather than assembling <see cref="TrustedSample.Dimensions"/> yourself.</b> The
+    /// `rate.*` features are synthesised per bucket and appear in no per-message evidence, so a sample
+    /// built from what the pipeline observed for one message carries none of them. The consequence is
+    /// invisible: the baseline simply reports those dimensions as null, no fan-out movement is ever
+    /// named, and the classifier is told a sender sent forty messages this hour with nothing to
+    /// compare it against.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>This does not decide what to teach.</b> Provenance and label are the caller's, and they are
+    /// the fields that carry authority — this supplies only the measurement, correctly. A helper that
+    /// chose provenance would be a helper that could open the learning gate.
+    /// </para>
+    ///
+    /// <para>
+    /// The key is built the way the pipeline builds it: `ProfileScopes.OutboundSender` or
+    /// `ProfileScopes.InboundSender` over a `ProfileKeyHasher` pseudonym. Passing a key assembled some
+    /// other way finds no profile and returns a sample with no dimensions, which is safe but teaches
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    /// <param name="key">The sender profile to teach. Not a recipient or relationship key.</param>
+    /// <param name="at">The instant the sample is recorded at.</param>
+    /// <param name="provenance">Where this label comes from. The caller's decision, never inferred.</param>
+    /// <param name="label">Free-form detail for the ledger. Never message content.</param>
+    /// <summary>
+    /// Builds a trusted sample for an outbound sender, without the caller needing a profile key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Prefer this overload.</b> Profiles are keyed on a tenant-scoped pseudonym produced by
+    /// <see cref="ProfileKeyHasher"/>, not on the address — so a caller who assembles a key from the
+    /// raw sender identity names a profile that does not exist, and gets a sample with no dimensions
+    /// that teaches nothing. Silently. That is the same failure shape as omitting the rate features,
+    /// one layer down, and the answer is the same: do not make the caller know an internal detail.
+    /// </para>
+    /// <para>
+    /// Outbound only. An inbound sender key is qualified by authentication provenance, so two
+    /// messages from the same address that authenticated differently are different profiles — a
+    /// caller cannot name that profile without supplying the authentication context, and guessing one
+    /// here would silently teach the wrong profile. Use the <see cref="ProfileKey"/> overload, or
+    /// `ProfileScopes.InboundSender`, when you have it.
+    /// </para>
+    /// </remarks>
+    public TrustedSample BuildTrustedSample(
+        string tenantId,
+        MailDirection direction,
+        string senderIdentity,
+        DateTimeOffset at,
+        LabelProvenance provenance,
+        string? label = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(senderIdentity);
+
+        if (direction != MailDirection.Outbound)
+        {
+            throw new ArgumentException(
+                "An inbound sender profile is qualified by authentication provenance, so it cannot be "
+                + "named from the identity alone. Use the ProfileKey overload with a key built by "
+                + "ProfileScopes.InboundSender.",
+                nameof(direction));
+        }
+
+        return BuildTrustedSample(
+            ProfileScopes.OutboundSender(
+                tenantId,
+                _options.ProfileKeyHasher.Hash(tenantId, NullSender(senderIdentity))),
+            at,
+            provenance,
+            label);
+    }
+
+    /// <summary>Builds a trusted sample for an already-resolved profile key.</summary>
+    public TrustedSample BuildTrustedSample(
+        ProfileKey key,
+        DateTimeOffset at,
+        LabelProvenance provenance,
+        string? label = null) => new()
+        {
+            Dimensions = LearningVector(_profiles.Read(key), at),
+            Provenance = provenance,
+            RecordedAt = at,
+            Label = label,
+        };
+
+    /// <summary>
+    /// The vector a trusted sample carries: the sender's observed window, rate features included.
+    /// </summary>
+    /// <remarks>
+    /// <b>Falls back to the message's semantic readings only when there is no bucket to read</b>, which
+    /// is the first observation of a profile. That is a weaker sample and is labelled as such by its
+    /// content rather than hidden: it carries no rate features, so it cannot teach a baseline what
+    /// normal volume looks like, which is the honest state of affairs for a sender we have watched
+    /// once.
+    ///
+    /// <para>
+    /// The `rate.*` ids are synthesised per bucket and appear nowhere else, so a sample built from
+    /// evidence alone can never model them. That asymmetry is invisible from either side: the encoder
+    /// reports the baselines as null, and nothing here looks wrong.
+    /// </para>
+    /// </remarks>
+    private DimensionVector LearningVector(AdaptiveProfile snapshot, DateTimeOffset now)
+    {
+        var window = _options.Adaptive.Burst;
+
+        if (!snapshot.Series.TryGetValue(window.Name, out var series) || series.Buckets.Count == 0)
+        {
+            return EvidenceVectors.Semantic([], _dimensionIds);
+        }
+
+        return series.Buckets[^1].FeatureVector(now, window.MinimumSamplesPerBucket);
+    }
+
+    /// <summary>
+    /// The message's recipients as tenant-scoped pseudonyms.
+    /// </summary>
+    /// <remarks>
+    /// Hashed rather than passed through, on the same convention as profile keys: the profile records
+    /// how many <em>distinct people</em> a sender has addressed, and it can answer that without ever
+    /// holding an address.
+    /// </remarks>
+    private IReadOnlyList<string> HashedRecipients(MailEnvelope envelope, AssessmentContext context) =>
+        [.. envelope.RcptTo.Select(recipient =>
+            _options.ProfileKeyHasher.Hash(context.TenantId, recipient))];
 
     /// <summary>One reserved recipient budget, held until dispatch or release.</summary>
     private sealed record BudgetReservation(string TenantId, string PrincipalId, int Recipients);

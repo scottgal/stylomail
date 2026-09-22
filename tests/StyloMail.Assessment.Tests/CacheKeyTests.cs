@@ -127,6 +127,99 @@ public sealed class CacheKeyTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Behavioural context is part of the key
+    // ---------------------------------------------------------------------------------------------
+
+    private static BehaviouralProfile Profile(
+        int? messagesObserved = 500,
+        bool profileAvailable = true,
+        bool coldStart = false) => new()
+        {
+            Direction = MailDirection.Inbound,
+            FirstSeenDaysAgo = 180,
+            MessagesObserved = messagesObserved,
+            TrustedSamples = 40,
+            Regime = "regime-0",
+            DistinctRecipientsLastHour = 2,
+            DistinctRecipientsLast30Days = 30,
+            RecipientsNovelToSender = 1,
+            MessagesLastHour = 3,
+            MessagesLast24Hours = 12,
+            BaselineMessagesPerHour = 0.5,
+            FanoutLastHour = 2,
+            BaselineFanoutPerHour = 0.4,
+            TrendNarrative = "steady",
+            Movements =
+            [
+                new DimensionMovement { DimensionId = "semantic.urgency_pressure", Direction = "up", Magnitude = 0.2 },
+            ],
+            DimensionsWithSupport = 9,
+            ProfileAvailable = profileAvailable,
+            ColdStart = coldStart,
+        };
+
+    [Fact]
+    public void TwoMessagesDifferingOnlyInSenderBehaviourDoNotShareAKey()
+    {
+        // The case the cache must never merge. Identical message, identical tenant, identical model —
+        // one sender with months of history, one who is new and fanning out. If the key digested only
+        // the message, the second would be served the first's assessment: a judgement formed when the
+        // sender looked ordinary, reused after their behaviour changed.
+        var message = Builders.Message();
+
+        var established = Input(message) with { Profile = Profile(messagesObserved: 500) };
+        var newAndFanningOut = Input(message) with { Profile = Profile(messagesObserved: 3) };
+
+        Assert.NotEqual(
+            SemanticCacheKey.Digest(established, Options),
+            SemanticCacheKey.Digest(newAndFanningOut, Options));
+    }
+
+    [Fact]
+    public void AnAbsentProfileIsNotTheSameKeyAsAnUnavailableOne()
+    {
+        var message = Builders.Message();
+
+        // Null means no profile was available at all. ProfileAvailable: false is a positive statement
+        // that we looked and found nothing. Different inputs, so different questions, so different keys.
+        var absent = Input(message) with { Profile = null };
+        var lookedAndFoundNothing = Input(message) with { Profile = Profile(profileAvailable: false) };
+
+        Assert.NotEqual(
+            SemanticCacheKey.Digest(absent, Options),
+            SemanticCacheKey.Digest(lookedAndFoundNothing, Options));
+    }
+
+    [Fact]
+    public void TheEncoderCoversEveryFieldCoreDeclares()
+    {
+        // A tripwire against the omission this whole section exists to prevent. `BehaviouralProfile`
+        // is Core's and will grow; a field added there but not encoded here is part of the classifier
+        // input and NOT part of the key, so two genuinely different questions silently share one
+        // answer. Counting is cruder than varying each field, but it needs no reflection tricks and
+        // it fails at the moment Core changes rather than at the moment somebody notices.
+        //
+        // When this fails, it is not noise: encode the new field in
+        // ClassifierInputCanonicalizer.EncodeProfile, then update the number.
+        const int encodedFieldCount = 19;
+        const int movementFieldCount = 3;
+
+        var declared = typeof(BehaviouralProfile).GetProperties().Length;
+        var movement = typeof(DimensionMovement).GetProperties().Length;
+
+        Assert.True(
+            declared == encodedFieldCount,
+            $"BehaviouralProfile declares {declared} properties but EncodeProfile encodes "
+            + $"{encodedFieldCount}. A field that is part of the classifier input but not of the cache "
+            + "key means two different questions share one cached assessment.");
+
+        Assert.True(
+            movement == movementFieldCount,
+            $"DimensionMovement declares {movement} properties but EncodeProfile encodes "
+            + $"{movementFieldCount}.");
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Security-bearing fingerprint
     // ---------------------------------------------------------------------------------------------
 

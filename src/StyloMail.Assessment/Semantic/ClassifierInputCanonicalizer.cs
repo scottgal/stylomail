@@ -131,6 +131,21 @@ public static class ClassifierInputCanonicalizer
             canonical.Field(result.Detail);
         }
 
+        // Behavioural context: it went into the input, so it is part of the key.
+        //
+        // This is the case the cache must never merge: two messages with identical content, one from
+        // an account with months of history and one from an account created yesterday fanning out to
+        // strangers. If this section were omitted the key would digest only the message, and the
+        // second would be served the first's assessment — a judgement formed when the sender looked
+        // ordinary, reused after their behaviour changed. That is the same rule as tagged context and
+        // relationship context, applied to the field that carries the most risk of being forgotten.
+        canonical.Flag(input.Profile is not null);
+
+        if (input.Profile is { } profile)
+        {
+            EncodeProfile(canonical, profile);
+        }
+
         // Tagged context, sorted by key: it went into the input, so it is part of the key.
         var tagged = input.TaggedContext ?? new Dictionary<string, string>();
         canonical.Count(tagged.Count);
@@ -141,6 +156,50 @@ public static class ClassifierInputCanonicalizer
         }
 
         return canonical.ToString();
+    }
+
+    /// <summary>
+    /// Encodes every field of the behavioural profile.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every field, and there is a tripwire test that fails when that stops being true.</b>
+    /// ``BehaviouralProfile` is Core's and will grow; a field added there and not added here would be
+    /// part of the classifier input but not part of the key, which is precisely the silent merging
+    /// this method exists to prevent. Reflection over the record's properties is cheaper than trust.
+    /// </remarks>
+    internal static void EncodeProfile(CanonicalForm canonical, BehaviouralProfile profile)
+    {
+        canonical.Field(profile.Direction.ToString());
+        canonical.Int(profile.FirstSeenDaysAgo);
+        canonical.Int(profile.MessagesObserved);
+        canonical.Int(profile.TrustedSamples);
+        canonical.Field(profile.Regime);
+        canonical.Int(profile.DistinctRecipientsLastHour);
+        canonical.Int(profile.DistinctRecipientsLast30Days);
+        // Whether that count is a floor rather than a measurement. A truncated count and an exact one
+        // are different observations even when the number is the same, so they are different
+        // questions and must not share a key — the flag is as load-bearing as the value.
+        canonical.Flag(profile.RecipientDistinctnessIsFloor);
+        canonical.Int(profile.RecipientsNovelToSender);
+        canonical.Int(profile.MessagesLastHour);
+        canonical.Int(profile.MessagesLast24Hours);
+        canonical.Number(profile.BaselineMessagesPerHour);
+        canonical.Int(profile.FanoutLastHour);
+        canonical.Number(profile.BaselineFanoutPerHour);
+        canonical.Field(profile.TrendNarrative);
+
+        var movements = profile.Movements ?? [];
+        canonical.Count(movements.Count);
+        foreach (var movement in movements)
+        {
+            canonical.Field(movement.DimensionId);
+            canonical.Field(movement.Direction);
+            canonical.Number(movement.Magnitude);
+        }
+
+        canonical.Int(profile.DimensionsWithSupport);
+        canonical.Flag(profile.ProfileAvailable);
+        canonical.Flag(profile.ColdStart);
     }
 
     /// <summary>Lowercase hexadecimal SHA-256 over the canonical form.</summary>
@@ -164,7 +223,7 @@ public static class ClassifierInputCanonicalizer
     /// different inputs and the classifier can answer them differently; a scheme that collapsed
     /// them would serve one's cached assessment for the other.
     /// </remarks>
-    private sealed class CanonicalForm
+    internal sealed class CanonicalForm
     {
         private readonly StringBuilder _builder = new();
 
@@ -186,6 +245,29 @@ public static class ClassifierInputCanonicalizer
 
         public void Number(long value)
             => _builder.Append('n').Append(value.ToString(CultureInfo.InvariantCulture)).Append(';');
+
+        /// <summary>Null and zero must differ: "not observed" is not "observed as zero".</summary>
+        public void Int(int? value)
+        {
+            if (value is null)
+            {
+                _builder.Append("i-;");
+                return;
+            }
+
+            _builder.Append('i').Append(value.Value.ToString(CultureInfo.InvariantCulture)).Append(';');
+        }
+
+        public void Number(double? value)
+        {
+            if (value is null)
+            {
+                _builder.Append("d-;");
+                return;
+            }
+
+            _builder.Append('d').Append(value.Value.ToString("R", CultureInfo.InvariantCulture)).Append(';');
+        }
 
         public override string ToString() => _builder.ToString();
     }
