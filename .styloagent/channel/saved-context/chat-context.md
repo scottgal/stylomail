@@ -151,7 +151,50 @@ Slack's markup parsing is new and belongs in `StyloMail.Chat`.
 **Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
 shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
 
-### The EvidenceBuilder move: DONE, frozen, reported (2026-09-22). Not committed.
+## 2b Task 3: planned, rulings in hand, NOT STARTED (2026-09-22)
+
+Lane **confirmed**: `src/StyloMail.Assessment` is mine for Task 3 (`assess-` is dehydrated).
+Compose the existing engines; do NOT extract `MailAssessor`'s inline steps 5/6.
+
+### RULING that corrects my plan: direction is DERIVED, never always-Inbound
+
+I proposed `Direction = Inbound` for all chat. **REFUSED, and the refusal is right.** A workspace
+member IS an authenticated principal.
+
+- **member of the tenant -> `Outbound`; author outside it -> `Inbound`.**
+- Why it matters: `MailDirection` remarks say inbound/outbound profile pools are **never merged**;
+  `MailPolicyEngine` gates two branches on `Outbound` (one the quota path); and
+  **compromised-account detection IS the outbound case** (our authenticated principal fanning out).
+  That is the job this extension gets behavioural evidence for free, and always-Inbound would hide it.
+- I conflated **our app** with **our members**: refusing our own bot's posts says nothing about
+  whether a member is a stranger.
+
+**This needs a new fact on `ChatMembershipFacts`: whether the author is external to the workspace**
+(Slack carries `user_team` for Enterprise Grid / Connect authors). **If the platform cannot supply it,
+report the gap rather than picking a default**; if a default is unavoidable, **state the assumption in
+the assessment's own evidence** so no reader infers the direction was observed.
+
+### Approved: compose, plus a drift pin
+
+Composing `CompositeRiskScorer` + `MailPolicyEngine` + `ProfileCoordinator` directly is approved.
+**Amendment: pin the drift risk with a test**, not just a remark: push equivalent evidence down both
+the mail and chat paths and assert the same action comes out. If it is expensive to construct, say so
+and the remark is the fallback.
+
+### Shape (from reconnaissance)
+
+`MailAssessor`'s ten collaborators: **reuse** `ProfileCoordinator`, `CompositeRiskScorer`,
+`MailPolicyEngine`/`PolicyInput`, `IAssessmentPolicyContextSource`, `TrustedLearningGate`,
+`MailAssessorOptions.Policy`. **No counterpart:** MIME analyzer, semantic classifier (local-only),
+`IMessageAcceptanceQueue` (no delivery responsibility), `IRawMessageSource`, `SendingQuotaLedger`.
+**Out of scope:** the campaign window (triage, plan 3). **And no queue acceptance.**
+
+Pins, in order: every chat assessment is `DeliveryTiming.PostDelivery` (the one overview- cares about
+most), the semantic gap is an explicit `Unavailable` with a reason, and nothing takes an action.
+
+Tree was clean and frozen at `a45fee0` when the break was called. `watchdog-` reported a rate limit.
+
+### The EvidenceBuilder move: DONE, frozen, committed as `1fe10ce`.
 
 Approved by overview- on the same reasoning as `UrlTools`: one construction site for a convention.
 

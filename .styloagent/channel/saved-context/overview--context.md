@@ -95,6 +95,14 @@ overwritten. Content is intact; the record is not. Plain `git add` of an explici
    no in-memory suite could have: the first because the fake backend was ours, and the second because
    the fake client was ours. Put real clients on real sockets against real servers, or the suite only
    tests our assumptions about them.
+9. **Specialists own an area persistently. They are not workers moving through a task list.** A plan's
+   tasks are how ownership is expressed right now, not a queue to complete and step away from between
+   items. Never frame a lane as something to pause between tasks, to "start fresh" later, or to hand
+   back because a session has run long. **A finite context is handled by the checkpoint, not by
+   stopping early:** when it fills, write down where you are and carry on. The operator corrected me
+   for exactly this drift, and it is the easiest one to fall into because it sounds like care.
+   The one legitimate pause is a decision the agent cannot make; that is not the same as an hour
+   being late.
 
 ## The fleet
 
