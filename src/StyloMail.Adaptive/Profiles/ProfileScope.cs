@@ -31,6 +31,37 @@ public enum ProfileScopeKind
 
     /// <summary>Domain-level context. A fallback only.</summary>
     DomainContext = 5,
+
+    /// <summary>
+    /// An author on a chat platform, from outside the workspace this deployment watches.
+    /// </summary>
+    /// <remarks>
+    /// <b>Distinct from <see cref="InboundSenderIdentity"/> rather than a reuse of it, and the
+    /// difference is what the identity rests on.</b> An email sender's identity is a <em>claim</em>:
+    /// anyone can write anything in <c>From</c>, and the qualification is what separates a claim a
+    /// DKIM signature backed from one nothing did. Same address, different trust, so that key has to
+    /// say which.
+    ///
+    /// <para>
+    /// A chat author is not a claim in that sense. The platform asserts who posted and the connector
+    /// verified the request before an assessment existed, so the identity reaching this path was
+    /// asserted and verified rather than merely written down. Putting that into
+    /// <see cref="InboundSenderIdentity"/> would place it in a pool whose meaning is "claimed, and
+    /// here is how the message proved it", carrying an <c>auth=</c> component holding a value that
+    /// means something else.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>There is no provenance component, and that is a decision with a consequence.</b> On this
+    /// path the qualification is constant, and a key component that is always the same value is
+    /// decoration rather than a qualification. If a chat surface ever arrives where the platform
+    /// does <em>not</em> assert the author, or where two different assertions are possible, then a
+    /// provenance component earns its place and <b>adding one is a migration</b>: every existing key
+    /// changes shape and the history behind them does not follow. That is the cost, and it is worth
+    /// knowing before the first such platform rather than after.
+    /// </para>
+    /// </remarks>
+    ChatAuthor = 6,
 }
 
 /// <summary>
@@ -117,6 +148,45 @@ public static class ProfileScopes
             Scope = ProfileScopeKind.TenantTrafficClass,
             Key = trafficClass,
             Direction = null,
+        };
+    }
+
+    /// <summary>
+    /// An author on a chat platform who is outside the workspace this deployment watches.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed by platform, workspace and author, and carrying no provenance component. See
+    /// <see cref="ProfileScopeKind.ChatAuthor"/> for why the provenance an email sender's key
+    /// carries would mean something else here, and for what adding one later would cost.
+    /// </para>
+    /// <para>
+    /// <b><paramref name="authorKey"/> is a pseudonym, not the platform's identifier.</b> The caller
+    /// hashes it through <see cref="ProfileKeyHasher"/> for the same reason an email address is
+    /// hashed: an author id identifies a person, and a store keyed on the raw value cannot later
+    /// honour a deletion request without knowing every derived copy.
+    /// </para>
+    /// </remarks>
+    public static ProfileKey ChatAuthor(
+        string tenantId,
+        string platform,
+        string workspaceId,
+        string authorKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(platform);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(authorKey);
+
+        return new ProfileKey
+        {
+            TenantId = tenantId,
+            Scope = ProfileScopeKind.ChatAuthor,
+
+            // The platform is part of the key because two platforms can name the same author
+            // differently, and a workspace id alone is not unique across them.
+            Key = $"{platform}|{workspaceId}|{authorKey}",
+            Direction = MailDirection.Inbound,
         };
     }
 

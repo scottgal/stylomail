@@ -29,6 +29,17 @@ public static class ChatInputFactory
 
             EventId = message.EventId,
 
+            // The platform's four types mapped onto the engine's two, here rather than downstream,
+            // so a second platform maps its own onto the same two.
+            Conversation = message.Conversation switch
+            {
+                SlackConversationType.DirectMessage or SlackConversationType.MultiPersonDirectMessage
+                    => ChatConversationKind.People,
+                SlackConversationType.Channel or SlackConversationType.Group
+                    => ChatConversationKind.Audience,
+                _ => ChatConversationKind.Unknown,
+            },
+
             Membership = new ChatMembershipFacts
             {
                 AuthorId = message.AuthorId,

@@ -97,6 +97,34 @@ public sealed class SlackEventReaderTests
         Assert.False(message.IsExternal);
     }
 
+    [Theory]
+    // Slack reports the conversation type on the event. Which of these a deployment sees decides
+    // whether a post has a counterpart who is a person or an audience, and the two must not be
+    // counted as the same kind of relationship.
+    [InlineData("channel", SlackConversationType.Channel)]
+    [InlineData("group", SlackConversationType.Group)]
+    [InlineData("im", SlackConversationType.DirectMessage)]
+    [InlineData("mpim", SlackConversationType.MultiPersonDirectMessage)]
+    public void The_conversation_type_is_read_from_the_event(string raw, SlackConversationType expected)
+    {
+        var json = MessageEvent.Replace(
+            "\"channel\":\"C01\"",
+            $"\"channel\":\"C01\",\"channel_type\":\"{raw}\"");
+
+        Assert.True(SlackEventReader.TryRead(json, Own, out var message, out _));
+        Assert.Equal(expected, message.Conversation);
+    }
+
+    [Fact]
+    public void A_conversation_type_the_platform_did_not_send_is_unknown_and_not_guessed()
+    {
+        // Unknown is a distinct state here as everywhere else. Defaulting to "channel" would file a
+        // private conversation into the audience pool, and defaulting to "im" would invent a person
+        // the event never named.
+        Assert.True(SlackEventReader.TryRead(MessageEvent, Own, out var message, out _));
+        Assert.Equal(SlackConversationType.Unknown, message.Conversation);
+    }
+
     [Fact]
     public void A_message_from_a_person_carries_no_bot_identifier()
     {

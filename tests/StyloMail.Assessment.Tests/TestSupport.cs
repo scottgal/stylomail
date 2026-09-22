@@ -306,11 +306,22 @@ internal sealed class FakeProfileStore : IAdaptiveProfileStore
     /// would make the two store operations look interchangeable, which is the opposite of why they
     /// are separate.
     /// </remarks>
+    /// <summary>
+    /// The scopes each observation was written to, in order.
+    /// </summary>
+    /// <remarks>
+    /// Recorded alongside the observation because "a write happened" and "the write went to the pool
+    /// it belongs in" are different claims, and the second is the one that matters: an attempt filed
+    /// in the wrong scope changes what a later assessment reads without anything failing.
+    /// </remarks>
+    public List<(ProfileKey Key, ProfileObservation Observation)> Writes { get; } = [];
+
     public void ApplyObservation(ProfileKey key, ProfileObservation observation, DateTimeOffset at)
     {
         ApplyObservationCount++;
         _recorder?.Record("profile.observe");
         Observations.Add(observation);
+        Writes.Add((key, observation));
 
         var profile = _profiles.TryGetValue(key, out var existing) ? existing : new AdaptiveProfile(key);
         profile.Observe(observation);

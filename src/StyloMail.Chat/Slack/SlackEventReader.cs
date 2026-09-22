@@ -154,6 +154,7 @@ public static class SlackEventReader
                 AuthorId = authorId,
                 BotId = botId,
                 IsExternal = IsExternalAuthor(evt, workspaceId),
+                Conversation = ConversationType(evt),
                 Text = SafeString(evt, "text") ?? string.Empty,
                 OccurredAt = DateTimeOffset.FromUnixTimeSeconds((long)unixSeconds),
             };
@@ -162,6 +163,28 @@ public static class SlackEventReader
             return true;
         }
     }
+
+    /// <summary>
+    /// The kind of conversation the message was posted in, or <c>Unknown</c> when the platform did
+    /// not say.
+    /// </summary>
+    /// <remarks>
+    /// <b>Unverified offline: whether the platform reports this on a message event.</b> It is read
+    /// from <c>channel_type</c>, and like <c>user_team</c> and the bot identifiers, which field
+    /// carries it is a fact about the platform's payloads that a recorded payload settles rather
+    /// than reasoning. An absent value stays <c>Unknown</c> by design: if the type is genuinely not
+    /// available, the honest answer is that public channel traffic is not a relationship, not a
+    /// guess between two kinds.
+    /// </remarks>
+    private static SlackConversationType ConversationType(JsonElement evt) =>
+        SafeString(evt, "channel_type") switch
+        {
+            "channel" => SlackConversationType.Channel,
+            "group" => SlackConversationType.Group,
+            "im" => SlackConversationType.DirectMessage,
+            "mpim" => SlackConversationType.MultiPersonDirectMessage,
+            _ => SlackConversationType.Unknown,
+        };
 
     /// <summary>
     /// Whether the author belongs to a workspace other than the one the event arrived for.

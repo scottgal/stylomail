@@ -1,6 +1,34 @@
 namespace StyloMail.Core;
 
 /// <summary>
+/// Whether a chat message's other side is people or an audience.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Two kinds because they are two claims.</b> A direct message has a counterpart; a channel post
+/// goes to whoever happens to be there. A fan-out number that adds them together reports a member
+/// as suddenly talking to new <em>people</em> when they have only posted in a channel they had not
+/// used before, which is a confidently wrong answer rather than a missing one.
+/// </para>
+/// <para>
+/// <b>Deliberately not the platform's own values.</b> The connector maps its four conversation
+/// types onto these two, so a second platform maps its own onto the same two rather than the
+/// engine learning a vocabulary per channel.
+/// </para>
+/// </remarks>
+public enum ChatConversationKind
+{
+    /// <summary>The platform did not report one. Not a claim that it is an audience.</summary>
+    Unknown = 0,
+
+    /// <summary>An audience: a channel or a group. Nobody in particular is addressed.</summary>
+    Audience = 1,
+
+    /// <summary>People: a direct message, to one or several.</summary>
+    People = 2,
+}
+
+/// <summary>
 /// What the platform asserted about who sent a message, and nothing it did not.
 /// </summary>
 /// <remarks>
@@ -109,6 +137,17 @@ public sealed record ChatAnalysisInput
     public required string EventId { get; init; }
 
     public required ChatMembershipFacts Membership { get; init; }
+
+    /// <summary>
+    /// What kind of conversation the message was posted in, as the platform reported it.
+    /// </summary>
+    /// <remarks>
+    /// Carried because the fan-out evidence has to separate talking to a person from posting to an
+    /// audience, and that separation belongs in the profile key rather than being reconstructed
+    /// later. Zero means the platform did not say, which is a distinct state and not a guess at
+    /// which of the two it was.
+    /// </remarks>
+    public ChatConversationKind Conversation { get; init; }
 
     /// <summary>The message text as posted, unmodified.</summary>
     public required string BodyText { get; init; }

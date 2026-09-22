@@ -73,6 +73,7 @@ public sealed class ChatEvidenceTests
         ChannelId = "C01",
         AuthorId = "U01",
         IsExternal = false,
+        Conversation = SlackConversationType.Channel,
         Text = text,
         OccurredAt = DateTimeOffset.FromUnixTimeSeconds(1_760_000_000),
     };
@@ -113,6 +114,7 @@ public sealed class ChatEvidenceTests
             AuthorId = "B01",
             BotId = "B01",
             IsExternal = false,
+            Conversation = SlackConversationType.Channel,
             Text = "hello",
             OccurredAt = DateTimeOffset.FromUnixTimeSeconds(1_760_000_000),
         };

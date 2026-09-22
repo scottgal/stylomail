@@ -1,3 +1,4 @@
+using StyloMail.Chat.Slack;
 using StyloMail.Core;
 
 namespace StyloMail.Chat;
@@ -58,6 +59,16 @@ public sealed record ChatMessage
     /// two must never be counted together.
     /// </remarks>
     public required bool IsExternal { get; init; }
+
+    /// <summary>
+    /// What kind of conversation the message was posted in.
+    /// </summary>
+    /// <remarks>
+    /// Carried because the fan-out evidence has to distinguish talking to a person from posting to
+    /// an audience, and that distinction has to survive into the profile key rather than being
+    /// reconstructed later from the channel id.
+    /// </remarks>
+    public required SlackConversationType Conversation { get; init; }
 
     /// <summary>The message text as posted, unmodified.</summary>
     public required string Text { get; init; }
