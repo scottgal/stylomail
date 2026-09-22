@@ -151,6 +151,33 @@ Slack's markup parsing is new and belongs in `StyloMail.Chat`.
 **Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
 shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
 
+## 2b Task 4: the Slack events endpoint (STARTED 2026-09-22; solution 1419 passed)
+
+Task 3 committed as `df4e6dc`. Task 4 = the endpoint, `url_verification`, signature verification,
+dedup, normalisation, a ledgered decision, answering Slack fast with the assessment off the request
+path. Own-post drop ships here, with **startup refusing to run with no identity**.
+
+**Done:** `src/StyloMail.Host/Hosting/SlackIngressOptions.cs` (`StyloMail:Slack` section; `Enabled`,
+`SigningSecret`, `OwnBotId`/`OwnBotUserId`, `PendingCapacity`, `Identity()`, `Validate()`).
+`Validate` **throws when enabled with no identity or no signing secret**; a disabled endpoint is not
+validated. `tests/StyloMail.Host.Tests/SlackIngressOptionsTests.cs` (6 tests); the identity test
+**mutation-checked** (removing the check fails exactly that test).
+
+**Template for the endpoint:** `src/StyloMail.Host/Endpoints/CloudflareIngressEndpoints.cs` -
+`Map(app, ...)` + `.AllowAnonymous()`, `IngestAsync(HttpContext, connector, ct)`, bounded
+`ReadBodyAsync`. Options bound in `HostServices.cs` via `services.Configure<T>(config.GetSection(T.SectionName))`.
+
+**TWO THINGS RAISED, both block or shape the rest of Task 4:**
+1. **A fixture I write cannot settle a platform fact.** overview- expects Task 4 to settle `user_team`,
+   `bot_id` vs `bot_user_id`, and the conversation-type field by "a recorded payload". Inventing a
+   fixture from my reading of the docs would encode the assumption and then look verified. Needs a
+   payload captured from a real workspace.
+2. **The off-path assessment is the day-one "3-second ack vs no queue" tension, now concrete.** Slack
+   retries unless acked in 3s, so we must ack then assess, which means holding verified events. The
+   design's "no queue" is about *delivery* durability. Proposed: bounded in-memory buffer; past the
+   bound return 503 so the platform retries (honest backpressure); **flag that a crash loses acked-
+   but-unassessed events silently.**
+
 ## 2b Task 3: planned, rulings in hand, NOT STARTED (2026-09-22)
 
 Lane **confirmed**: `src/StyloMail.Assessment` is mine for Task 3 (`assess-` is dehydrated).
