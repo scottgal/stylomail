@@ -181,6 +181,40 @@ Composing `CompositeRiskScorer` + `MailPolicyEngine` + `ProfileCoordinator` dire
 the mail and chat paths and assert the same action comes out. If it is expensive to construct, say so
 and the remark is the fallback.
 
+### Task 3 IN PROGRESS (started 2026-09-22, red-first)
+
+**Done so far: the direction derivation, which was the refused call.**
+
+- `ChatMembershipFacts.IsExternal` (required bool) + **`Direction` derived** (external -> `Inbound`,
+  member -> `Outbound`), never stored. `MailDirection`'s remarks confirm direction selects the profile
+  pool and the two are never merged; `ProfileKey.Direction` is where it lands.
+- `ChatMessage.IsExternal`; `SlackEventReader.IsExternalAuthor(evt, workspaceId)` reads `user_team`
+  and compares to `team_id` (**presence alone is not enough** - Enterprise Grid sends user_team for
+  members too). `ChatInputFactory` passes it through.
+- **Unverified offline:** that Slack puts `user_team` where I read it. Same class as `bot_id` vs
+  `bot_user_id`; must be pinned by a recorded payload in Task 4.
+
+Measured: build 0/0; Core 36 -> 39, Chat 47 -> 50.
+
+**Direction DONE** (Core 39, Chat 50). `ChatMembershipFacts.IsExternal` required + `Direction` derived;
+`SlackEventReader` derives it from `user_team` vs `team_id` (**presence alone is not enough** -
+Enterprise Grid sends it for members). Unverified offline: that Slack puts `user_team` there.
+
+**`ChatAssessor` first increment DONE** (Assessment 131): `IChatAssessor` in Core,
+`ChatAssessor` in `StyloMail.Assessment`. Pins green: PostDelivery, channel recorded, all 12 semantic
+dimensions `Unavailable` with a reason, `Action == Allow` + `ProposedActionInShadow`, deterministic
+signal still recorded.
+
+**NEW DEPENDENCY EDGE:** `StyloMail.Assessment` now references `StyloMail.Chat`.
+
+**GAP flagged:** `IAssessmentPolicyContextSource.GetAsync` is typed on `MailAnalysisInput`, so it
+cannot serve chat. Chat builds a stated `PolicyContext`; **the emergency kill switch does not reach
+chat**. A gap, not a decision, and it is written into the code as one.
+
+**STILL TO DO in Task 3:** (a) adaptive recipient/velocity evidence via `ProfileCoordinator` +
+`ProfileKey` (needs MailAssessor's `BuildProfileTargets`/`ReadSnapshots` as the template), and
+(b) the cross-path drift test (push equivalent evidence down both paths, assert the same action).
+
 ### Shape (from reconnaissance)
 
 `MailAssessor`'s ten collaborators: **reuse** `ProfileCoordinator`, `CompositeRiskScorer`,
