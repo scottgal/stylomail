@@ -61,10 +61,10 @@ internal static class Screenshot
             // the continuation posts back to the very dispatcher we are
             // blocking, which is exactly how the first version of this harness
             // hung with no output at all.
-            var refresh = window.RefreshHostAsync();
+            var loaded = LoadEverything(window);
             var pumps = 0;
 
-            while (!refresh.IsCompleted && pumps < MaxPumps)
+            while (!loaded.IsCompleted && pumps < MaxPumps)
             {
                 Dispatcher.UIThread.RunJobs();
                 Thread.Sleep(PumpIntervalMs);
@@ -101,6 +101,36 @@ internal static class Screenshot
             Console.Error.WriteLine($"[Screenshot] {ex.GetType().Name}: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Waits for what the window loads on open, then selects a queue.
+    /// </summary>
+    /// <remarks>
+    /// The waiting is the important part, and it is a fix rather than a
+    /// formality. An earlier version drove the loads itself, which meant two
+    /// callers doing the same work at once, and the sidebar rendered three rows
+    /// for one principal. The window owns its own load now; this observes it.
+    ///
+    /// <para>
+    /// Selecting a queue matters for the capture. Left on the Host entry the
+    /// list pane shows the connection explanation, which is the state the
+    /// window opens in and not the one a screenshot is for.
+    /// </para>
+    /// </remarks>
+    private static async Task LoadEverything(MainWindow window)
+    {
+        await window.InitialLoad.ConfigureAwait(false);
+
+        var model = window.Model;
+
+        var queue = model.Sections
+            .SelectMany(section => section.Items)
+            .FirstOrDefault(item => item.Queue is not null);
+
+        if (queue is null) return;
+
+        await window.SelectAsync(queue).ConfigureAwait(false);
     }
 }
 #endif

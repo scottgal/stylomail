@@ -22,7 +22,13 @@ internal sealed record CapturedRequest(
     string? Body)
 {
     /// <summary>The full path including any query string, which is what a route is.</summary>
-    public string PathAndQuery => Query is null ? Path : $"{Path}?{Query}";
+    /// <remarks>
+    /// <see cref="Uri.Query"/> is the empty string rather than null when there
+    /// is no query, unlike <see cref="Uri"/>.Query here. Testing it for null
+    /// renders a request with no query as a trailing "?", which is a difference
+    /// no server cares about and every exact-match assertion does.
+    /// </remarks>
+    public string PathAndQuery => string.IsNullOrEmpty(Query) ? Path : $"{Path}{Query}";
 
     public string? Header(string name) => Headers.TryGetValue(name, out var value) ? value : null;
 }

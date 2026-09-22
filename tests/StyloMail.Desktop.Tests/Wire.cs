@@ -273,6 +273,120 @@ internal static class Wire
         }
         """;
 
+    /// <summary><c>GET /v1/senders</c>, transcribed from <c>SenderListingResponse</c>.</summary>
+    public const string SenderListing = """
+        {
+          "tenantId": "smoke",
+          "senders": [
+            {
+              "principalId": "compromised@example.test",
+              "control": {
+                "paused": true,
+                "pausedAt": "2026-09-22T09:30:00+00:00",
+                "reason": "credential stuffing from this account",
+                "resumedAt": null,
+                "resumedBy": null,
+                "resumeReason": null,
+                "updatedBy": "admin@example.test",
+                "updatedAt": "2026-09-22T09:30:00+00:00"
+              }
+            },
+            {
+              "principalId": "quiet@example.test",
+              "control": {
+                "paused": false,
+                "pausedAt": "2026-09-20T09:00:00+00:00",
+                "reason": "held for review",
+                "resumedAt": "2026-09-20T11:00:00+00:00",
+                "resumedBy": "admin@example.test",
+                "resumeReason": "cleared by review",
+                "updatedBy": "admin@example.test",
+                "updatedAt": "2026-09-20T11:00:00+00:00"
+              }
+            },
+            {
+              "principalId": "untouched@example.test",
+              "control": {
+                "paused": false,
+                "pausedAt": null,
+                "reason": null,
+                "resumedAt": null,
+                "resumedBy": null,
+                "resumeReason": null,
+                "updatedBy": null,
+                "updatedAt": null
+              }
+            }
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// <c>GET /v1/messages</c>, transcribed from <c>MessageListingResponse</c>.
+    /// Rows are <c>SubmissionStatusResponse</c>, the same projection
+    /// <c>GET /v1/submissions/{id}</c> serves.
+    /// </summary>
+    public const string MessageListing = """
+        {
+          "tenantId": "smoke",
+          "state": "held",
+          "messages": [
+            {
+              "queueId": "q_5a2f",
+              "state": "Held",
+              "attempts": 2,
+              "nextAttemptAt": "2026-09-22T10:05:00+00:00",
+              "expiresAt": "2026-09-29T10:00:00+00:00",
+              "createdAt": "2026-09-22T09:58:00+00:00",
+              "updatedAt": "2026-09-22T10:01:00+00:00",
+              "purgedAt": null,
+              "recipients": [
+                {
+                  "recipient": "alice@example.test",
+                  "state": "Held",
+                  "attempts": 2,
+                  "lastAttemptAt": "2026-09-22T10:01:00+00:00",
+                  "deliveredAt": null,
+                  "reEvaluateBy": "2026-09-23T10:00:00+00:00"
+                },
+                {
+                  "recipient": "bob@example.test",
+                  "state": "Delivered",
+                  "attempts": 1,
+                  "lastAttemptAt": "2026-09-22T10:00:30+00:00",
+                  "deliveredAt": "2026-09-22T10:00:30+00:00",
+                  "reEvaluateBy": null
+                }
+              ]
+            },
+            {
+              "queueId": "q_6b31",
+              "state": "Quarantined",
+              "attempts": 1,
+              "nextAttemptAt": null,
+              "expiresAt": null,
+              "createdAt": "2026-09-22T09:40:00+00:00",
+              "updatedAt": "2026-09-22T09:40:05+00:00",
+              "purgedAt": null,
+              "recipients": []
+            }
+          ],
+          "nextCursor": "cursor_page_2",
+          "hasMore": true
+        }
+        """;
+
+    /// <summary>The same listing on its last page: no cursor, nothing more to fetch.</summary>
+    public const string MessageListingLastPage = """
+        {
+          "tenantId": "smoke",
+          "state": "held",
+          "messages": [],
+          "nextCursor": null,
+          "hasMore": false
+        }
+        """;
+
     /// <summary><c>GET /health/ready</c> when the Host can durably accept mail.</summary>
     public const string Ready = """
         {

@@ -38,10 +38,162 @@ public sealed class ShellModelTests
             .ToList();
 
         Assert.Contains("Host", titles);
-        Assert.Contains("Senders", titles);
-        Assert.Contains("Messages", titles);
-        Assert.Contains("Quarantine", titles);
+        Assert.Contains("Awaiting decision", titles);
         Assert.Contains("Decisions", titles);
+
+        Assert.Contains(model.Sections, section => section.Title == "Senders");
+    }
+
+    /// <summary>
+    /// The queues offered are the three dispositions the route enumerates, and
+    /// the list is closed for the same reason the client's state type is.
+    /// </summary>
+    /// <remarks>
+    /// The shell originally offered "Queued" and "Delivered", which
+    /// <c>GET /v1/messages</c> answers with a named 400: the queue lists what
+    /// needs attention, not what has been accepted. Offering a destination that
+    /// cannot be requested is worse than not offering it, because the operator
+    /// reads the refusal as a fault rather than as a filter that does not
+    /// exist.
+    /// </remarks>
+    [Fact]
+    public void The_queues_are_exactly_the_dispositions_the_route_lists()
+    {
+        var model = ShellModel.CreateDefault();
+
+        var queues = model.Sections
+            .Single(section => section.Title == "Queues")
+            .Items;
+
+        Assert.Equal(
+            [MessageListState.AwaitingDecision, MessageListState.Held, MessageListState.Quarantined],
+            queues.Select(item => item.Queue));
+
+        Assert.DoesNotContain(queues, item => item.Title.Contains("Queued", StringComparison.Ordinal));
+        Assert.DoesNotContain(queues, item => item.Title.Contains("Delivered", StringComparison.Ordinal));
+    }
+
+    /// <summary>The senders section is real data, replacing the placeholder.</summary>
+    [Fact]
+    public void The_sender_listing_populates_the_sidebar()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var senders = model.Sections.Single(section => section.Title == "Senders").Items;
+
+        Assert.Equal(3, senders.Count);
+        Assert.Contains(senders, item => item.Title == "compromised@example.test");
+    }
+
+    /// <summary>
+    /// Applying the same listing again replaces the section rather than adding
+    /// to it.
+    /// </summary>
+    /// <remarks>
+    /// The guard for a defect the screenshot found: the senders section
+    /// rendered three rows for one principal, because two loads ran
+    /// concurrently and <c>ObservableCollection</c> is not thread-safe. The
+    /// concurrency itself is fixed in the window, which marshals every model
+    /// update to the UI thread. This asserts the property that made the symptom
+    /// so confusing, which is that loading is not cumulative.
+    /// </remarks>
+    [Fact]
+    public void Applying_a_listing_twice_does_not_accumulate()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        Assert.Equal(3, model.Sections.Single(section => section.Title == "Senders").Items.Count);
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+
+        Assert.Equal(2, model.Messages.Count);
+    }
+
+    /// <summary>
+    /// A paused principal is called out in the sidebar, and the reason is on the
+    /// entry rather than behind a click: "why is this account stopped" is the
+    /// question the sentence answers.
+    /// </summary>
+    [Fact]
+    public void A_paused_sender_says_so_and_carries_the_reason()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var senders = model.Sections.Single(section => section.Title == "Senders").Items;
+
+        var paused = senders.Single(item => item.Title == "compromised@example.test");
+        Assert.True(paused.IsPaused);
+        Assert.Contains("credential stuffing", paused.Detail, StringComparison.Ordinal);
+
+        var untouched = senders.Single(item => item.Title == "untouched@example.test");
+        Assert.False(untouched.IsPaused);
+    }
+
+    /// <summary>
+    /// A principal paused and later resumed keeps its audit trail: the console
+    /// reports the history rather than "unpaused", because those are not the
+    /// same thing to someone asking what happened to this account.
+    /// </summary>
+    [Fact]
+    public void A_resumed_sender_still_shows_that_it_was_stopped()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplySenders(Json.Read<SenderListingResponse>(Wire.SenderListing));
+
+        var resumed = model.Sections
+            .Single(section => section.Title == "Senders")
+            .Items
+            .Single(item => item.Title == "quiet@example.test");
+
+        Assert.False(resumed.IsPaused);
+        Assert.Contains("resumed", resumed.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Rows come from the listing, in the Host's order.</summary>
+    [Fact]
+    public void The_message_listing_populates_the_list()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+
+        Assert.Equal(2, model.Messages.Count);
+        Assert.True(model.HasMessages);
+
+        var first = model.Messages[0];
+        Assert.Equal("q_5a2f", first.QueueId);
+        Assert.Equal(DeliveryState.Held, first.State);
+        Assert.Equal(["alice@example.test", "bob@example.test"], first.Recipients);
+    }
+
+    /// <summary>
+    /// Paging state is held so the next page can be fetched with the Host's own
+    /// cursor rather than one the console reconstructs.
+    /// </summary>
+    [Fact]
+    public void Paging_state_is_kept_for_the_next_page()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+
+        Assert.True(model.HasMore);
+        Assert.Equal("cursor_page_2", model.NextCursor);
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListingLastPage));
+
+        Assert.False(model.HasMore);
+        Assert.Null(model.NextCursor);
+        Assert.Empty(model.Messages);
     }
 
     /// <summary>
@@ -50,17 +202,40 @@ public sealed class ShellModelTests
     /// by looking at the window rather than only in review.
     /// </summary>
     [Fact]
-    public void The_entries_awaiting_a_route_say_which_route()
+    public void The_entries_awaiting_a_route_say_what_is_missing()
     {
         var model = ShellModel.CreateDefault();
 
-        var senders = model.Sections
+        var decisions = model.Sections
             .SelectMany(section => section.Items)
-            .Single(item => item.Title == "Senders");
+            .Single(item => item.Title == "Decisions");
 
-        Assert.Equal(SidebarItemState.AwaitingRoute, senders.State);
-        Assert.True(senders.IsBlocked);
-        Assert.Contains("/v1/senders", senders.Detail, StringComparison.Ordinal);
+        Assert.Equal(SidebarItemState.AwaitingRoute, decisions.State);
+        Assert.True(decisions.IsBlocked);
+        Assert.Contains("enumerates the ledger", decisions.Detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every route the console is built on exists, so nothing else is blocked.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to the test above, and the reason it is worth having:
+    /// a blocked marker that appears on entries whose routes do exist would
+    /// make the marker meaningless, and the marker is the only thing telling an
+    /// operator that a pane is not merely empty.
+    /// </remarks>
+    [Fact]
+    public void Nothing_whose_route_exists_is_marked_blocked()
+    {
+        var model = ShellModel.CreateDefault();
+
+        var blocked = model.Sections
+            .SelectMany(section => section.Items)
+            .Where(item => item.IsBlocked)
+            .Select(item => item.Title)
+            .ToList();
+
+        Assert.Equal(["Decisions"], blocked);
     }
 
     [Fact]
@@ -123,9 +298,9 @@ public sealed class ShellModelTests
 
         model.SelectedItem = model.Sections
             .SelectMany(section => section.Items)
-            .Single(item => item.Title == "Senders");
+            .Single(item => item.Title == "Decisions");
 
-        Assert.Contains("/v1/senders", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("enumerates the ledger", model.EmptyListDetail, StringComparison.Ordinal);
         Assert.Contains("does not read the database", model.EmptyListDetail, StringComparison.Ordinal);
     }
 

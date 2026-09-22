@@ -110,15 +110,22 @@
                              IsVisible="{Binding HasMessages}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
+                                <!--
+                                    Built from the fields the listing actually
+                                    sends. No subject and no sender column,
+                                    because a queued message carries neither and
+                                    empty columns are a promise the console
+                                    cannot keep.
+                                -->
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,4">
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="rowTitle" Text="{Binding Sender}" />
-                                        <TextBlock Classes="rowSubtitle" Text="{Binding Recipients}" />
+                                        <TextBlock Classes="rowTitle" Text="{Binding QueueId}" />
+                                        <TextBlock Classes="rowSubtitle" Text="{Binding RecipientsLabel}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                        <TextBlock Classes="rowTitle" Text="{Binding ActionLabel}" />
-                                        <TextBlock Classes="rowSubtitle" Text="{Binding DeliveryLabel}" />
+                                        <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />
+                                        <TextBlock Classes="rowSubtitle" Text="{Binding AttemptsLabel}" />
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>

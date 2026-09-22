@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using StyloMail.Desktop.Api.Contracts;
+
 namespace StyloMail.Desktop.Models;
 
 /// <summary>
@@ -5,11 +8,11 @@ namespace StyloMail.Desktop.Models;
 /// </summary>
 /// <remarks>
 /// The console shows this rather than hiding what is not built. An operator who
-/// can see that "Senders" is waiting on a route knows the console is incomplete
+/// can see that an entry is waiting on a route knows the console is incomplete
 /// and knows which piece is missing; one who sees an empty pane assumes the
-/// system has no senders. In a component whose job is explaining why something
-/// was held, a pane that quietly means two different things is the failure the
-/// whole console exists to avoid.
+/// system has nothing in it. In a component whose job is explaining why
+/// something was held, a pane that quietly means two different things is the
+/// failure the whole console exists to avoid.
 /// </remarks>
 public enum SidebarItemState
 {
@@ -27,25 +30,42 @@ public enum SidebarItemState
 public sealed class SidebarItem : ObservableObject
 {
     private bool _isSelected;
+    private bool _isPaused;
+    private string? _detail;
 
     public SidebarItem(
         string title,
         SidebarItemState state = SidebarItemState.Available,
         string? detail = null,
-        string? emptyDetail = null)
+        string? emptyDetail = null,
+        MessageListState? queue = null)
     {
         Title = title;
         State = state;
         Detail = detail;
         EmptyDetail = emptyDetail;
+        Queue = queue;
     }
 
     public string Title { get; }
 
     public SidebarItemState State { get; }
 
+    /// <summary>
+    /// Which disposition this entry lists, when it is a queue.
+    /// </summary>
+    /// <remarks>
+    /// The typed enum rather than a wire string, so the sidebar cannot offer a
+    /// destination the route would refuse.
+    /// </remarks>
+    public MessageListState? Queue { get; }
+
     /// <summary>Why it is in this state, or what it counts. Shown under the title.</summary>
-    public string? Detail { get; private set; }
+    public string? Detail
+    {
+        get => _detail;
+        private set => Set(ref _detail, value);
+    }
 
     /// <summary>
     /// What the middle pane says when this entry is selected and has nothing to list.
@@ -64,9 +84,14 @@ public sealed class SidebarItem : ObservableObject
         set => Set(ref _isSelected, value);
     }
 
-    /// <summary>
-    /// Whether this entry needs a route the Host does not have.
-    /// </summary>
+    /// <summary>Whether this principal's outbound delivery is currently stopped.</summary>
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set => Set(ref _isPaused, value);
+    }
+
+    /// <summary>Whether this entry needs a route the Host does not have.</summary>
     /// <remarks>
     /// Bound to a visible marker rather than left to a tooltip. The marker is
     /// the point: a tooltip is only found by someone who already suspects
@@ -74,18 +99,30 @@ public sealed class SidebarItem : ObservableObject
     /// </remarks>
     public bool IsBlocked => State is SidebarItemState.AwaitingRoute;
 
+    /// <summary>Sets the subtitle, announcing it so the pane header follows.</summary>
     public SidebarItem WithDetail(string? detail)
     {
         Detail = detail;
-        Raise(nameof(Detail));
         return this;
     }
 }
 
 /// <summary>A titled group of sidebar entries.</summary>
-public sealed class SidebarSection(string title, IReadOnlyList<SidebarItem> items)
+public sealed class SidebarSection
 {
-    public string Title { get; } = title;
+    public SidebarSection(string title, IEnumerable<SidebarItem> items)
+    {
+        Title = title;
+        Items = [.. items];
+    }
 
-    public IReadOnlyList<SidebarItem> Items { get; } = items;
+    public string Title { get; }
+
+    /// <summary>
+    /// Observable because one of these sections is filled from the network
+    /// after the window is on screen. The senders are not known at construction
+    /// and replacing the collection instead of its contents would drop the
+    /// selection and the bindings with it.
+    /// </summary>
+    public ObservableCollection<SidebarItem> Items { get; }
 }

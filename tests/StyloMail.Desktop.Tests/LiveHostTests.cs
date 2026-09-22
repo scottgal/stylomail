@@ -1,5 +1,6 @@
 using System.Net;
 using StyloMail.Desktop.Api;
+using StyloMail.Desktop.Api.Contracts;
 
 namespace StyloMail.Desktop.Tests;
 
@@ -112,24 +113,39 @@ public sealed class LiveHostTests
     }
 
     /// <summary>
-    /// A tripwire on the Host's surface, and deliberately not a client test.
+    /// The two listings the console's first two screens are built on.
     /// </summary>
     /// <remarks>
-    /// <c>GET /v1/senders</c> and <c>GET /v1/messages</c> do not exist, which is
-    /// why the console's sidebar and message list cannot be built yet. This is
-    /// asserted through a raw <see cref="HttpClient"/> rather than by giving the
-    /// client methods for routes that are not there: a client that shipped a
-    /// call to a route nobody has written would be the workaround the mission
-    /// rules out, and it would make the gap look closed.
-    ///
-    /// <para>
-    /// When either route is mapped this test fails, and that failure is the
-    /// signal to wire up the screen it unblocks. A tripwire that fails when the
-    /// work is ready is the point, not a bug in the test.
-    /// </para>
+    /// This test began life as a tripwire asserting both routes returned 404,
+    /// which they did until <c>ingress-</c> wrote them. It failed the moment
+    /// they landed, which was its job, and it is now the positive assertion it
+    /// was waiting to become.
     /// </remarks>
     [LiveHostFact]
-    public async Task The_sender_and_message_listings_are_not_mapped_yet()
+    public async Task The_two_listings_are_reachable_and_bind()
+    {
+        var client = Client();
+
+        var senders = await client.GetSendersAsync();
+        Assert.False(string.IsNullOrEmpty(senders.TenantId));
+        Assert.NotNull(senders.Senders);
+
+        var messages = await client.GetMessagesAsync(MessageListState.AwaitingDecision);
+        Assert.Equal("awaiting_decision", messages.State);
+        Assert.NotNull(messages.Messages);
+    }
+
+    /// <summary>
+    /// The Host refuses <c>state=queued</c> by name, and that refusal is what
+    /// justifies the client's closed state type rather than a free string.
+    /// </summary>
+    /// <remarks>
+    /// Sent through a raw <see cref="HttpClient"/> precisely because the typed
+    /// client cannot express it: the value is unrepresentable on this side, and
+    /// the point of the test is that the Host agrees it should be.
+    /// </remarks>
+    [LiveHostFact]
+    public async Task The_host_refuses_a_state_the_client_cannot_name()
     {
         var url = Environment.GetEnvironmentVariable(LiveHostFactAttribute.UrlVariable)!;
         using var http = new HttpClient { BaseAddress = new Uri(url) };
@@ -137,10 +153,31 @@ public sealed class LiveHostTests
             StyloMailApiClient.ApiKeyHeaderName,
             Environment.GetEnvironmentVariable(EnvironmentApiKeyProvider.KeyVariable));
 
-        var senders = await http.GetAsync("/v1/senders");
-        var messages = await http.GetAsync("/v1/messages");
+        var response = await http.GetAsync("/v1/messages?state=queued");
 
-        Assert.Equal(HttpStatusCode.NotFound, senders.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, messages.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("unknown_state", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Neither listing takes a tenant, and the Host scopes both from the
+    /// authenticated principal. Asserted against a live Host because it is a
+    /// property of the pair: the client must not send one and the route must
+    /// not want one.
+    /// </summary>
+    [LiveHostFact]
+    public async Task Neither_listing_needs_a_tenant_from_the_client()
+    {
+        var client = Client();
+
+        var senders = await client.GetSendersAsync();
+        var messages = await client.GetMessagesAsync(MessageListState.Quarantined);
+
+        // Both answered, and both answered for the caller's own tenant, which
+        // the Host read from the key rather than from anything sent.
+        Assert.False(string.IsNullOrEmpty(senders.TenantId));
+        Assert.Equal(senders.TenantId, messages.TenantId);
     }
 }

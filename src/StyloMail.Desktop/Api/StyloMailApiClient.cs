@@ -88,6 +88,74 @@ public sealed class StyloMailApiClient
             cancellationToken);
 
     /// <summary>
+    /// Lists the principals this tenant can send as, with their pause state.
+    /// </summary>
+    /// <remarks>
+    /// No tenant parameter exists on the route: the Host takes it from the
+    /// authenticated principal, which is why a cross-tenant read is absent
+    /// rather than refused. There is nothing here for the console to send or to
+    /// get wrong.
+    /// </remarks>
+    public Task<SenderListingResponse> GetSendersAsync(CancellationToken cancellationToken = default)
+        => SendAsync<SenderListingResponse>(HttpMethod.Get, "/v1/senders", body: null, cancellationToken);
+
+    /// <summary>
+    /// Lists one page of messages awaiting attention.
+    /// </summary>
+    /// <param name="state">Which disposition. Only the three the route enumerates can be named.</param>
+    /// <param name="limit">Page size. Clamped by the queue rather than rejected when too large.</param>
+    /// <param name="cursor">
+    /// The previous page's <see cref="MessageListingResponse.NextCursor"/>, echoed
+    /// back unchanged. Null for the first page.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <remarks>
+    /// <b>Messages in normal delivery are not enumerable here</b>, and that is
+    /// the route's design rather than a limitation to work around. The queue
+    /// lists what needs attention; a client that wanted the rest would need a
+    /// filter the Host has not written, and inventing one here would produce a
+    /// page that disagrees with the filter it claims to be showing.
+    /// </remarks>
+    public Task<MessageListingResponse> GetMessagesAsync(
+        MessageListState state,
+        int? limit = null,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new StringBuilder("/v1/messages?state=")
+            .Append(Uri.EscapeDataString(WireName(state)));
+
+        if (limit is { } pageSize)
+        {
+            query.Append("&limit=").Append(pageSize);
+        }
+
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            query.Append("&after=").Append(Uri.EscapeDataString(cursor));
+        }
+
+        return SendAsync<MessageListingResponse>(HttpMethod.Get, query.ToString(), body: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// The wire name of a listing state. Mirrors the Host's filter keys, which
+    /// are lowercase with underscores.
+    /// </summary>
+    /// <remarks>
+    /// A switch with no default arm, so adding a member to the enum without
+    /// deciding its wire name fails to compile rather than silently sending
+    /// something the Host will refuse.
+    /// </remarks>
+    private static string WireName(MessageListState state) => state switch
+    {
+        MessageListState.AwaitingDecision => "awaiting_decision",
+        MessageListState.Held => "held",
+        MessageListState.Quarantined => "quarantined",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped listing state."),
+    };
+
+    /// <summary>
     /// Reads one submission's recipient-level delivery progress.
     /// </summary>
     /// <remarks>
