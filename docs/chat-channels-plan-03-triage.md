@@ -169,6 +169,40 @@ something that does not exist for chat.
 The first reading makes triage useful today and correct tomorrow. **It also means triage is what makes
 the drain affordable**, which is the argument for building it before interventions.
 
+## The rule this record nearly got wrong: dismissing must not starve the record
+
+**Triage runs before the assessment, and the observed-state write lives inside the assessment.** Left
+there, a member who posts fifty near-duplicates that check 2 dismisses contributes **nothing** to
+their own profile, and check 4 then computes velocity, drift and fan-out from a history that the
+checks in front of it have been quietly thinning. **That is check 4 starved by the checks it is
+behind.**
+
+The mail path already lives by the opposite rule: observed state counts **attempts**, not deliveries,
+and it is written for every message the pipeline saw. Triage skipping the assessment must not skip the
+record that the author posted.
+
+**So the write and the assessment are separable, and triage separates them.** The observation is
+recorded for every message that reaches an assessment check, whether or not that check then stops the
+message. **Which checks record, per check**, on the same terms as everything else here:
+
+| Check | Records? | Why |
+| --- | --- | --- |
+| 1, scope | **No** | An out-of-scope channel is one this deployment decided not to look at. Its messages being invisible to the profile is the decision being carried out rather than a loss, and recording them would put traffic we have chosen to ignore into the baseline we judge by. |
+| 2, near-duplicate | **Yes** | The dismissal is about cost, not about the message being uninteresting. A member posting fifty near-identicals is exactly the behaviour check 4 measures. |
+| 3, links | **Yes** | Same reason. A link that turns out to be clean is still a message the author sent. |
+| 4, behaviour | **Yes** | It is the assessment path, reaching it is what records. |
+| 5, escalate | **Yes** | Same. |
+
+**Two consequences, both of which belong in the record rather than being left for the reader.**
+
+**It shrinks the saving honestly.** Every message that reaches check 2 needs a write regardless, so
+triage's benefit is the **assessment minus the write**, not the whole path. The write measured at 0.07 ms
+and the assessment at 1.3 ms, so the saving is real but it is not the whole cost.
+
+**And it bounds the counts.** The dismissal counts are counts of what triage did to messages that were
+**still recorded**. The count of messages that were never recorded at all must either be zero or named
+as a number, and check 1 is the only check that can produce one.
+
 ## What triage emits
 
 - **Evidence**, in the existing shape, from whichever checks ran.
@@ -196,9 +230,17 @@ the drain affordable**, which is the argument for building it before interventio
 - **Triage can become a way to look at less**, which is the opposite of what it is for. Its dismissal
   rate is a number an operator should be able to read, and a dismissal rate climbing without a
   matching explanation is the signal that a check has drifted.
-- **The volume assumption is still unmeasured.** I measured the intake write at 0.07 ms per event; I
-  have not measured what the full assessment costs, so triage's benefit is currently argued rather
-  than demonstrated. Measuring that belongs in this plan, before the thresholds are chosen.
+- **The local path is measured and it is not the bottleneck.** Per message: intake write **0.07 ms**,
+  full assessment **1.35 ms** against an empty profile store and **1.30 ms** against one seeded with
+  40 observations per author, ledger record **0.19 ms**. Drain throughput **about 1000 events/s**.
+  Caveats, which travel with the numbers: 300 messages is a small sample, the seeded history is 40
+  observations per author rather than a year of one, and the semantic path is **unmeasured because it
+  is disabled**.
+- **So the justification is the semantic path, not the local one.** The local cost is milliseconds at
+  any volume a workspace produces, and an argument that triage exists to make the local path
+  affordable is not supported by these figures. What triage's escalation ceiling actually bounds is a
+  **per-call cost that has not been incurred yet**, and that is the honest reason it comes first.
 - **A local-only deployment's triage decides what reaches an assessment that can only look locally.**
   That is coherent, but the escalation ceiling then bounds nothing external, and the plan should not
-  claim a cost benefit it cannot demonstrate for that configuration.
+  claim a financial benefit it cannot demonstrate for that configuration. What it does buy there is
+  the discipline of the checks themselves.
