@@ -13,6 +13,32 @@ public static class HostPolicies
     public const string Review = "stylomail.review";
     public const string Feedback = "stylomail.feedback";
     public const string Administer = "stylomail.administer";
+
+    /// <summary>
+    /// May read one submission's progress: holds <see cref="HostPrivilege.Send"/> or
+    /// <see cref="HostPrivilege.Review"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one place a route accepts either of two privileges, and it needs its own justification
+    /// each time it is used.</b> A union policy is easy to reach for and erodes a privilege model one
+    /// convenience at a time, so it is not a general facility — it is named for the single route that
+    /// needs it.
+    /// </para>
+    /// <para>
+    /// The justification here is that <b>reading is strictly weaker than releasing</b>.
+    /// <c>POST /v1/quarantine/{id}/release</c> requires <c>Review</c> and addresses the same queue id,
+    /// so a reviewer already holds more power over that id than reading it. A model where the greater
+    /// capability required less than the lesser one would not be conservative, it would be incoherent,
+    /// and it produces the worse outcome: an operator releasing a message they were not permitted to
+    /// inspect.
+    /// </para>
+    /// <para>
+    /// Note what this is <em>not</em>: neither privilege implies the other. A sender still cannot
+    /// read the decision ledger, and a reviewer still cannot submit mail.
+    /// </para>
+    /// </remarks>
+    public const string SendOrReview = "stylomail.send_or_review";
 }
 
 public static class HostAuthenticationExtensions
@@ -100,7 +126,15 @@ public static class HostAuthenticationExtensions
             .AddPolicy(HostPolicies.Send, policy => policy.RequirePrivilege(HostPrivilege.Send))
             .AddPolicy(HostPolicies.Review, policy => policy.RequirePrivilege(HostPrivilege.Review))
             .AddPolicy(HostPolicies.Feedback, policy => policy.RequirePrivilege(HostPrivilege.Feedback))
-            .AddPolicy(HostPolicies.Administer, policy => policy.RequirePrivilege(HostPrivilege.Administer));
+            .AddPolicy(HostPolicies.Administer, policy => policy.RequirePrivilege(HostPrivilege.Administer))
+
+            // The union, written out rather than expressed as two policy names on the route:
+            // `RequireAuthorization("a", "b")` is an AND, so two names would require both privileges
+            // and lock out exactly the caller this exists to admit. See HostPolicies.SendOrReview for
+            // why the union is safe here and why it is not a facility to reuse casually.
+            .AddPolicy(HostPolicies.SendOrReview, policy => policy.RequireAssertion(context =>
+                context.User.HasPrivilege(HostPrivilege.Send)
+                || context.User.HasPrivilege(HostPrivilege.Review)));
 
         return services;
     }

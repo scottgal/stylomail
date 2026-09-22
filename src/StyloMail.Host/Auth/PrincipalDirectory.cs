@@ -24,6 +24,37 @@ public sealed class PrincipalDirectory
     /// <summary>Whether any principal is configured at all.</summary>
     public bool HasPrincipals => _options.Principals.Any(p => !string.IsNullOrEmpty(p.Key));
 
+    /// <summary>
+    /// The principals configured for one tenant, ordered by identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Returns the configuration's view of a principal, never its credential.</b> Callers project
+    /// what they need from <see cref="HostPrincipalOptions"/>; nothing here hands out a key, and a
+    /// listing built from this must not either. The ordering is fixed so that a listing is stable
+    /// across calls — an operator reading a sidebar should not see rows move because a dictionary
+    /// enumeration changed.
+    /// </para>
+    /// <para>
+    /// A principal configured without a key is skipped. It cannot authenticate, so it cannot send,
+    /// and listing it as a sender would advertise an account that does not exist. An empty tenant
+    /// returns an empty list rather than null: "this tenant has no senders" and "that question has
+    /// no answer" must not look the same to a caller.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<HostPrincipalOptions> ForTenant(string tenantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        return
+        [
+            .. _options.Principals
+                .Where(p => !string.IsNullOrEmpty(p.Key)
+                    && string.Equals(p.TenantId, tenantId, StringComparison.Ordinal))
+                .OrderBy(p => p.PrincipalId, StringComparer.Ordinal),
+        ];
+    }
+
     public bool BrowserChannelEnabled => _options.EnableBrowserCookieChannel;
 
     /// <summary>

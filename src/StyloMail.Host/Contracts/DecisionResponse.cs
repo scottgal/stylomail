@@ -56,12 +56,7 @@ public sealed record DecisionResponse
         Action = assessment.Action,
         ProposedActionInShadow = assessment.ProposedActionInShadow,
         RiskIndex = assessment.RiskIndex,
-        Reasons = [.. assessment.Reasons.Select(r => new ReasonResponse
-        {
-            Code = r.Code,
-            Message = r.Message,
-            EvidenceSignalIds = r.EvidenceSignalIds,
-        })],
+        Reasons = [.. assessment.Reasons.Select(ReasonResponse.From)],
         RiskDimensions = [.. assessment.RiskDimensions.Select(d => new RiskDimensionResponse
         {
             Name = d.Name,
@@ -81,25 +76,8 @@ public sealed record DecisionResponse
             ObservedAt = e.ObservedAt,
             ObservedScope = e.ObservedScope,
         })],
-        Versions = new VersionsResponse
-        {
-            PolicyVersion = assessment.Versions.PolicyVersion,
-            ClassifierModelVersion = assessment.Versions.ClassifierModelVersion,
-            QuestionSchemaVersion = assessment.Versions.QuestionSchemaVersion,
-            PreprocessingVersion = assessment.Versions.PreprocessingVersion,
-            RegimeId = assessment.Versions.RegimeId,
-        },
-        Coverage = new CoverageResponse
-        {
-            BodyParsed = assessment.Coverage.BodyParsed,
-            HtmlPresent = assessment.Coverage.HtmlPresent,
-            HasAttachments = assessment.Coverage.HasAttachments,
-            HtmlTextDisagreement = assessment.Coverage.HtmlTextDisagreement,
-            ParserLimitExceeded = assessment.Coverage.ParserLimitExceeded,
-            ContentEncrypted = assessment.Coverage.ContentEncrypted,
-            Truncated = assessment.Coverage.Truncated,
-            ConversationContextMissing = assessment.Coverage.ConversationContextMissing,
-        },
+        Versions = VersionsResponse.From(assessment.Versions),
+        Coverage = CoverageResponse.From(assessment.Coverage),
         Cache = assessment.Cache is null
             ? null
             : new CacheResponse
@@ -129,6 +107,21 @@ public sealed record ReasonResponse
     public required string Message { get; init; }
 
     public required IReadOnlyList<string> EvidenceSignalIds { get; init; }
+
+    /// <summary>
+    /// The one mapping from Core's reason type to this one.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the detail view and the ledger listing deliberately. Two projections of the same
+    /// part of a decision are two places for the explanation to drift, and an explanation that
+    /// differs between the list and the detail is worse than one that is missing.
+    /// </remarks>
+    public static ReasonResponse From(ReasonCode reason) => new()
+    {
+        Code = reason.Code,
+        Message = reason.Message,
+        EvidenceSignalIds = reason.EvidenceSignalIds,
+    };
 }
 
 public sealed record RiskDimensionResponse
@@ -179,6 +172,15 @@ public sealed record VersionsResponse
     public required string PreprocessingVersion { get; init; }
 
     public string? RegimeId { get; init; }
+
+    public static VersionsResponse From(AssessmentVersions versions) => new()
+    {
+        PolicyVersion = versions.PolicyVersion,
+        ClassifierModelVersion = versions.ClassifierModelVersion,
+        QuestionSchemaVersion = versions.QuestionSchemaVersion,
+        PreprocessingVersion = versions.PreprocessingVersion,
+        RegimeId = versions.RegimeId,
+    };
 }
 
 public sealed record CoverageResponse
@@ -198,6 +200,27 @@ public sealed record CoverageResponse
     public required bool Truncated { get; init; }
 
     public required bool ConversationContextMissing { get; init; }
+
+    /// <summary>
+    /// The coverage flags this view carries.
+    /// </summary>
+    /// <remarks>
+    /// <c>OversizeRejected</c> is deliberately not projected, matching the detail view: a separate
+    /// field for it would widen a response served to any principal holding Review, and the
+    /// distinction it draws is already available to an operator through the reason codes. If a
+    /// reviewer surface needs it, add it to both projections at once rather than to one.
+    /// </remarks>
+    public static CoverageResponse From(AnalysisCoverage coverage) => new()
+    {
+        BodyParsed = coverage.BodyParsed,
+        HtmlPresent = coverage.HtmlPresent,
+        HasAttachments = coverage.HasAttachments,
+        HtmlTextDisagreement = coverage.HtmlTextDisagreement,
+        ParserLimitExceeded = coverage.ParserLimitExceeded,
+        ContentEncrypted = coverage.ContentEncrypted,
+        Truncated = coverage.Truncated,
+        ConversationContextMissing = coverage.ConversationContextMissing,
+    };
 }
 
 public sealed record CacheResponse

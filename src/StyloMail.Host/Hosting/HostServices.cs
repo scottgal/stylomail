@@ -51,6 +51,8 @@ public static class HostServices
         services.AddSingleton<IDecisionLedger, SqliteDecisionLedger>();
         services.AddSingleton<IFeedbackStore, SqliteFeedbackStore>();
         services.AddSingleton<ISenderControlStore, SqliteSenderControlStore>();
+        services.AddSingleton<ISenderProfileStore, SqliteSenderProfileStore>();
+        services.AddSingleton<ICompanyStore, SqliteCompanyStore>();
 
         // The durable queue, wired from the same storage options so the spool and the database
         // cannot be pointed at different places by two independently-edited configuration keys.
@@ -69,6 +71,11 @@ public static class HostServices
         services.AddSingleton<ISubmissionIntake, QueueSubmissionIntake>();
 
         services.AddSingleton<HostMetrics>();
+
+        // Whether the semantic provider has rejected this deployment's credential. Registered
+        // unconditionally and mutated by the classifier decorator, because the condition can arise at
+        // any point in a run rather than only at startup.
+        services.AddSingleton<ProviderCredentialHealth>();
         services.AddSingleton<ReadinessProbe>();
 
         // Registered unconditionally so the host always has something to resolve. The default
@@ -279,10 +286,23 @@ public static class HostServices
             ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(profileMasterKey!)),
         };
 
-        var classifier = new JevSemanticMailClassifier(
-            services.GetRequiredService<HttpClient>(),
-            new JevOptions { ApiKey = jevApiKey! },
-            services.GetRequiredService<TimeProvider>());
+        var jevOptions = BuildJevOptions(
+            configuration,
+            jevApiKey!,
+            services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Jev"));
+
+        var clock = services.GetRequiredService<TimeProvider>();
+
+        // Wrapped so a rejected credential reaches readiness, which is the thing an operator watches.
+        // The wrapper changes nothing a caller sees — it rethrows unchanged — see
+        // CredentialAwareSemanticClassifier for why the exception stays loud.
+        var classifier = new CredentialAwareSemanticClassifier(
+            new JevSemanticMailClassifier(
+                services.GetRequiredService<HttpClient>(),
+                jevOptions,
+                clock),
+            services.GetRequiredService<ProviderCredentialHealth>(),
+            clock);
 
         return AssessmentPipeline.Create(
             services.GetRequiredService<IMimeMessageAnalyzer>(),
@@ -291,6 +311,65 @@ public static class HostServices
             services.GetRequiredService<SpoolStore>(),
             options,
             services.GetRequiredService<QueueOptions>());
+    }
+
+    /// <summary>
+    /// Builds the semantic provider's options, binding the endpoint and model from configuration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These were hardcoded while <paramref name="configuration"/> was in scope as a parameter, so
+    /// <c>StyloMail:Jev:Endpoint</c> and <c>:Model</c> could be set, looked accepted, and were
+    /// silently ignored. Configuration that appears to work and does nothing is worse than
+    /// configuration that is absent.
+    /// </para>
+    /// <para>
+    /// <b>The endpoint redirects message content, so a non-default one is announced at startup.</b>
+    /// Pointing it somewhere else is a legitimate operator decision — a local classifier, a staging
+    /// provider, or deliberately unreachable to exercise the semantic-unavailable path — but it is
+    /// also the setting that decides who receives the mail this deployment processes. It is not
+    /// buried in a config file; it is a line in the log of every boot.
+    /// </para>
+    /// <para>
+    /// The model pin is bound for the opposite reason: it is tuned alongside confidence thresholds,
+    /// and an alias there would move without notice and silently invalidate memoised assessments. A
+    /// value is only ever *changed* deliberately, and the log says which one is in use.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// Public for the same reason <see cref="DescribeTransport"/> and <see cref="IsIngressEnabled"/>
+    /// are: this is a composition decision a test should be able to assert on directly rather than by
+    /// inferring it from a side effect. The rest of the reasoning is on the internal overload.
+    /// </remarks>
+    public static JevOptions BuildJevOptions(IConfiguration configuration, string apiKey, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+
+        var defaults = new JevOptions();
+        var endpoint = configuration["StyloMail:Jev:Endpoint"];
+        var model = configuration["StyloMail:Jev:Model"];
+
+        if (!string.IsNullOrWhiteSpace(endpoint)
+            && !string.Equals(endpoint, defaults.Endpoint, StringComparison.Ordinal))
+        {
+            // A warning rather than an error. Redirecting the endpoint is a decision an operator is
+            // entitled to make; it is the *silence* about it that would be wrong.
+            logger.LogWarning(
+                "STYLOMAIL JEV ENDPOINT OVERRIDDEN — message content is being sent to {Endpoint} "
+                + "rather than {Default}. This is the setting that decides who receives the mail this "
+                + "deployment processes; confirm it is intended.",
+                endpoint,
+                defaults.Endpoint);
+        }
+
+        return new JevOptions
+        {
+            ApiKey = apiKey,
+            Endpoint = string.IsNullOrWhiteSpace(endpoint) ? defaults.Endpoint : endpoint,
+            Model = string.IsNullOrWhiteSpace(model) ? defaults.Model : model,
+        };
     }
 
     /// <summary>

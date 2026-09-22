@@ -18,4 +18,17 @@ public interface IDecisionLedger
     /// <summary>Returns the decision, or null when it does not exist <em>for this tenant</em>.
     /// The two cases are indistinguishable to the caller by design.</summary>
     Task<MailAssessment?> FindAsync(string tenantId, string assessmentId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// One page of this tenant's ledger, newest first.
+    /// </summary>
+    /// <remarks>
+    /// Keyset-paged rather than offset-paged. An offset shifts when a new decision is recorded while
+    /// a caller is paging, so a reviewer would see the same row twice or miss one entirely — and
+    /// missing one silently is the failure that matters, because a ledger whose rows can vanish
+    /// between pages is not an audit trail.
+    /// </remarks>
+    Task<DecisionListingPage> ListAsync(
+        DecisionListingQuery query,
+        CancellationToken cancellationToken);
 }

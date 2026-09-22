@@ -73,8 +73,9 @@ public sealed class CloudflareIngressTests
         // pipeline reads the message back from, and the queue's own copy written under the queue id,
         // which *is* the acceptance. Deleting the first once the second exists is the outstanding
         // delete-after-accept work, deliberately not started.
-        var ingressCopy = Assert.Single(payloads.Where(
-            path => Path.GetFileName(path).StartsWith("ingress-", StringComparison.Ordinal)));
+        var ingressCopy = Assert.Single(
+            payloads,
+            path => Path.GetFileName(path).StartsWith("ingress-", StringComparison.Ordinal));
 
         var stored = await File.ReadAllBytesAsync(ingressCopy);
         var marker = stored.AsSpan().Slice(0, stored.Length - Mime().Length);

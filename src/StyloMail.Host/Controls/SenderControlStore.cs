@@ -61,6 +61,25 @@ public interface ISenderControlStore
         string tenantId,
         string principalId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Every control record this tenant holds.
+    /// </summary>
+    /// <remarks>
+    /// <b>One query rather than one per principal.</b> A sender listing joins these against the
+    /// tenant's configured principals, and doing that with <see cref="GetAsync"/> per row would turn
+    /// a bounded listing into N round trips whose count the caller does not control.
+    ///
+    /// <para>
+    /// Records are returned whether or not the principal is still configured. The caller decides
+    /// what that means: a control record for a principal no longer in the configuration is a real
+    /// state, and a listing that silently hid it would make the pause look like it had never
+    /// happened.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<SenderControlState>> ListAsync(
+        string tenantId,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>SQLite-backed sender controls.</summary>
@@ -222,6 +241,54 @@ public sealed class SqliteSenderControlStore : ISenderControlStore
         catch (SqliteException ex)
         {
             throw new StorageUnavailableException("The sender control could not be read.", ex);
+        }
+    }
+
+    public Task<IReadOnlyList<SenderControlState>> ListAsync(
+        string tenantId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            using var connection = _database.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT principal_id, paused, paused_at, reason, updated_by, updated_at,
+                       resumed_at, resumed_by, resume_reason
+                FROM sender_control
+                WHERE tenant_id = $tenant
+                ORDER BY principal_id;
+                """;
+            command.Parameters.AddWithValue("$tenant", tenantId);
+
+            var states = new List<SenderControlState>();
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                states.Add(new SenderControlState
+                {
+                    PrincipalId = reader.GetString(0),
+                    Paused = reader.GetInt32(1) != 0,
+                    PausedAt = reader.IsDBNull(2) ? null : DateTimeOffset.Parse(reader.GetString(2)),
+                    Reason = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    UpdatedBy = reader.GetString(4),
+                    UpdatedAt = DateTimeOffset.Parse(reader.GetString(5)),
+                    ResumedAt = reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
+                    ResumedBy = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    ResumeReason = reader.IsDBNull(8) ? null : reader.GetString(8),
+                });
+            }
+
+            return Task.FromResult<IReadOnlyList<SenderControlState>>(states);
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The sender controls could not be read.", ex);
         }
     }
 }

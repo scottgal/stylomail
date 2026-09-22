@@ -157,6 +157,12 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_host_decision_ledger_tenant
             ON host_decision_ledger (tenant_id, recorded_at);
 
+        -- The join key back to a message. A reviewer goes from a quarantined message to the
+        -- explanation for it by message id, so that lookup is on the console's critical path rather
+        -- than an operator's occasional query, and without this it would scan the tenant's ledger.
+        CREATE INDEX IF NOT EXISTS ix_host_decision_ledger_message
+            ON host_decision_ledger (tenant_id, internal_message_id);
+
         -- Feedback is scoped: a label applies to the decision, the recipient and the scope the
         -- authorized party actually asserted, never to "this sender is fine from now on".
         -- Also host_*: see the note on host_decision_ledger above.
@@ -194,6 +200,42 @@ public sealed class HostDatabase
             updated_at    TEXT NOT NULL,
             PRIMARY KEY (tenant_id, principal_id)
         );
+
+        -- Operator metadata about a sending principal: what a human calls it, which company it
+        -- belongs to, and their own reference for it. Nothing here is read by the assessment
+        -- pipeline, and `posture` and `notification_target` are stored but honoured by nothing yet —
+        -- see SenderProfile for why they are carried anyway and what labels them as not-yet-acted-on.
+        CREATE TABLE IF NOT EXISTS sender_profile (
+            tenant_id            TEXT NOT NULL,
+            principal_id         TEXT NOT NULL,
+            label                TEXT NULL,
+            company_id           TEXT NULL,
+            notes                TEXT NULL,
+            external_ref         TEXT NULL,
+            notification_target  TEXT NULL,
+            posture              TEXT NULL,
+            updated_by           TEXT NOT NULL,
+            updated_at           TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, principal_id)
+        );
+
+        -- Companies group senders for the console. Deliberately flat and deliberately operator-side:
+        -- membership is a field on the sender rather than a list here, so promoting this to a
+        -- hierarchy later is a parent link on this table and no sender moves.
+        CREATE TABLE IF NOT EXISTS company (
+            tenant_id   TEXT NOT NULL,
+            company_id  TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            notes       TEXT NULL,
+            updated_by  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, company_id)
+        );
+
+        -- A sender's profile is read to group the sidebar, so the join from a company back to its
+        -- members is the console's common query rather than an occasional one.
+        CREATE INDEX IF NOT EXISTS ix_sender_profile_company
+            ON sender_profile (tenant_id, company_id);
 
         -- Quarantine releases are audited. A release is a decision someone made, and the record
         -- of who made it is not optional.

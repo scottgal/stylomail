@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -233,6 +235,26 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     /// <summary>How many messages have reached durable acceptance on this host.</summary>
     public AcceptanceCounter Submissions { get; } = new();
 
+    /// <summary>A clock the test controls, so timestamps are chosen rather than raced for.</summary>
+    public TestClock Clock { get; } = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+    /// <summary>
+    /// Runs this host on <see cref="Clock"/> instead of the wall clock.
+    /// </summary>
+    /// <remarks>
+    /// Needed wherever a test depends on *ordering* by time. Two records written in the same
+    /// millisecond tie on their timestamp, and a keyset cursor's tiebreak then decides the order — so
+    /// a test that means to exercise distinct-timestamp paging can silently become a
+    /// same-timestamp one and stop covering the case it was written for. Setting the times removes
+    /// the race rather than hoping the machine is slow enough.
+    /// </remarks>
+    public TestHost WithClock()
+        => Override(services =>
+        {
+            RemoveAll<TimeProvider>(services);
+            services.AddSingleton<TimeProvider>(Clock);
+        });
+
     private int _principalIndex;
 
     public TestHost Configure(string key, string? value)
@@ -372,6 +394,24 @@ internal sealed class TestHost : WebApplicationFactory<Program>
 /// quietly until someone reads it as a fact.
 /// </para>
 /// </remarks>
+/// <summary>A clock whose "now" the test sets.</summary>
+/// <remarks>
+/// Exists so a test can choose the timestamps it is testing with. Ordering-by-time is exactly the
+/// thing that cannot be tested against the wall clock: two writes in the same millisecond tie, and
+/// which of them a keyset cursor resumes after then depends on the tiebreak rather than on the
+/// property under test.
+/// </remarks>
+internal sealed class TestClock : TimeProvider
+{
+    private DateTimeOffset _now;
+
+    public TestClock(DateTimeOffset start) => _now = start;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public void Advance(TimeSpan by) => _now += by;
+}
+
 internal sealed class AcceptanceCounter
 {
     private int _attempts;
@@ -479,6 +519,16 @@ internal sealed class RecordingAssessor : IMailAssessor
     /// <summary>Models a pipeline that could not make acceptance durable. Reported as Defer.</summary>
     public bool AcceptanceRefused { get; set; }
 
+    /// <summary>
+    /// When set, every assessment throws this instead of answering.
+    /// </summary>
+    /// <remarks>
+    /// The path a rejected provider credential takes: the adapter throws and the exception travels
+    /// out of the pipeline. Modelling it here is what lets a test assert what the host does with that
+    /// — which is the question, since "throws" is not by itself an answer about acknowledgements.
+    /// </remarks>
+    public Exception? Failure { get; set; }
+
     public int CallCount => Calls.Count;
 
     /// <summary>Wired by the host's service provider, as the real pipeline is.</summary>
@@ -494,6 +544,11 @@ internal sealed class RecordingAssessor : IMailAssessor
         CancellationToken cancellationToken)
     {
         Calls.Add((input, context));
+
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
 
         var action = Action;
         string? submissionId = null;
@@ -652,4 +707,101 @@ internal sealed class RecordingAssessor : IMailAssessor
         })],
         AssessedAt = context.TimeProvider.GetUtcNow(),
     };
+}
+
+/// <summary>
+/// A minimal SMTP client. Deliberately hand-written rather than a library: these tests are about
+/// what is on the wire from an ordinary client, and a library's own conventions would be one
+/// more thing between the assertion and the bytes.
+/// </summary>
+internal sealed class SmtpClient : IDisposable
+{
+    private readonly TcpClient _client;
+    private readonly StreamReader _reader;
+    private readonly StreamWriter _writer;
+
+    private SmtpClient(TcpClient client)
+    {
+        _client = client;
+        var stream = client.GetStream();
+        _reader = new StreamReader(stream, Encoding.ASCII);
+        _writer = new StreamWriter(stream, Encoding.ASCII) { AutoFlush = true, NewLine = "\r\n" };
+    }
+
+    public static async Task<SmtpClient> ConnectAsync(int port)
+    {
+        var client = new TcpClient();
+        await client.ConnectAsync("127.0.0.1", port);
+        return new SmtpClient(client);
+    }
+
+    /// <summary>Writes a command and returns the reply it produced.</summary>
+    /// <remarks>
+    /// Returning rather than asserting, so a test that expects a refusal can look at what came
+    /// back instead of having to have predicted it before sending.
+    /// </remarks>
+    public async Task<string> SendAsync(string command)
+    {
+        await _writer.WriteLineAsync(command);
+        return await ReadReplyAsync();
+    }
+
+    /// <summary>Writes a command and asserts the reply's code.</summary>
+    public async Task<string> SendExpectingAsync(string command, string code)
+    {
+        var reply = await SendAsync(command);
+        Assert.StartsWith(code, reply, StringComparison.Ordinal);
+        return reply;
+    }
+
+    /// <summary>Writes a message body and its terminator, returning the reply to the end of data.</summary>
+    public async Task<string> SendBodyAsync(string message)
+    {
+        var normalised = message.Replace("\r\n", "\n").Replace("\n", "\r\n");
+
+        foreach (var line in normalised.Split("\r\n"))
+        {
+            // Dot-stuffing, as a real client does: a line consisting of a single dot would
+            // otherwise be read as the end of the message.
+            await _writer.WriteLineAsync(line.StartsWith('.') ? "." + line : line);
+        }
+
+        await _writer.WriteLineAsync(".");
+        return await ReadReplyAsync();
+    }
+
+    public async Task ExpectAsync(string code)
+    {
+        var reply = await ReadReplyAsync();
+        Assert.StartsWith(code, reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>Reads one complete reply, following continuation lines to the last one.</summary>
+    private async Task<string> ReadReplyAsync()
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            var line = await _reader.ReadLineAsync();
+
+            if (line is null)
+            {
+                throw new InvalidOperationException("The server closed the connection mid-reply.");
+            }
+
+            // "250-Line" continues; "250 Line" is the last line of the reply.
+            if (line.Length < 4 || line[3] != '-')
+            {
+                return line;
+            }
+        }
+
+        throw new InvalidOperationException("Reply never terminated.");
+    }
+
+    public void Dispose()
+    {
+        _reader.Dispose();
+        _writer.Dispose();
+        _client.Dispose();
+    }
 }

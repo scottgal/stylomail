@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
 
 namespace StyloMail.Host.Observability;
@@ -27,11 +28,16 @@ public sealed class ReadinessProbe
 {
     private readonly HostDatabase _database;
     private readonly HostStorageOptions _storage;
+    private readonly ProviderCredentialHealth _credentials;
 
-    public ReadinessProbe(HostDatabase database, IOptions<HostStorageOptions> storage)
+    public ReadinessProbe(
+        HostDatabase database,
+        IOptions<HostStorageOptions> storage,
+        ProviderCredentialHealth credentials)
     {
         _database = database;
         _storage = storage.Value;
+        _credentials = credentials;
     }
 
     public ReadinessResult Check()
@@ -46,6 +52,22 @@ public sealed class ReadinessProbe
         if (!CanWriteSpool())
         {
             failed.Add("spool");
+        }
+
+        // A rejected provider credential is a **not-ready** condition, not a per-request failure.
+        //
+        // This host cannot assess a message without semantic evidence, and a host that cannot assess
+        // must stop advertising itself — otherwise a load balancer keeps delivering mail to it while
+        // every assessment fails, turning one deployment's rotated key into a delivery outage. The
+        // failure this closes looked healthy: 200 from this route while every request 500ed.
+        //
+        // Checked here rather than at startup because a credential can be rejected at any point
+        // during a run, and a deployment that passed its boot checks is exactly the one that gets
+        // surprised. The state is not inferred from configuration — it is what the provider actually
+        // answered, so a key that is merely *configured* never affects readiness.
+        if (_credentials.IsRejected)
+        {
+            failed.Add("provider_credential");
         }
 
         return failed.Count == 0 ? ReadinessResult.ReadyResult : new ReadinessResult(false, failed);

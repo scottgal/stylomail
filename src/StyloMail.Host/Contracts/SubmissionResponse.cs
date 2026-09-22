@@ -75,6 +75,24 @@ public sealed record SubmissionStatusResponse
 {
     public required string QueueId { get; init; }
 
+    /// <summary>
+    /// StyloMail's own message identifier.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the join key to the decision ledger, and it is the reason this field exists.</b> A
+    /// reviewer looking at a quarantined message needs the explanation for it, and the ledger is
+    /// keyed by assessment id — which appeared only on the <c>POST /v1/submissions</c> response, a
+    /// response a reviewer working from a list never saw. The ledger also stores the message id, so
+    /// exposing it here gives a path from a listed message to its decision without either lane
+    /// changing a schema: <c>GET /v1/decisions?messageId=…</c>.
+    ///
+    /// <para>
+    /// Safe to expose because it is already on <c>DecisionResponse</c>, which is served to the same
+    /// <c>Review</c>-holding caller. It is our own opaque identifier, not message content.
+    /// </para>
+    /// </remarks>
+    public required string InternalMessageId { get; init; }
+
     public required DeliveryState State { get; init; }
 
     public required int Attempts { get; init; }
@@ -95,6 +113,7 @@ public sealed record SubmissionStatusResponse
     public static SubmissionStatusResponse From(QueueItem item) => new()
     {
         QueueId = item.QueueId,
+        InternalMessageId = item.Envelope.InternalMessageId,
         State = item.State,
         Attempts = item.Attempts,
         NextAttemptAt = item.NextAttemptAt,
