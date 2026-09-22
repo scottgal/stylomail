@@ -33,6 +33,7 @@ API key. If the console cannot do something through the API, the API is missing 
 | `b1d23b4` | Keychain verified against the real keychain |
 | `5fdc1cf` | Sidebar + message list wired to the two new listings |
 | `de7ad59` | Decision detail pane |
+| `79405ec` | Sender controls and quarantine release |
 
 **88 tests.** 79 hermetic by default; 9 opt-in (6 live-Host behind `STYLOMAIL_SMOKE_URL` +
 `STYLOMAIL_SMOKE_KEY`, 3 keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). Solution build green.
@@ -130,11 +131,41 @@ loads a decision body from a file into the model. Debug only. The fixture is
 unavailable dimension and a reason naming an absent signal. **Say so when presenting that
 screenshot**; do not imply it came from a live Host.
 
+## Write actions (landed)
+
+Pause/resume a sender (`Administer`) and release a quarantine (`Review`). Asking and doing are
+separate: a click opens a confirmation stating the consequence, the reason is required and collected
+against it, and `ConfirmedAction` is null until one is given. Controls appear only where they would
+do something (`CanPause` / `CanResume` are exclusive). A failure is never rendered as a success: the
+`failed` flag is explicit, never inferred from the Host's prose. Proven end-to-end live: pause, read
+back from the Host, resume, read back, audit trail survives.
+
+## THE RECURRING BUG. Read this before adding anything to the window.
+
+**Every model mutation must go through `MainWindow`.** Three separate defects in this window were all
+the same thing: a model change made from a background continuation. The model updates and raises
+`PropertyChanged`, and the visual never changes, because the notification is raised off the UI thread.
+Symptoms seen: three sidebar rows for one principal, a queue selection that did not highlight, and a
+confirmation bar that was pending in the model and absent from the window. All three passed every
+model-level test. Use `OnUiThreadAsync` or one of the `Request*Async` / `SelectAsync` / `ShowDecisionAsync`
+/ `Load*Async` methods. Never assign `_model` from a caller's thread.
+
+## Harness gotchas (each cost real time)
+
+1. **A faulted load used to produce a screenshot anyway.** The pump loop only checks `IsCompleted`.
+   Now reports and refuses. If a capture looks wrong, check the harness's stderr first.
+2. **`IsVisible` changes on a docked child need an explicit `window.InvalidateMeasure()`** before the
+   frame is taken. Without it the change is in the model, notified, and absent from the bitmap.
+3. **Never touch `window.DataContext` off the UI thread** ("Call from invalid thread"). `window.Model`
+   is a plain object and is safe.
+4. Reading the live Host's state back (`GET /v1/senders`) is the only way to prove a write landed.
+
 ## Next
 
-Sender controls (pause and resume, `Administer`) and quarantine release (`Review`). Both routes
-exist; these are the console's first write actions, so they are where the actor-recording and
-confirmation questions land.
+Nothing assigned. Candidates, in the order I would pick them: wire the decision pane once ingress-
+answers (see below); sender `Administer` actions beyond pause, if the Host grows any; feedback
+(`POST /v1/feedback`) from the decision pane, which is the last of spec 10.2's five areas with no
+surface; and packaging (spec 10.4's distribution question is still open and operator-owned).
 
 ## Hard rules
 
