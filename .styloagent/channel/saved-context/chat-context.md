@@ -25,8 +25,13 @@ assessment must record `DeliveryTiming: PostDelivery` as a stated fact. Plan 1 m
 
 ## Status: plan 1 (Core contract) COMPLETE, verified, reported 2026-09-22
 
-Frozen tree at HEAD `e002e8c23b86f78b563d3815ece5d0b35855d5b7` (branch `main`) plus my uncommitted
-working-tree changes. Nothing committed by me.
+**Landed as `6b11add`** (branch `main`), verified and committed and pushed by `overview-`, who
+reproduced the whole run independently. I did not commit it: that is their lane by rule.
+
+`overview-` also corrected plan 1's construction-site inventory in the plan itself, carrying the
+three deviations I reported (the seven-site inventory, the CA1861 finding, the two wrong failure
+predictions) with the method line "grep for the type name and read the hits, never for the
+construction idiom". My four out-of-plan additions were approved.
 
 ### Files created (4)
 
@@ -88,5 +93,32 @@ refactoring around myself, no renaming, no unrequested cleanup.
 
 ## Pending / next
 
-- **Plan 2 (read-only Slack connector) is NOT started.** Do not start it without being asked.
+- **Plan 2 (read-only Slack connector) is NOT started. `overview-` is writing it, and told me not to
+  start it yet.** Do not start it without being asked.
 - Plan 3 is triage. Both are designed in `docs/chat-channels-design.md`.
+
+### Gap analysis I delivered for plan 2 (2026-09-22)
+
+At `overview-`'s request I read the connector section and reported what is too underspecified to
+write a plan from, grounded in repo checks rather than impressions. Six blockers:
+
+1. **3-second ack versus "no queue" is an unresolved tension** and a correctness property: Slack
+   retries if not acked in 3s, so process-after-ack means holding in-flight work, which the design's
+   blanket "no queue" claim does not distinguish from a delivery queue. Must state whether an
+   unprocessed event may be dropped on restart.
+2. **Events API over HTTP, or Socket Mode.** The design never picks. Socket Mode has no inbound HTTP
+   request, so "signature verification of the inbound request" would not exist. Precedent for the
+   webhook shape: `src/StyloMail.Host/Endpoints/CloudflareIngressEndpoints.cs` (`.AllowAnonymous()`,
+   body limit paired with Kestrel).
+3. **The chat input record does not exist and its shape is undecided.** `MailAnalysisInput` cannot be
+   reused: it requires `MailEnvelope` and `AuthenticationContext`, which a Slack message lacks.
+4. **The plan 2 / plan 3 boundary is not clean**: sequencing puts triage in plan 3 but describes plan
+   2 as including it. Needs a statement of what plan 2's `Evidence`/`RiskDimensions` contain.
+5. **Deduplication key, storage, retention, and its ordering after signature verification.**
+6. **What a "watched" workspace is and where Slack credentials come from (by reference, not value).**
+
+Five non-blockers that will get decided by accident: `MailAssessment` carries `DeliveryTiming` but
+**no channel**, so a chat decision is only distinguishable by inferring `PostDelivery` (the very
+inference the design forbids); `ChannelContext` shipped without the design's "thread position" and
+"membership evidence"; in-scope event subtypes and the bot loop rule; "read-only" as a negative list;
+synthetic versus recorded test payloads.
