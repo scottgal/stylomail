@@ -325,6 +325,22 @@ public sealed class HostDatabase
         -- to exceed the platform's retry window or a late retry is assessed twice after all.
         CREATE INDEX IF NOT EXISTS ix_host_chat_intake_assessed
             ON host_chat_intake (assessed_at);
+
+        -- The emergency stop, as a list of transitions rather than a mutable flag.
+        --
+        -- Persisted because a stop that silently disengages when the host restarts is worse than one
+        -- that was never wired: it teaches an operator to trust it, and a restart is exactly when
+        -- nobody is looking. Append-only because "is it engaged" is the easy question and "who pulled
+        -- it, and when" is the one asked afterwards.
+        --
+        -- State is the most recent row. An integer primary key is the rowid, so that read is an
+        -- ordered lookup rather than a scan and needs no index of its own.
+        CREATE TABLE IF NOT EXISTS kill_switch_event (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            engaged     INTEGER NOT NULL,
+            actor       TEXT NOT NULL,
+            occurred_at TEXT NOT NULL
+        );
         """;
 }
 

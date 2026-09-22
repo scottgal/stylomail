@@ -36,6 +36,9 @@ public sealed record KeyCreateCommand(
 
 public sealed record KeyListCommand(bool AsJson) : CliCommand;
 
+/// <summary>The emergency stop, engaged or released. The actor is required and is audited.</summary>
+public sealed record KillSwitchCommand(bool Engage, string Actor) : CliCommand;
+
 public sealed record KeyRevokeCommand(string PrincipalId, string RevokedBy) : CliCommand;
 
 /// <summary>

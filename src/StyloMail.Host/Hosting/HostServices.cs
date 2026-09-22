@@ -58,6 +58,19 @@ public static class HostServices
         services.AddSingleton<ISenderProfileStore, SqliteSenderProfileStore>();
         services.AddSingleton<ICompanyStore, SqliteCompanyStore>();
 
+        // The emergency stop, registered unconditionally. Before this existed the only policy
+        // context source supplied nothing, so the control the specification lists second in policy
+        // precedence was false on every assessment in every deployment and could not be engaged at
+        // all. Registered here rather than behind a flag for the same reason: a safety control that
+        // has to be configured into existence is one that is absent from every deployment that did
+        // not read the documentation.
+        // Registered in its own right as well as behind the port, on the same pattern as the traffic
+        // seam: the port is what the pipeline reads, and the type is what engages it so a caller
+        // never has to downcast an interface to pull the stop.
+        services.AddSingleton<SqliteEmergencyKillSwitch>();
+        services.AddSingleton<IEmergencyKillSwitch>(
+            sp => sp.GetRequiredService<SqliteEmergencyKillSwitch>());
+
         // Registered unconditionally, unlike the endpoint it serves. The store is inert unless the
         // Slack ingress is enabled, and a route that is mapped or not is a different question from
         // whether the durable hand-off exists.
@@ -388,7 +401,8 @@ public static class HostServices
             new MailAssessorOptions
             {
                 ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(profileMasterKey)),
-            });
+            },
+            services.GetRequiredService<IEmergencyKillSwitch>());
     }
 
     private static IMailAssessor BuildAssessor(IServiceProvider services, IConfiguration configuration)
@@ -432,7 +446,14 @@ public static class HostServices
             services.GetRequiredService<SqliteConnectionFactory>(),
             services.GetRequiredService<SpoolStore>(),
             options,
-            services.GetRequiredService<QueueOptions>());
+            services.GetRequiredService<QueueOptions>(),
+
+            // Without this the pipeline falls back to the source that supplies nothing, which is
+            // how the emergency stop came to be false on every assessment in every deployment.
+            // Named rather than positional: it sits behind two optional parameters, and a later
+            // insertion would silently repoint it at the wrong one.
+            policyContext: new HostPolicyContextSource(
+                services.GetRequiredService<IEmergencyKillSwitch>()));
     }
 
     /// <summary>

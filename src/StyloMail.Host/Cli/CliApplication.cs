@@ -34,6 +34,9 @@ public static class CliApplication
           key list [--json]                            Minted and configured principals, with source
           key revoke --principal <id> --by <principal> Revoke a minted key. Refuses on a
                                                        configuration principal.
+          killswitch engage|disengage --by <principal>
+                                                       Pull or release the emergency stop. Every
+                                                       channel reads it, and it survives a restart.
         """;
 
     /// <summary>Parses arguments. Returns false with an error message when they are not understood.</summary>
@@ -100,10 +103,55 @@ public static class CliApplication
             case "key":
                 return TryParseKey(rest, out command, out error);
 
+            case "killswitch":
+                return TryParseKillSwitch(rest, out command, out error);
+
             default:
                 error = $"Unknown command '{head}'.\n\n{Usage}";
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Parses the two <c>killswitch</c> verbs.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>--by</c> is required on both.</b> This is the most consequential thing the CLI can do and
+    /// it has no identity to sign with, so inventing one would put a name in the audit record that
+    /// nobody asserted. The same rule and the same reasoning as <c>key create --by</c>.
+    /// </remarks>
+    private static bool TryParseKillSwitch(string[] rest, out CliCommand? command, out string? error)
+    {
+        command = null;
+        error = null;
+
+        if (rest.Length == 0)
+        {
+            error = "Usage: killswitch engage|disengage --by <principal>";
+            return false;
+        }
+
+        var verb = rest[0].ToLowerInvariant();
+
+        if (verb is not ("engage" or "disengage"))
+        {
+            error =
+                $"Unknown killswitch verb '{rest[0]}'.\n\nUsage: killswitch engage|disengage --by <principal>";
+            return false;
+        }
+
+        // Whitespace counts as absent. A length check alone accepts "   ", which then travels down to
+        // a store that refuses it, so the operator gets an exception from three layers away instead
+        // of a sentence telling them what to type.
+        if (Flag(rest, "--by") is not { } actor || string.IsNullOrWhiteSpace(actor))
+        {
+            error = $"killswitch {verb} requires --by <principal> so the change is attributed. "
+                + "It is the most consequential verb here and it must not be anonymous.";
+            return false;
+        }
+
+        command = new KillSwitchCommand(Engage: verb == "engage", actor);
+        return true;
     }
 
     /// <summary>
@@ -148,7 +196,7 @@ public static class CliApplication
                     return false;
                 }
 
-                if (Flag(rest, "--by") is not { Length: > 0 } createdBy)
+                if (Flag(rest, "--by") is not { } createdBy || string.IsNullOrWhiteSpace(createdBy))
                 {
                     error = "key create requires --by <principal> so the mint is attributed.";
                     return false;
@@ -176,7 +224,7 @@ public static class CliApplication
                     return false;
                 }
 
-                if (Flag(rest, "--by") is not { Length: > 0 } revokedBy)
+                if (Flag(rest, "--by") is not { } revokedBy || string.IsNullOrWhiteSpace(revokedBy))
                 {
                     error = "key revoke requires --by <principal> so the revocation is attributed.";
                     return false;
@@ -223,7 +271,7 @@ public static class CliApplication
                     return false;
                 }
 
-                if (Flag(rest, "--by") is not { Length: > 0 } by)
+                if (Flag(rest, "--by") is not { } by || string.IsNullOrWhiteSpace(by))
                 {
                     // A release is audited. With nobody to attribute it to, there is nothing to
                     // record, so the caller supplies an identity rather than the CLI inventing one.
@@ -318,6 +366,7 @@ public static class CliApplication
             KeyCreateCommand create => await KeyCommands.CreateAsync(host.Services, create, output, cancellationToken),
             KeyListCommand list => await KeyCommands.ListAsync(host.Services, list, output, cancellationToken),
             KeyRevokeCommand revoke => await KeyCommands.RevokeAsync(host.Services, revoke, output, cancellationToken),
+            KillSwitchCommand killSwitch => await KillSwitchCommands.SetAsync(host.Services, killSwitch, output, cancellationToken),
             _ => 2,
         };
     }

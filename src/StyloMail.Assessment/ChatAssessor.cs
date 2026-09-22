@@ -41,7 +41,10 @@ public sealed class ChatAssessor : IChatAssessor
 {
     private readonly MailAssessorOptions _options;
 
-    public ChatAssessor(IAdaptiveProfileStore profileStore, MailAssessorOptions options)
+    public ChatAssessor(
+        IAdaptiveProfileStore profileStore,
+        MailAssessorOptions options,
+        IEmergencyKillSwitch? killSwitch = null)
     {
         ArgumentNullException.ThrowIfNull(profileStore);
         ArgumentNullException.ThrowIfNull(options);
@@ -49,9 +52,12 @@ public sealed class ChatAssessor : IChatAssessor
 
         _profiles = new ProfileCoordinator(profileStore);
         _options = options;
+        _killSwitch = killSwitch ?? NeverEngagedKillSwitch.Instance;
     }
 
     private readonly ProfileCoordinator _profiles;
+
+    private readonly IEmergencyKillSwitch _killSwitch;
 
     public ValueTask<MailAssessment> AssessAsync(
         ChatAnalysisInput input,
@@ -86,14 +92,17 @@ public sealed class ChatAssessor : IChatAssessor
             Evidence = evidence,
             Risk = risk,
 
-            // The operator state the mail path reads through IAssessmentPolicyContextSource is
-            // typed on MailAnalysisInput, so it cannot serve chat, and these are stated rather than
-            // defaulted so each one is a claim somebody can disagree with.
+            // The rest of the operator state the mail path reads through
+            // IAssessmentPolicyContextSource is typed on MailAnalysisInput, so it cannot serve chat,
+            // and these are stated rather than defaulted so each one is a claim somebody can disagree
+            // with. The kill switch is the exception: it does not depend on the message, so it is
+            // read through its own port rather than stated.
             Context = new PolicyContext
             {
-                // Not wired for chat. The mail path's kill switch does not reach here, which is a
-                // gap rather than a decision, and it matters less only because nothing acts yet.
-                EmergencyKillSwitchEngaged = false,
+                // Read rather than stated, because the switch is a system-wide control and an
+                // operator who pulls it believes the system has stopped. A version that quietly did
+                // not reach this surface would be that claim, made false.
+                EmergencyKillSwitchEngaged = _killSwitch.IsEngaged,
 
                 // Chat has no delivery responsibility, so no principal is spending a sending budget.
                 OutboundQuotaExhausted = false,
