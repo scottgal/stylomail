@@ -6,6 +6,7 @@ using StyloMail.Assessment;
 using StyloMail.Core;
 using StyloMail.Host.Assessors;
 using StyloMail.Host.Auth;
+using StyloMail.Host.Chat;
 using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Feedback;
@@ -56,6 +57,11 @@ public static class HostServices
         services.AddSingleton<ISenderProfileStore, SqliteSenderProfileStore>();
         services.AddSingleton<ICompanyStore, SqliteCompanyStore>();
 
+        // Registered unconditionally, unlike the endpoint it serves. The store is inert unless the
+        // Slack ingress is enabled, and a route that is mapped or not is a different question from
+        // whether the durable hand-off exists.
+        services.AddSingleton<IChatIntakeStore, SqliteChatIntakeStore>();
+
         // The durable queue, wired from the same storage options so the spool and the database
         // cannot be pointed at different places by two independently-edited configuration keys.
         services.AddSingleton(sp =>
@@ -85,6 +91,18 @@ public static class HostServices
         // permissive default is the one option that is genuinely unsafe.
         services.AddSingleton<HttpClient>();
         services.AddSingleton<IMailAssessor>(sp => BuildAssessor(sp, configuration));
+
+        // The chat assessment path and its drain, only when a deployment has configured a Slack
+        // intake. Registered here rather than unconditionally because the drain polls, and a
+        // deployment with no chat has nothing for it to find.
+        if (configuration.GetValue<bool>($"{SlackIngressOptions.SectionName}:Enabled"))
+        {
+            services.AddSingleton<IAdaptiveProfileStore>(sp =>
+                new SqliteAdaptiveProfileStore(sp.GetRequiredService<SqliteConnectionFactory>()));
+
+            services.AddSingleton<IChatAssessor>(BuildChatAssessor);
+            services.AddHostedService<ChatIntakeDrain>();
+        }
 
         AddTransport(services, configuration);
         AddTrafficEvents(services, configuration);
@@ -118,6 +136,7 @@ public static class HostServices
     private static void AddTrafficEvents(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<TrafficOptions>(configuration.GetSection(TrafficOptions.SectionName));
+        services.Configure<SlackIngressOptions>(configuration.GetSection(SlackIngressOptions.SectionName));
 
         // Enums travel as names here for the same reason they do on the HTTP surface, and it has to
         // be said twice because SignalR writes its own serializer: the console switches on the
@@ -318,6 +337,42 @@ public static class HostServices
     /// everything downstream treats an assessment as having happened.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Builds the chat assessor.
+    /// </summary>
+    /// <remarks>
+    /// <b>It needs the profile master key, and refuses to start without it.</b> Every chat profile
+    /// key is a pseudonym, exactly as every mail profile key is, and a deployment that ran without
+    /// one would be keying profiles on an author's platform identifier: a store that identifies
+    /// people directly cannot later honour a deletion request without knowing every derived copy.
+    /// That is the same reason the mail path throws here rather than degrading.
+    ///
+    /// <para>
+    /// Note what it does <em>not</em> need: a semantic provider credential. Chat is local-only by
+    /// design, so the Jev key being absent is a supported deployment for this path even though it
+    /// leaves the mail path with no assessor at all.
+    /// </para>
+    /// </remarks>
+    private static IChatAssessor BuildChatAssessor(IServiceProvider services)
+    {
+        HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);
+
+        if (string.IsNullOrWhiteSpace(profileMasterKey))
+        {
+            throw new InvalidOperationException(
+                "The Slack events intake requires the profile master key, because every chat profile "
+                + "key is a pseudonym and a deployment without one would key profiles on an author's "
+                + "platform identifier.");
+        }
+
+        return new ChatAssessor(
+            services.GetRequiredService<IAdaptiveProfileStore>(),
+            new MailAssessorOptions
+            {
+                ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(profileMasterKey)),
+            });
+    }
+
     private static IMailAssessor BuildAssessor(IServiceProvider services, IConfiguration configuration)
     {
         // Throws on a half-configured or too-short secret. That is deliberate: a deployment that

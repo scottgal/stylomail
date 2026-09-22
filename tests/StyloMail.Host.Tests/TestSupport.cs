@@ -252,6 +252,23 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Enables the Slack events intake with a signing secret and the deployment's own bot id.
+    /// </summary>
+    /// <remarks>
+    /// The identity is not optional, and neither is the secret: an enabled ingress without them is
+    /// refused at startup, because one would leave every request unverifiable and the other would
+    /// leave the deployment unable to recognise its own posts.
+    /// </remarks>
+    public TestHost WithSlackIngress(string signingSecret, string ownBotId)
+    {
+        Configure("StyloMail:Slack:Enabled", "true");
+        Configure("StyloMail:Slack:SigningSecret", signingSecret);
+        Configure("StyloMail:Slack:OwnBotId", ownBotId);
+
+        return this;
+    }
+
+    /// <summary>
     /// Counts what reaches durable acceptance, so a seam that accepts twice can be seen.
     /// </summary>
     /// <remarks>

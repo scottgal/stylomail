@@ -75,6 +75,18 @@ if (transport.CloudflareIngress.Enabled)
     CloudflareIngressEndpoints.Map(app, transport.CloudflareIngress.MaxMessageBytes);
 }
 
+// The Slack events intake, on the same terms: mapped only when this deployment has configured it,
+// so an unconfigured host answers 404 rather than offering a route nobody asked for. Validating
+// here makes an enabled-but-identityless configuration a startup failure rather than an ingress that
+// cannot recognise its own posts and would assess its own output in a loop.
+var slack = app.Services.GetRequiredService<IOptions<SlackIngressOptions>>().Value;
+
+if (slack.Enabled)
+{
+    slack.Validate();
+    SlackEventsEndpoints.Map(app, SlackEventsEndpoints.MaxBodyBytes);
+}
+
 // The live-traffic hub, mapped on the same terms: only when this deployment has enabled it, so an
 // unconfigured host answers 404 on the negotiate route rather than offering a feed nobody asked
 // for. Review is the privilege, because a subscriber reads a tenant's traffic and nothing more:

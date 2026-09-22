@@ -291,6 +291,40 @@ public sealed class HostDatabase
             released_by   TEXT NOT NULL,
             PRIMARY KEY (tenant_id, queue_id, recipient_key)
         );
+
+        -- Verified chat events waiting to be assessed, written before the platform is answered.
+        --
+        -- This is an intake rather than a delivery queue, and the distinction is the whole reason it
+        -- exists. Chat has no delivery responsibility, so the queue's role does not transfer; but the
+        -- answer we give the platform is this path's equivalent of the mail path's 250, and answering
+        -- it and then losing the event on a crash would be accepting a responsibility we cannot
+        -- honour. Persisting first is what makes the answer true.
+        --
+        -- The primary key is the platform's own event id, so a redelivery of something already
+        -- waiting is refused by the database rather than by a check that could race it.
+        -- Null until the event has been assessed, so the row is both the durable hand-off and the
+        -- record that an event was already dealt with. Removing the row instead would let a platform
+        -- retry, which arrives after the answer and inside its retry window, be assessed a second
+        -- time: that would double every observation the behavioural engine counts, which is a rate
+        -- change it cannot tell from real traffic.
+        CREATE TABLE IF NOT EXISTS host_chat_intake (
+            event_id    TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            payload     TEXT NOT NULL,
+            assessed_at TEXT NULL,
+            PRIMARY KEY (event_id)
+        );
+
+        -- The drain takes the oldest unanswered first, so a burst cannot starve what arrived before
+        -- it. Partial on assessed_at so the index covers only the rows the drain actually reads.
+        CREATE INDEX IF NOT EXISTS ix_host_chat_intake_waiting
+            ON host_chat_intake (received_at)
+            WHERE assessed_at IS NULL;
+
+        -- Answered rows are pruned by age. Bounded retention rather than growth, and the window has
+        -- to exceed the platform's retry window or a late retry is assessed twice after all.
+        CREATE INDEX IF NOT EXISTS ix_host_chat_intake_assessed
+            ON host_chat_intake (assessed_at);
         """;
 }
 

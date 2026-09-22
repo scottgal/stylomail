@@ -165,6 +165,58 @@ public static class SlackEventReader
     }
 
     /// <summary>
+    /// Reads the challenge the platform sends once, to prove this endpoint is ours.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Kept separate from <see cref="TryRead"/> rather than folded into it.</b> A challenge is not
+    /// a message and must never reach the assessment path: it carries no author, no channel and no
+    /// text, and a reader that reported one as "not a plain message" would be describing the
+    /// endpoint's handshake as a malformed event.
+    /// </para>
+    /// <para>
+    /// Returned rather than logged, because the only thing to do with a challenge is echo it back,
+    /// and echoing it is the proof the platform is asking for.
+    /// </para>
+    /// </remarks>
+    public static bool TryReadChallenge(string json, out string challenge)
+    {
+        challenge = string.Empty;
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object
+                || SafeString(root, "type") != "url_verification")
+            {
+                return false;
+            }
+
+            // A challenge that is absent or of the wrong type is not a challenge. Returning an empty
+            // one would have the endpoint echo nothing and the platform reject it for reasons that
+            // read like a transport fault.
+            if (SafeString(root, "challenge") is not { Length: > 0 } value)
+            {
+                return false;
+            }
+
+            challenge = value;
+            return true;
+        }
+    }
+
+    /// <summary>
     /// The kind of conversation the message was posted in, or <c>Unknown</c> when the platform did
     /// not say.
     /// </summary>
