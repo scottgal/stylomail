@@ -109,6 +109,39 @@ public sealed class TriageTests
     }
 
     [Fact]
+    public void A_label_pointing_somewhere_other_than_it_says_escalates()
+    {
+        // The signal this check exists for.
+        var outcome = TriageEngine.Evaluate(
+            Input("urgent <http://paypal.com.evil.example|paypal.com>"), Context("C01"));
+
+        Assert.Equal(TriageDisposition.Escalate, outcome.Disposition);
+        Assert.Equal(TriageCheck.Links, outcome.DecidedBy);
+    }
+
+    [Fact]
+    public void Clean_links_continue_to_the_next_check_rather_than_dismissing_anything()
+    {
+        // The ruling: check 3 has no dismiss disposition. Clean is not informative enough to settle,
+        // because a message with an honest link can still be a compromised account. "Links that are
+        // all clean" is a finding that stops nothing.
+        var outcome = TriageEngine.Evaluate(
+            Input("see <http://example.com/notes|the notes>"), Context("C01"));
+
+        Assert.NotEqual(TriageDisposition.Dismiss, outcome.Disposition);
+        Assert.NotEqual(TriageCheck.Links, outcome.DecidedBy);
+    }
+
+    [Fact]
+    public void A_message_with_no_links_at_all_also_continues()
+    {
+        var outcome = TriageEngine.Evaluate(Input("no links here"), Context("C01"));
+
+        Assert.NotEqual(TriageCheck.Links, outcome.DecidedBy);
+        Assert.NotEqual(TriageDisposition.Dismiss, outcome.Disposition);
+    }
+
+    [Fact]
     public void A_channel_this_deployment_watches_is_not_dismissed_on_scope()
     {
         // Closes the other direction, so the test above cannot pass because scope dismisses

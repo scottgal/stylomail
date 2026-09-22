@@ -102,9 +102,25 @@ already fixed in the shared analysis.
 **Which way it fails.** Missing a lure is a **missed detection**. Escalating a message with a
 harmless link pays for the next check.
 
-**Safer error: escalate.** Link analysis is one of the highest-signal and cheapest things this system
-does, and the asymmetry is large. A message with a link is worth the next step almost regardless of
-what that step costs.
+**Which way it fails: missing a lure is a missed detection, and that is the only error that matters
+here.** Escalating a message with a harmless link pays for the next check.
+
+**This check has no dismiss disposition at all, and that is the consequence of the asymmetry rather
+than a separate decision.** Its three outcomes are:
+
+- **A lure escalates.** A display text that disagrees with its destination, or a host that reads as
+  one it is not, is exactly the signal this check exists for.
+- **Clean links continue to check 4.** Not dismiss, because clean is not informative enough to settle:
+  a message with an honest link can still be a compromised account, and check 4 is what sees that.
+  "Links that are all clean" is a finding that **stops nothing**.
+- **No dismiss, ever.** The stopping rule says a check that finds nothing settles a message only where
+  the absence is itself informative, and here it is not. The absence of a lure rules one thing out and
+  nothing more.
+
+**An earlier version of this section said "safer error: escalate" as though it were a disposition.**
+That phrasing is a failure direction, not an outcome, and read literally it produces a check that
+escalates every message carrying a link, which would make check 4 nearly unreachable and spend the
+expensive path on the most common thing in a channel.
 
 **Worth stating:** this check produces evidence either way, so "no links" and "links that are all
 clean" stay distinguishable. The second is a finding; the first is the absence of a question.

@@ -1,4 +1,5 @@
 using StyloMail.Adaptive.Profiles;
+using StyloMail.Chat;
 using StyloMail.Core;
 
 namespace StyloMail.Assessment.Triage;
@@ -54,13 +55,56 @@ public static class TriageEngine
             return duplicateOutcome;
         }
 
+        var lure = Links(input);
+        if (lure is { } lureOutcome)
+        {
+            return lureOutcome;
+        }
+
         return new TriageOutcome
         {
             Disposition = TriageDisposition.Escalate,
             DecidedBy = null,
-            NotRun = [TriageCheck.Links, TriageCheck.Behaviour],
+            NotRun = [TriageCheck.Behaviour],
             Evidence = [],
         };
+    }
+
+    /// <summary>
+    /// Does the message contain a lure: a label that disagrees with its destination, or a host that
+    /// reads as one it is not?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which way it fails: missing a lure is a missed detection, and that is the only error that
+    /// matters here.</b> Escalating a message with a harmless link pays for the next check.
+    /// </para>
+    /// <para>
+    /// <b>This check has no dismiss disposition, and that is the consequence of the asymmetry rather
+    /// than a separate decision.</b> Clean links continue to check 4, because clean is not informative
+    /// enough to settle: a message with an honest link can still be a compromised account. "Links
+    /// that are all clean" is a finding that stops nothing.
+    /// </para>
+    /// </remarks>
+    private static TriageOutcome? Links(ChatAnalysisInput input)
+    {
+        var evidence = ChatEvidenceProducer.Produce(input);
+
+        // A positive count on either signal, read from the shared producer rather than recomputed,
+        // so this check and the assessment that follows it agree about what a lure is.
+        var lure = evidence.Any(item =>
+            item is { Availability: EvidenceAvailability.Available, Value: > 0 }
+            && item.SignalId is ChatSignals.LinkDisplayMismatch or ChatSignals.LinkIdnHomograph);
+
+        return lure
+            ? new TriageOutcome
+            {
+                Disposition = TriageDisposition.Escalate,
+                DecidedBy = TriageCheck.Links,
+                NotRun = [TriageCheck.Behaviour],
+                Evidence = evidence,
+            }
+            : null;
     }
 
     /// <summary>
