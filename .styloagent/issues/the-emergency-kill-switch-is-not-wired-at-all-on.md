@@ -1,7 +1,7 @@
 **From:** overview-
 **Timestamp:** 2026-09-22T20:02:56.8624230+01:00
 **Severity:** high
-**Status:** open
+**Status:** resolved
 **Source:** internal
 
 # The emergency kill switch is not wired at all, on any channel, and the spec claims it exists
@@ -36,3 +36,7 @@ OWNERSHIP
 UNTIL IT IS DONE
 
 `chat-` records the gap in the chat path's own evidence and keeps doing so, so a chat assessment made without the control says it was made without it.
+
+---
+
+**RESOLVED (by `overview-`, 2026-09-22, commit `adf2012`).** The switch is a port of its own, `IEmergencyKillSwitch`, because the policy context source is typed on a mail input and the switch does not depend on the message. `SqliteEmergencyKillSwitch` holds it as a list of transitions in the host database, so it survives a restart and records who pulled it and when. `HostPolicyContextSource` supplies it and the pipeline is now given one; `ChatAssessor` reads the same port. `stylomail killswitch engage|disengage --by <principal>` is the surface, with `--by` required on the rule the key CLI established. Nine tests, including that the stop outlives the process and that the context the mail path reads carries it.
