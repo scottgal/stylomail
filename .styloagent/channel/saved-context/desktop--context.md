@@ -35,8 +35,14 @@ API key. If the console cannot do something through the API, the API is missing 
 | `de7ad59` | Decision detail pane |
 | `79405ec` | Sender controls and quarantine release |
 
-**88 tests.** 79 hermetic by default; 9 opt-in (6 live-Host behind `STYLOMAIL_SMOKE_URL` +
-`STYLOMAIL_SMOKE_KEY`, 3 keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). Solution build green.
+**120 tests.** 108 hermetic by default; 12 opt-in (live-Host behind `STYLOMAIL_SMOKE_URL` +
+`STYLOMAIL_SMOKE_KEY`, keychain behind `STYLOMAIL_KEYCHAIN_SMOKE=1`). My two projects build clean and
+warning-free. **Check the solution build separately**: at the last check `dotnet build StyloMail.slnx`
+failed in `tests/StyloMail.Host.Tests` (an inaccessible `CredentialAwareSemanticClassifier`), which is
+another agent mid-edit, not mine. Do not assume a solution red is yours, and do not assume one is not.
+
+`.styloagent/shots/README.md` holds the screenshot-harness pattern, written at `overview-`'s request
+and adopted fleet-wide. Read it before re-deriving any of it.
 
 ## What exists
 
@@ -106,6 +112,26 @@ Both listings verified 200 against it.
 **Gotcha:** on this machine **port 5000 is macOS AirPlay Receiver** (`ControlCenter`), which answers
 403 with an HTML body. `docs/running.md` uses `localhost:5000` as its example URL, so anyone following
 it here is talking to ControlCenter, not StyloMail. Reported to `ingress-`.
+
+## THE VERIFICATION BOUNDARY. Read before claiming anything is end-to-end verified.
+
+**Every write that attaches to a decision cannot be exercised end to end without the operator's
+semantic provider key.** An assessment needs Jev; a rejected key currently fails the whole request
+rather than degrading to unavailable evidence (filed as an issue); therefore no decision can be
+created on a deployment without a real provider key, therefore nothing keyed on a decision can be
+driven live.
+
+What that leaves verified where:
+
+| Claim | Evidence |
+| --- | --- |
+| The client's wire contract against a real Host | live tests: readiness, decisions (404 shape), submissions, both listings, `state=queued` refusal, sender pause/resume round trip, release refusal by name |
+| The sender write path end to end | live: pause, read back from the Host, resume, read back, audit trail survives |
+| The decision pane's rendering | 15 tests plus a render, against the transcribed wire body, **not** a live response |
+| Quarantine release success path | stubbed tests only. **Never run against a real Host.** |
+| Feedback (`POST /v1/feedback`) | client method + contract test only. No UI. |
+
+Say this plainly when reporting. Do not describe the decision pane as verified against a live Host.
 
 ## Awaiting / open
 
