@@ -1,3 +1,5 @@
+using StyloMail.Adaptive.Profiles;
+using StyloMail.Adaptive.Signals;
 using StyloMail.Chat;
 using StyloMail.Core;
 using StyloMail.Policy;
@@ -71,6 +73,9 @@ public sealed class ChatAssessor : IChatAssessor
         var gap = SemanticGap(now);
         evidence.AddRange(gap.Evidence);
 
+        var behavioural = Behavioural(input, context, clock);
+        evidence.AddRange(behavioural.Evidence);
+
         var risk = CompositeRiskScorer.Compute(evidence, _options.Policy.DimensionWeights);
 
         // The direction is derived from the author's relationship to the workspace, never fixed for
@@ -121,7 +126,7 @@ public sealed class ChatAssessor : IChatAssessor
             ProposedActionInShadow = decision.Action,
 
             DeliveryTiming = DeliveryTiming.PostDelivery,
-            Reasons = [.. gap.Reasons, .. decision.Reasons],
+            Reasons = [.. gap.Reasons, .. behavioural.Reasons, .. decision.Reasons],
             Versions = BuildVersions(),
             Coverage = Coverage(input),
 
@@ -131,6 +136,83 @@ public sealed class ChatAssessor : IChatAssessor
             AssessedAt = now,
         });
     }
+
+    /// <summary>
+    /// Behavioural evidence for the author, or an explicit statement of why there is none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A member is read through the outbound sender scope</b>, which is the pool
+    /// <see cref="ChatMembershipFacts.Direction"/> selects them into. That is the evidence job two
+    /// rests on: an authenticated principal fanning out to people it never talks to.
+    /// </para>
+    /// <para>
+    /// <b>An external author cannot be read yet, and says so.</b> The inbound sender scope is
+    /// qualified by email's authentication provenance, which comes from an
+    /// <c>AuthenticationContext</c> carrying DKIM and SPF results, and a chat message has neither.
+    /// The chat equivalent of "how was this identity authenticated" is what the platform asserted
+    /// about the account, which is a different qualification and a vocabulary decision that has
+    /// been raised rather than invented. Until it is settled this is an explicit gap, because
+    /// silence here would read as a quiet stranger rather than an unmeasured one.
+    /// </para>
+    /// </remarks>
+    private BehaviouralOutcome Behavioural(
+        ChatAnalysisInput input,
+        AssessmentContext context,
+        TimeProvider clock)
+    {
+        if (input.Membership.Direction == MailDirection.Inbound)
+        {
+            const string reason =
+                "This author is outside the workspace, and the profile scope for an inbound "
+                + "identity is qualified by how the identity was authenticated. A chat platform "
+                + "authenticates the member and not the message, so there is no equivalent of that "
+                + "qualification yet and no behavioural history to read. This decision was made "
+                + "without behavioural evidence rather than with none found.";
+
+            var ids = new List<string>
+            {
+                BehaviouralEvidenceIds.Velocity,
+                BehaviouralEvidenceIds.DriftDistance,
+            };
+
+            return new BehaviouralOutcome(
+                [.. ids.Select(signalId => new Evidence
+                {
+                    SignalId = signalId,
+                    Origin = EvidenceOrigin.Behavioural,
+                    Availability = EvidenceAvailability.Unavailable,
+                    Value = null,
+                    Confidence = null,
+                    SourceVersion = BehaviouralEvidence.SourceVersion,
+                    ObservedAt = clock.GetUtcNow(),
+                    ObservedScope = "inbound_sender",
+                })],
+                [new ReasonCode
+                {
+                    Code = AssessmentReasonCodes.ChatBehaviouralUnavailable,
+                    Message = reason,
+                    EvidenceSignalIds = ids,
+                }]);
+        }
+
+        var pseudonym = _options.ProfileKeyHasher.Hash(context.TenantId, input.Membership.AuthorId);
+        var key = ProfileScopes.OutboundSender(context.TenantId, pseudonym);
+        var snapshot = _profiles.Read(key);
+
+        // No traffic class is declared for a chat channel yet, and the mail path is explicit that
+        // judging every sender against an expectation nobody named bakes one class's behaviour into
+        // every other's. So the fan-out question is not asked here; velocity and drift still are.
+        var evaluator = new BehaviouralEvidenceEvaluator(clock, _options.Adaptive);
+
+        return new BehaviouralOutcome(
+            evaluator.Evaluate(snapshot, ProfileScopeKind.OutboundSender.ToString()),
+            []);
+    }
+
+    private sealed record BehaviouralOutcome(
+        IReadOnlyList<Evidence> Evidence,
+        IReadOnlyList<ReasonCode> Reasons);
 
     /// <summary>
     /// Every semantic dimension, recorded as unavailable with the reason the whole gap exists.

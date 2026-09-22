@@ -1,5 +1,7 @@
+using StyloMail.Adaptive.Profiles;
 using StyloMail.Chat;
 using StyloMail.Core;
+using StyloMail.Policy;
 
 namespace StyloMail.Assessment.Tests;
 
@@ -8,7 +10,8 @@ namespace StyloMail.Assessment.Tests;
 /// </summary>
 public sealed class ChatAssessorTests
 {
-    private static ChatAssessor Build() => new(Builders.Options());
+    private static ChatAssessor Build() =>
+        new(new FakeProfileStore(new StepRecorder()), Builders.Options());
 
     /// <summary>
     /// The input as the connector would actually produce it.
@@ -147,14 +150,63 @@ public sealed class ChatAssessorTests
     }
 
     [Fact]
-    public async Task A_member_and_a_stranger_are_not_assessed_against_the_same_pool()
+    public async Task The_chat_path_decides_with_the_standard_policy_composition()
     {
-        // The direction selects the pool the observations are counted in and the two are never
+        // The drift pin, in the form that could actually be built.
+        //
+        // The obvious version, pushing equivalent evidence down both paths and comparing the
+        // actions, does not exist: the two evidence sets differ structurally at three points that
+        // have nothing to do with the composition. Chat always records twelve semantic dimensions
+        // unavailable and three deterministic signals, the mail path's relationship profiles and
+        // acceptance step change what it carries, and its semantic-outage override turns an outage
+        // into a declined responsibility that chat has no counterpart for. A comparison across all
+        // that measures the differences, not the drift.
+        //
+        // So the pin is on the composition itself, which is the thing at risk: chat builds the
+        // scorer and the engine from the options rather than sharing extracted steps, so this fails
+        // if it ever drifts to different weights, a different engine, or a direction other than the
+        // one the membership derives.
+        var assessment = await AssessAsync("urgent <http://paypal.com.evil.example|paypal.com>");
+
+        var options = Builders.Options();
+        var risk = CompositeRiskScorer.Compute(assessment.Evidence, options.Policy.DimensionWeights);
+        var decision = new MailPolicyEngine(options.Policy, new FixedClock()).Decide(new PolicyInput
+        {
+            Evidence = assessment.Evidence,
+            Risk = risk,
+            Context = new PolicyContext
+            {
+                EmergencyKillSwitchEngaged = false,
+                OutboundQuotaExhausted = false,
+                VerifiedSecurityRuleViolations = [],
+                AllowlistEntryValid = false,
+                BaselineFrozenForSuspectedCompromise = false,
+            },
+            Direction = MailDirection.Outbound,
+        });
+
+        Assert.Equal(risk.Index, assessment.RiskIndex);
+        Assert.Equal(decision.Action, assessment.ProposedActionInShadow);
+    }
+
+    [Fact]
+    public async Task A_member_is_read_through_their_own_profile_and_a_stranger_is_not()
+    {
+        // The direction selects the pool the observations are counted in, and the two are never
         // merged. An always-inbound rule would have filed a member's traffic with strangers'.
+        //
+        // The stranger still carries the behavioural signal ids, because this path records an
+        // explicit gap rather than an absent entry. What separates the two is that the member was
+        // actually read and the stranger was not.
         var member = await AssessAsync("hello", isExternal: false);
         var stranger = await AssessAsync("hello", isExternal: true);
 
-        Assert.Contains(member.Evidence, e => e.SignalId == "behavioural.trend.velocity");
-        Assert.DoesNotContain(stranger.Evidence, e => e.SignalId == "behavioural.trend.velocity");
+        Assert.DoesNotContain(
+            member.Reasons,
+            r => r.Code == AssessmentReasonCodes.ChatBehaviouralUnavailable);
+
+        Assert.Contains(
+            stranger.Reasons,
+            r => r.Code == AssessmentReasonCodes.ChatBehaviouralUnavailable);
     }
 }

@@ -102,6 +102,15 @@ public sealed class MailAssessorStatistics
 /// <summary>Reason codes the composition root contributes to a decision.</summary>
 public static class AssessmentReasonCodes
 {
+    /// <summary>
+    /// A chat assessment that could not read a behavioural profile, and said so.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from the semantic-unavailable code because the two gaps have different causes and
+    /// different fixes, and a reader deciding what to wire next needs to tell them apart.
+    /// </remarks>
+    public const string ChatBehaviouralUnavailable = "assessment.chat_behavioural_unavailable";
+
     /// <summary>Acceptance was refused, so delivery responsibility never transferred.</summary>
     public const string AcceptanceRefused = "assessment.acceptance_refused";
 
