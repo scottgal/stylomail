@@ -151,6 +151,49 @@ Slack's markup parsing is new and belongs in `StyloMail.Chat`.
 **Note for the contract review:** Core now has two link types side by side, `LinkObservation` (input
 shape) and `LinkFinding` (analysis result). Not merged; flagged to overview-.
 
+### Self-loop guard made structural (2026-09-22, after access-'s security review)
+
+`access-` verified (not asserted) that my "the reader observes, the caller judges" split left the
+self-loop rule **documented and unenforced**: no production callers, `BotId` written and never read.
+Right call, and their argument was `overview-`'s own principle from an hour earlier: **the guarantee
+has to live in the structure, not in everyone remembering.**
+
+**Now: `TryRead(json, SlackBotIdentity ownIdentity, out message, out reason)`**, returning
+`SlackEventIgnored.FromOurBot`. A caller with no identity cannot obtain a `ChatMessage` at all.
+- new `src/StyloMail.Chat/Slack/SlackBotIdentity.cs` (`BotId`, `BotUserId`, `IsOurOwnPost`, `None`)
+- **Both identifiers are matched**: the event carries `bot_id` (B...) while the install gives
+  `bot_user_id` (U...). Cannot verify offline which a given post carries, so match either.
+- `SlackBotIdentity.None` reads everything; that degenerate state is nameable and tested.
+  **Task 4 must refuse to start with no identity** (raised with both agents).
+
+Recognising our own app is NOT judging bots in general: another integration's post is still read.
+
+### 2b Task 1: COMPLETE, frozen, reported (2026-09-22). Not committed.
+
+**Bot correction (overview- ruled, correcting plan 2a's own plan).** Plan 2a dropped EVERY bot message;
+that rule was wider than its reason. Now: drop only the system's own posts; assess other bots and carry
+`IsBot` as a membership fact (a stolen integration token posting phishing is exactly the inbound job).
+- `ChatMessage` gained `BotId`; `SlackEventReader` no longer refuses bots (decision 8: observe, do not
+  judge). **`SlackEventIgnored.FromABot` deleted** as unreachable.
+- Bug found: Slack omits `user` on some bot posts, so removing the early return would have made them
+  fail as `MissingFields`. `AuthorId` falls back to `BotId`.
+- **The own-post drop now has no home until Task 4** (that is where identity lives). No live gap: nothing
+  calls the reader in production yet.
+- **Own bot identity comes from the install, not a per-message call**: Slack's OAuth v2 response gives
+  `bot_user_id`/`app_id`, `auth.test` gives the rest. **Cannot verify offline:** the event carries
+  `bot_id` (B...) while the install gives `bot_user_id` (U...), so Task 4 must compare against both the
+  event's `bot_id` and `user`, pinned by a recorded payload. Also unknown offline: whether Slack even
+  delivers an app its own bot's messages back.
+
+**`ChatAnalysisInput` + `ChatMembershipFacts`** in `src/StyloMail.Core/ChatAnalysisInput.cs`. Option (a):
+fixed named facts (`AuthorId`, `BotId`), `IsBot` **derived** from `BotId`, never stored. Two members
+beyond the design's list, flagged: `EventId` (the ledger needs an internal message id) and `OccurredAt`
+(velocity needs the message's time). A test pins `Links` as `IReadOnlyList<LinkObservation>` so a later
+edit that moved judgement into the reader would fail the suite.
+
+Measured: build 0/0, solution **1371 passed, 0 failed, 23 skipped**. Chat 30, Core 36, Assessment 124
+and Mime 91 unchanged.
+
 ### 2b Task 1, first half: DONE, frozen, reported (2026-09-22)
 
 - `MailAssessment.Channel` required (test first, red as CS0117).

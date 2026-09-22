@@ -319,9 +319,33 @@ account to create) and none was added, since an unverified mitigation is superst
 **AND: I reported "5 passed" from a single run, after writing the re-measure rule down.** The rule was
 in this file, not in my behaviour. A green run is the answer I wanted and it arrived first.
 
+**LANE COMPLETE (plan's three tasks done).** `UNTESTED-GMAIL.md` in the test project covers the plan's
+final requirement ("the untested Gmail behaviour must be written down"). Its real content: the *wire*
+is fine (byte pump, no parser to trip), but the proxy advertises **its own** capability list
+(`* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN AUTH=LOGIN] StyloMail ready`), so `X-GM-EXT-1` is invisible to
+a client pre-auth. **That is a product consequence, and the likeliest user-reported bug.**
+
+**Em-dash sweep: my files are clean** (verified 0 U+2014 and 0 U+2013 across both test projects and
+`src/StyloMail.AccessProxy`). The sweep did not skip them for being mid-edit; there was nothing to sweep.
+
 **NOT done:** Task 2's IMAP leg; the plan's `git commit` steps (the plan contradicts itself, Global
 Constraints forbid commits while each task ends with one; `overview-` confirmed the commit steps are
 theirs, not the lane's).
+
+## 13. Cross-lane: security review routed, not fixed
+
+An automated security review surfaced `src/StyloMail.Chat/Slack/SlackEventReader.cs` (self-loop risk:
+the system must never assess its own bot's output). **Not my lane, and `chat-` was editing it two
+minutes earlier, so I did not touch it.** Routed to `chat-` with the verification.
+
+What I found by checking rather than repeating the review: the reader deliberately delegates the
+decision to the caller, and **`TryRead` currently has no callers at all, and nothing reads `BotId`
+anywhere in the project.** So the invariant is *documented and unenforced*, not broken: latent rather
+than live. Still worth more than a note, because a loop between our own bot and our own assessment is
+self-amplifying and needs no attacker.
+
+**The rule, which is this project's own repeated finding:** an invariant that lives in a comment is not
+an invariant. If you meet this pattern, make the caller supply the identity so it cannot be forgotten.
 
 ## 11. Session-continuity notes
 
