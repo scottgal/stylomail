@@ -1,0 +1,209 @@
+From: Bulk Sender <bulk@example-bulk.test>
+To: Bob Example <bob@example.org>
+Subject: Many parts
+Date: Mon, 22 Sep 2026 16:00:00 +0100
+Message-ID: <many-1@example-bulk.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="many-boundary-1"
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 0 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 1 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 2 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 3 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 4 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 5 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 6 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 7 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 8 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 9 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 10 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 11 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 12 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 13 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 14 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 15 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 16 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 17 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 18 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 19 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 20 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 21 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 22 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 23 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 24 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 25 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 26 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 27 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 28 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 29 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 30 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 31 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 32 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 33 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 34 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 35 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 36 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 37 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 38 of a message with far too many parts to analyse.
+
+--many-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Part 39 of a message with far too many parts to analyse.
+
+--many-boundary-1--

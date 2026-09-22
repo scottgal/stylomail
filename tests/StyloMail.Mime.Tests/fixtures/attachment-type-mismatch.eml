@@ -1,0 +1,31 @@
+From: Accounts <accounts@example-vendor.test>
+To: Bob Example <bob@example.org>
+Subject: Remittance documents
+Date: Mon, 22 Sep 2026 13:00:00 +0100
+Message-ID: <remit-9@example-vendor.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-boundary-1"
+
+--mix-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Please find the remittance documents attached.
+
+
+--mix-boundary-1
+Content-Type: image/png; name="invoice.pdf"
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0Zp
+bHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nDPQM1Qo5ypUMFAwALJMLU31
+DBRSFPTdDA0NFYryU4NKMkuKUq0AQ0oKZQplbmRzdHJlYW0KZW5kb2JqCg==
+
+--mix-boundary-1
+Content-Type: application/x-msdownload; name="statement.pdf.exe"
+Content-Disposition: attachment; filename="statement.pdf.exe"
+Content-Transfer-Encoding: base64
+
+TVqQAAMAAAAEAAAA//8AALgAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+--mix-boundary-1--

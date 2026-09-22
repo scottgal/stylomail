@@ -1,0 +1,14 @@
+From: Secure Sender <sender@example-secure.test>
+To: Bob Example <bob@example.org>
+Subject: Encrypted message
+Date: Mon, 22 Sep 2026 15:00:00 +0100
+Message-ID: <enc-1@example-secure.test>
+MIME-Version: 1.0
+Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"
+Content-Disposition: attachment; filename="smime.p7m"
+Content-Transfer-Encoding: base64
+
+MIIBGgYJKoZIhvcNAQcDoIIBCzCCAQcCAQAxggEHMIIBAwIBADBsMGAxEzARBgNV
+BAoMCkV4YW1wbGUgQ28xEzARBgNVBAsMCkVuY3J5cHRpb24xFTATBgNVBAMMDEV4
+YW1wbGUgQ2VydDEMMAoGA1UEBhMDVVMxDTALBgNVBAcMBENpdHkwDQYJKoZIhvcN
+AQEBBQAwDQYJKoZIhvcNAQEBBQAEggEAGF0d3lUnGBk=

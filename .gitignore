@@ -1,0 +1,108 @@
+# =============================================================================
+# SECRETS — keep this block FIRST. See .styloagent/spec.md §11 (storage, privacy).
+# StyloMail handles credentials for SMTP, tenants and the TypeSafe/Jev provider.
+# Nothing in this block may ever be committed. If a secret is committed, treat it
+# as compromised: rotate it, then rewrite history. Adding an ignore rule after the
+# fact does NOT un-leak a secret.
+# =============================================================================
+*.pvt
+*.key
+*.pem
+*.pfx
+*.p12
+*.snk
+*.jks
+*.keystore
+
+# Environment / local configuration
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+local.settings.json
+
+# =============================================================================
+# .NET
+# =============================================================================
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Oo]ut/
+build/
+artifacts/
+
+# Rider / Visual Studio / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.userprefs
+*.DotSettings.user
+
+# Build results
+[Dd]ebugPublic/
+[Rr]eleases/
+[Ll]og/
+[Ll]ogs/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+*.VisualState.xml
+TestResult.xml
+*.binlog
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+packages/repositories.config
+
+# Publish output
+publish/
+*.publishsettings
+PublishProfiles/
+
+# Benchmarking
+BenchmarkDotNet.Artifacts/
+
+# =============================================================================
+# StyloMail runtime state — never commit live mail, spools or profiles
+# =============================================================================
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+spool/
+profiles/
+quarantine/
+*.eml
+!tests/**/fixtures/**/*.eml
+
+# =============================================================================
+# OS / editor cruft
+# =============================================================================
+.DS_Store
+Thumbs.db
+*.swp
+*~

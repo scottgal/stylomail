@@ -1,0 +1,28 @@
+From: Dana <dana@example.com>
+To: Team <team@example.com>
+Subject: Quarterly planning
+Date: Mon, 22 Sep 2026 14:00:00 +0100
+Message-ID: <planning-3@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-boundary-2"
+
+--alt-boundary-2
+Content-Type: text/plain; charset=utf-8
+
+Hi team, just a reminder that the quarterly planning meeting has moved to
+Thursday at two in the afternoon in the large conference room on the fourth
+floor. Please bring your updated project summaries and your budget
+spreadsheets so we can review them together before the end of the week.
+
+Thanks, Dana
+
+--alt-boundary-2
+Content-Type: text/html; charset=utf-8
+
+<html><body><h1>Your account has been suspended</h1>
+<p>We detected unusual activity and your account access has been limited
+immediately. To restore full access you must confirm your identity within
+twenty four hours or your account will be permanently closed and all pending
+transfers will be cancelled without further notice.</p></body></html>
+
+--alt-boundary-2--

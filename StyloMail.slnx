@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StyloMail.AccessProxy/StyloMail.AccessProxy.csproj" />
+    <Project Path="src/StyloMail.Adaptive/StyloMail.Adaptive.csproj" />
+    <Project Path="src/StyloMail.Assessment/StyloMail.Assessment.csproj" />
+    <Project Path="src/StyloMail.Core/StyloMail.Core.csproj" />
+    <Project Path="src/StyloMail.Host/StyloMail.Host.csproj" />
+    <Project Path="src/StyloMail.Jev/StyloMail.Jev.csproj" />
+    <Project Path="src/StyloMail.Mime/StyloMail.Mime.csproj" />
+    <Project Path="src/StyloMail.Persistence/StyloMail.Persistence.csproj" />
+    <Project Path="src/StyloMail.Policy/StyloMail.Policy.csproj" />
+    <Project Path="src/StyloMail.Queue/StyloMail.Queue.csproj" />
+    <Project Path="src/StyloMail.Transport/StyloMail.Transport.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StyloMail.AccessProxy.Tests/StyloMail.AccessProxy.Tests.csproj" />
+    <Project Path="tests/StyloMail.Adaptive.Tests/StyloMail.Adaptive.Tests.csproj" />
+    <Project Path="tests/StyloMail.Assessment.Tests/StyloMail.Assessment.Tests.csproj" />
+    <Project Path="tests/StyloMail.Core.Tests/StyloMail.Core.Tests.csproj" />
+    <Project Path="tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj" />
+    <Project Path="tests/StyloMail.Jev.Tests/StyloMail.Jev.Tests.csproj" />
+    <Project Path="tests/StyloMail.Mime.Tests/StyloMail.Mime.Tests.csproj" />
+    <Project Path="tests/StyloMail.Persistence.Tests/StyloMail.Persistence.Tests.csproj" />
+    <Project Path="tests/StyloMail.Policy.Tests/StyloMail.Policy.Tests.csproj" />
+    <Project Path="tests/StyloMail.Queue.Tests/StyloMail.Queue.Tests.csproj" />
+    <Project Path="tests/StyloMail.Transport.Tests/StyloMail.Transport.Tests.csproj" />
+  </Folder>
+</Solution>

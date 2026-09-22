@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+    <ProjectReference Include="..\StyloMail.Queue\StyloMail.Queue.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The protocol reader and the session state machine are internals: they are how the transport
+      does its work, not part of what it offers. Their bounds (line length, continuation count,
+      byte budget) are correctness properties though, and a bound that is only exercised through a
+      whole successful delivery is a bound nobody has ever seen fire. This grants the test assembly
+      access so each limit can be driven directly, rather than widening the public surface of a
+      library whose API should be "deliver this" and "accept this".
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>StyloMail.Transport.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    Deliberately no third-party package references.
+
+    This project writes MIME bytes onto a socket and must preserve them exactly, so the SMTP
+    protocol is implemented here rather than delegated to a client library whose serialiser would
+    round-trip the message through its own object model. A round-trip can re-fold headers and
+    re-encode bodies, which invalidates DKIM at the receiving end; "we did not rewrite the
+    message" is a correctness claim we can only make about code we control.
+
+    Owning the state machine is also what makes the delivery outcome taxonomy honest: the
+    difference between "we never finished DATA" and "we finished DATA and lost the reply" is a
+    property of how far the protocol got, and that is known here and nowhere else.
+  -->
+
+</Project>

@@ -1,0 +1,16 @@
+From: Billing <billing@example-billing.test>
+To: Bob Example <bob@example.org>
+Subject: Invoice ready for review
+Date: Mon, 22 Sep 2026 12:00:00 +0100
+Message-ID: <inv-4412@example-billing.test>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>The invoice is ready. Sign in at
+<a href="http://198.51.100.7/verify">https://www.paypal.com/signin</a>
+to review it.</p>
+<p>Our help centre is at
+<a href="https://help.example-billing.test/faq">https://help.example-billing.test/faq</a>
+if you need it.</p>
+</body></html>

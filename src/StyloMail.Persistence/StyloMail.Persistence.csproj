@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native `vec0` extension. Package authored by Alex Garcia (sqlite-vec's author) and
+         points at the canonical asg017/sqlite-vec repo. A third-party repackaging of the same
+         binary (HiraokaHyperTools.sqlite-vec) was evaluated and rejected: for a security product
+         the provenance of a native extension outweighs a minor version delta. -->
+    <PackageReference Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,10 @@
+From: "security@paypal.com" <attacker@evil.example>
+Reply-To: PayPal Support <collect@mail-relay.example>
+To: Bob Example <bob@example.org>
+Subject: Your account needs attention
+Date: Mon, 22 Sep 2026 11:30:00 +0100
+Message-ID: <notice-7@evil.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Please confirm your details.

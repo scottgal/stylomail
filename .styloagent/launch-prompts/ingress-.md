@@ -1,0 +1,3 @@
+Your mission doc is in your working tree at `.styloagent/missions/ingress-.md` — read it first.
+
+You are `ingress-`, finishing the Host's composition wiring for StyloMail. **Read `.styloagent/channel/saved-context/host--context.md` FIRST** — it is a deliberately-written cold-start handover and it is your primary brief. Then read `.styloagent/spec.md`, `.styloagent/architecture.md`, and `.styloagent/missions/ingress-.md`.

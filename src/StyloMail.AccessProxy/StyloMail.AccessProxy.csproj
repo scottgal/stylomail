@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The protocol line readers, the backend authentication exchange and the credential providers
+      are internals: they are how the proxy does its work, not what it offers.
+
+      Their bounds and their failure modes are correctness properties though, and a bound that is
+      only exercised through a whole successful session is a bound nobody has ever seen fire. So is
+      "the credential never reaches a log" - that can only be tested by driving the code that would
+      leak it. This grants the test assembly access so each limit and each failure path can be
+      driven directly, rather than widening the public surface of a library whose API should be
+      "accept this connection" and "hand back bytes".
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>StyloMail.AccessProxy.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    Deliberately no third-party package references.
+
+    Session proxying is the one place in StyloMail where a library's convenience is actively
+    dangerous: an IMAP client library that models messages as objects would re-serialise them on
+    the way past, re-folding headers and re-encoding bodies, which invalidates DKIM at the
+    receiving end and breaks the one promise a mail proxy must keep. "We did not rewrite your
+    mail" is a claim we can only make about a byte pump we control. The same reasoning as
+    StyloMail.Transport, for the same reason - see its csproj note.
+
+    Encryption at rest uses System.Security.Cryptography (AES-GCM, PBKDF2) from the framework
+    rather than a key-derivation package, so the credential store has no dependency that could
+    introduce a plaintext path we did not write.
+  -->
+
+</Project>

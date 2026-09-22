@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      MimeKit is a parser, not a network client: it performs no I/O of its own and never
+      dereferences anything it finds in a message. It is used strictly on an in-memory
+      analysis copy, with ParserOptions.MaxMimeDepth bounding nesting; every other limit
+      is enforced by this project before, during and after parsing.
+    -->
+    <PackageReference Include="MimeKit" Version="4.18.0" />
+  </ItemGroup>
+
+</Project>

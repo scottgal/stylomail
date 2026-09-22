@@ -1,0 +1,12 @@
+From: Account Team <team@xn--pypal-4ve.com>
+To: Bob Example <bob@example.org>
+Subject: Sign-in from a new device
+Date: Mon, 22 Sep 2026 12:20:00 +0100
+Message-ID: <idn-1@xn--pypal-4ve.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>We noticed a sign-in from a new device. Review it at
+<a href="http://xn--pypal-4ve.com/verify">http://xn--pypal-4ve.com/verify</a>.</p>
+</body></html>

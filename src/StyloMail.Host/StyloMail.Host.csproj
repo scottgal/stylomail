@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>StyloMail.Host</RootNamespace>
+
+    <!-- The CLI and the web host are one executable: `serve` runs Kestrel, everything else
+         is a one-shot command. Keeping them in one project means the CLI cannot drift from
+         the route surface it administers. -->
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+    <ProjectReference Include="..\StyloMail.Mime\StyloMail.Mime.csproj" />
+    <ProjectReference Include="..\StyloMail.Policy\StyloMail.Policy.csproj" />
+    <ProjectReference Include="..\StyloMail.Queue\StyloMail.Queue.csproj" />
+    <ProjectReference Include="..\StyloMail.Persistence\StyloMail.Persistence.csproj" />
+    <ProjectReference Include="..\StyloMail.Adaptive\StyloMail.Adaptive.csproj" />
+    <ProjectReference Include="..\StyloMail.Assessment\StyloMail.Assessment.csproj" />
+
+    <!-- The host composes the mail boundary, so it references the transport rather than the other
+         way round: the transport has no idea it is being hosted, and its ingress sink port is
+         deliberately an injected dependency rather than a queue it can reach. -->
+    <ProjectReference Include="..\StyloMail.Transport\StyloMail.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

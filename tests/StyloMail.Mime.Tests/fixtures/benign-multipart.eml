@@ -1,0 +1,34 @@
+From: Alice Example <alice@example.com>
+To: Bob Example <bob@example.org>
+Subject: Invoice for August
+Date: Mon, 22 Sep 2026 10:02:00 +0100
+Message-ID: <invoice-88@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-boundary-1"
+
+--alt-boundary-1
+Content-Type: text/plain; charset=utf-8
+
+Hi Bob,
+
+The invoice for August is attached and the total comes to one thousand two
+hundred pounds as agreed in the contract we signed last quarter. Let me know
+if anything needs adjusting before we send it across to accounts payable.
+
+Regards,
+Alice
+
+--alt-boundary-1
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>Hi Bob,</p>
+<p>The invoice for August is attached and the total comes to one thousand two
+hundred pounds as agreed in the contract we signed last quarter. Let me know
+if anything needs adjusting before we send it across to accounts payable.</p>
+<p>You can review it at
+<a href="https://portal.example.com/invoice/88">https://portal.example.com/invoice/88</a>.</p>
+<p>Regards,<br>Alice</p>
+</body></html>
+
+--alt-boundary-1--

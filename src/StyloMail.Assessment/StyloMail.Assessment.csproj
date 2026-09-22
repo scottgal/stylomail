@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The composition root. It references every component in the pipeline because its whole job
+       is to wire them together; nothing references it except the host and its own tests. -->
+  <ItemGroup>
+    <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+    <ProjectReference Include="..\StyloMail.Mime\StyloMail.Mime.csproj" />
+    <ProjectReference Include="..\StyloMail.Jev\StyloMail.Jev.csproj" />
+    <ProjectReference Include="..\StyloMail.Adaptive\StyloMail.Adaptive.csproj" />
+    <ProjectReference Include="..\StyloMail.Policy\StyloMail.Policy.csproj" />
+    <ProjectReference Include="..\StyloMail.Queue\StyloMail.Queue.csproj" />
+    <ProjectReference Include="..\StyloMail.Persistence\StyloMail.Persistence.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
