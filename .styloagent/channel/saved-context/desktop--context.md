@@ -256,11 +256,39 @@ empty amber bar. Bind against the type the DataContext actually is (the `Decisio
 `InitializeComponent()` from the name generator, not `AvaloniaXamlLoader.Load(this)`, or the `x:Name`
 fields are null.
 
+## The management surface: COMPLETE
+
+Connection (37f853a), Companies (cb7292f), Senders grouped by company with a profile form
+(0a35d23). Screenshots `desktop-connection.png`, `desktop-connection-refused.png`,
+`desktop-grouped-senders.png`, `desktop-sender-profile.png`, `desktop-companies.png`.
+
+Harness drives all three: `ux-scripts/run-console-smoke.sh` passes with 12 screenshots.
+`console_harness.console_seed_management` seeds a company through the routes so grouping is
+asserted rather than invisible.
+
+**The full-replace hazard, handled structurally.** A settings write replaces the whole profile, so
+`SenderProfileDraft` is built from the full response and `ToRequest()` always sends every field. A
+form that assembled its own request from the visible fields is how editing a note erases a company.
+
+**A value from a newer Host blocks saving with a reason** rather than being dropped (loses a recorded
+decision) or sent (fails for a reason the screen cannot explain).
+
+**FOURTH occurrence of the UI-thread rule.** Constructing a `Window` verifies dispatcher access, so a
+continuation on the thread pool throws "Call from invalid thread" before the dialog exists. Anything
+touching a Control goes through `Dispatcher.UIThread` or `OnUiThreadAsync`.
+
 ## Still not built
 
-The sender **profile form** (label / company / notes / external ref / target / posture) against routes
-already live, and the **Companies** management screen. Both are next. Posture and notificationTarget
-are stored and shown but read by nothing, and the UI must keep saying so.
+The **live traffic pane**, blocked on `hub-`'s worktree merging. Its contract arrived and is good:
+`POST /v1/traffic/negotiate` answers 404 when disabled (so "no feed, use polling" and "you are not
+live" are different sentences), `X-StyloMail-Key` on negotiate AND the handshake with `?access_token=`
+refused, one `traffic` method, payload `{ kind, subjectId, occurredAt }` with `kind` a name and NO
+state or direction, and no dead-reckoning. Reconnect: re-read the visible surface, since the host
+tells us nothing about the gap.
+
+`DecisionResponse` is gaining `channel` and `deliveryTiming` (not landed). `deliveryTiming` of
+`PostDelivery` means every action was post-hoc, so it must qualify the decision rather than sit in a
+table.
 
 ## Next
 
