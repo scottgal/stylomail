@@ -122,3 +122,8 @@ Thumbs.db
 *~
 ux-results/
 ux-screenshots/
+
+# The fleet's working directory: specs, missions, checkpoints and the bus. Kept on
+# disk and out of the repository, because it is the agents' scratch rather than the
+# project. The design of record it used to carry is in docs/ instead.
+.styloagent/
