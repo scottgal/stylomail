@@ -123,7 +123,11 @@ Thumbs.db
 ux-results/
 ux-screenshots/
 
-# The fleet's working directory: specs, missions, checkpoints and the bus. Kept on
-# disk and out of the repository, because it is the agents' scratch rather than the
-# project. The design of record it used to carry is in docs/ instead.
+# The fleet's working directory: missions, checkpoints, the bus and the issue list.
+# Kept on disk and out of the repository, because it is the agents' scratch rather
+# than the project.
+#
+# A GAP, NOT A DECISION: spec.md and architecture.md are the design of record and live
+# here, so untracking this took them out of the repository with everything else. They
+# belong in docs/ if the design should be public.
 .styloagent/
