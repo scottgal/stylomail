@@ -37,6 +37,42 @@ interface StyloMail already speaks**, which is exactly what the spec anticipated
 The package also ships presets for `is_phishing`, `is_spam`, `urgency`, `sensitive_data`,
 `prompt_injection` and `jailbreak`, so a security question set exists before we write one.
 
+## What upstream Laya is, and it is not a small thing
+
+From [laya.convaiinnovations.com](https://laya.convaiinnovations.com/): a non-autoregressive decision
+model family that "does not generate text, and gives lightning-fast probability predictions over
+structured schemas". Its three primitives are **choice**, **score** and **noul**, described in the same
+terms as spec §6.
+
+Two statements on that site matter to us.
+
+**It is positioned against Jev.** Their comparison table lists Jev as a "Closed proprietary API" and
+Laya as "100% open-source **Apache 2.0** weights", "$0.00 (self-hosted)" against "$0.042 (metered
+API)". So this is not an incidental schema resemblance: **it is an open-source implementation of the
+interface our adapter calls, published as an alternative to it.** That is a strategic fact about our
+semantic layer, not a detail of one library.
+
+**The context window is a real constraint for us.** The English checkpoint is ModernBERT-large at
+**512 tokens**; the multilingual one is mmBERT at **1024, extendable to 8k**; the typed-decisions one
+is 1024. **My probe reported `input_tokens: 541`, which is already over the English checkpoint's
+512**, so that run was very likely truncated without saying so. Email bodies routinely exceed 512
+tokens, so the checkpoint choice is a design decision rather than a detail.
+
+### Other caveats from the vendor, which we would inherit
+
+- **~0.35 zero-shot**, described as near random, until fine-tuned.
+- **Accuracy degrades above 20 choice options** (0.425 on a 77-label set).
+- **Temperature calibration is needed** for the probabilities to mean anything: a fitted scalar
+  reportedly cuts expected calibration error from 0.466 to **0.081**. Nothing in the spike calibrated
+  anything, so the numbers above are raw model outputs.
+- Latency claims are **32.8 ms P50 single and 72.3 ms for ten batched**, which is 7.2 ms per question,
+  on hardware they do not name. My 104 ms per dimension is on CPU-only Apple Silicon, so the two are
+  not contradictory, but ours is the one a local deployment would get on a Mac.
+
+**The typed-decisions checkpoint is the interesting one for us**: 0.766 accuracy over 2,000 decisions,
+with security alerts named as a use area. It has not been exported to OpenVINO, so the fork cannot run
+it yet.
+
 ## What was measured
 
 Five of StyloMail's own dimensions, expressed in Laya's schema, asked over the corpus's
