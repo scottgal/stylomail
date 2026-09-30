@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using StyloMail.Host.Assessors;
+using StyloMail.Host.Observability;
 
 namespace StyloMail.Host.Tests;
 
@@ -73,6 +76,43 @@ public sealed class HealthAndMetricsTests
         using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Contains(
             "spool",
+            body.RootElement.GetProperty("failedChecks").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public async Task Readiness_reports_not_ready_when_the_host_has_no_assessor()
+    {
+        // The counterpart to the spool test above, and the distinction from the test before it is
+        // this deployment's provider secrets versus the caller's credentials. Reaching
+        // /health/ready needs no credential; that says nothing about whether the host behind it can
+        // assess anything.
+        //
+        // WithoutAssessor() leaves the host's own composition in place, so this is the real answer:
+        // with no provider secret present, BuildAssessor returns UnavailableMailAssessor, which
+        // throws on every message it is handed. A host that can assess nothing must stop advertising
+        // itself, or mail is routed to a deployment that refuses all of it while the load balancer
+        // reads 200. That was the shape of the rejected-credential defect; this is the same shape
+        // from the other direction, and worse, because nothing changes at run time to reveal it.
+        using var host = new TestHost().WithoutAssessor();
+
+        // The precondition, asserted rather than assumed: WithoutAssessor() must have left the host
+        // composing the stand-in. If it ever returned a host with a working assessor instead, the
+        // assertions below would be testing a shape this test does not describe.
+        Assert.IsType<UnavailableMailAssessor>(
+            host.Services.GetRequiredService<StyloMail.Core.IMailAssessor>());
+
+        using var client = host.Anonymous();
+
+        var response = await client.GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        // Exactly this check and no other. The database and spool are present, and no credential has
+        // been rejected, so if any other name appeared here the 503 would have some cause other than
+        // the one under test, and it would be the assertion below that silently passed anyway.
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            new[] { ReadinessProbe.AssessorUnavailable },
             body.RootElement.GetProperty("failedChecks").EnumerateArray().Select(e => e.GetString()));
     }
 

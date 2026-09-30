@@ -391,9 +391,15 @@ internal sealed class TestHost : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
-            // The host requires an IMailAssessor; nothing in the repo implements one yet, so the
-            // suite supplies a deterministic fake. Remove-then-add so a real registration cannot
+            // Replaces the host's assessor with a deterministic fake, so a test chooses the verdict
+            // instead of the pipeline deriving one. Remove-then-add so the real registration cannot
             // silently win and reach the network.
+            //
+            // The host's own assessor is not a stub awaiting an implementation: BuildAssessor builds
+            // Assessment.MailAssessor around the provider, or UnavailableMailAssessor when no
+            // provider secret is present. An earlier version of this comment said nothing in the
+            // repository implemented IMailAssessor yet, which stopped being true when the pipeline
+            // landed. WithoutAssessor() below is how a test asks for the real composition instead.
             if (_installFakeAssessor)
             {
                 RemoveAll<IMailAssessor>(services);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using StyloMail.Host.Observability;
 
 namespace StyloMail.Host.Tests;
 
@@ -171,8 +172,16 @@ public sealed class AssessmentTests
     [Fact]
     public async Task An_unconfigured_assessor_is_reported_rather_than_faked()
     {
-        // Nothing in the repo implements IMailAssessor yet. The host must say so plainly instead
-        // of inventing a verdict: a fabricated "Allow" is the most dangerous possible answer.
+        // An unconfigured host must say so plainly instead of inventing a verdict: a fabricated
+        // "Allow" is the most dangerous possible answer, because everything downstream treats an
+        // assessment as having happened.
+        //
+        // WithoutAssessor() leaves the host's own composition in place, so this is BuildAssessor's
+        // real answer with no provider secret present, not a stub standing in for an implementation
+        // that does not exist. The name is asserted through the probe's constant because the two
+        // routes answer for one condition: a readiness check that fails while the assessment route
+        // words the refusal differently would leave an operator to work out that they are the same
+        // state.
         using var host = new TestHost().WithoutAssessor();
         using var client = host.ClientAs(TestPrincipals.AcmeSenderKey);
 
@@ -181,6 +190,6 @@ public sealed class AssessmentTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("assessor_unavailable", body.RootElement.GetProperty("error").GetString());
+        Assert.Equal(ReadinessProbe.AssessorUnavailable, body.RootElement.GetProperty("error").GetString());
     }
 }

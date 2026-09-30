@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Options;
+using StyloMail.Core;
+using StyloMail.Host.Assessors;
 using StyloMail.Host.Chat;
 using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
@@ -46,8 +48,20 @@ public sealed class ReadinessProbe
     /// </remarks>
     public const string ChatAssessmentUnavailable = "chat_assessment_unavailable";
 
+    /// <summary>
+    /// The name this host reports when it was composed with no assessor and can assess nothing.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the same string the assessment routes already answer with, so one condition has
+    /// one name: an operator who sees a <c>503 assessor_unavailable</c> from <c>/v1/assessments</c>
+    /// finds that same word in the failed checks here, rather than having to work out that the two
+    /// describe a single state.
+    /// </remarks>
+    public const string AssessorUnavailable = "assessor_unavailable";
+
     private readonly ChatAssessmentHealth? _chatHealth;
     private readonly Chat.IChatIntakeStore? _chatIntake;
+    private readonly IMailAssessor? _assessor;
 
     public ReadinessProbe(
         HostDatabase database,
@@ -55,9 +69,11 @@ public sealed class ReadinessProbe
         ProviderCredentialHealth credentials,
         ITrafficEvents events,
         TimeProvider clock,
+        IMailAssessor? assessor = null,
         ChatAssessmentHealth? chatHealth = null,
         Chat.IChatIntakeStore? chatIntake = null)
     {
+        _assessor = assessor;
         _chatHealth = chatHealth;
         _chatIntake = chatIntake;
 
@@ -128,6 +144,28 @@ public sealed class ReadinessProbe
     private ReadinessResult Evaluate()
     {
         var failed = new List<string>();
+
+        // No assessor at all is a **not-ready** condition, on the same terms as a rejected one.
+        //
+        // UnavailableMailAssessor is what BuildAssessor returns when neither provider secret is
+        // present, and it throws on every message handed to it. A host composed that way cannot
+        // assess anything, so advertising itself ready routes mail straight into a service that
+        // refuses all of it: the same false-healthy shape the rejected-credential check removes,
+        // reached from the other direction.
+        //
+        // Absent and rejected are separate checks because they are different failures that look
+        // alike from outside. This one is decided at composition and cannot change while the process
+        // runs; a rejection arrives mid-run and a single success clears it. As with the credential
+        // check, nothing here is inferred from configuration: it asks the container which assessor
+        // it actually built, so a secret that is merely *configured* still never moves readiness.
+        //
+        // A probe constructed without an assessor is left alone rather than counted as missing. Null
+        // there means this probe was never told about assessment, which is not the same claim as a
+        // host that was told and has none; the real host always injects one.
+        if (_assessor is UnavailableMailAssessor)
+        {
+            failed.Add(AssessorUnavailable);
+        }
 
         if (!CanReadDatabase())
         {
