@@ -214,6 +214,46 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     private const string UnreachableProvider = "http://127.0.0.1:1/";
 
     /// <summary>
+    /// Gives the host fixed assessment secrets and leaves its own composition in place, so the
+    /// provider selection and the credential decision both run for real against a known pair of
+    /// values.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the secrets have to come through a seam at all.</b> The production source reads
+    /// environment variables, and this suite runs test classes in parallel, so a variable one test
+    /// set would be visible to every other test running at that instant: a test that depended on one
+    /// would be asserting against another test's environment. Replacing the source outright is the
+    /// same move the other helpers here make on the port they are about, and unlike writing the
+    /// environment it leaves no state behind for the next test to inherit.
+    /// </para>
+    /// <para>
+    /// <b>The values are fixtures, not secrets.</b> The master key is the same 32-byte literal the
+    /// rest of this file uses, and it pseudonymises identifiers inside this process only. Nothing
+    /// here is a credential for anything, and the endpoint the tests point at is a loopback address
+    /// that refuses, so nothing is sent anywhere by anything.
+    /// </para>
+    /// </remarks>
+    public TestHost WithAssessmentSecrets(string? jevApiKey, string? profileMasterKey)
+    {
+        _installFakeAssessor = false;
+
+        return Override(services =>
+        {
+            RemoveAll<IAssessmentSecretSource>(services);
+            services.AddSingleton<IAssessmentSecretSource>(
+                new FixedAssessmentSecretSource(jevApiKey, profileMasterKey));
+        });
+    }
+
+    /// <summary>The replacement for the environment, holding whatever a test handed in.</summary>
+    private sealed class FixedAssessmentSecretSource(string? jevApiKey, string? profileMasterKey)
+        : IAssessmentSecretSource
+    {
+        public AssessmentSecrets Read() => new(jevApiKey, profileMasterKey);
+    }
+
+    /// <summary>
     /// Makes durable acceptance fail, so the "storage unavailable" path can be exercised without
     /// depending on the suite's ability to make a directory genuinely unwritable, which varies
     /// with the user the tests run as.

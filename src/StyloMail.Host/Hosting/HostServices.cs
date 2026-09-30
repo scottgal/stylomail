@@ -18,6 +18,7 @@ using StyloMail.Adaptive.Profiles;
 using StyloMail.Adaptive.Storage;
 using StyloMail.Jev;
 using StyloMail.Mime;
+using StyloMail.Nimble;
 using StyloMail.Persistence;
 using StyloMail.Queue;
 using StyloMail.Transport.Cloudflare;
@@ -104,6 +105,12 @@ public static class HostServices
         // refuses every request rather than permitting one: see UnavailableMailAssessor for why a
         // permissive default is the one option that is genuinely unsafe.
         services.AddSingleton<HttpClient>();
+
+        // The one place the assessment secrets are read. Registered unconditionally and read lazily
+        // when the assessor is built, so nothing here touches the environment while the container is
+        // being populated.
+        services.AddSingleton<IAssessmentSecretSource, EnvironmentAssessmentSecretSource>();
+
         services.AddSingleton<IMailAssessor>(sp => BuildAssessor(sp, configuration));
 
         // The chat assessment path and its drain. Registered unconditionally and decided at
@@ -394,7 +401,7 @@ public static class HostServices
     /// <summary>The profile master key, or a startup refusal naming why it is needed.</summary>
     private static string ProfileKeyMaterial(IServiceProvider services)
     {
-        HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);
+        var profileMasterKey = services.GetRequiredService<IAssessmentSecretSource>().Read().ProfileMasterKey;
 
         if (string.IsNullOrWhiteSpace(profileMasterKey))
         {
@@ -409,7 +416,12 @@ public static class HostServices
 
     private static IChatAssessor BuildChatAssessor(IServiceProvider services)
     {
-        HostCredentials.ResolveFromEnvironment(out _, out var profileMasterKey);
+        // Read through the one source, and deliberately without applying the mail path's decision:
+        // the hosted provider's key is not half of anything here, so a deployment that selected it
+        // and set a key while leaving the master key unset must not be told it is "half-configured"
+        // for a provider the chat path never asks. What the chat path needs is exactly what it asks
+        // for below: the master key.
+        var profileMasterKey = services.GetRequiredService<IAssessmentSecretSource>().Read().ProfileMasterKey;
 
         // Degrades rather than refusing to build, so a deployment that has not configured chat can
         // still start. What stops that degrading into silence is on the other side: the intake drain
@@ -432,40 +444,118 @@ public static class HostServices
             services.GetRequiredService<IEmergencyKillSwitch>());
     }
 
+    /// <summary>
+    /// Builds the assessor for the provider this deployment selected, or the refusing one when it
+    /// has no usable credentials for that provider.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which provider, and therefore which secrets are required, is a decision made here.</b> The
+    /// provider comes from configuration (<see cref="AssessmentProviderSelection"/>, hosted Jev by
+    /// default) and the secrets come from the environment, once, through the one source that reads
+    /// them. What a pair of secret values then means is
+    /// <see cref="HostCredentials.ResolveForProvider"/>'s decision, because it is a property of the
+    /// provider and not of the host.
+    /// </para>
+    /// <para>
+    /// A build failure here is a refusal, deliberately: a deployment that silently ran without
+    /// pseudonymisation would look healthy while quietly collapsing tenant isolation, which is the
+    /// exact failure mode this codebase spent the day hunting. A <em>missing</em> configuration is
+    /// the other answer, and it is not a refusal: the host starts on the refusing assessor, and
+    /// <c>/health/ready</c> names it, so nothing about the state is mistaken for health.
+    /// </para>
+    /// </remarks>
     private static IMailAssessor BuildAssessor(IServiceProvider services, IConfiguration configuration)
     {
-        // Throws on a half-configured or too-short secret. That is deliberate: a deployment that
-        // silently ran without pseudonymisation would look healthy while quietly collapsing tenant
-        // isolation, which is the exact failure mode this codebase spent the day hunting.
-        var state = HostCredentials.ResolveFromEnvironment(out var jevApiKey, out var profileMasterKey);
+        var logger = services
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("StyloMail.Host.Assessment");
+
+        var provider = AssessmentProviderSelection.Select(configuration);
+        var secrets = services.GetRequiredService<IAssessmentSecretSource>().Read();
+
+        // Throws on a half-configured or too-short secret, where "half-configured" now depends on
+        // the provider: the hosted provider needs both secrets, and the local one holds no
+        // credential so it needs only the master key. Resolution never logs and never returns the
+        // values; the record it reads them from redacts itself if anything stringifies it.
+        var state = HostCredentials.ResolveForProvider(
+            provider,
+            secrets.JevApiKey,
+            secrets.ProfileMasterKey);
 
         if (state == CredentialState.NotConfigured)
         {
+            // The absence is announced rather than left to be inferred from refusals later. It names
+            // the one secret this deployment is missing, which is the master key under either
+            // provider, so the operator has one thing to fix and not a pair to guess between.
+            logger.LogWarning(
+                "STYLOMAIL ASSESSMENT NOT CONFIGURED: provider {Provider} is selected but {MasterKey} "
+                + "is not set, so no assessor was built and every assessment will refuse. "
+                + "/health/ready reports {Check}.",
+                provider,
+                HostCredentials.ProfileKeyEnvironmentVariable,
+                ReadinessProbe.AssessorUnavailable);
+
             return new UnavailableMailAssessor();
+        }
+
+        if (provider == AssessmentProvider.Nimble && !string.IsNullOrWhiteSpace(secrets.JevApiKey))
+        {
+            // Not a refusal: a deployment may carry a provider key it is not using, and refusing to
+            // start over a secret nothing reads would hand the deployment's availability to someone
+            // else's configuration. Saying it out loud is what stops it passing for a key that is
+            // doing work, which would be the worse reading of the same state.
+            logger.LogWarning(
+                "StyloMail assessment: {Provider} is selected and {JevKey} is set, but the local "
+                + "provider holds no credential and does not use it. Message content goes to the "
+                + "local endpoint, not to the hosted provider.",
+                provider,
+                JevOptions.ApiKeyEnvironmentVariable);
         }
 
         var options = new MailAssessorOptions
         {
-            ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(profileMasterKey!)),
+            ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(secrets.ProfileMasterKey!)),
         };
 
-        var jevOptions = BuildJevOptions(
-            configuration,
-            jevApiKey!,
-            services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Jev"));
-
         var clock = services.GetRequiredService<TimeProvider>();
+        var http = services.GetRequiredService<HttpClient>();
 
-        // Wrapped so a rejected credential reaches readiness, which is the thing an operator watches.
-        // The wrapper changes nothing a caller sees: it rethrows unchanged. See
-        // CredentialAwareSemanticClassifier for why the exception stays loud.
-        var classifier = new CredentialAwareSemanticClassifier(
-            new JevSemanticMailClassifier(
-                services.GetRequiredService<HttpClient>(),
-                jevOptions,
+        // One arm per provider, and a refusal for anything else rather than a fallback arm. An
+        // operator cannot reach the refusal: Select validates the value before this point, so the
+        // only way here is a provider added to the enum without a composition for it, and the
+        // entry points resolve the assessor at startup, which is where it would surface. Falling back
+        // to one of the arms instead would assess a deployment's mail with a provider nobody chose.
+        ISemanticMailClassifier classifier = provider switch
+        {
+            AssessmentProvider.Nimble => new NimbleSemanticMailClassifier(
+                http,
+                BuildNimbleOptions(
+                    configuration,
+                    services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Nimble")),
                 clock),
-            services.GetRequiredService<ProviderCredentialHealth>(),
-            clock);
+
+            // Wrapped so a rejected credential reaches readiness, which is the thing an operator
+            // watches. The wrapper changes nothing a caller sees: it rethrows unchanged. See
+            // CredentialAwareSemanticClassifier for why the exception stays loud. The local provider
+            // needs no wrapper: it holds no credential, so there is no rejection to report, and its
+            // outage already reaches a caller as Unavailable evidence.
+            AssessmentProvider.Jev => new CredentialAwareSemanticClassifier(
+                new JevSemanticMailClassifier(
+                    http,
+                    BuildJevOptions(
+                        configuration,
+                        secrets.JevApiKey!,
+                        services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Jev")),
+                    clock),
+                services.GetRequiredService<ProviderCredentialHealth>(),
+                clock),
+
+            _ => throw new InvalidOperationException(
+                $"No composition is defined for assessment provider '{provider}', so the host cannot "
+                + "assess mail with it. Add its composition to BuildAssessor rather than letting it "
+                + "fall back to a provider the operator did not select."),
+        };
 
         return AssessmentPipeline.Create(
             services.GetRequiredService<IMimeMessageAnalyzer>(),
@@ -541,6 +631,74 @@ public static class HostServices
             Model = string.IsNullOrWhiteSpace(model) ? defaults.Model : model,
         };
     }
+
+    /// <summary>
+    /// Builds the local decision model's options, binding the endpoint and model from configuration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An endpoint that leaves this machine is announced, and it is the setting that matters
+    /// most for this provider.</b> Staying local is the property the local model was selected for, so
+    /// an endpoint elsewhere gives that up silently: the mail would be assessed, the decisions would
+    /// look right, and content would be leaving the host. As with the hosted provider's endpoint,
+    /// pointing it elsewhere is a decision an operator is entitled to make and the <em>silence</em>
+    /// about it is what would be wrong.
+    /// </para>
+    /// <para>
+    /// The defaults are the ones <see cref="NimbleOptions"/> carries, and they are measurements
+    /// rather than preferences, including 11435 rather than Ollama's own 11434. The reasoning is on
+    /// <see cref="NimbleOptions.Endpoint"/> and is worth reading before changing either.
+    /// </para>
+    /// <para>
+    /// Public for the same reason <see cref="BuildJevOptions"/> is: a composition decision a test
+    /// should be able to assert on directly rather than by inferring it from a request that was or
+    /// was not made.
+    /// </para>
+    /// </remarks>
+    public static NimbleOptions BuildNimbleOptions(IConfiguration configuration, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        var defaults = new NimbleOptions();
+        var endpoint = configuration["StyloMail:Nimble:Endpoint"];
+        var model = configuration["StyloMail:Nimble:Model"];
+
+        var options = new NimbleOptions
+        {
+            Endpoint = string.IsNullOrWhiteSpace(endpoint) ? defaults.Endpoint : endpoint,
+            Model = string.IsNullOrWhiteSpace(model) ? defaults.Model : model,
+        };
+
+        // Both values, on every boot, so which model answered is a fact in the log rather than a
+        // property of a deployment someone has to remember. The local reference cannot be pinned to
+        // a resolved version (Ollama reports none), so the name in use is the only identity there is.
+        logger.LogInformation(
+            "StyloMail assessment provider: Nimble at {Endpoint} with model {Model}.",
+            options.Endpoint,
+            options.Model);
+
+        if (!IsLoopback(options.Endpoint))
+        {
+            logger.LogWarning(
+                "STYLOMAIL NIMBLE ENDPOINT IS NOT LOOPBACK: message content is being sent to {Endpoint} "
+                + "rather than to this machine. This provider is selected for the property that "
+                + "message content does not leave the host, and this endpoint gives that up; confirm "
+                + "it is intended.",
+                options.Endpoint);
+        }
+
+        return options;
+    }
+
+    /// <summary>Whether an endpoint stays on this machine.</summary>
+    /// <remarks>
+    /// Answered from the parsed URI rather than from a string prefix, so <c>localhost</c>, a loopback
+    /// address and the IPv6 loopback are all recognised as local, and an unparseable endpoint is
+    /// treated as not local: the warning it earns is the right one to be wrong about.
+    /// </remarks>
+    private static bool IsLoopback(string endpoint)
+        => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.IsLoopback;
 
     /// <summary>
     /// Creates every schema the host relies on, in the one database file they share.

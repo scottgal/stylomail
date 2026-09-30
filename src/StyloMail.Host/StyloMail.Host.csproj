@@ -25,6 +25,13 @@
          way round: the transport has no idea it is being hosted, and its ingress sink port is
          deliberately an injected dependency rather than a queue it can reach. -->
     <ProjectReference Include="..\StyloMail.Transport\StyloMail.Transport.csproj" />
+
+    <!-- Referenced so the host can compose the local decision model as a second semantic provider.
+         Same direction as the transport above: the adapter has no idea it is being hosted, and
+         which provider a deployment uses is a decision only the composition root is placed to
+         make. It carries no credential, which is why its selection changes what the host requires
+         to start. -->
+    <ProjectReference Include="..\StyloMail.Nimble\StyloMail.Nimble.csproj" />
   </ItemGroup>
 
 </Project>

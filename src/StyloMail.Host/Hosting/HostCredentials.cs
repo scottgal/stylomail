@@ -145,10 +145,79 @@ public static class HostCredentials
                 "Assessment is half-configured; refusing to start rather than running with one secret.");
         }
 
-        // Length is checked here as well as inside ProfileKeyHasher so the failure names the
-        // environment variable the operator has to fix, rather than surfacing as a constructor
-        // argument error from three layers down.
-        var keyBytes = Encoding.UTF8.GetByteCount(profileMasterKey!);
+        return EnsureMasterKeyUsable(profileMasterKey!);
+    }
+
+    /// <summary>
+    /// Decides what a pair of secret values means for a deployment assessing with
+    /// <paramref name="provider"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which secrets are required is a property of the provider, not of the host.</b> The hosted
+    /// provider is credentialed and has no way to assess without its key, so under it a lone
+    /// profile master key is the half-configured case and refuses. The local model runs on this
+    /// machine and holds no credential at all, so under it the same pair of values is a complete
+    /// deployment: requiring the key it never reads would make the local provider impossible to
+    /// configure, and the operator's only repair would be to acquire a credential for a provider
+    /// they are not using.
+    /// </para>
+    /// <para>
+    /// <b>The profile master key is required either way, and for a reason that has nothing to do
+    /// with any provider.</b> Every stored profile key is a pseudonym, so a deployment without the
+    /// master key would key profiles on an author's platform identifier directly. No provider
+    /// choice makes that acceptable.
+    /// </para>
+    /// <para>
+    /// A provider key that is present but unused is not an error. It is inert under the local
+    /// provider, and the composition root says so out loud rather than leaving an operator to
+    /// assume it is doing something.
+    /// </para>
+    /// <para>
+    /// <see cref="AssessmentProvider.Jev"/> delegates to <see cref="Resolve"/> rather than
+    /// restating its rules here, so the hosted path keeps exactly the behaviour its tests already
+    /// pin and the two cannot drift.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// Under the hosted provider, one secret is present and the other is not; under either, the
+    /// master key is too short to be worth anything.
+    /// </exception>
+    public static CredentialState ResolveForProvider(
+        AssessmentProvider provider,
+        string? jevApiKey,
+        string? profileMasterKey)
+    {
+        if (provider == AssessmentProvider.Jev)
+        {
+            return Resolve(jevApiKey, profileMasterKey);
+        }
+
+        // Absent rather than half-configured: with no local credential to pair it with, a missing
+        // master key is the whole deployment unconfigured, not one half of a pair. The host starts
+        // on the refusing assessor, which /health/ready reports as assessor_unavailable, so the
+        // state is visible as not-ready rather than passing for healthy.
+        if (string.IsNullOrWhiteSpace(profileMasterKey))
+        {
+            return CredentialState.NotConfigured;
+        }
+
+        return EnsureMasterKeyUsable(profileMasterKey);
+    }
+
+    /// <summary>
+    /// Refuses a master key too short to be worth anything, or returns
+    /// <see cref="CredentialState.Configured"/>.
+    /// </summary>
+    /// <remarks>
+    /// Length is checked here as well as inside <c>ProfileKeyHasher</c> so the failure names the
+    /// environment variable the operator has to fix, rather than surfacing as a constructor
+    /// argument error from three layers down. Shared by both resolutions so the reason a key is
+    /// refused cannot differ between providers.
+    /// </remarks>
+    private static CredentialState EnsureMasterKeyUsable(string profileMasterKey)
+    {
+        var keyBytes = Encoding.UTF8.GetByteCount(profileMasterKey);
         if (keyBytes < MinimalMasterKeyBytes)
         {
             // Deliberately reports the length and not the value.
