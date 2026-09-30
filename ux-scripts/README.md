@@ -17,6 +17,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-quarantine-smoke.sh # ... and a message policy quarantined, then released
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
+./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
 ```
 
 The Nimble and quarantine runs are the only two that need something installed: a local Ollama on 11435
@@ -306,6 +307,12 @@ prints `success=…, N actions, M failed` with the failed actions named, and ret
 the run passed; all six runners end with it. The process status is still honoured, and a missing
 `result.json` is a failure rather than an absence of one, because that is a run that never got far
 enough to have a verdict. Read the file, never the exit code.
+
+`./ux-scripts/check-runner-gate.sh` checks that gate rather than believing it: non-zero on the real
+failing artifact kept at `.styloagent/scratch/desktop/quarantine-failed-result.json` (the failing run
+that started all this), non-zero on a missing file, zero on a passing result. It needs no Host and no
+build, and it refuses to report ok if it could not check all three shapes, because a check that
+silently skips a shape is the same defect in a smaller place.
 
 ## Nothing works without a Host
 

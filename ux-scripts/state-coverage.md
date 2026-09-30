@@ -127,6 +127,27 @@ Two consequences worth carrying, because they decide how much of the table above
 - **Two probes at once must not share a scratch directory**, since the wipe at the start of one deletes
   the other's Host state. Run shapes in sequence, or give a concurrent one its own `CONSOLE_RUN`.
 
+**The risk index in this table is measured on both sides of decision 31, and it does not move.**
+`overview-` (info, 1 Oct) recorded that `CompositeRiskScorer.Compute` now applies decision 31's
+one-sided rule: a `semantic.conversational_continuity` row that is available but does **not** confirm
+(value at or below the port's 0.5 mid-point) contributes nothing rather than a counted zero. Any risk
+index quoted from a run where a conversation window was supplied has to say which side of that change
+it came from, so this lane re-measured rather than reasoning about it, on a wiped Host and on the
+current tree (the change is uncommitted in the working tree; `console_build_all` builds what is on
+disk, so the probe below ran against it):
+
+    riskIndex 0.8219178082191781, action Quarantine, reasons [policy.risk_above_quarantine, evidence.masked_dimensions]
+    semantic.conversational_continuity: availability NotApplicable, value null
+
+Identical to the value measured 2026-09-30 before the change, to the last digit. The reason is the one
+`overview-` gave and this confirms on the route: nothing supplies a conversation context on the
+submissions path, so the row is **NotApplicable** and the new rule (which fires only on an *available*
+non-confirming row) cannot reach this score at all. So the 0.8219 in row 3 and the 0.822 pinned in
+`console-quarantine-smoke.yaml` stand on both measurements, and this lane has no index measured with a
+window supplied. Artifacts, cited from the repository rather than from `/tmp`:
+`.styloagent/scratch/desktop/quarantine-fixture-decision-post-decision-31.json` and the submission,
+listing and probe log beside it.
+
 **The runners reported a failing run as a pass, and that is the same defect one level up.** Found
 2026-10-01 by the first run in this lane's history to fail: the quarantine run's first draft failed its
 twenty-sixth action, printed `Result: FAIL`, wrote `"success": false` to `result.json`, and
