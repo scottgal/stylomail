@@ -1,0 +1,52 @@
+From: "Barclays Secure Messaging" <alerts@barclays-secure-verify.top>
+Reply-To: remittance@mail-relay-verify.top
+To: alice@example.test
+Subject: Action required: payee sort code change and outstanding invoice 8841
+Date: Tue, 22 Sep 2026 12:00:00 +0000
+Message-ID: <quarantine-threshold@barclays-secure-verify.top>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUND"
+
+--BOUND
+Content-Type: text/plain; charset="utf-8"
+
+Dear customer,
+
+This is the Barclays Fraud and Security Team. Your account is at risk and your
+standing order payment of GBP 2,480.00 has been held pending verification.
+
+We have changed the payee for this payment. The new sort code is 04-00-75 and
+the new account number is 44172903. Send the outstanding balance to that account
+today: the previous account number no longer accepts payments.
+
+To release the payment you must confirm your online banking password, your
+Memorable Word, your full 16 digit card number with the expiry date and the CVV,
+and your date of birth and national insurance number.
+
+The signed remittance advice for invoice 8841 is attached to this message, and
+the account statement is attached as a PDF.
+
+You have been selected for a loyalty refund of GBP 150.00 once the payment is
+confirmed.
+
+Do not discuss this notice with anyone at your branch and do not tell your
+account manager: this notification is confidential and internal.
+
+Verify the payment within 12 hours or the account will be permanently suspended
+and the remaining balance will be frozen.
+
+Confirm here: http://198.51.100.9/barclays/verify
+--BOUND
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p>Dear customer, we detected an unauthorised change to a payee on your account.
+<strong>Confirm within 12 hours</strong> or the account will be suspended.</p>
+<p>We have changed the payee for your standing order. New sort code
+<strong>04-00-75</strong>, new account number <strong>44172903</strong>.</p>
+<p>Signed remittance advice attached: invoice 8841, GBP 2,480.00.</p>
+<p>Provide your password, Memorable Word, full card number and your national
+insurance number to release the payment. Keep this confidential.</p>
+<p><a href="http://198.51.100.9/barclays/verify">https://www.barclays.co.uk/secure-messaging</a></p>
+</body></html>
+--BOUND--

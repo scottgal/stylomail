@@ -43,6 +43,29 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/console-harness.sh"
 
 trap 'console_stop_host' EXIT INT TERM
 
+# The scratch is wiped first, and this is not tidiness.
+#
+# Found 2026-09-30 by reading a probe run's own output: the Host's database lives
+# under $CONSOLE_RUN/data, and without this the run reused the database a previous
+# run left behind. The symptom is the worst possible one for an instrument. A
+# default-shape (Jev, unreachable provider) run listed a held message and a
+# 0.575 Hold decision scored by nimble:latest, neither of which that shape can
+# produce, because both were still in the database from a Nimble-shape run
+# sixteen minutes earlier. Read without noticing, that is a measurement saying
+# "a Host that cannot assess nonetheless populated the queue", which is the exact
+# claim this probe exists to settle.
+#
+# So the rule: a reading is only a reading if the Host that produced it started
+# empty. This wipes before the keys are generated and before the Host is started,
+# which is also why the artifacts above can still be re-read afterwards: they are
+# written by this run, after the wipe.
+#
+# A consequence worth knowing: two probes running at once must not share this
+# directory, since each would delete the other's Host state. Run shapes in
+# sequence, or give a concurrent one its own CONSOLE_RUN.
+rm -rf "$CONSOLE_RUN"
+mkdir -p "$CONSOLE_RUN"
+
 # One message, the same shape console_seed_decision uses: a display name that
 # disagrees with its From address, an anchor whose text disagrees with its href,
 # and a link host that is not the host it names. If a plant is ever added to the
@@ -128,13 +151,21 @@ echo "=================================================================="
 console_build_all || exit 1
 console_start_host || exit 1
 
-PROBE_KEY="$(cat "$CONSOLE_RUN/data/principal.key")"
+# The run's key file has to exist before any shape is worth measuring, and the
+# headers below are built from it. console_auth_headers reads the key itself and
+# takes no key argument, deliberately: a parameter is a value the caller has to
+# hold, and this probe should hold none.
+if [[ ! -r "$CONSOLE_RUN/data/principal.key" ]]; then
+    echo "No principal key at $CONSOLE_RUN/data/principal.key, so this Host was" >&2
+    echo "not started by console_start_host and nothing here can authenticate." >&2
+    exit 1
+fi
 
 # The key goes to disk once, at 0600 before it holds anything, and curl reads it
 # back with -H @file: an argument list is readable by anything that can run ps,
 # and no secret belongs in one. console_stop_host, which the trap above already
 # calls on the way out, removes the file.
-PROBE_AUTH_HEADERS="$(console_auth_headers "$PROBE_KEY")"
+PROBE_AUTH_HEADERS="$(console_auth_headers)"
 
 CONSOLE_PROBE_TIMEOUT="${CONSOLE_PROBE_TIMEOUT:-60}"
 if [[ "${CONSOLE_PROVIDER:-jev}" == "nimble" && "${CONSOLE_ASSESSOR:-true}" == "true" ]]; then

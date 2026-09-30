@@ -26,7 +26,7 @@ unreachable columns.
 | --- | --- | --- | --- |
 | 1 | **An item awaiting attention** (the middle pane is not empty) | **Yes**, on screen since 2026-09-30 | Nimble Host plus traffic policy holds, asserted by `run-console-nimble-smoke.sh`. A message that policy *allows* cannot populate this pane at all, by design: the listing enumerates what needs attention, not what was accepted (see "Normal delivery is not enumerable"). |
 | 2 | **A held item** | **Yes**, on screen since 2026-09-30 | The same message, `state: Held`, listed under both `awaiting_decision` and `held`, each asserted separately in that script rather than assumed to follow from the other. |
-| 3 | **A quarantined item that can be released** | **Reachable and measured on the route 2026-09-30; not yet on the screen** | Risk at or above `QuarantineThreshold` (0.80). One message carrying nine firing **weighted** semantic dimensions scored **0.9315** and came back `Quarantined` under `policy.risk_above_quarantine`; the lever is `payment_redirection`, fired by an explicitly **changed** payment destination (a new sort code and account number) rather than by "pay to the account below". A quarantine carries `reEvaluateBy: null`, so unlike a Hold's five-second window it has none. What this lane still owes is the console assertion, not the route: a `run-console-quarantine-smoke.sh` listing the row, opening it and pressing release. The history hypothesis this row used to carry is measured false; see "Quarantine needs weighted dimensions" below. |
+| 3 | **A quarantined item that can be released** | **Reachable and measured on the route 2026-09-30; not yet on the screen** | Risk at or above `QuarantineThreshold` (0.80). This lane's own fixture, `tests/StyloMail.Desktop.Tests/fixtures/quarantine-threshold-payment-change.eml`, measured on a wiped Host on the Nimble shape: 202 `Accepted`, recipient `Quarantined`, action `Quarantine`, `reEvaluateBy: null`, decision risk **0.8219178082191781** under `policy.risk_above_quarantine`, `?state=quarantined` **1 row** and `?state=held` 0, then `POST /v1/quarantine/{queueId}/release` **200 `{released: true, releasedBy: harness}`**. The lever is `payment_redirection`, fired by an explicitly **changed** payment destination (a new sort code and a new account number) rather than by "pay to the account below", plus the other weighted dimensions the message fires; `corpus-` independently reached 0.9315 with a nine-dimension ladder. The fixture is **threshold-targeted by construction** and must never be quoted as a detection rate. What this lane still owes is the console assertion, not the route: a `run-console-quarantine-smoke.sh` listing the row, opening it and pressing release. The history hypothesis this row used to carry is measured false; see "Quarantine needs weighted dimensions" below. |
 | 4 | **A message that joins to its decision** | **Yes**, asserted 2026-09-30 | `run-console-nimble-smoke.sh` submits `nimble-held-message.eml`, refuses to drive the console unless the route held it, and opens the decision from the row. The join itself was never the gap: `GET /v1/decisions?messageId=` has been implemented and wired since `ecb86e1`, and a Nimble-backed Host lists a held message carrying the decision's `internalMessageId`. The script asserts the pane is empty before the button is pressed, so what it establishes is the join rather than a pane that was filled another way. |
 | 5 | **A sender with history** | Not yet | Repeated traffic from one principal. The listing carries per-sender rows already (`console_seed_management` seeds one); "history" is about what the batch leaves behind. |
 | 6 | **A feed carrying real traffic** | Not yet asserted | The Hub is mapped in the main smoke and its notices are real either way. What no run has shown is a notice caused by traffic the *corpus* injected rather than by the harness's own seeding. |
@@ -108,6 +108,25 @@ the message that reaches 0.9315 was written while looking at the model's earlier
 to **populate** the state and must never be quoted as a detection rate. Their manifest labels
 threshold-targeted fixtures as such.
 
+**A reading is only a reading on an empty Host, and this probe was not checking.** Found 2026-09-30
+while verifying something else. The Host's database lives under `$CONSOLE_RUN/data`, and the probe
+never wiped its scratch, so a run reused the database the previous run left behind. A default-shape
+(Jev, provider unreachable) run listed a held message and a 0.575 `Hold` decision scored by
+`nimble:latest`, neither of which that shape can produce, both left in that database sixteen minutes
+earlier by a Nimble-shape run. Read without noticing, that is a measurement saying "a Host that cannot
+assess nonetheless populated the queue", which is the exact claim the table above exists to settle.
+The probe now wipes `$CONSOLE_RUN` before the keys are generated, and the rows below were re-measured
+on wiped scratch wherever they were re-measured.
+
+Two consequences worth carrying, because they decide how much of the table above to trust:
+
+- **Contamination can only make a queue look fuller, never emptier.** A stale database adds rows. So
+  every "the listing was empty" reading in the table is safe from this defect, and every "the listing
+  held N rows" reading needed re-measuring: the Nimble held row and the quarantine row have both been
+  re-measured on a wiped Host and both reproduce.
+- **Two probes at once must not share a scratch directory**, since the wipe at the start of one deletes
+  the other's Host state. Run shapes in sequence, or give a concurrent one its own `CONSOLE_RUN`.
+
 ## What this lane owes next, in order
 
 1. ~~A smoke assertion for the message-to-decision join (state 4)~~ **Done** 2026-09-30:
@@ -116,7 +135,10 @@ threshold-targeted fixtures as such.
    than the generator's: the route is measured end to end, so what is missing is a fixture that fires
    enough weighted semantic dimensions to cross 0.80, and a smoke that lists the quarantined row, opens
    it and presses release. Owed a runner of its own, because the main smoke's Host cannot produce the
-   traffic on any switch it has.
+   traffic on any switch it has. **The fixture half is done:** `quarantine-threshold-payment-change.eml`
+   measures 0.8219178082191781 and the release answers 200 `{released: true}`. The runner is next, and
+   it must assert the release's *visible* effect (the quarantined count dropping) because a released
+   row is `Queued` and appears in no listing.
 3. An assertion for the trend-window qualifier (state 7). The response carries the rows and the screen
    does not, and the reason is now known rather than assumed: evidence renders under the reasons that
    cite it, so this needs a decision in which a reason cites a windowed signal, which needs
