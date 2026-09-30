@@ -26,7 +26,7 @@ unreachable columns.
 | 1 | **An item awaiting attention** (the middle pane is not empty) | **Yes**, measured | Nimble Host plus traffic policy holds. A message that policy *allows* cannot populate this pane at all, by design: the listing enumerates what needs attention, not what was accepted (see "Normal delivery is not enumerable"). |
 | 2 | **A held item** | **Yes**, measured | The same message, `state: Held`, listed under both `awaiting_decision` and `held`. |
 | 3 | **A quarantined item that can be released** | **Not yet reached**, and no route gap observed | Risk at or above `QuarantineThreshold` (0.80). Three single messages scored 0.48, 0.55 and 0.58, so no single message tested comes close. Hypothesis for `corpus-`: the dimensions that raise the index (`behavioural.*`, `campaign.near_duplicate`) need **history**, so a batch from one repeated sender is what will cross 0.80; a single message cannot. |
-| 4 | **A message that joins to its decision** | **Very likely**, not yet asserted on screen | Nothing is missing at the data layer: the held item's `internalMessageId` is the one on the decision, and the join route is `GET /v1/decisions?messageId=`. What is missing is a smoke assertion, which is this lane's to write now that a listed message exists. |
+| 4 | **A message that joins to its decision** | **Very likely**, not yet asserted on screen | The join itself is **not** the gap: `GET /v1/decisions?messageId=` is implemented and wired (`ecb86e1`), which is why this row is about a run rather than a route. What a run could not do is start one, because the queue listings stayed empty. A Nimble-backed Host lists a held message whose `internalMessageId` is the one on the decision, so the run now has a row to start from and what is missing is the assertion. |
 | 5 | **A sender with history** | Not yet | Repeated traffic from one principal. The listing carries per-sender rows already (`console_seed_management` seeds one); "history" is about what the batch leaves behind. |
 | 6 | **A feed carrying real traffic** | Not yet asserted | The Hub is mapped in the main smoke and its notices are real either way. What no run has shown is a notice caused by traffic the *corpus* injected rather than by the harness's own seeding. |
 | 7 | **Two evidence rows that differ only by trend window** | **Yes, in a live response**, measured | The Nimble Host's decision detail carries `behavioural.trend.velocity` and `behavioural.trend.acceleration` with `window: "burst"` and `window: "slow"`, over two scopes. They are `Unavailable` with `sampleSupport: 0` until there is history, but the rows are distinct and present, which is what the console's rendering needs. This closes a limitation `README.md` has carried since `008f90d`. |
@@ -63,6 +63,15 @@ listing empty because `GET /v1/messages` enumerates only `awaiting_decision`, `h
 remarks, `ListingEndpoints`). So "the queue is populated" must mean "an item is awaiting attention",
 and benign-allowed traffic will never produce it. A generator that emits mostly ordinary mail and
 expects a full pane will read a correct system as a broken one.
+
+**Failing SPF/DKIM/DMARC is not a lever on the disposition.** Measured 2026-09-30 by submitting the
+same message four times on one Nimble Host, varying only the authentication block: the risk index was
+identical every time, `0.4794520547945206` (35/73), and so was the dimension list, all twelve of them
+semantic. What the block does change is a signal's *coverage*: `deterministic.trusted_authentication_failure`
+reads `NotApplicable` with no results, `ReducedCoverage` when they arrive without a trusted verifier,
+and `Available` when they are marked `fromTrustedVerifier`. No risk dimension consumes that signal, so
+it never reaches the score. A generator should not expect auth results to push an item towards `Held`
+or `Quarantine`, and a message that looks malformed on that axis is not a weakness in the traffic.
 
 **Quarantine needs history, not vehemence.** Making a single message more obviously malicious did not
 raise its score: the attachment and payment sample (0.548) scored *lower* than the simpler phishing

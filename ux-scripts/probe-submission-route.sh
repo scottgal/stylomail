@@ -27,8 +27,10 @@
 # decide what the right answer was before measuring it, which is the mistake this
 # script exists to avoid.
 #
-# The key is read from the harness's generated principal file into a variable and
-# used in a header. It is never printed, and neither is any response header.
+# The key is read from the harness's generated principal file into a variable,
+# written once to a 0600 header file and handed to curl as -H @file, so it is
+# not in any argument list. It is never printed, and neither is any response
+# header. The file is removed by console_stop_host on the way out.
 
 set -uo pipefail
 
@@ -52,6 +54,16 @@ trap 'console_stop_host' EXIT INT TERM
 # this one message do" but "what does it take for the queue to hold something":
 # the outcome depends on the traffic, so measuring it means being able to vary
 # the traffic without editing the instrument.
+#
+# What CONSOLE_PROBE_AUTH=fail does NOT do is make the message riskier, and the
+# name invites the opposite belief. Measured 2026-09-30: the risk index is
+# identical (35/73) whether the authentication results are absent, present and
+# untrusted, or present and marked fromTrustedVerifier. What they change is the
+# coverage of deterministic.trusted_authentication_failure, which reads
+# NotApplicable, ReducedCoverage or Available respectively, and no risk
+# dimension consumes that signal. So the switch is a way to vary the evidence,
+# not a lever on the disposition, and a run that expects it to reach Held has
+# the wrong model of this Host.
 console_probe_message() {
     if [[ -n "${CONSOLE_PROBE_MIME:-}" ]]; then
         cp "$CONSOLE_PROBE_MIME" "$CONSOLE_RUN/probe.eml"
@@ -101,7 +113,7 @@ console_probe_get() {
     local code
     code="$(curl -sS -o "$CONSOLE_RUN/$name.json" -w '%{http_code}' \
         --max-time "${CONSOLE_PROBE_TIMEOUT:-60}" \
-        -H "X-StyloMail-Key: $PROBE_KEY" "$CONSOLE_BASE$path" 2>"$CONSOLE_RUN/$name.err")"
+        -H @"$PROBE_AUTH_HEADERS" "$CONSOLE_BASE$path" 2>"$CONSOLE_RUN/$name.err")"
 
     echo "GET $path -> HTTP $code"
     cat "$CONSOLE_RUN/$name.json" 2>/dev/null
@@ -117,6 +129,13 @@ console_build_all || exit 1
 console_start_host || exit 1
 
 PROBE_KEY="$(cat "$CONSOLE_RUN/data/principal.key")"
+
+# The key goes to disk once, at 0600 before it holds anything, and curl reads it
+# back with -H @file: an argument list is readable by anything that can run ps,
+# and no secret belongs in one. console_stop_host, which the trap above already
+# calls on the way out, removes the file.
+PROBE_AUTH_HEADERS="$(console_auth_headers "$PROBE_KEY")"
+
 CONSOLE_PROBE_TIMEOUT="${CONSOLE_PROBE_TIMEOUT:-60}"
 if [[ "${CONSOLE_PROVIDER:-jev}" == "nimble" && "${CONSOLE_ASSESSOR:-true}" == "true" ]]; then
     # A local model answers in seconds rather than milliseconds, and the
@@ -131,15 +150,19 @@ console_probe_message
 # The idempotency key is required by the route, and per-run rather than fixed:
 # a replay returns the earlier submission instead of assessing again, which would
 # turn a second measurement into a read of the first one's answer.
+# The POST's own response file is named for the POST. The read of the submission
+# it returns is a different body from a different route, and naming both
+# "submission" meant the later write silently replaced this one, which is how a
+# measurement of the POST comes to be read off the GET.
 echo "POST /v1/submissions --"
-submission_code="$(curl -sS -o "$CONSOLE_RUN/submission.json" -w '%{http_code}' \
+submission_code="$(curl -sS -o "$CONSOLE_RUN/submission-post.json" -w '%{http_code}' \
     --max-time "$CONSOLE_PROBE_TIMEOUT" \
-    -H "X-StyloMail-Key: $PROBE_KEY" \
+    -H @"$PROBE_AUTH_HEADERS" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: probe-$$" \
-    --data @"$CONSOLE_RUN/probe.json" "$CONSOLE_BASE/v1/submissions" 2>"$CONSOLE_RUN/submission.err")"
+    --data @"$CONSOLE_RUN/probe.json" "$CONSOLE_BASE/v1/submissions" 2>"$CONSOLE_RUN/submission-post.err")"
 echo "POST /v1/submissions -> HTTP $submission_code"
-cat "$CONSOLE_RUN/submission.json" 2>/dev/null
+cat "$CONSOLE_RUN/submission-post.json" 2>/dev/null
 echo
 
 console_probe_get messages /v1/messages
@@ -169,7 +192,7 @@ console_probe_decision_detail "$decision_id"
 # is the read that says whether anything is held. Read with python rather than
 # sed: the response is one line and a greedy match would take the last id on it,
 # which is the assessment's, not the queue's.
-submission_id="$(python3 - "$CONSOLE_RUN/submission.json" <<'PYEOF'
+submission_id="$(python3 - "$CONSOLE_RUN/submission-post.json" <<'PYEOF'
 import json, sys
 try:
     body = json.load(open(sys.argv[1]))
@@ -179,7 +202,7 @@ print(body.get("queueId") or body.get("submissionId") or "")
 PYEOF
 )"
 if [[ -n "$submission_id" ]]; then
-    console_probe_get submission "/v1/submissions/$submission_id"
+    console_probe_get submission-get "/v1/submissions/$submission_id"
 fi
 
 # The state the console's release surface needs. Reached only if something is
@@ -211,7 +234,7 @@ if [[ -n "$quarantine_id" ]]; then
     echo "POST /v1/quarantine/{id}/release --"
     release_code="$(curl -sS -o "$CONSOLE_RUN/release.json" -w '%{http_code}' \
         --max-time "$CONSOLE_PROBE_TIMEOUT" \
-        -H "X-StyloMail-Key: $PROBE_KEY" \
+        -H @"$PROBE_AUTH_HEADERS" \
         -H "Content-Type: application/json" \
         --data '{"reason":"probe"}' "$CONSOLE_BASE/v1/quarantine/$quarantine_id/release" \
         2>"$CONSOLE_RUN/release.err")"
@@ -222,4 +245,4 @@ else
     echo "no quarantined row in the message listing, so the release route has nothing to act on"
 fi
 
-echo "artifacts: $CONSOLE_RUN/{ready,submission,messages,messages-held,messages-quarantined,decisions}.json"
+echo "artifacts: $CONSOLE_RUN/{ready,submission-post,submission-get,decision-*,messages,messages-held,messages-quarantined,decisions}.json"

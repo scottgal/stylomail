@@ -104,6 +104,19 @@ what needs attention and not what was delivered: an empty queue on that shape is
 Equally, a held item is not a quarantined one, and `QuarantineThreshold` is 0.80 where the messages
 tried here scored 0.48 to 0.58. The state-by-state account is `ux-scripts/state-coverage.md`.
 
+## Seeding real traffic, when there is a corpus
+
+`corpus-` owns the traffic and `tools/corpus/`; this harness consumes a batch through the Host's
+routes and never parses a CSV itself, so the boundary between the two is one command rather than a
+shared file format. `CONSOLE_CORPUS=/path/to/batch` turns seeding on, shaped like `CONSOLE_TRAFFIC`
+and off by default because a fresh clone has no corpus, and a run that seeded nothing while looking
+as though it had would read as coverage. The command is the interface pinned with `corpus-`: `seed
+--base-url <url> --key-file <path> --batch <dir>`, with the key read from a path rather than passed
+as an argument, which is why what the harness hands over is its own `principal.key` file. The CLI
+path defaults to `tools/corpus/corpus.py` and `CONSOLE_CORPUS_CLI` overrides it, so corpus-'s choice
+of entry point does not need an edit here. No committed script calls it yet: which script seeds a
+batch and what it then asserts is the next step, and it waits on that CLI existing.
+
 ## Modes
 
 ```bash

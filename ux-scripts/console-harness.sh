@@ -305,6 +305,35 @@ console_start_host() {
     return 1
 }
 
+# Writes the principal key where curl can read it, and prints the path.
+#
+# The key must not be a curl argument. An argument list is readable by anything
+# on the machine that can run ps, for as long as the call lives, and the rule
+# this harness works under is that no secret is interpolated into a visible
+# command. So the header goes in a file and curl reads it back with -H @file.
+#
+# The order is the part that is easy to get wrong. Redirecting into a file that
+# already exists keeps that file's mode, so an earlier run's 0644 would still be
+# 0644 while the key was written into it. This truncates first, chmods while the
+# file is empty, and only then writes, so there is no instant in which the file
+# holds the key and is readable by anyone else. The umask is belt as well as
+# braces: it is what makes the window shut even if the chmod were removed.
+#
+# The caller passes the path it wants back. It lives in the run's scratch
+# directory, and console_stop_host removes it, so a run does not leave a
+# credential-bearing file behind. It is never echoed, and never named in an
+# error: the reader of a .err file should see a status code.
+console_auth_headers() {
+    local key="$1"
+    local file="${2:-$CONSOLE_RUN/auth.headers}"
+
+    : > "$file"
+    chmod 600 "$file"
+    ( umask 077; printf 'X-StyloMail-Key: %s\n' "$key" > "$file" )
+
+    printf '%s\n' "$file"
+}
+
 # Gives the throwaway Host something to group.
 #
 # A fresh Host has one principal and no companies, so the sidebar would show a
@@ -312,13 +341,14 @@ console_start_host() {
 # assertion. Seeded through the API rather than by writing the database, so
 # what the console reads is what the routes produce.
 console_seed_management() {
-    local key base
+    local key base headers
     key="$(cat "$CONSOLE_RUN/data/principal.key")"
     base="$CONSOLE_BASE"
+    headers="$(console_auth_headers "$key")"
 
     local company
     company=$(curl -fsS -X POST \
-        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        -H @"$headers" -H "Content-Type: application/json" \
         --data '{"name":"Acme","notes":"seeded by the console harness"}' \
         "$base/v1/companies" | sed -n 's/.*"companyId":"\([^"]*\)".*/\1/p')
 
@@ -328,7 +358,7 @@ console_seed_management() {
     fi
 
     curl -fsS -X PUT \
-        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        -H @"$headers" -H "Content-Type: application/json" \
         --data "{\"label\":\"Acme outbound\",\"companyId\":\"$company\",\"notes\":\"seeded\"}" \
         "$base/v1/senders/harness/settings" >/dev/null
 
@@ -349,6 +379,8 @@ console_seed_management() {
 console_seed_decision() {
     local key="$1"
     local base="$2"
+    local headers
+    headers="$(console_auth_headers "$key")"
 
     printf 'From: "Accounts" <security@exampple.test>\r\nTo: alice@example.test\r\nSubject: Urgent: verify your account\r\nDate: Tue, 22 Sep 2026 10:00:00 +0000\r\nMessage-ID: <harness-%s@exampple.test>\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset="utf-8"\r\n\r\n<html><body><p>Verify your account within 24 hours.</p><p><a href="http://198.51.100.9/v">https://accounts.example.test/login</a></p></body></html>\r\n' "$$" > "$CONSOLE_RUN/seed.eml"
 
@@ -367,7 +399,7 @@ print(json.dumps({
 PYEOF
 
     curl -fsS -X POST \
-        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        -H @"$headers" -H "Content-Type: application/json" \
         --data @"$CONSOLE_RUN/seed.json" "$base/v1/assessments" \
         > "$CONSOLE_RUN/decision.json" 2>"$CONSOLE_RUN/seed.err" || {
         echo "Could not seed a decision; the pane will show its empty state." >&2
@@ -389,6 +421,56 @@ PYEOF
     export STYLOMAIL_SMOKE_DECISION_ID="$id"
 }
 
+# Seeds a corpus batch through the Host, when there is a batch to seed.
+#
+# corpus- owns the traffic and tools/corpus/; this harness consumes a batch
+# through the Host's routes and never parses a CSV itself. So the boundary is
+# one command rather than a shared file format, and the switch is shaped like
+# CONSOLE_TRAFFIC: off by default, because a fresh clone has no corpus, and a
+# run that seeded nothing while looking as though it had would read as coverage.
+#
+#   CONSOLE_CORPUS=/path/to/batch   seed this batch before driving the client
+#
+# The interface is the one pinned with corpus-: `seed --base-url <url>
+# --key-file <path> --batch <dir>`, the key read from a path rather than passed
+# as an argument, which is why what this hands over is the harness's own
+# principal.key file and never the value. The default CLI path names the entry
+# point this harness expects; corpus- owns the real one, and CONSOLE_CORPUS_CLI
+# overrides it without an edit here. A batch that cannot be seeded stops the run
+# rather than quietly producing a script that asserts about an empty queue.
+console_seed_corpus() {
+    if [[ -z "${CONSOLE_CORPUS:-}" ]]; then
+        return 0
+    fi
+
+    local cli="${CONSOLE_CORPUS_CLI:-$CONSOLE_REPO/tools/corpus/corpus.py}"
+
+    if [[ ! -f "$cli" ]]; then
+        echo "CONSOLE_CORPUS is set but there is no corpus CLI at $cli." >&2
+        echo "Set CONSOLE_CORPUS_CLI to it, or unset CONSOLE_CORPUS." >&2
+        return 1
+    fi
+
+    if [[ ! -d "$CONSOLE_CORPUS" ]]; then
+        echo "CONSOLE_CORPUS=$CONSOLE_CORPUS is not a directory." >&2
+        return 1
+    fi
+
+    # Run it, or run it through python, rather than requiring either: the corpus
+    # is another agent's tool and its shebang is not this file's business.
+    local runner=("$cli")
+    if [[ ! -x "$cli" ]]; then
+        runner=(python3 "$cli")
+    fi
+
+    "${runner[@]}" seed \
+        --base-url "$CONSOLE_BASE" \
+        --key-file "$CONSOLE_RUN/data/principal.key" \
+        --batch "$CONSOLE_CORPUS" || return 1
+
+    echo "seeded the corpus batch at $CONSOLE_CORPUS"
+}
+
 # Kills only the Host this script started, by the pid it recorded.
 #
 # Deliberately not a pattern kill. `pkill -f StyloMail.Host` would take down
@@ -400,6 +482,12 @@ console_stop_host() {
         kill "$CONSOLE_HOST_PID" 2>/dev/null || true
         wait "$CONSOLE_HOST_PID" 2>/dev/null || true
     fi
+
+    # The header file holds the principal key, so it goes with the Host. Every
+    # runner already traps its way here on success, failure and interrupt, which
+    # is why the removal lives here rather than in each runner's cleanup: one
+    # place that cannot be forgotten when a fourth script is added.
+    rm -f "${CONSOLE_RUN:-}/auth.headers" 2>/dev/null || true
 }
 
 # Points the console at the harness Host. STYLOMAIL_HOST and
