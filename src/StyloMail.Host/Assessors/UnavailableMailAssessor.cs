@@ -3,18 +3,28 @@ using StyloMail.Core;
 namespace StyloMail.Host.Assessors;
 
 /// <summary>
-/// The assessor that stands in when none is configured. It refuses every request.
+/// The assessor that stands in when the host cannot build a real one. It refuses every request.
 /// </summary>
 /// <remarks>
-/// Nothing in the repository implements <see cref="IMailAssessor"/> yet, the composition of
-/// MIME evidence, semantic classification, profile comparison and policy is a separate piece of
-/// work. Until it exists the host must be able to run, be tested, and report honestly that it
-/// cannot assess.
+/// <para>
+/// <b>This is the composition's answer to an unconfigured host, not a placeholder for a missing
+/// implementation.</b> <see cref="Assessment.MailAssessor"/> is the assessor a configured host runs;
+/// <c>HostServices.BuildAssessor</c> returns this type instead, and only, when the credential
+/// resolution comes back <c>CredentialState.NotConfigured</c>. An earlier version of this comment
+/// said nothing in the repository implemented <see cref="IMailAssessor"/> yet, which stopped being
+/// true when the pipeline landed.
+/// </para>
 ///
 /// <para>
 /// A permissive default was the alternative and it is the one option that is genuinely dangerous:
 /// an unexamined message reported as "Allow" is worse than a visible outage, because everything
 /// downstream treats an assessment as having happened.
+/// </para>
+///
+/// <para>
+/// Throwing rather than returning a verdict is what makes the refusal visible: the caller cannot
+/// mistake an unassessed message for an assessed one, and the exception's message is a sentence an
+/// operator can act on.
 /// </para>
 /// </remarks>
 public sealed class UnavailableMailAssessor : IMailAssessor
