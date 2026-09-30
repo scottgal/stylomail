@@ -32,6 +32,12 @@ CONSOLE_BASE="http://127.0.0.1:${CONSOLE_PORT}"
 # agree with it or the check would pass while the Host failed.
 CONSOLE_NIMBLE_TAGS="${CONSOLE_NIMBLE_TAGS:-http://127.0.0.1:11435/api/tags}"
 
+# And where it is asked to generate, which is the same server's other route. Two
+# constants rather than one derived from the other, because they are two facts
+# about a deployment that a misconfiguration can hold apart, and the local-model
+# check below only means anything when they agree with the Host.
+CONSOLE_NIMBLE_GENERATE="${CONSOLE_NIMBLE_GENERATE:-http://127.0.0.1:11435/api/generate}"
+
 export DOTNET_ROOT="${DOTNET_ROOT:-/usr/local/share/dotnet}"
 export PATH="/usr/local/share/dotnet:$PATH"
 
@@ -260,16 +266,42 @@ console_start_host() {
             # key, and a key nothing reads earns a warning on every boot that
             # would train a reader to ignore the one that matters.
             unset TYPESAFE_API_KEY
+
+            # Which address the local provider is asked at. Defaulted to the
+            # local model, and overridable so that "the provider is selected and
+            # cannot answer" is a shape this harness can start rather than one
+            # it can only be told about.
+            #
+            # The shape matters because two lanes measured different answers to
+            # it and neither could start the other's: `ingress-` measured a
+            # Nimble host whose model was down accepting a submission (202) with
+            # the decision coming back Defer, and this lane measured 503 deferred
+            # with the Jev provider pointed at an address nothing answers on. So
+            # the provider is the variable, not the outage, and it has to be
+            # varied on the route rather than argued about.
+            #
+            # It is a URL rather than a boolean named for one failure, because
+            # "the model is down" is not one thing: an endpoint that refuses
+            # connections is a HttpRequestException and the provider treats it as
+            # transient, while a model the server does not hold is a 404 that
+            # raises NimbleContractException (NimbleSemanticMailClassifier.cs:387)
+            # and is a contract failure rather than an outage. A switch called
+            # CONSOLE_MODEL_DOWN would silently pick one of those.
+            export StyloMail__Nimble__Endpoint="${CONSOLE_NIMBLE_ENDPOINT:-$CONSOLE_NIMBLE_GENERATE}"
         else
             export TYPESAFE_API_KEY="not-a-real-key-harness-only"
 
             # Pointed at an address that cannot answer, so the failure is a
             # degraded assessment rather than a rejection.
             export StyloMail__Jev__Endpoint="http://127.0.0.1:9/v1/systemone"
+
+            # Neither shape is the other's: a Jev Host with a Nimble endpoint
+            # left in its environment is a deployment nobody wrote down.
+            unset StyloMail__Nimble__Endpoint
         fi
     else
         unset TYPESAFE_API_KEY STYLOMAIL_PROFILE_KEY StyloMail__Assessment__Provider
-        unset StyloMail__Jev__Endpoint
+        unset StyloMail__Jev__Endpoint StyloMail__Nimble__Endpoint
     fi
 
     export ASPNETCORE_URLS="$CONSOLE_BASE"
@@ -279,8 +311,19 @@ console_start_host() {
     # stopped Ollama produces a Host that declines every message for a reason
     # nothing on the console's screen names: the run would go red on assertions
     # about a queue, and the cause would be one process that was never started.
+    # Skipped when the endpoint was overridden away from the local model, and
+    # that exception is the point of the override rather than a hole in the
+    # check: asking a Host pointed at another address whether the local model is
+    # up answers a question about a server it was never going to call. The check
+    # stays for every run that means a working local assessor, which is all of
+    # them but this shape.
     if [[ "${CONSOLE_ASSESSOR:-true}" == "true" && "$CONSOLE_PROVIDER" == "nimble" ]]; then
-        console_require_local_model || return 1
+        if [[ "$StyloMail__Nimble__Endpoint" == "$CONSOLE_NIMBLE_GENERATE" ]]; then
+            console_require_local_model || return 1
+        else
+            echo "note: the local provider is pointed at $StyloMail__Nimble__Endpoint rather than the" >&2
+            echo "local model, so the model check is skipped by request (CONSOLE_NIMBLE_ENDPOINT)." >&2
+        fi
     fi
 
     # The live feed, on by default here so the main smoke exercises the Hub and

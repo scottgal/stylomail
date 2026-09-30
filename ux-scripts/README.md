@@ -118,6 +118,15 @@ switches, and refuses to start unless something is answering on 11435 with a `ni
 a switch that looks on and measures nothing would be worse than one that fails, and 11435 rather than
 Ollama's default 11434 is `NimbleOptions`' decision, so the check has to agree with it.
 
+`CONSOLE_NIMBLE_ENDPOINT` overrides that address, which is how the shape "the provider is selected
+and cannot answer" is started: point it at a port nothing is listening on and the Nimble provider is
+composed exactly as ever, with no model behind it. `CONSOLE_NIMBLE_GENERATE` is the same address under
+the name the provider actually reads; the override wins when both are set. Overriding away from the
+local model also skips the model check above, deliberately and with a line saying so, because the
+check exists to stop a run measuring nothing by accident and this is a run measuring nothing on
+purpose. The address is printed by `probe-submission-route.sh` under `nimble endpoint:` so a reading
+says which shape produced it.
+
 This is the only shape on which a run fills the queue, and what it fills is narrower than it sounds.
 Measured 2026-09-30 with `probe-submission-route.sh`: the default Host (a Jev endpoint that cannot
 answer) refuses the submission with `503 deferred` and queues nothing, while a Nimble Host accepts it

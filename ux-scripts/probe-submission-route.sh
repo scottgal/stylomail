@@ -17,6 +17,8 @@
 #   ./ux-scripts/probe-submission-route.sh                          # jev, endpoint unreachable
 #   CONSOLE_ASSESSOR=false ./ux-scripts/probe-submission-route.sh   # no assessor at all
 #   CONSOLE_PROVIDER=nimble ./ux-scripts/probe-submission-route.sh  # a real local assessor
+#   CONSOLE_PROVIDER=nimble CONSOLE_NIMBLE_ENDPOINT=http://127.0.0.1:9/api/generate \
+#       ./ux-scripts/probe-submission-route.sh                      # the provider selected, answering nothing
 #
 # What it prints, for each: readiness, the submission's HTTP status and body, the
 # message listing and the decision ledger, and the quarantine release route when
@@ -145,6 +147,16 @@ console_probe_get() {
 
 echo "=================================================================="
 echo "shape: CONSOLE_ASSESSOR=${CONSOLE_ASSESSOR:-true} CONSOLE_PROVIDER=${CONSOLE_PROVIDER:-jev}"
+
+# The address the provider is asked at, when the provider is the local one.
+# Printed because it is the variable this probe is most often asked to vary: two
+# lanes measured different answers to "the provider is selected and cannot
+# answer" on two different providers, and the address is what says which shape a
+# reading came from. It is an address, never a credential.
+if [[ "${CONSOLE_PROVIDER:-jev}" == "nimble" ]]; then
+    echo "nimble endpoint: ${CONSOLE_NIMBLE_ENDPOINT:-$CONSOLE_NIMBLE_GENERATE}"
+fi
+
 echo "scratch: $CONSOLE_RUN"
 echo "=================================================================="
 

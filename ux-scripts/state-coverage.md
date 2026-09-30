@@ -46,6 +46,7 @@ anyone reading a status code:
 | --- | --- | --- | --- | --- |
 | no assessor (`CONSOLE_ASSESSOR=false`) | `503` `assessor_unavailable` | `503` `assessor_unavailable` | empty | empty |
 | Jev, endpoint unreachable (the harness default) | `200` ready | `503` `deferred`, "retry when the provider is reachable" | empty | one decision, action `Defer`, 12 masked dimensions |
+| Nimble selected, endpoint unreachable (new 2026-10-01) | `200` ready | `503` `deferred`, same body | empty | one decision, action `Defer`, 12 masked dimensions, `classifierModelVersion: null` |
 | Nimble, ordinary sample | `200` ready | `202` accepted, recipient `Queued`, action `Allow`, risk 0.479 | empty | one decision, `Allow`, `nimble:latest` |
 | Nimble, phishing sample with failing SPF/DKIM | `200` ready | `202` accepted, recipient `Held`, action `Hold`, risk 0.575 | **one item**, under `awaiting_decision` and `held` | one decision, `Hold`, deterministic and semantic signals |
 | Nimble, attachment and payment-pressure sample | `200` ready | `202` accepted, `Queued`, `Allow`, risk 0.548 | empty | one decision, `Allow` |
@@ -58,14 +59,38 @@ cannot reach its provider it refuses with `Defer` (`503`, a retryable refusal, a
 queued). So an empty queue on those shapes is correct behaviour for a correct reason, and spec 14.5's
 reading is right: the fix is a harness with a working provider, which `CONSOLE_PROVIDER=nimble` now is.
 
-**Open, and owed a probe run: whether "provider selected, model down" refuses.** `ingress-` measured a
-Nimble host whose model was down accepting the submission (`202`) with the *decision* coming back
-`Defer`, which is a different answer from the `503 deferred` above and would put deferred rows in the
-queue rather than leave it empty. The shapes differ: theirs had the provider selected with its model
-down, this row's Jev provider points at an endpoint that cannot answer at all. The harness has no
-switch for theirs, so the two have not been reconciled, and the difference decides whether "the queue
-is empty" or "the queue holds deferred rows" is the correct reading of a Host that cannot assess. It is
-this lane's to settle, with `probe-submission-route.sh` once that shape is startable.
+**Resolved 2026-10-01: the provider is not the variable. An assessor that can produce no semantic
+evidence refuses, whichever provider is composed.** The shape was made startable rather than argued
+about: `console-harness.sh` now takes `CONSOLE_NIMBLE_ENDPOINT`, defaulting to the local model, and a
+run that points it elsewhere skips the local-model check on purpose (a Host pointed at another address
+was never going to call the local one). Measured on a wiped Host with `CONSOLE_PROVIDER=nimble` and
+`CONSOLE_NIMBLE_ENDPOINT=http://127.0.0.1:9/api/generate`, so the provider is selected and its endpoint
+answers nothing:
+
+    GET  /health/ready        -> 200 {"status":"ready"}
+    POST /v1/submissions      -> 503 {"error":"deferred",
+                                     "detail":"Semantic evidence was entirely unavailable, so no
+                                     assessment of this message could be made. Responsibility is
+                                     declined rather than assumed; retry when the provider is reachable."}
+    GET  /v1/messages         -> 0 rows, and 0 under both ?state=held and ?state=quarantined
+    GET  /v1/decisions        -> one decision, action Defer, reasons assessment.semantic_unavailable,
+                                 policy.insufficient_coverage_to_allow (0% coverage) and
+                                 evidence.masked_dimensions (12), classifierModelVersion null
+
+That is the same answer as the Jev row, body for body, which is the point: the two shapes this lane
+could measure were never two shapes. What differs between an accepted submission and a refused one is
+whether the assessor could produce semantic evidence at all, not which provider it asked. So the
+reading in the paragraph above stands on both providers, and "an empty queue on a Host that cannot
+assess" is correct on both.
+
+It does **not** reproduce `ingress-`'s 202-with-a-`Defer`-decision, and that is now a question for
+their lane rather than an open row here: I have the switch, they have the observation, and the
+difference is worth settling because a `Defer` decision on an accepted message would put deferred rows
+in the queue. Asked directly, with this exact reproduction. Two candidates worth their checking, since
+both would produce it and neither is reachable from this switch: a *partial* semantic failure (some
+dimensions answered before the provider died, so evidence is not entirely unavailable and the
+corroboration gate defers rather than refuses), and a different Host commit. Artifact:
+`.styloagent/scratch/desktop/probe-nimble-selected-endpoint-unreachable.log`.
 
 **The assessment route cannot carry a planted deterministic fact.** `POST /v1/assessments` hands the
 pipeline `PayloadReferences.Ephemeral` (`AssessmentsEndpoints.cs:64`, `PayloadReferences.cs:51`), so the
@@ -178,9 +203,11 @@ both were found by reading the instrument rather than the result.
    `run-console-feed-recovery-smoke.sh` and `console-feed-recovery-smoke.yaml`, 10 actions, pass, with
    the re-read asserted through a change made while the console was blind rather than through the
    headline. The longer outage, past SignalR's ~42 second retry budget, is now item 7 below.
-5. The "provider selected, model down" shape: make it startable in the harness, then one
-   `probe-submission-route.sh` run settles whether the route refuses it or accepts it with a `Defer`
-   decision (see "What was measured").
+5. ~~The "provider selected, model down" shape~~ **Done** 2026-10-01: `CONSOLE_NIMBLE_ENDPOINT` makes
+   it startable and one `probe-submission-route.sh` run settled it. The route refuses, with the same
+   `503 deferred` body the Jev shape returns, so the provider is not the variable. It does not
+   reproduce `ingress-`'s 202-with-a-`Defer`-decision, and that disagreement is a question put to
+   them rather than a gap left in this lane (see "What was measured").
 6. The traffic hub's absent consumer, which `overview-` placed on this lane: the console must work with
    the Hub absent and say so rather than look quiet, and must not read "the Hub is not there" as
    "nothing is happening". Behind the conversation graph.
