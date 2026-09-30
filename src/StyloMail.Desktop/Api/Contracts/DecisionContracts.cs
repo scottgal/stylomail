@@ -103,6 +103,9 @@ public sealed record RiskDimensionResponse
 /// There is no <c>Attributes</c> member because the Host deliberately does not
 /// project one: it is the field most likely to carry content-derived detail,
 /// and this view is served to any principal holding the review privilege.
+/// <see cref="Window"/> is the one named exception, projected on its own
+/// because it is structural rather than content-derived and because two trend
+/// rows cannot be told apart without it.
 /// </remarks>
 public sealed record EvidenceResponse
 {
@@ -132,6 +135,27 @@ public sealed record EvidenceResponse
     public required DateTimeOffset ObservedAt { get; init; }
 
     public string? ObservedScope { get; init; }
+
+    /// <summary>
+    /// Which of the producer's trend windows this row came from, or null when the signal is not
+    /// windowed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The third part of a signal's identity here. The behavioural evaluator emits one row per trend
+    /// window, so two rows can agree on <see cref="SignalId"/> and <see cref="ObservedScope"/> and
+    /// differ only here: the producer's two windows are "burst" and "slow". Keying on the pair alone
+    /// collapses two facts into one.
+    /// </para>
+    /// <para>
+    /// <b>Null is a fact, not a gap.</b> Most rows are not windowed at all: every semantic row, every
+    /// drift row. The pane renders it as absent rather than as an unknown a retry might resolve, and
+    /// it is deliberately not to be confused with <see cref="Availability"/>, which is a separate
+    /// required field answering whether the value could be produced at all. A row can be
+    /// <c>NotApplicable</c> with a perfectly good window, and windowed with no value.
+    /// </para>
+    /// </remarks>
+    public string? Window { get; init; }
 }
 
 /// <summary>Which versions produced this decision. The ledger entry is meaningless without them.</summary>

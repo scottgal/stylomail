@@ -281,6 +281,15 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- Which slice of the signal a row describes. Quieter than the origin beside
+         it: it qualifies the row rather than identifying it. -->
+    <Style Selector="TextBlock.signalScope">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontFamily" Value="SF Mono,Menlo,Consolas,monospace" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <!-- A caveat, not an error: warmer than the body text, quieter than a warning. -->
     <Style Selector="TextBlock.cardWarningText">
         <Setter Property="FontSize" Value="11" />

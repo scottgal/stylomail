@@ -171,6 +171,36 @@ actions:
     target: "text='Semantic evidence was entirely unavailable, so no assessment of this message could be made. Responsibility is declined rather than assumed; retry when the provider is reachable.'"
     matcher: IsVisible
 
+  # The evidence rows under it, in the shape the decision-contract change made
+  # them: the signal id, its origin, and a qualifier that is absent here.
+  #
+  # Every row in this decision is a semantic one, which the producer does not
+  # partition by trend window, so the qualifier renders as nothing at all rather
+  # than as the word "unknown". That absence is the assertion worth making, and
+  # it is exactly the claim the window field's contract warns about: most rows
+  # in a real response are unwindowed, and a pane that labelled them unknown
+  # would be reporting a loss on the majority of them.
+  #
+  # What this CANNOT assert is the case the qualifier exists for: two trend rows
+  # that agree on signal id and scope and differ only by window. Reaching that
+  # needs behavioural evidence, which needs an assessor, which this Host does not
+  # have (see the README). It is covered by DecisionViewTests instead.
+  - type: Expect
+    target: "text=semantic.credential_request"
+    matcher: IsVisible
+
+  # The row's value column, exact. "not produced" is the evidence row's own
+  # phrasing and is not the same as the dimension's "not measured (unavailable)",
+  # so this cannot be satisfied by the Dimensions section below it.
+  #
+  # The origin column beside the signal id has no exact text unique to it, so it
+  # is covered by looking at 02-decision-pane.png rather than by a selector. Said
+  # rather than implied: a selector that could pass on either column would be
+  # cover in appearance only.
+  - type: Expect
+    target: "text='not produced'"
+    matcher: IsVisible
+
   # Delivery timing is PreAcceptance here, so the post-delivery caveat must NOT
   # appear. A caveat shown on every decision is one nobody reads, and this is
   # the assertion that it is conditional rather than decorative.

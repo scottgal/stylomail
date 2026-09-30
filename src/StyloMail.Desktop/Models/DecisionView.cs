@@ -306,6 +306,41 @@ public sealed class EvidenceView
     /// </remarks>
     public string? ObservedScope { get; init; }
 
+    /// <summary>
+    /// The producer's trend window for this row, or null when the signal is not
+    /// windowed.
+    /// </summary>
+    /// <remarks>
+    /// The third part of a signal's identity, beside <see cref="SignalId"/> and
+    /// <see cref="ObservedScope"/>: two rows agreeing on both of those are told
+    /// apart by this and by nothing else. Kept raw as well as composed into
+    /// <see cref="ScopeLabel"/> so the identity stays expressible without
+    /// parsing the label back apart.
+    /// </remarks>
+    public string? Window { get; init; }
+
+    /// <summary>
+    /// Which slice of what this signal describes, as one muted qualifier on the
+    /// row: the scope where the Host gave one, and the producer's trend window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The label that makes two rows renderable as two rows. A signal id is not
+    /// unique within an assessment: the behavioural evaluator emits one row per
+    /// trend window, so two rows can agree on the id, on the origin and on the
+    /// value label and differ only here. Without this the pane drew them
+    /// identically and an operator could not tell a burst from a slow trend.
+    /// </para>
+    /// <para>
+    /// <b>Null when neither applies, and null is a fact rather than a gap.</b>
+    /// Every semantic row and every drift row is legitimately unwindowed, which
+    /// is most of the list, so the row renders nothing here instead of the word
+    /// "unknown". A qualifier claiming a gap where there is none is the same
+    /// mistake as rendering an unavailable dimension as zero.
+    /// </para>
+    /// </remarks>
+    public string? ScopeLabel { get; init; }
+
     public required string ValueLabel { get; init; }
 
     public required string ConfidenceLabel { get; init; }
@@ -332,6 +367,8 @@ public sealed class EvidenceView
         SampleSupport = evidence.SampleSupport,
         SourceVersion = evidence.SourceVersion,
         ObservedScope = evidence.ObservedScope,
+        Window = evidence.Window,
+        ScopeLabel = Qualifier(evidence.ObservedScope, evidence.Window),
         ValueLabel = evidence.Availability is EvidenceAvailability.Available
             or EvidenceAvailability.ReducedCoverage
             ? evidence.Value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "no value"
@@ -341,6 +378,32 @@ public sealed class EvidenceView
             : "not reported",
         ConfidenceReported = evidence.Confidence is not null,
     };
+
+    /// <summary>
+    /// Composes the row's scope qualifier, or null when there is nothing to say.
+    /// </summary>
+    /// <remarks>
+    /// The two parts are joined rather than split into columns because they
+    /// answer one question, which slice of the signal this row is, and a reader
+    /// takes them in together. Blank counts as absent: a whitespace window is
+    /// the Host having nothing to say, not a window named " ".
+    /// </remarks>
+    private static string? Qualifier(string? scope, string? window)
+    {
+        var parts = new List<string>(2);
+
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            parts.Add(scope);
+        }
+
+        if (!string.IsNullOrWhiteSpace(window))
+        {
+            parts.Add(window);
+        }
+
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
 }
 
 /// <summary>One coverage flag that was true, which qualifies every number above it.</summary>

@@ -535,10 +535,26 @@
                                                             <TextBlock Grid.Column="0"
                                                                        Classes="signalId"
                                                                        Text="{Binding SignalId}" />
-                                                            <TextBlock Grid.Column="1"
-                                                                       Classes="cardBody"
-                                                                       Margin="10,0"
-                                                                       Text="{Binding OriginLabel}" />
+
+                                                            <!-- What this row is a slice OF. A signal
+                                                                 id is not unique in one assessment: the
+                                                                 behavioural evaluator emits one row per
+                                                                 trend window, so without this the pane
+                                                                 draws a burst and a slow trend identically.
+                                                                 Absent when there is nothing to qualify,
+                                                                 which is most rows, rather than saying
+                                                                 "unknown". -->
+                                                            <StackPanel Grid.Column="1"
+                                                                        Orientation="Horizontal"
+                                                                        Margin="10,0">
+                                                                <TextBlock Classes="cardBody"
+                                                                           Text="{Binding OriginLabel}" />
+                                                                <TextBlock Classes="signalScope"
+                                                                           Margin="8,0,0,0"
+                                                                           IsVisible="{Binding ScopeLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                           Text="{Binding ScopeLabel}" />
+                                                            </StackPanel>
+
                                                             <TextBlock Grid.Column="2"
                                                                        Classes="signalValue"
                                                                        Text="{Binding ValueLabel}" />

@@ -265,6 +265,119 @@ public sealed class DecisionViewTests
         Assert.Equal(["sender", "recipient"], view.Reasons[0].Evidence.Select(e => e.ObservedScope));
     }
 
+    /// <summary>
+    /// Two rows that agree on the signal id AND the scope are still told apart,
+    /// by the trend window the producer ran them for.
+    /// </summary>
+    /// <remarks>
+    /// <b>The case that reached the console as two identical lines.</b> The
+    /// behavioural evaluator emits one velocity row per trend window, so a real
+    /// response carries <c>behavioural.trend.velocity</c> twice at the same
+    /// scope with <c>window</c> "burst" and "slow". The pane kept both rows
+    /// (dropping one would be the console editing the Host's answer) and drew
+    /// them identically, which is a different way of losing the distinction the
+    /// operator needs: a burst and a slow trend are different findings.
+    ///
+    /// <para>
+    /// The label is asserted rather than the property, because the label is what
+    /// is rendered. A qualifier that exists on the model and is bound to nothing
+    /// is how this gap survived the first fix.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Two_trend_rows_are_told_apart_by_their_window()
+    {
+        var decision = Decision() with
+        {
+            Evidence =
+            [
+                Trend(window: "burst", value: 0.4),
+                Trend(window: "slow", value: 0.9),
+            ],
+            Reasons =
+            [
+                new ReasonResponse
+                {
+                    Code = "behaviour.velocity",
+                    Message = "Velocity moved.",
+                    EvidenceSignalIds = ["behavioural.trend.velocity"],
+                },
+            ],
+        };
+
+        var rows = DecisionView.From(decision).Reasons[0].Evidence;
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(
+            ["OutboundSender · burst", "OutboundSender · slow"],
+            rows.Select(e => e.ScopeLabel));
+    }
+
+    /// <summary>
+    /// A row with no window says nothing about a window, rather than "unknown".
+    /// </summary>
+    /// <remarks>
+    /// Most rows in a real response are not windowed: every semantic row and
+    /// every drift row. Reporting them as an unknown window would tell an
+    /// operator that something was lost on 20 rows out of 24, while the truth is
+    /// that the producer does not partition those signals at all. On the same
+    /// terms as an unavailable dimension rendering "not measured" rather than
+    /// 0.0, absence is a fact and is rendered as one.
+    /// </remarks>
+    [Fact]
+    public void An_unwindowed_row_carries_no_qualifier()
+    {
+        var decision = Decision() with
+        {
+            Evidence =
+            [
+                new EvidenceResponse
+                {
+                    SignalId = "semantic.conversational_continuity",
+                    Origin = EvidenceOrigin.Semantic,
+                    Availability = EvidenceAvailability.NotApplicable,
+                    SourceVersion = "jev/1",
+                    ObservedAt = DateTimeOffset.UnixEpoch,
+                },
+            ],
+        };
+
+        var row = Assert.Single(DecisionView.From(decision).Evidence);
+
+        Assert.Null(row.ScopeLabel);
+        Assert.Null(row.Window);
+    }
+
+    /// <summary>
+    /// A window with no scope still qualifies the row, which is what makes the
+    /// two parts one label rather than two independent ones.
+    /// </summary>
+    [Fact]
+    public void A_window_without_a_scope_still_qualifies_the_row()
+    {
+        var decision = Decision() with
+        {
+            Evidence = [Trend(window: "burst", value: 0.4) with { ObservedScope = null }],
+        };
+
+        var row = Assert.Single(DecisionView.From(decision).Evidence);
+
+        Assert.Equal("burst", row.ScopeLabel);
+    }
+
+    /// <summary>One behavioural trend row, at the scope a real response uses.</summary>
+    private static EvidenceResponse Trend(string window, double value) => new()
+    {
+        SignalId = "behavioural.trend.velocity",
+        Origin = EvidenceOrigin.Behavioural,
+        Availability = EvidenceAvailability.Available,
+        Value = value,
+        SourceVersion = "adaptive/1",
+        ObservedAt = DateTimeOffset.UnixEpoch,
+        ObservedScope = "OutboundSender",
+        Window = window,
+    };
+
     // ===================== delivery timing =====================
 
     /// <summary>

@@ -158,6 +158,13 @@ the fastest way to make a run meaningless.
   screenshot of it exists.
 - **A message to its decision.** The ledger is listable and driven here, but the queue listings stay
   empty for the same reason, so the join from a message row to its decision has no row to start from.
+- **Two evidence rows that differ only by trend window.** The pane can now tell them apart (they agree
+  on signal id and scope, and the producer emits one row per window, "burst" and "slow"), but a run
+  cannot reach them: the harness Host has no assessor, so its decision is a declined one whose
+  evidence is entirely semantic. Behavioural evidence needs a working semantic provider. What the
+  smoke does assert is the other half of the same contract, that the qualifier is *absent* on the
+  unwindowed rows that make up most of a real response. The windowed case is covered by
+  `DecisionViewTests`.
 - **Recovery after a feed drops.** `run-console-feed-drop-smoke.sh` proves the console announces the
   drop and keeps what it had read. It does not prove the other half, that the console goes back to
   `Live` and re-reads the visible surface when the Host returns. That needs a Host that comes back on
