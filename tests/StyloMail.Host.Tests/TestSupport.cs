@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using StyloMail.Adaptive.Profiles;
+using StyloMail.Assessment;
 using StyloMail.Transport.Cloudflare;
 using StyloMail.Transport.Ingress;
 using StyloMail.Core;
@@ -14,6 +16,9 @@ using StyloMail.Host.Auth;
 using StyloMail.Host.Hosting;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
+using StyloMail.Jev;
+using StyloMail.Mime;
+using StyloMail.Persistence;
 using StyloMail.Queue;
 
 namespace StyloMail.Host.Tests;
@@ -138,6 +143,75 @@ internal sealed class TestHost : WebApplicationFactory<Program>
         _installFakeAssessor = false;
         return this;
     }
+
+    /// <summary>
+    /// Installs the real assessor, composed the way the host composes it, against a semantic provider
+    /// that cannot be reached.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The fake cannot answer questions about the shape of evidence, because it produces none.</b>
+    /// <see cref="RecordingAssessor"/> returns a verdict and models the acceptance seam; nothing in
+    /// its result is evidence. So anything a caller can read off a decision's evidence, the window a
+    /// trend row belongs to included, has to come through the real pipeline: the real
+    /// <c>AssessmentPipeline.Create</c>, the real <c>JevSemanticMailClassifier</c> behind the real
+    /// credential wrapper, the real profile reads, and the real policy context.
+    /// </para>
+    /// <para>
+    /// <b>The provider is unreachable on purpose, and loopback so the refusal is immediate.</b>
+    /// Connection refused is an <c>HttpRequestException</c>, which the adapter degrades to
+    /// <c>Unavailable</c> rather than letting it out: a thrown exception would leave no assessment to
+    /// read at all. That keeps the run offline while leaving behavioural evidence produced for real,
+    /// which is the half under test. The key below is a placeholder that is never sent anywhere, and
+    /// the refused connection is what makes that true rather than merely intended.
+    /// </para>
+    /// </remarks>
+    public TestHost WithRealAssessor()
+    {
+        _installFakeAssessor = false;
+
+        return Override(services =>
+        {
+            RemoveAll<IMailAssessor>(services);
+
+            services.AddSingleton<IMailAssessor>(sp =>
+            {
+                var clock = sp.GetRequiredService<TimeProvider>();
+
+                return AssessmentPipeline.Create(
+                    sp.GetRequiredService<IMimeMessageAnalyzer>(),
+                    new CredentialAwareSemanticClassifier(
+                        new JevSemanticMailClassifier(
+                            sp.GetRequiredService<HttpClient>(),
+                            new JevOptions
+                            {
+                                ApiKey = "a-placeholder-key-that-never-leaves-this-process",
+                                Endpoint = UnreachableProvider,
+                            },
+                            clock),
+                        sp.GetRequiredService<ProviderCredentialHealth>(),
+                        clock),
+                    sp.GetRequiredService<SqliteConnectionFactory>(),
+                    sp.GetRequiredService<SpoolStore>(),
+                    new MailAssessorOptions
+                    {
+                        // A fixture key, not a secret: it pseudonymises profile identifiers inside
+                        // this process only, and nothing here is persisted beyond the test's own root.
+                        ProfileKeyHasher = new ProfileKeyHasher(
+                            Encoding.UTF8.GetBytes("0123456789abcdef0123456789abcdef")),
+                    },
+                    sp.GetRequiredService<QueueOptions>(),
+                    policyContext: new HostPolicyContextSource(
+                        sp.GetRequiredService<IEmergencyKillSwitch>()));
+            });
+        });
+    }
+
+    /// <summary>
+    /// A loopback address nothing listens on, so a connection to it is refused at once: no DNS, no
+    /// timeout, and port 1 is not something this suite or a developer's machine serves mail from.
+    /// </summary>
+    private const string UnreachableProvider = "http://127.0.0.1:1/";
 
     /// <summary>
     /// Makes durable acceptance fail, so the "storage unavailable" path can be exercised without

@@ -98,6 +98,7 @@ public sealed record DecisionResponse
             SourceVersion = e.SourceVersion,
             ObservedAt = e.ObservedAt,
             ObservedScope = e.ObservedScope,
+            Window = WindowOf(e),
         })],
         Versions = VersionsResponse.From(assessment.Versions),
         Coverage = CoverageResponse.From(assessment.Coverage),
@@ -121,6 +122,32 @@ public sealed record DecisionResponse
         })],
         AssessedAt = assessment.AssessedAt,
     };
+
+    /// <summary>
+    /// The attribute name the behavioural producer writes a trend's window under.
+    /// </summary>
+    /// <remarks>
+    /// Written out here rather than shared with the producer, which publishes it as an attribute name
+    /// on <c>BehaviouralEvidence.Trend</c> rather than as a contract. The cost of the two drifting is
+    /// that the console shows null where a window belongs, which is why the listing test asserts the
+    /// window's actual value and not merely that the field exists.
+    /// </remarks>
+    private const string WindowAttribute = "window";
+
+    /// <summary>
+    /// Reads the trend window off a piece of evidence, or null when it carries none.
+    /// </summary>
+    /// <remarks>
+    /// First match wins, which is safe for this name and not a pattern to copy. The producer writes
+    /// one window per row, whereas <c>Attributes</c> is a list rather than a map precisely because
+    /// other names are genuinely multi-valued: several reduced-coverage reasons, several masked
+    /// dimension ids. A reader that wants one of those must not stop at the first, and must not
+    /// mistake this helper for the general case.
+    /// </remarks>
+    private static string? WindowOf(Evidence evidence)
+        => (evidence.Attributes ?? [])
+            .FirstOrDefault(attribute => string.Equals(attribute.Name, WindowAttribute, StringComparison.Ordinal))
+            ?.Value;
 }
 
 public sealed record ReasonResponse
@@ -159,9 +186,11 @@ public sealed record RiskDimensionResponse
 }
 
 /// <summary>
-/// One piece of evidence. <c>Attributes</c> is deliberately not projected: it is the field most
-/// likely to accumulate content-derived detail, and this view is served to any principal holding
-/// the review privilege.
+/// One piece of evidence. <c>Attributes</c> is deliberately not projected wholesale: it is the field
+/// most likely to accumulate content-derived detail, and this view is served to any principal holding
+/// the review privilege. <see cref="Window"/> is the one named exception, given its own field because
+/// it is structural rather than content-derived and because a client cannot tell two trend rows apart
+/// without it.
 /// </summary>
 public sealed record EvidenceResponse
 {
@@ -182,6 +211,35 @@ public sealed record EvidenceResponse
     public required DateTimeOffset ObservedAt { get; init; }
 
     public string? ObservedScope { get; init; }
+
+    /// <summary>
+    /// Which of the producer's trend windows this row came from, or null when the signal is not
+    /// windowed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Null is a fact, not a gap.</b> A signal id is not unique within one assessment: the
+    /// behavioural evaluator emits a velocity and an acceleration for each of its trend windows, so
+    /// two rows can agree on <see cref="SignalId"/> and <see cref="ObservedScope"/> and differ only
+    /// here. A client keying on that pair alone collapses them into one, which is what forced the
+    /// console to display duplicate-looking rows it could not explain. Null means the producer does
+    /// not partition this signal by window: a semantic row, or a drift row. It never means the value
+    /// was lost.
+    /// </para>
+    /// <para>
+    /// <b>Not to be confused with <see cref="Availability"/>.</b> Whether evidence could be computed
+    /// at all is that field's job, and it is always present. This one answers the narrower question
+    /// of which slice of a series the row describes, and it is legitimately null across whole
+    /// families of evidence that were computed perfectly well. A client that renders null here as
+    /// "unknown" will misreport every one of them.
+    /// </para>
+    /// <para>
+    /// Read by name rather than by widening the projection to <c>Attributes</c>, on the same terms
+    /// the record summary gives: this is a window name from the producer's own options, and a later
+    /// addition to that list must not reach a caller by default.
+    /// </para>
+    /// </remarks>
+    public string? Window { get; init; }
 }
 
 public sealed record VersionsResponse
