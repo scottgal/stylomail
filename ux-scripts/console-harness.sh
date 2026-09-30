@@ -85,6 +85,18 @@ console_start_host() {
     # and it is the only state reachable without a real provider key.
     export StyloMail__Jev__Endpoint="http://127.0.0.1:9/v1/systemone"
 
+    # The live feed, on by default here so the main smoke exercises the Hub and
+    # screenshots the console following it. It is off by default in a real
+    # deployment, which is the other state worth proving, so it is a switch
+    # rather than a constant: CONSOLE_TRAFFIC=false starts a Host with no Hub
+    # at all, and ux-scripts/run-console-no-feed-smoke.sh is what asserts the
+    # console says so rather than looking broken.
+    if [[ "${CONSOLE_TRAFFIC:-true}" == "true" ]]; then
+        export StyloMail__Traffic__Enabled=true
+    else
+        unset StyloMail__Traffic__Enabled
+    fi
+
     export StyloMail__Storage__SpoolRoot="$CONSOLE_RUN/data/spool"
     export StyloMail__Storage__DatabasePath="$CONSOLE_RUN/data/host.db"
     export StyloMail__Auth__Principals__0__PrincipalId="harness"
@@ -221,16 +233,19 @@ console_export_app_env() {
     export STYLOMAIL_HOST="$CONSOLE_BASE"
     export STYLOMAIL_SMOKE_KEY="$(cat "$CONSOLE_RUN/data/principal.key")"
 
-    # And the decision body the detail pane renders.
+    # And a decision body for the detail pane, as a fallback.
     #
-    # This is a fixture rather than something the Host produced, and that is a
-    # limitation of the deployment rather than a shortcut: producing a decision
-    # needs a semantic provider key, and a rejected key currently fails the
-    # whole assessment request rather than degrading to unavailable evidence.
-    # The harness must not hold the operator's real key, so the pane would
-    # otherwise be the one surface no script could reach.
+    # The fallback is second, not first: a script that seeds a decision with
+    # console_seed_decision exports STYLOMAIL_SMOKE_DECISION_ID, and the console
+    # prefers it, opening the decision over GET /v1/decisions/{id} because a
+    # body the Host produced exercises the client, the contract and the pane
+    # together. This file is what covers a script that wanted the pane populated
+    # without seeding one.
     #
-    # Say so when reading a screenshot from this run. It shows the pane's
-    # rendering, driven live, over a body the Host did not produce.
+    # So say which you are looking at when reading a screenshot. The main smoke
+    # seeds a decision and shows the Host's own evidence; a run that only
+    # exported this file shows the pane's rendering over a body the Host did not
+    # produce. Both are honest runs, and they are evidence about different
+    # things.
     export STYLOMAIL_SMOKE_DECISION_FILE="$CONSOLE_REPO/ux-scripts/decision-fixture.json"
 }

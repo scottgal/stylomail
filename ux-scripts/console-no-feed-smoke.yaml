@@ -1,0 +1,86 @@
+name: console-no-feed-smoke
+description: >
+  Drives the console against a Host that has not enabled its live-traffic Hub,
+  which is the default for a real deployment and the state most of them are in.
+
+  This is the other half of the feed's proof, and it is a separate script
+  rather than a branch of console-smoke.yaml because the assertion is different
+  text: with a feed the status bar says "Live", and without one it says "No
+  live feed". Those two sentences are the whole point. A deployment that offers
+  no feed is a complete deployment, not a degraded one, and a console that
+  reported it as unreachable, or that warned that its screens were stale, would
+  be sending operators to look for a problem in a Host that is answering them
+  perfectly well.
+
+  Run it through ux-scripts/run-console-no-feed-smoke.sh, not directly: that
+  script starts the Host with the Hub absent and takes it down afterwards.
+
+  Asserted here:
+    - the feed line says this deployment has no feed;
+    - the console is otherwise working, which is what "off is a complete
+      deployment" means in practice;
+    - the screen is NOT reported as possibly out of date, because nothing here
+      was ever following the Host and no screen can have fallen behind.
+
+  Not covered here, and not by an accident of scope: the state after a feed
+  that WAS live stops. That one needs a Host that is up and then is not, so it
+  has its own script, ux-scripts/run-console-feed-drop-smoke.sh, which kills the
+  Host mid-run. This script's console was never following anything, which is
+  exactly why the "may be out of date" warning must not appear on it.
+
+default_delay: 250
+
+actions:
+  # The Host is up and the console is talking to it. This is the first half of
+  # the claim: "no feed" must not be reached by failing to reach the Host.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=StatusDetailText"
+    matcher: HasText
+    value: "The Host is running and can accept mail."
+
+  # The sidebar is filled, so every other surface is working. A console that
+  # had degraded to "no feed" by breaking would fail this.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The assertion this script exists for. Exact whole text, not a substring:
+  # the stale headline ("Live updates stopped, screen may be out of date")
+  # contains neither of these words, and a substring matcher here would let the
+  # two states pass the same assertion.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "No live feed"
+    timeout: 15000
+
+  - type: Screenshot
+    value: "01-no-feed"
+    description: "A connected console on a deployment whose Hub is not enabled"
+
+  # And the destination the operator would use next still lists. The decision
+  # ledger is reachable on this Host for the same reason the main smoke relies
+  # on: a decline is still a recorded decision.
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "No live feed"
+
+  - type: Screenshot
+    value: "02-no-feed-ledger"
+    description: "A working ledger on a console with no live feed"

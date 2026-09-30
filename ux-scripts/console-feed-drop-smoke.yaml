@@ -1,0 +1,94 @@
+name: console-feed-drop-smoke
+description: >
+  Drives the console while the Host it is following goes away underneath it.
+
+  This is the state the whole feed surface exists for, and the only one of its
+  states that costs anything. A console with no feed was never following
+  anything; a console that WAS following and has stopped is showing the last
+  thing the Host said and has no way to know how much has happened since. The
+  Hub tells the client nothing about the gap, so the console's own honesty is
+  the only thing standing between an operator and a screen that looks current
+  and is not.
+
+  Run it through ux-scripts/run-console-feed-drop-smoke.sh, not directly. The
+  drop is caused by that script killing the Host, and the killing is
+  synchronised on the screenshot the first half of this script writes, so the
+  timing is a fact rather than a sleep long enough to usually work.
+
+  The two screenshots are the evidence as a pair: the same status bar before
+  and after, over the same window, with the Host removed in between. Neither
+  one alone establishes anything.
+
+  Deliberately not covered: recovery. Bringing a Host back on the same port and
+  asserting the console returns to Live and re-reads the visible surface is the
+  other half of a reconnect, and it needs the Host to come back on a fixed
+  address with its key and database intact. That is a different harness, not a
+  longer one.
+
+default_delay: 250
+
+actions:
+  # The console opens against a Host whose Hub is mapped, so this is the Live
+  # state first, asserted rather than assumed: without it, the second assertion
+  # below could pass by never having been live at all.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 20000
+
+  # And there is something on the screen to lose. Without this the second half
+  # of the script would prove only that an empty window stays empty, which is
+  # not the claim. The principal is itself a sender, so the row exists on a
+  # fresh Host without seeding anything.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The synchronisation point. run-console-feed-drop-smoke.sh waits for this
+  # file to exist and only then kills the Host, so the drop lands after the
+  # console is provably live instead of after a fixed sleep that has to be
+  # generous enough to cover a cold start.
+  - type: Screenshot
+    value: "01-feed-live"
+    description: "The console following a Host that is up"
+
+  # The connection is lost here, and the console has to say so rather than
+  # carrying on looking live. SignalR's reconnect gives up after roughly 42
+  # seconds (0, 2, 10 and 30 second attempts), so the budget covers the whole
+  # of that and then some.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 90000
+
+  - type: Screenshot
+    value: "02-feed-dropped"
+    description: "The same window after the Host it was following went away"
+
+  # And the screen still holds what it had read, rather than emptying itself.
+  # This is the difference the whole state turns on: "out of date" is a claim
+  # that the screen is showing something real but possibly old, and a console
+  # that blanked its panes when the feed stopped would make that sentence a lie
+  # in the other direction. It would be hiding the last thing it heard from a
+  # Host that was answering perfectly well, which is strictly more useful than
+  # an empty pane.
+  #
+  # Deterministic rather than lucky: the console has no poll timer and clears
+  # nothing on a dropped feed, so this row survives the drop by construction and
+  # not by winning a race.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: IsVisible

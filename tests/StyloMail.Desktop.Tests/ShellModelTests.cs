@@ -946,4 +946,91 @@ public sealed class ShellModelTests
         Assert.True(model.HasFailedChecks);
         Assert.Equal(["spool"], model.FailedChecks);
     }
+
+    /// <summary>
+    /// The status bar's feed line is notified, not merely assigned.
+    /// </summary>
+    /// <remarks>
+    /// This is the defect class the whole file exists for: a value that is
+    /// right in the model at the moment it is set, and absent from the window
+    /// because nothing announced it. The feed's state arrives from a transport
+    /// thread long after the window is up, so a missing notification here would
+    /// leave the operator looking at whatever the feed was doing when the
+    /// console started.
+    /// </remarks>
+    [Fact]
+    public void The_feed_state_is_announced_when_it_changes()
+    {
+        var model = ShellModel.CreateDefault();
+        var raised = Watch(model);
+
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.Live, screenMayBeStale: false);
+
+        Assert.Contains(nameof(ShellModel.LiveFeedHeadline), raised);
+        Assert.Contains(nameof(ShellModel.LiveFeedDetail), raised);
+        Assert.Contains(nameof(ShellModel.ScreenMayBeStale), raised);
+        Assert.Equal("Live", model.LiveFeedHeadline);
+        Assert.False(model.ScreenMayBeStale);
+    }
+
+    /// <summary>
+    /// A screen that may have fallen behind is reported as such by the model.
+    /// </summary>
+    /// <remarks>
+    /// The transition that matters is Live to Dropped, because that is the one
+    /// where the operator was watching something current and is now watching
+    /// the last thing it said.
+    /// </remarks>
+    [Fact]
+    public void A_feed_that_stops_is_reported_as_a_screen_that_may_be_stale()
+    {
+        var model = ShellModel.CreateDefault();
+        var raised = Watch(model);
+
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.Live, screenMayBeStale: false);
+        raised.Clear();
+
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.Dropped, screenMayBeStale: true);
+
+        Assert.Contains(nameof(ShellModel.ScreenMayBeStale), raised);
+        Assert.True(model.ScreenMayBeStale);
+        Assert.Contains("may be out of date", model.LiveFeedHeadline, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A deployment with no feed never claims the screen is stale.
+    /// </summary>
+    /// <remarks>
+    /// The claim has to survive the trip through the model, not only through
+    /// <see cref="LiveFeedStatus"/>: this is the state most deployments are in,
+    /// and a console that warned here would have taught its operator to ignore
+    /// the warning before it ever mattered.
+    /// </remarks>
+    [Fact]
+    public void A_deployment_with_no_feed_does_not_claim_the_screen_is_stale()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: true);
+
+        Assert.False(model.ScreenMayBeStale);
+    }
+
+    /// <summary>
+    /// A console that has not asked yet still says something.
+    /// </summary>
+    /// <remarks>
+    /// The initial value, and the one every headless render and screenshot
+    /// shows. An empty status bar would read as "no feed problem" rather than
+    /// "not asked", which is the opposite of what is true.
+    /// </remarks>
+    [Fact]
+    public void An_unstarted_feed_has_a_headline_rather_than_a_blank()
+    {
+        var model = ShellModel.CreateDefault();
+
+        Assert.False(string.IsNullOrWhiteSpace(model.LiveFeedHeadline));
+        Assert.False(string.IsNullOrWhiteSpace(model.LiveFeedDetail));
+        Assert.False(model.ScreenMayBeStale);
+    }
 }

@@ -101,6 +101,17 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!--
+        The feed line when what is on screen may be behind the Host. Amber and
+        heavier, because this is the one status-bar claim that says a screen
+        cannot be trusted, and it has to be findable at a glance rather than
+        read like the steady-state text beside it.
+    -->
+    <Style Selector="TextBlock.status.stale">
+        <Setter Property="Foreground" Value="{StaticResource ConsoleWarning}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
     <Style Selector="TextBlock.emptyTitle">
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />

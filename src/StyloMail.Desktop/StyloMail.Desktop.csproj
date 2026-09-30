@@ -53,6 +53,18 @@
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12" Condition="'$(Configuration)' == 'Debug'" />
 
     <!--
+      The client half of the Host's live-traffic Hub. The Host gets SignalR from
+      the ASP.NET Core shared framework; this project is not a web SDK project,
+      so the client is a package.
+
+      Pinned to the ASP.NET Core 10 line the Host runs on. A client from a
+      different major would negotiate a protocol the Host does not speak, and
+      the failure would surface as a feed that never connects rather than as a
+      version problem.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
+
+    <!--
       Override transitive Tmds.DBus.Protocol 0.21.2 (GHSA-xrw6-gwf8-vvr9), the
       same override mylo and MarkdownViewer carry.
     -->

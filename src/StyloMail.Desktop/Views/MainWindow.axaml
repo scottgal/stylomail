@@ -21,7 +21,7 @@
 
         <!-- ============ status bar ============ -->
         <Border DockPanel.Dock="Bottom" Classes="statusbar">
-            <Grid ColumnDefinitions="Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Ellipse Grid.Column="0"
                          Width="8" Height="8"
                          Margin="0,0,8,0"
@@ -34,8 +34,29 @@
                     <TextBlock x:Name="StatusDetailText" Classes="status" Text="{Binding StatusDetail}" />
                 </StackPanel>
 
-                <TextBlock x:Name="HostAddressText"
+                <!--
+                    Whether the screens here are following the Host or are a
+                    photograph of it. Its own column rather than folded into the
+                    connection status above, because the two answer different
+                    questions and either can be the alarming one: a console can
+                    be connected to a Host and no longer hearing from it, which
+                    is exactly the state that a single "Connected" hides.
+
+                    The detail is on the tooltip and in the model, which is
+                    where the tests read it. The headline is what has to be on
+                    screen, because "the feed stopped" is not something an
+                    operator should have to hover to discover.
+                -->
+                <TextBlock x:Name="LiveFeedText"
                            Grid.Column="2"
+                           Classes="status"
+                           Classes.stale="{Binding ScreenMayBeStale}"
+                           Margin="0,0,16,0"
+                           Text="{Binding LiveFeedHeadline}"
+                           ToolTip.Tip="{Binding LiveFeedDetail}" />
+
+                <TextBlock x:Name="HostAddressText"
+                           Grid.Column="3"
                            Classes="status"
                            Text="{Binding HostAddress}" />
             </Grid>

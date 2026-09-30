@@ -9,13 +9,40 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ## Run it
 
 ```bash
-./ux-scripts/run-console-smoke.sh
+./ux-scripts/run-console-smoke.sh            # the console against a Host with the live feed on
+./ux-scripts/run-console-no-feed-smoke.sh    # ... against a Host with no feed at all
+./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
 ```
 
-Run the script, not the YAML. `run-console-smoke.sh` sources `console-harness.sh`, which starts a
-throwaway Host on loopback with locally generated values, points the console at it, and takes it down
-again on the way out, including on failure and on interrupt. That is what lets the assertions be exact
-and the run be repeatable from any starting state.
+Run a script, not the YAML. Each sources `console-harness.sh`, which starts a throwaway Host on
+loopback with locally generated values, points the console at it, and takes it down again on the way
+out, including on failure and on interrupt. That is what lets the assertions be exact and the run be
+repeatable from any starting state.
+
+Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
+under `ux-results/`, so one run's artifacts can never be read as another's. The main smoke wipes
+`ux-results` wholesale, so running it deletes the other two scripts' screenshots: run those again
+rather than reading a stale image.
+
+## The live feed's three states
+
+The feed is one surface with three states, and they are the whole reason there are three scripts. A
+console following a Host and a console that never had anything to follow look identical in every pane
+and mean opposite things about whether what is on screen is current, so each state gets an assertion
+rather than an assumption.
+
+| State | Reached by | Script | Says |
+| --- | --- | --- | --- |
+| Following | Hub mapped (`StyloMail__Traffic__Enabled=true`) | `run-console-smoke.sh` | `Live` |
+| No feed | Hub absent, which is a real deployment's default | `run-console-no-feed-smoke.sh` | `No live feed`, and **not** stale |
+| Dropped | a feed that was Live stops | `run-console-feed-drop-smoke.sh` | `Live updates stopped, screen may be out of date`, in amber |
+
+`console-harness.sh` reads `CONSOLE_TRAFFIC` when it starts the Host: `true` (the default) maps the
+Hub, `false` starts a Host without it. The third state cannot be reached from a YAML at all, because
+the harness has no shell-out action and nothing in a script can stop a process, so
+`run-console-feed-drop-smoke.sh` kills the Host from outside. It waits for the screenshot that proves
+the console is Live before killing, rather than sleeping a fixed amount: a fixed sleep would be the
+one thing here that makes the test flaky, and flaky is the same as absent for a proof.
 
 ## Modes
 
@@ -131,6 +158,11 @@ the fastest way to make a run meaningless.
   screenshot of it exists.
 - **A message to its decision.** The ledger is listable and driven here, but the queue listings stay
   empty for the same reason, so the join from a message row to its decision has no row to start from.
+- **Recovery after a feed drops.** `run-console-feed-drop-smoke.sh` proves the console announces the
+  drop and keeps what it had read. It does not prove the other half, that the console goes back to
+  `Live` and re-reads the visible surface when the Host returns. That needs a Host that comes back on
+  the same address with its key and database intact, which is a different harness rather than a
+  longer one.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.
@@ -158,8 +190,10 @@ provider key are what that needs, and neither is in this harness's reach.
 does better: it drives the real app rather than a one-shot render, and it can assert rather than only
 photograph.
 
-It survives only because it can inject a decision body from a file
-(`STYLOMAIL_SMOKE_DECISION_FILE`), which is how the decision pane is photographed without a provider
-key. Moving that input into the app's Debug startup path would let this harness drive the decision
-pane too, and then the older one should be deleted rather than maintained as a second way to do one
-thing.
+The reason it used to survive is gone. It injected a decision body from a file
+(`STYLOMAIL_SMOKE_DECISION_FILE`), which was the only way to photograph the decision pane without a
+provider key; that input now lives in the app's Debug startup path (`LoadHarnessDecisionAsync`, which
+prefers a decision the Host actually produced over the fixture) and this harness drives the pane over
+the API. So `--screenshot` is a second way to do one thing, and it should be deleted rather than
+maintained. It is still here because removing a flag is its own change with its own review, not
+because anything depends on it: no script uses it.

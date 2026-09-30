@@ -18,6 +18,7 @@ namespace StyloMail.Desktop.Models;
 public sealed class ShellModel : ObservableObject
 {
     private HostStatus _status = HostStatus.Unknown;
+    private LiveFeedStatus _liveFeed = LiveFeedStatus.From(Api.TrafficFeedState.NotStarted, screenMayBeStale: false);
     private SidebarItem? _selectedItem;
     private MessageRow? _selectedMessage;
     private DecisionRow? _selectedDecision;
@@ -140,6 +141,34 @@ public sealed class ShellModel : ObservableObject
     public string StatusHeadline => Status.Headline;
 
     public string StatusDetail => Status.Detail;
+
+    /// <summary>What the console is doing about live updates. Drives the status bar's feed line.</summary>
+    public LiveFeedStatus LiveFeed
+    {
+        get => _liveFeed;
+        set
+        {
+            if (!Set(ref _liveFeed, value)) return;
+
+            Raise(nameof(LiveFeedHeadline));
+            Raise(nameof(LiveFeedDetail));
+            Raise(nameof(ScreenMayBeStale));
+        }
+    }
+
+    public string LiveFeedHeadline => LiveFeed.Headline;
+
+    public string LiveFeedDetail => LiveFeed.Detail;
+
+    /// <summary>
+    /// Whether what is on screen may have moved on since it was read.
+    /// </summary>
+    /// <remarks>
+    /// Rendered, not merely held. A console that knows its feed stopped and
+    /// says nothing is showing a photograph and calling it a window, which is
+    /// the failure this whole surface exists to prevent.
+    /// </remarks>
+    public bool ScreenMayBeStale => LiveFeed.ScreenMayBeStale;
 
     public bool HasFailedChecks => Status.FailedChecks.Count > 0;
 

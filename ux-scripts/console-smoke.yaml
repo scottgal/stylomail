@@ -111,9 +111,27 @@ actions:
     matcher: ContainsText
     value: "configured in the host"
 
+  # The live feed. This Host has the Hub mapped, so the console is following it
+  # rather than reading on demand, and the status bar has to say which: the two
+  # states look identical in every pane and mean opposite things about whether
+  # what is on screen is current. The state a console most needs to announce is
+  # the one after this one, where a feed that was live stops, and that has a
+  # script of its own: run-console-feed-drop-smoke.sh kills this Host mid-run to
+  # reach it. console-no-feed-smoke.yaml covers the third state, a deployment
+  # that never had a Hub at all.
+  #
+  # Asserted after the sidebar because the feed opens once the window has
+  # finished loading, deliberately, so asserting it earlier would race that
+  # load rather than test anything.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 15000
+
   - type: Screenshot
     value: "01-connected"
-    description: "The console on open: connected, senders grouped by company"
+    description: "The console on open: connected, senders grouped by company, live feed"
 
   # ---- the decision pane, over a decision the Host produced ----------------
   #

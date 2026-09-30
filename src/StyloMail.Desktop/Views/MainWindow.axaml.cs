@@ -28,6 +28,17 @@ public partial class MainWindow : Window
     /// </summary>
     private AppServices? _services;
 
+    /// <summary>
+    /// The subscription to the Host's live feed, when there is one.
+    /// </summary>
+    /// <remarks>
+    /// Owned by the window rather than by the services, because a notice's
+    /// whole consequence is a read of what is on screen, and only the window
+    /// knows what that is. Replaced on reconnect, since a feed to the previous
+    /// Host is a feed to the wrong Host.
+    /// </remarks>
+    private TrafficFeed? _feed;
+
     private readonly ShellModel _model;
 
     /// <summary>
@@ -90,6 +101,11 @@ public partial class MainWindow : Window
             {
                 _initialLoad.TrySetResult();
             }
+
+            // After the first load, not during it. A notice that arrived while
+            // the window was still filling itself would race that load and
+            // report a read against a screen that was not up yet.
+            await StartTrafficFeedAsync().ConfigureAwait(true);
         };
     }
 
@@ -129,9 +145,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Asks the Host how it is and puts the answer in the status bar.</summary>
-    public async Task RefreshHostAsync(CancellationToken cancellationToken = default)
+    /// <returns>Whether the Host answered at all.</returns>
+    /// <remarks>
+    /// The answer is returned rather than only rendered because one caller
+    /// needs to tell a read that landed from one that did not: the live feed's
+    /// resynchronisation, which may only stop claiming the screen might be out
+    /// of date once it has actually read the Host. A Host that refused or did
+    /// not answer has told this console nothing, so it cannot be the read that
+    /// makes anything current.
+    /// </remarks>
+    public async Task<bool> RefreshHostAsync(CancellationToken cancellationToken = default)
     {
-        if (_services is null) return;
+        if (_services is null) return false;
 
         var status = await _services.CheckHostAsync(cancellationToken).ConfigureAwait(false);
 
@@ -140,6 +165,8 @@ public partial class MainWindow : Window
             _model.IsCheckingHost = false;
             _model.Status = status;
         }).ConfigureAwait(false);
+
+        return status.IsReachable;
     }
 
     /// <summary>
@@ -151,9 +178,10 @@ public partial class MainWindow : Window
     /// emptied itself on a failed call would look like a tenant with no
     /// senders, which is a different and more alarming statement.
     /// </remarks>
-    public async Task LoadSendersAsync(CancellationToken cancellationToken = default)
+    /// <returns>Whether the listing was read. See the note on the live feed.</returns>
+    public async Task<bool> LoadSendersAsync(CancellationToken cancellationToken = default)
     {
-        if (_services is null) return;
+        if (_services is null) return false;
 
         SenderListingResponse listing;
 
@@ -175,7 +203,7 @@ public partial class MainWindow : Window
             Console.Error.WriteLine($"[Senders] {failure.Failure}: {failure.Message}");
 
             await OnUiThreadAsync(() => _model.SendersUnavailable(failure)).ConfigureAwait(false);
-            return;
+            return false;
         }
 
         // The company list is a second call, and a failure there must not lose
@@ -194,6 +222,8 @@ public partial class MainWindow : Window
 
         await OnUiThreadAsync(() => _model.ApplySenders(listing, companies?.Companies))
             .ConfigureAwait(false);
+
+        return true;
     }
 
     /// <summary>
@@ -205,20 +235,23 @@ public partial class MainWindow : Window
     /// under a different title, which would attribute one pane's contents to
     /// another's heading.
     /// </remarks>
-    public async Task LoadSelectionAsync(CancellationToken cancellationToken = default)
+    /// <returns>Whether what the pane shows was read from the Host.</returns>
+    public async Task<bool> LoadSelectionAsync(CancellationToken cancellationToken = default)
     {
-        if (_services is null) return;
+        if (_services is null) return false;
 
         if (_model.SelectedItem?.Ledger is { } ledger)
         {
-            await LoadLedgerAsync(ledger, cancellationToken).ConfigureAwait(false);
-            return;
+            return await LoadLedgerAsync(ledger, cancellationToken).ConfigureAwait(false);
         }
 
         if (_model.SelectedItem?.Queue is not { } state)
         {
+            // Nothing to read: the destination lists nothing, and the pane says
+            // so. That is a pane known to be current rather than one that was
+            // never filled.
             await OnUiThreadAsync(() => _model.ApplyMessages(Empty)).ConfigureAwait(false);
-            return;
+            return true;
         }
 
         MessageListingResponse listing;
@@ -235,10 +268,11 @@ public partial class MainWindow : Window
             // As above: the status bar carries why. An empty pane plus a stated
             // reason is the honest outcome; a thrown exception would take the
             // window down over a queue the operator can simply look at later.
-            return;
+            return false;
         }
 
         await OnUiThreadAsync(() => _model.ApplyMessages(listing)).ConfigureAwait(false);
+        return true;
     }
 
     /// <summary>
@@ -251,7 +285,7 @@ public partial class MainWindow : Window
     /// the whole system ("nothing has been assessed"), so it is the one where
     /// getting that wrong matters most.
     /// </remarks>
-    private async Task LoadLedgerAsync(LedgerListing ledger, CancellationToken cancellationToken)
+    private async Task<bool> LoadLedgerAsync(LedgerListing ledger, CancellationToken cancellationToken)
     {
         await OnUiThreadAsync(_model.BeginLedgerLookup).ConfigureAwait(false);
 
@@ -269,10 +303,11 @@ public partial class MainWindow : Window
             Console.Error.WriteLine($"[Ledger] {failure.Failure}: {failure.Message}");
 
             await OnUiThreadAsync(_model.LedgerUnavailable).ConfigureAwait(false);
-            return;
+            return false;
         }
 
         await OnUiThreadAsync(() => _model.ApplyDecisions(listing)).ConfigureAwait(false);
+        return true;
     }
 
     /// <summary>
@@ -804,6 +839,164 @@ public partial class MainWindow : Window
         await RefreshHostAsync().ConfigureAwait(true);
         await LoadSendersAsync().ConfigureAwait(true);
         await LoadSelectionAsync().ConfigureAwait(true);
+
+        // The old feed was to the old Host. Leaving it subscribed would have
+        // this window reporting on a deployment it no longer talks to, and a
+        // dropped feed never recovers by being pointed somewhere else.
+        await StartTrafficFeedAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens this console's subscription to the Host's live feed, replacing any previous one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A feed that cannot be opened is not a failure of the console.</b>
+    /// Every state below <see cref="TrafficFeedState.Live"/> leaves a working
+    /// console that reads its rows when they are opened, which is what this
+    /// console did before the Hub existed. So this reports rather than throws,
+    /// and the status bar renders the reason.
+    /// </para>
+    /// <para>
+    /// Public so the harness and the screenshot path can open a feed without
+    /// pretending to be an operator opening a window.
+    /// </para>
+    /// </remarks>
+    public async Task StartTrafficFeedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        var previous = _feed;
+        _feed = null;
+
+        if (previous is not null)
+        {
+            previous.NoticeReceived -= OnTrafficNotice;
+            previous.StateChanged -= OnFeedStateChanged;
+            previous.Resynchronise -= OnFeedResynchronise;
+
+            await previous.DisposeAsync().ConfigureAwait(true);
+        }
+
+        var feed = new TrafficFeed(_services.HostAddress, _services.ApiKey);
+
+        feed.NoticeReceived += OnTrafficNotice;
+        feed.StateChanged += OnFeedStateChanged;
+        feed.Resynchronise += OnFeedResynchronise;
+
+        _feed = feed;
+
+        await feed.StartAsync(cancellationToken).ConfigureAwait(true);
+        await PublishFeedStatusAsync(feed).ConfigureAwait(true);
+    }
+
+    /// <summary>Puts the feed's state into the model, on the UI thread.</summary>
+    private Task PublishFeedStatusAsync(TrafficFeed feed)
+        => OnUiThreadAsync(() =>
+            _model.LiveFeed = LiveFeedStatus.From(feed.State, feed.SurfaceMayBeStale));
+
+    /// <summary>
+    /// A notice arrived. Raised on a transport thread.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is rendered from this: the notice is a hint, and the read below
+    /// is what makes the screen true. The handler starts the work and returns,
+    /// because a transport thread must not be held up by a Host round trip.
+    /// </remarks>
+    private void OnTrafficNotice(TrafficNotice notice)
+        => _ = ApplyTrafficNoticeAsync(notice);
+
+    /// <summary>
+    /// Reads back whatever a notice points at.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every branch here is a read of the Host.</b> Nothing the notice
+    /// carried is displayed, which is the console's documented rule for pushed
+    /// events: a dropped, duplicated or reordered event rendered directly would
+    /// be a permanently wrong screen, and a console showing a stale verdict as
+    /// current is worse than one showing nothing.
+    /// </remarks>
+    private async Task ApplyTrafficNoticeAsync(TrafficNotice notice)
+    {
+        try
+        {
+            await (notice.Recognised switch
+            {
+                // Readiness is a fact about the Host and about nothing else, so
+                // the status bar is the whole affected surface.
+                TrafficNoticeKind.ReadinessChanged => RefreshHostAsync(),
+
+                // Where a paused sender shows is the sidebar, and a control
+                // change alters no listing. Re-reading the middle pane here
+                // would make it flicker for no new information.
+                TrafficNoticeKind.SenderControlChanged => LoadSendersAsync(),
+
+                // A row moved in whichever listing is open. Which listing that
+                // is belongs to the selection, so the selection is reloaded.
+                TrafficNoticeKind.DecisionRecorded or TrafficNoticeKind.MessageStateChanged
+                    => LoadSelectionAsync(),
+
+                // A kind this build does not know. A full re-read is always
+                // correct and merely less precise: the read is the truth and
+                // the notice was only a nudge toward it. Dropping it instead
+                // would be the silently frozen feed this surface exists to
+                // prevent.
+                _ => ResynchroniseAsync(),
+            }).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // The window is still up and the operator's next action still reads
+            // the Host. Taking the app down over a hint would be the tail
+            // wagging the dog.
+            Console.Error.WriteLine($"[Traffic] {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reads everything the window is showing, because the feed cannot say what changed.
+    /// </summary>
+    /// <remarks>
+    /// This is the answer to both a reconnect and a notice this build cannot
+    /// interpret. The Host tells the console nothing about what it missed, so
+    /// the only way for the screen to be true again is to read it again.
+    /// </remarks>
+    private async Task ResynchroniseAsync()
+    {
+        // Ordered so the operator sees the reason before the consequences.
+        var host = await RefreshHostAsync().ConfigureAwait(true);
+        var senders = await LoadSendersAsync().ConfigureAwait(true);
+        var selection = await LoadSelectionAsync().ConfigureAwait(true);
+
+        if (_feed is not { } feed)
+        {
+            return;
+        }
+
+        // Only a read that landed makes the screen current again. A gap that
+        // ends in failed reads leaves the same picture on screen, and taking
+        // the warning off then would be the console claiming a read it did not
+        // get, which is the one thing this marker must never do.
+        if (host && senders && selection)
+        {
+            feed.SurfaceIsCurrent();
+        }
+
+        await PublishFeedStatusAsync(feed).ConfigureAwait(true);
+    }
+
+    private void OnFeedStateChanged()
+        => _ = PublishFeedStatusAsyncForCurrentFeedAsync();
+
+    private void OnFeedResynchronise()
+        => _ = ResynchroniseAsync();
+
+    private async Task PublishFeedStatusAsyncForCurrentFeedAsync()
+    {
+        if (_feed is { } feed)
+        {
+            await PublishFeedStatusAsync(feed).ConfigureAwait(true);
+        }
     }
 
     private async void OnPauseSenderClick(object? sender, RoutedEventArgs e)
