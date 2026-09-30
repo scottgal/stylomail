@@ -1,0 +1,114 @@
+name: console-feed-recovery-smoke
+description: >
+  Drives the console through a feed that stops and a Host that comes back, and
+  asserts the screen is true again rather than merely connected again.
+
+  This is the other half of console-feed-drop-smoke.yaml. That script ends with
+  the console showing "Live updates stopped, screen may be out of date", which
+  is the honest state and not a recovery. What it cannot reach is the state
+  after: a Host that returns on the same address with the same key and the same
+  database, and a console that has to notice both that it is back and that what
+  it missed has to be read rather than waited for.
+
+  "Live" alone is not the claim, and this is the part worth being careful about.
+  The console sets its feed state to Live the moment the socket reconnects and
+  raises the resynchronisation after, so a run that only asserted the headline
+  would pass against a console that reconnected and never re-read. The claim
+  that is actually on trial is the re-read, and the only way to assert it
+  through a screen is to make something change while the console is blind and
+  then require the screen to show it. So run-console-feed-recovery-smoke.sh
+  pauses the harness sender over the Host's own control route while the feed is
+  down, and this script asserts the sender row changes from Pause to Resume.
+
+  A change published to the Hub while nobody is connected is delivered to
+  nobody: SignalR does not replay. So the Resume button can appear here only by
+  the console reading the senders again, which is exactly the property in
+  question. The runner's timing is chosen so that the change is in place before
+  the console's first possible successful reconnect (see that file), because a
+  change applied after the socket came back would be delivered as a notice and
+  the assertion would pass for the wrong reason.
+
+  Deliberately not covered: a Host away for longer than the reconnect budget.
+  SignalR stops retrying after roughly 42 seconds (0, 2, 10 and 30 second
+  attempts) and the console then says it has stopped, and nothing in this
+  script reaches that state. It is the honest failure mode and it deserves its
+  own run.
+
+default_delay: 250
+
+actions:
+  # The console opens against a Host whose Hub is mapped, so this is the Live
+  # state first, asserted rather than assumed: without it, the recovery
+  # assertion at the end could pass by never having been live at all.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 20000
+
+  # And there is something on the screen whose change will be the evidence. The
+  # principal is itself a sender, so the row exists on a fresh Host without
+  # seeding anything, and it is offered a Pause because nothing has paused it.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The synchronisation point. run-console-feed-recovery-smoke.sh waits for this
+  # file and only then kills the Host, so the drop lands after the console is
+  # provably following the Host rather than after a fixed sleep generous enough
+  # to cover a cold start.
+  - type: Screenshot
+    value: "01-feed-live"
+    description: "The console following a Host that is up, with the sender running"
+
+  # The connection is lost here. SignalR's reconnect gives up after roughly 42
+  # seconds, so the budget covers the whole of that and then some.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 90000
+
+  - type: Screenshot
+    value: "02-feed-dropped"
+    description: "The same window after the Host it was following went away"
+
+  # The screen still holds what it had read. Asserted here as well as in the
+  # drop script because this script's final assertion is about a change on this
+  # very row, and a row that had been cleared and then drawn fresh would make
+  # that a different test.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+
+  # The Host comes back here, and the runner pauses the sender while the console
+  # cannot hear anything. Both happen before the console's last retry, so what
+  # it finds when it does reconnect is a surface that has moved on without it.
+  #
+  # The budget is long enough for the retry schedule plus a Host restart on a
+  # loaded machine, and the runner fails loudly if it misses the window, because
+  # a console that has stopped retrying will never satisfy this assertion.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 120000
+
+  # The re-read, and the whole point of the run. Nothing was pushed to this
+  # console about the pause; the only way this control exists is that the
+  # console read the senders again after the gap ended.
+  - type: Expect
+    target: "testid=resume-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Screenshot
+    value: "03-feed-recovered"
+    description: "Live again, showing a change that happened while the feed was down"

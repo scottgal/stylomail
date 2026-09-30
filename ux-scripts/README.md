@@ -15,6 +15,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-not-ready-smoke.sh  # ... against a Host that is up and refusing mail
 ./ux-scripts/run-console-nimble-smoke.sh     # ... against a Host with a working local assessor
 ./ux-scripts/run-console-quarantine-smoke.sh # ... and a message policy quarantined, then released
+./ux-scripts/run-console-feed-recovery-smoke.sh # ... and that Host taken away and brought back
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
@@ -51,9 +52,9 @@ under `ux-results/`, so one run's artifacts can never be read as another's. The 
 `ux-results` wholesale, so running it deletes the other scripts' screenshots: run those again rather
 than reading a stale image.
 
-## The live feed's three states
+## The live feed's four states
 
-The feed is one surface with three states, and they are the whole reason there are three scripts. A
+The feed is one surface with four states, and they are the whole reason there are four scripts. A
 console following a Host and a console that never had anything to follow look identical in every pane
 and mean opposite things about whether what is on screen is current, so each state gets an assertion
 rather than an assumption.
@@ -63,13 +64,26 @@ rather than an assumption.
 | Following | Hub mapped (`StyloMail__Traffic__Enabled=true`) | `run-console-smoke.sh` | `Live` |
 | No feed | Hub absent, which is a real deployment's default | `run-console-no-feed-smoke.sh` | `No live feed`, and **not** stale |
 | Dropped | a feed that was Live stops | `run-console-feed-drop-smoke.sh` | `Live updates stopped, screen may be out of date`, in amber |
+| Recovered | the same Host, back on the same address, key and database | `run-console-feed-recovery-smoke.sh` | `Live` again, over a surface it has read again |
 
 `console-harness.sh` reads `CONSOLE_TRAFFIC` when it starts the Host: `true` (the default) maps the
-Hub, `false` starts a Host without it. The third state cannot be reached from a YAML at all, because
-the harness has no shell-out action and nothing in a script can stop a process, so
-`run-console-feed-drop-smoke.sh` kills the Host from outside. It waits for the screenshot that proves
-the console is Live before killing, rather than sleeping a fixed amount: a fixed sleep would be the
-one thing here that makes the test flaky, and flaky is the same as absent for a proof.
+Hub, `false` starts a Host without it. The last two states cannot be reached from a YAML at all,
+because the harness has no shell-out action and nothing in a script can stop a process, so their
+runners stop the Host from outside. Both wait for the screenshot that proves the console is Live
+before killing, rather than sleeping a fixed amount: a fixed sleep would be the one thing here that
+makes the test flaky, and flaky is the same as absent for a proof.
+
+Recovery is the one state where saying `Live` is not the claim. The console sets its feed state to
+Live as soon as the socket is back and raises the resynchronisation after, so a script that only
+asserted the headline would pass against a console that reconnected and never re-read. `Live` is
+therefore the *second* assertion in that script and not the last: the runner pauses the harness sender
+over the Host's own control route while the feed is down, and the script requires the row to offer
+`Resume` afterwards. A change published to the Hub while nothing is connected reaches nothing, so that
+button can appear only by the console reading the senders again. The runner's restart is timed to land
+between SignalR's third and fourth reconnect attempts for the same reason: a change applied after the
+socket came back would arrive as a notice, and the assertion would pass without the re-read. Both
+runners' notes are in `state-coverage.md`, and the `Resume`-after-a-gap assertion is what row 8 there
+used to say was out of reach.
 
 ## A Host that is up and refusing
 
@@ -360,11 +374,12 @@ the fastest way to make a run meaningless.
   What the smoke asserts today is the other half of the same contract, that the qualifier is *absent*
   on the unwindowed rows that make up most of a real response. The windowed rendering is covered by
   `DecisionViewTests`; no run reaches it.
-- **Recovery after a feed drops.** `run-console-feed-drop-smoke.sh` proves the console announces the
-  drop and keeps what it had read. It does not prove the other half, that the console goes back to
-  `Live` and re-reads the visible surface when the Host returns. That needs a Host that comes back on
-  the same address with its key and database intact, which is a different harness rather than a
-  longer one.
+- **Recovery after a long outage.** `run-console-feed-recovery-smoke.sh` proves the console announces
+  the drop, keeps what it had read, and then goes back to `Live` over a surface it has read again,
+  when the Host returns on the same address with the same key and database. What it does not reach is
+  the other ending: a Host away for longer than SignalR's retry budget, which is roughly 42 seconds.
+  The console stops retrying there and says so, and nothing in this directory reaches that state or
+  shows what the operator can do about it. That is the next run, not a setting.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.

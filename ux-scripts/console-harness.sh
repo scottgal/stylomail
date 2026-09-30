@@ -196,8 +196,30 @@ console_start_host() {
 
     mkdir -p "$CONSOLE_RUN/data/spool"
 
-    head -c 32 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/profile.key"
-    head -c 24 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/principal.key"
+    # Fresh keys for a fresh deployment, which is every runner but one.
+    #
+    # CONSOLE_REUSE_KEYS exists for the one that follows a Host through a
+    # restart (run-console-feed-recovery-smoke.sh). A Host that goes away and
+    # comes back is only the same Host if the console can still authenticate to
+    # it, and a second start that regenerated the principal key would produce a
+    # console whose key is refused: the run would then fail on an authentication
+    # assertion and read as "recovery is broken" when it had actually tested a
+    # new deployment. So the switch keeps the keys the first start wrote, and it
+    # defaults to off so that every other run still gets keys nobody has seen.
+    #
+    # The database is not regenerated either way: it is not generated here at
+    # all, only named at $CONSOLE_RUN/data/host.db, so a restart inherits it
+    # exactly as this does. That is what makes the restart the same Host twice
+    # rather than a second one, and it is also why a runner using this switch
+    # must wipe its own scratch directory before the first start.
+    if [[ "${CONSOLE_REUSE_KEYS:-false}" == "true" &&
+          -s "$CONSOLE_RUN/data/profile.key" &&
+          -s "$CONSOLE_RUN/data/principal.key" ]]; then
+        : # The keys this run already has, kept for the restart.
+    else
+        head -c 32 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/profile.key"
+        head -c 24 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/principal.key"
+    fi
 
     # The assessment credential, both halves or neither.
     #
@@ -286,7 +308,13 @@ console_start_host() {
 
     # The binary, not `dotnet run`. See point 2 above: a subshell around
     # `dotnet run` records the wrong pid and the Host outlives the cleanup.
-    "$CONSOLE_HOST_APP" serve > "$CONSOLE_RUN/host.log" 2>&1 &
+    #
+    # CONSOLE_HOST_LOG names where this start writes, so a run that starts the
+    # Host twice (the recovery run) keeps both logs instead of the second one
+    # overwriting the first. A restart whose log had been replaced is a run
+    # nobody can diagnose, and the restart is the interesting start.
+    local host_log="${CONSOLE_HOST_LOG:-$CONSOLE_RUN/host.log}"
+    "$CONSOLE_HOST_APP" serve > "$host_log" 2>&1 &
     CONSOLE_HOST_PID=$!
 
     for _ in $(seq 1 90); do
@@ -295,7 +323,7 @@ console_start_host() {
         fi
         if ! kill -0 "$CONSOLE_HOST_PID" 2>/dev/null; then
             echo "The harness Host exited before becoming live. Last lines:" >&2
-            tail -20 "$CONSOLE_RUN/host.log" >&2
+            tail -20 "$host_log" >&2
             return 1
         fi
         sleep 1
@@ -350,6 +378,46 @@ console_auth_headers() {
     ( umask 077; printf 'X-StyloMail-Key: %s\n' "$key" > "$file" )
 
     printf '%s\n' "$file"
+}
+
+# Pauses a sender through the Host's own control route, without the console.
+#
+# Used by exactly one runner, and for a reason that is the whole point of it: a
+# change applied while the console's feed is down can only appear on the screen
+# if the console re-read the surface afterwards. Applied through the console it
+# would prove nothing (the console would already know), so the change has to
+# come from outside, and the route is the honest outside rather than a write
+# straight into the database.
+#
+# POST /v1/controls/senders/{id}/pause needs the Administer privilege, which
+# console_start_host grants this principal. The reason is required here even
+# though the route accepts an empty one: it is the audit record for the
+# intervention, and a scripted pause with none is, later, indistinguishable
+# from one nobody explained.
+#
+# Prints nothing on success and returns non-zero on failure, so a caller can
+# stop before asserting anything at a Host whose control plane did not answer.
+console_pause_sender() {
+    local principal="${1:-harness}"
+    local reason="${2:-paused by the console harness while the console was blind}"
+    local headers status
+
+    headers="$(console_auth_headers)"
+
+    status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+        -H @"$headers" -H "Content-Type: application/json" \
+        --data "{\"reason\":\"$reason\"}" \
+        "$CONSOLE_BASE/v1/controls/senders/$principal/pause") || return 1
+
+    if [[ "$status" != "200" ]]; then
+        echo "Pausing $principal answered $status, so the control route did not" >&2
+        echo "apply it. The recovery run is about to assert that the console" >&2
+        echo "re-read the surface, and it cannot do that over a change that never" >&2
+        echo "happened." >&2
+        return 1
+    fi
+
+    return 0
 }
 
 # Gives the throwaway Host something to group.
