@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StyloMail.Nimble\StyloMail.Nimble.csproj" />
+    <!--
+      Referenced by the drift test and by no other test. The local adapter copies the hosted adapter's
+      message state so the two can be compared on one corpus, and a copy that drifts turns the
+      comparison into a comparison of two different descriptions. That test drives the hosted
+      classifier through a stub transport and compares the state it actually sends against this one,
+      so the dependency exists to make the drift loud rather than to reuse any of its code.
+    -->
+    <ProjectReference Include="..\..\src\StyloMail.Jev\StyloMail.Jev.csproj" />
+    <!--
+      The live measurement drives corpus .eml files through the real MIME adapter, for the same
+      reason the hosted corpus does: an input built by hand is a record of what we imagined the
+      message contained.
+    -->
+    <ProjectReference Include="..\..\src\StyloMail.Mime\StyloMail.Mime.csproj" />
+  </ItemGroup>
+
+</Project>
