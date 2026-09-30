@@ -185,6 +185,35 @@ public sealed class MailPolicyEngineTests
     }
 
     /// <summary>
+    /// A known gap, pinned rather than described, so that it cannot be forgotten or closed by
+    /// accident. The gate requires that checkable evidence was <em>measured</em>, not that it
+    /// <em>agrees</em>: <c>deterministic.link_display_mismatch</c> at 1.0 is outside
+    /// <c>DimensionWeights</c>, which today holds semantic ids only, so the index never counts it,
+    /// and the benign row beside it satisfies the gate. A message whose displayed links disagree
+    /// with their hosts can therefore still be allowed on a model's word. Filed high as
+    /// `unweighted-deterministic-findings-cannot-block-an-al`; this test flips to Hold when the
+    /// risk-shaped deterministic signals carry weights with declared units, and it should flip
+    /// then rather than be deleted.
+    /// </summary>
+    [Fact]
+    public void A_concerning_unweighted_deterministic_finding_does_not_yet_block_an_allow()
+    {
+        var evidence = new[]
+        {
+            Signal("semantic.credential_request", 0.0),
+            Deterministic("deterministic.link_display_mismatch", 1.0),
+            Deterministic(),
+        };
+
+        var decision = Decide(
+            CompositeRiskScorer.Compute(evidence, Weights),
+            Context(),
+            evidence: evidence);
+
+        Assert.Equal(MailAction.Allow, decision.Action);
+    }
+
+    /// <summary>
     /// A total semantic outage yields index 0.0 over coverage 0.0, under every threshold. Before
     /// this was fixed, the engine returned Allow, making absence of evidence indistinguishable from
     /// evidence of safety. Reported by `assess-`, which had to guard it in wiring.
@@ -402,12 +431,12 @@ public sealed class MailPolicyEngineTests
     /// A signal the pipeline can check against the message itself, and therefore the only kind
     /// that can corroborate a model's calm.
     /// </summary>
-    private static Evidence Deterministic(string id = "headers.authentication_summary") => new()
+    private static Evidence Deterministic(string id = "headers.authentication_summary", double value = 0.0) => new()
     {
         SignalId = id,
         Origin = EvidenceOrigin.Deterministic,
         Availability = EvidenceAvailability.Available,
-        Value = 0.0,
+        Value = value,
         Confidence = null,
         SourceVersion = "mime-1.0.0",
         ObservedAt = Now,

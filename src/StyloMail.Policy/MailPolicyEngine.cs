@@ -233,8 +233,18 @@ public sealed class MailPolicyEngine
 
         // A model's negative is indistinguishable from its silence: a false negative arrives as
         // Available with a value of 0.0, which raises the covered fraction and can satisfy both
-        // guards above. So a low index is only authorising if something the pipeline can check
-        // agrees with it. An allow resting on nothing but a probabilistic answer is a hold.
+        // guards above. So a low index is only authorising if something the pipeline can check was
+        // measured at all. An allow resting on nothing but a probabilistic answer is a hold.
+        //
+        // What this does NOT do, and the two are not the same claim: it requires that checkable
+        // evidence was measured, not that the checkable evidence agrees. Rows outside
+        // DimensionWeights (every deterministic finding, since those weights are semantic-only) do
+        // not contribute to the index, so a displayed-link mismatch at 1.0 cannot raise it and a
+        // benign row beside it satisfies this gate. Filed high as
+        // `unweighted-deterministic-findings-cannot-block-an-al`, and the repair is weights with
+        // declared units rather than a threshold test here, because the deterministic signals carry
+        // counts and ratios and bytes, and a bare "value above the hold threshold" rule would hold
+        // every message with a stored attachment. Pinned by a test in the policy suite.
         var corroborating = input.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available
                 && e.Origin == EvidenceOrigin.Deterministic)
