@@ -18,6 +18,12 @@ namespace StyloMail.Policy;
 /// <item>Behavioural and semantic risk</item>
 /// <item>Recipient preference, lowest, and never able to override 1–3</item>
 /// </orderedlist>
+///
+/// Within tier 4, a low index authorises delivery only when at least one available deterministic
+/// signal corroborates it. A semantic provider's false negative is indistinguishable from its true
+/// negative, and it arrives as a low value rather than a missing one, so it raises the covered
+/// fraction instead of lowering it and can satisfy both coverage guards. Evidence that the
+/// pipeline can check must therefore agree with the model before the model's calm is acted on.
 /// </remarks>
 public sealed class MailPolicyEngine
 {
@@ -220,6 +226,41 @@ public sealed class MailPolicyEngine
                     + "dimension weight was covered. Too little evidence to allow and too little to "
                     + "reject; held for bounded re-evaluation.",
                 EvidenceSignalIds = input.Risk.Masked.Select(m => m.SignalId).ToList(),
+            });
+
+            return Hold(input, reasons);
+        }
+
+        // A model's negative is indistinguishable from its silence: a false negative arrives as
+        // Available with a value of 0.0, which raises the covered fraction and can satisfy both
+        // guards above. So a low index is only authorising if something the pipeline can check
+        // agrees with it. An allow resting on nothing but a probabilistic answer is a hold.
+        var corroborating = input.Evidence
+            .Where(e => e.Availability == EvidenceAvailability.Available
+                && e.Origin == EvidenceOrigin.Deterministic)
+            .Select(e => e.SignalId)
+            .ToList();
+
+        if (corroborating.Count == 0)
+        {
+            var uncheckable = input.Evidence
+                .Where(e => e.Availability == EvidenceAvailability.Available
+                    && e.Origin != EvidenceOrigin.Deterministic)
+                .Select(e => string.IsNullOrWhiteSpace(e.SourceVersion) ? e.Origin.ToString() : e.SourceVersion)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            reasons.Insert(0, new ReasonCode
+            {
+                Code = "policy.allow_uncorroborated_by_deterministic_evidence",
+                Message =
+                    $"Risk index {index:0.00} is below the hold threshold, but no available "
+                    + "deterministic signal corroborates it. "
+                    + (uncheckable.Count > 0
+                        ? $"The available evidence came from {string.Join(", ", uncheckable)}, and a "
+                        : "No evidence was available at all, and no ")
+                    + "probabilistic negative may authorise delivery on its own.",
+                EvidenceSignalIds = input.Risk.ContributingSignalIds,
             });
 
             return Hold(input, reasons);

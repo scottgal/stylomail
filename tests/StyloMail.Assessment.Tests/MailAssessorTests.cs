@@ -246,7 +246,19 @@ public sealed class MailAssessorTests
             Builders.Context(harness.Clock, assessmentOnly: true),
             CancellationToken.None);
 
-        Assert.Equal(MailAction.Allow, assessment.Action);
+        // The point of the test is that a verdict is produced from current evidence, and it still is.
+        // The verdict is now a hold, and the reason is the point: the payload is ephemeral, so the
+        // deterministic tier reports extraction unavailable and the only available evidence left is
+        // the model's own answer. A probabilistic negative cannot authorise delivery on its own, so
+        // the tier holds rather than allowing on a calm reading of a message it could not read.
+        Assert.Equal(MailAction.Hold, assessment.Action);
+        Assert.Contains(assessment.Reasons, r =>
+            r.Code == "policy.allow_uncorroborated_by_deterministic_evidence");
+
+        // And the reason the gate fired is visible in the evidence itself: the deterministic tier
+        // said it could not extract, which is why no checkable row was there to corroborate.
+        Assert.Contains(assessment.Evidence, e =>
+            e.SignalId == AssessmentEvidenceIds.DeterministicExtractionUnavailable);
         Assert.NotEmpty(assessment.RiskDimensions);
 
         // The version stamp is on every assessment, including this one: reuse has to be visible, and

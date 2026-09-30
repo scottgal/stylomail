@@ -74,10 +74,13 @@ public sealed class MailPolicyEngineTests
     [Fact]
     public void Inbound_traffic_is_not_quarantined_by_an_outbound_compromise_posture()
     {
+        var evidence = new[] { Deterministic() };
+
         var decision = Decide(
-            Risk(0.05, 1.0),
+            Risk(0.05, 1.0, evidence),
             Context() with { BaselineFrozenForSuspectedCompromise = true },
-            MailDirection.Inbound);
+            MailDirection.Inbound,
+            evidence: evidence);
 
         Assert.Equal(MailAction.Allow, decision.Action);
     }
@@ -104,9 +107,81 @@ public sealed class MailPolicyEngineTests
     [Fact]
     public void Low_risk_on_full_coverage_is_allowed()
     {
-        var decision = Decide(Risk(0.05, 1.0), Context());
+        var evidence = new[] { Deterministic() };
+
+        var decision = Decide(Risk(0.05, 1.0, evidence), Context(), evidence: evidence);
 
         Assert.Equal(MailAction.Allow, decision.Action);
+    }
+
+    /// <summary>
+    /// The flip this gate exists for. A provider that answers every dimension with a confident
+    /// false negative raises the covered fraction and lowers the index, so both coverage guards
+    /// pass and the message looks calm rather than unmeasured. Nothing in the evidence can be
+    /// checked against the message itself, so the tier holds instead of delivering on the model's
+    /// word. The reason names the provider that made the claim.
+    /// </summary>
+    [Fact]
+    public void A_low_index_carried_only_by_a_model_holds_rather_than_allows()
+    {
+        var evidence = new[]
+        {
+            Signal("semantic.credential_request", 0.0),
+            Signal("semantic.unsolicited_solicitation", 0.0),
+        };
+
+        var risk = CompositeRiskScorer.Compute(evidence, Weights);
+
+        // The guards cannot see it: full coverage, index 0.0, indistinguishable from a clean
+        // message that was actually measured.
+        Assert.Equal(1.0, risk.CoveredWeightFraction);
+        Assert.Equal(0.0, risk.Index);
+
+        var decision = Decide(risk, Context(), evidence: evidence);
+
+        Assert.Equal(MailAction.Hold, decision.Action);
+        Assert.Equal("policy.allow_uncorroborated_by_deterministic_evidence", decision.Reasons[0].Code);
+        Assert.Contains("jev-1.13.0", decision.Reasons[0].Message);
+    }
+
+    [Fact]
+    public void A_low_index_corroborated_by_deterministic_evidence_still_allows()
+    {
+        var evidence = new[]
+        {
+            Signal("semantic.credential_request", 0.0),
+            Signal("semantic.unsolicited_solicitation", 0.0),
+            Deterministic(),
+        };
+
+        var decision = Decide(
+            CompositeRiskScorer.Compute(evidence, Weights),
+            Context(),
+            evidence: evidence);
+
+        Assert.Equal(MailAction.Allow, decision.Action);
+    }
+
+    /// <summary>
+    /// Behavioural evidence is admissible and is not corroboration. It is learned, and the
+    /// attacker shapes the traffic that produces it, so it must not be the thing that carries an
+    /// allow when the semantic provider has gone quiet.
+    /// </summary>
+    [Fact]
+    public void Behavioural_evidence_alone_does_not_corroborate_an_allow()
+    {
+        var evidence = new[]
+        {
+            Signal("semantic.credential_request", 0.0),
+            Signal("behavioural.sender_first_contact", 0.2, EvidenceOrigin.Behavioural),
+        };
+
+        var decision = Decide(
+            CompositeRiskScorer.Compute(evidence, Weights),
+            Context(),
+            evidence: evidence);
+
+        Assert.Equal(MailAction.Hold, decision.Action);
     }
 
     /// <summary>
@@ -126,17 +201,22 @@ public sealed class MailPolicyEngineTests
     [Fact]
     public void An_allow_requires_enough_coverage_to_be_meaningful()
     {
+        var evidence = new[] { Deterministic() };
+
         // Just under the floor: not enough evidence to conclude the message is safe.
         Assert.Equal(MailAction.Hold, Decide(Risk(0.0, 0.29), Context()).Action);
 
         // At the floor: judgement is meaningful again.
-        Assert.Equal(MailAction.Allow, Decide(Risk(0.0, 0.30), Context()).Action);
+        Assert.Equal(
+            MailAction.Allow,
+            Decide(Risk(0.0, 0.30, evidence), Context(), evidence: evidence).Action);
     }
 
     /// <summary>
     /// The local-evidence-only deployment genuinely runs with no semantic coverage by design.
     /// Setting the floor to zero states that expectation explicitly rather than tolerating an
-    /// outage by accident.
+    /// outage by accident. Such a deployment is made of deterministic signals, which is what
+    /// satisfies the corroboration requirement, so it needs nothing extra to allow.
     /// </summary>
     [Fact]
     public void A_local_evidence_only_deployment_can_opt_out_of_the_coverage_floor()
@@ -144,7 +224,9 @@ public sealed class MailPolicyEngineTests
         var options = Options();
         options.MinimumCoverageForAllow = 0.0;
 
-        var decision = Decide(Risk(0.0, 0.0), Context(), options: options);
+        var evidence = new[] { Deterministic() };
+
+        var decision = Decide(Risk(0.0, 0.0, evidence), Context(), options: options, evidence: evidence);
 
         Assert.Equal(MailAction.Allow, decision.Action);
     }
@@ -305,14 +387,29 @@ public sealed class MailPolicyEngineTests
             ContributingSignalIds = evidence?.Select(e => e.SignalId).ToList() ?? [],
         };
 
-    private static Evidence Signal(string id, double value) => new()
+    private static Evidence Signal(string id, double value, EvidenceOrigin origin = EvidenceOrigin.Semantic) => new()
     {
         SignalId = id,
-        Origin = EvidenceOrigin.Semantic,
+        Origin = origin,
         Availability = EvidenceAvailability.Available,
         Value = value,
         Confidence = null,
-        SourceVersion = "jev-1.13.0",
+        SourceVersion = origin == EvidenceOrigin.Semantic ? "jev-1.13.0" : "behavioural-1.0.0",
+        ObservedAt = Now,
+    };
+
+    /// <summary>
+    /// A signal the pipeline can check against the message itself, and therefore the only kind
+    /// that can corroborate a model's calm.
+    /// </summary>
+    private static Evidence Deterministic(string id = "headers.authentication_summary") => new()
+    {
+        SignalId = id,
+        Origin = EvidenceOrigin.Deterministic,
+        Availability = EvidenceAvailability.Available,
+        Value = 0.0,
+        Confidence = null,
+        SourceVersion = "mime-1.0.0",
         ObservedAt = Now,
     };
 
