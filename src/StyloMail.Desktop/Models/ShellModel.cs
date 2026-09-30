@@ -126,6 +126,13 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(StatusHeadline));
             Raise(nameof(StatusDetail));
             Raise(nameof(HasFailedChecks));
+
+            // The queue's empty text names the failed checks, but only when
+            // there are any, and readiness arrives after the pane is already on
+            // screen. Without this the sentence keeps whichever answer was true
+            // when the destination was selected.
+            Raise(nameof(EmptyListDetail));
+
             SelectedItem?.WithDetail(value.Headline);
         }
     }
@@ -421,10 +428,44 @@ public sealed class ShellModel : ObservableObject
         { Ledger: not null } when _ledgerLookup is LedgerLookup.Unavailable =>
             "The decision ledger could not be read. The status bar carries the reason.",
 
+        // A queue is the one listing whose emptiness has two causes, and they
+        // are opposite: nothing was queued, or nothing could be. The entry's own
+        // sentence names the first; the second is added here, once, rather than
+        // written into all three queue entries and drifting apart. The pointer to
+        // the checks is conditional, because a sentence promising a list that is
+        // not on screen is the same small lie as the reassurance it replaces.
+        { Queue: not null, EmptyDetail: { Length: > 0 } queueDetail } =>
+            queueDetail + " " + EmptyQueueCause
+            + (HasFailedChecks ? " " + EmptyQueueCausePointer : string.Empty),
+
         { EmptyDetail: { Length: > 0 } detail } => detail,
 
         _ => "Nothing here.",
     };
+
+    /// <summary>
+    /// Appended to every queue's empty text, because an empty queue has two causes.
+    /// </summary>
+    /// <remarks>
+    /// A listing that is empty because nothing was queued and one that is empty
+    /// because nothing <i>could</i> be queued read identically on screen, and only
+    /// the second is a fault. Left to itself the pane implies the first, which is
+    /// the reassurance this console exists to refuse. Both ways of being unable to
+    /// assess are named, because they fail alike: a harness Host with a provider
+    /// it cannot reach is as unable to queue as one with no provider at all, and
+    /// readiness reports neither.
+    /// </remarks>
+    private const string EmptyQueueCause =
+        "An empty queue has two causes and the listing cannot tell them apart: nothing was queued, "
+        + "or nothing could be. Mail is queued only once it has been assessed, so a Host that cannot "
+        + "assess, whether it has no semantic provider or cannot reach the one it has, queues nothing "
+        + "at all and waiting will not change that.";
+
+    /// <summary>
+    /// Added to a queue's empty text only when the Host actually reported failures.
+    /// </summary>
+    private const string EmptyQueueCausePointer =
+        "The failed checks below name which of the two it is.";
 
     /// <summary>
     /// Builds the sidebar.

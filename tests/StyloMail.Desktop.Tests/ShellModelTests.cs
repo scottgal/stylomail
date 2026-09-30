@@ -843,8 +843,83 @@ public sealed class ShellModelTests
     }
 
     /// <summary>
-    /// Not ready carries the failed checks, and the sidebar entry is where an
-    /// operator sees them without opening anything.
+    /// An empty queue names both of its causes, because the listing cannot tell
+    /// them apart and only one of them is a fault.
+    /// </summary>
+    [Fact]
+    public void An_empty_queue_names_both_of_its_causes()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.SelectedItem = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Title == "Awaiting decision");
+
+        // The entry's own sentence, which says what an empty listing means.
+        Assert.Contains("Nothing is awaiting a decision", model.EmptyListDetail, StringComparison.Ordinal);
+
+        // The second cause, which the entry cannot know on its own: nothing could
+        // be queued rather than nothing was. Both ways of being unable to assess
+        // are named, because they fail alike.
+        Assert.Contains("nothing could be", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("no semantic provider", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("cannot reach the one it has", model.EmptyListDetail, StringComparison.Ordinal);
+
+        // Nothing has reported a failure yet, so the text must not point at a
+        // list that is not on screen.
+        Assert.DoesNotContain("failed checks below", model.EmptyListDetail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The second cause belongs to the queues and is not pasted onto every pane.
+    /// </summary>
+    [Fact]
+    public void An_empty_ledger_does_not_borrow_the_queue_cause()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.SelectedItem = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Title == "Decisions");
+
+        Assert.DoesNotContain("no semantic provider", model.EmptyListDetail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The queue's empty text points at the failed checks only when the Host
+    /// reported some: the sentence and the list are one claim, and the pane
+    /// would be lying if it pointed at a list that is not on screen.
+    /// </summary>
+    [Fact]
+    public void The_empty_queue_points_at_the_failed_checks_only_when_there_are_any()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.SelectedItem = model.Sections
+            .SelectMany(section => section.Items)
+            .First(item => item.Queue is not null);
+
+        // Ready: nothing to point at.
+        model.Status = Ready;
+        Assert.DoesNotContain("failed checks below", model.EmptyListDetail, StringComparison.Ordinal);
+
+        // Not ready. The pointer appears without the destination being selected
+        // again, which is the notification the sentence depends on: readiness
+        // arrives after the pane is already on screen.
+        model.Status = HostStatus.From(new ReadinessResponse
+        {
+            Status = "not_ready",
+            FailedChecks = ["assessor_unavailable"],
+        });
+
+        Assert.Contains("failed checks below", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.True(model.HasFailedChecks);
+        Assert.Equal(["assessor_unavailable"], model.FailedChecks);
+    }
+
+    /// <summary>
+    /// The failed checks reached the model, which is where the middle pane reads
+    /// them from: it prints them under the sentence that promises them.
     /// </summary>
     [Fact]
     public void Failed_checks_are_exposed_and_selected_state_is_single()

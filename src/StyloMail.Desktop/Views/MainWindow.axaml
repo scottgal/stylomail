@@ -226,6 +226,34 @@
                         <TextBlock x:Name="EmptyListDetailText"
                                    Classes="emptyDetail"
                                    Text="{Binding EmptyListDetail}" />
+
+                        <!--
+                            The readiness checks the Host failed, one per line.
+                            The status bar says the Host cannot accept mail; this
+                            is where an operator learns which check said so. The
+                            model has carried FailedChecks as a list for exactly
+                            this pane ("an operator scanning for a familiar
+                            failure should not have to parse a sentence"), and
+                            until now nothing rendered it, so "Connected, not
+                            accepting mail" was the whole story on screen.
+                        -->
+                        <StackPanel x:Name="FailedChecksBlock"
+                                    Spacing="2"
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding HasFailedChecks}">
+                            <TextBlock x:Name="FailedChecksHeadingText"
+                                       Classes="emptyDetail"
+                                       Text="The Host reported these failed checks:" />
+                            <ItemsControl ItemsSource="{Binding FailedChecks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Classes="emptyDetail"
+                                                   HorizontalAlignment="Center"
+                                                   Text="{Binding}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
 
                     <!--

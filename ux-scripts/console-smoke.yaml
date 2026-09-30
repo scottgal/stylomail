@@ -221,6 +221,34 @@ actions:
     value: "04-queue-selected"
     description: "The quarantined queue selected, with the detail pane cleared"
 
+  # ---- the empty queue says which of its two causes it is ------------------
+  #
+  # An empty listing here means "nothing was queued" or "nothing could be
+  # queued", and only the second is a fault. Left alone the pane implies the
+  # reassuring one.
+  #
+  # This Host has a provider key configured and an endpoint it cannot reach, so
+  # it is READY as far as /health/ready is concerned and reports no failed
+  # checks. That is exactly the second cause, reached without any check firing,
+  # and it is why the sentence must stand on its own rather than only pointing
+  # at a list of failures.
+
+  - type: Expect
+    target: "name=EmptyListDetailText"
+    matcher: ContainsText
+    value: "nothing could be"
+    description: "The empty queue names the cause the listing itself cannot show"
+
+  - type: Expect
+    target: "name=EmptyListDetailText"
+    matcher: ContainsText
+    value: "no semantic provider"
+    description: "Both ways of being unable to assess are named, because they fail alike"
+
+  - type: Screenshot
+    value: "04b-empty-queue-says-why"
+    description: "The empty queue explaining its own emptiness"
+
   # ---- the pause confirmation ---------------------------------------------
   #
   # The console's whole reason for a confirmation: every action it offers is
