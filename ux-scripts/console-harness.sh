@@ -312,6 +312,23 @@ console_start_host() {
 # this harness works under is that no secret is interpolated into a visible
 # command. So the header goes in a file and curl reads it back with -H @file.
 #
+# This reads the key itself, from the run's own scratch directory, and takes no
+# key argument. That is deliberate and it is the whole point of the signature: a
+# parameter is a value the caller has to hold, and a caller that holds a value
+# can eventually pass it to something else. Bash function arguments are not
+# process arguments (a function call does not fork, so nothing appears in ps),
+# and this file never handed the key to an external command, but a signature
+# that requires the value is a shape that only stays safe while every caller
+# stays careful. One function, one source, nothing to hand over. Flagged by
+# `article-` from a background review of the seeders' call sites.
+#
+# What this does not change, because it is not a command line and not fixable
+# here: the key is handed to the Host and to the console through their
+# *environment* (console_start_host and console_export_app_env), which is how a
+# Host is configured at all, and a child process's environment is readable by the
+# same user who started it. Argument lists are the exposure this harness can
+# close, and it closes them.
+#
 # The order is the part that is easy to get wrong. Redirecting into a file that
 # already exists keeps that file's mode, so an earlier run's 0644 would still be
 # 0644 while the key was written into it. This truncates first, chmods while the
@@ -319,13 +336,14 @@ console_start_host() {
 # holds the key and is readable by anyone else. The umask is belt as well as
 # braces: it is what makes the window shut even if the chmod were removed.
 #
-# The caller passes the path it wants back. It lives in the run's scratch
-# directory, and console_stop_host removes it, so a run does not leave a
-# credential-bearing file behind. It is never echoed, and never named in an
-# error: the reader of a .err file should see a status code.
+# The caller passes the path it wants back, or nothing for the default. It lives
+# in the run's scratch directory, and console_stop_host removes it, so a run does
+# not leave a credential-bearing file behind. It is never echoed, and never named
+# in an error: the reader of a .err file should see a status code.
 console_auth_headers() {
-    local key="$1"
-    local file="${2:-$CONSOLE_RUN/auth.headers}"
+    local key file
+    key="$(cat "$CONSOLE_RUN/data/principal.key")"
+    file="${1:-$CONSOLE_RUN/auth.headers}"
 
     : > "$file"
     chmod 600 "$file"
@@ -341,10 +359,9 @@ console_auth_headers() {
 # assertion. Seeded through the API rather than by writing the database, so
 # what the console reads is what the routes produce.
 console_seed_management() {
-    local key base headers
-    key="$(cat "$CONSOLE_RUN/data/principal.key")"
+    local base headers
     base="$CONSOLE_BASE"
-    headers="$(console_auth_headers "$key")"
+    headers="$(console_auth_headers)"
 
     local company
     company=$(curl -fsS -X POST \
@@ -386,10 +403,9 @@ console_seed_management() {
 # corroboration gate is not exercisable through it. console_seed_submission below
 # is the route that does.
 console_seed_decision() {
-    local key="$1"
-    local base="$2"
+    local base="$1"
     local headers
-    headers="$(console_auth_headers "$key")"
+    headers="$(console_auth_headers)"
 
     printf 'From: "Accounts" <security@exampple.test>\r\nTo: alice@example.test\r\nSubject: Urgent: verify your account\r\nDate: Tue, 22 Sep 2026 10:00:00 +0000\r\nMessage-ID: <harness-%s@exampple.test>\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset="utf-8"\r\n\r\n<html><body><p>Verify your account within 24 hours.</p><p><a href="http://198.51.100.9/v">https://accounts.example.test/login</a></p></body></html>\r\n' "$$" > "$CONSOLE_RUN/seed.eml"
 
@@ -452,9 +468,9 @@ PYEOF
 # assessing again, which would turn a second submission into a read of the
 # first one's answer.
 console_seed_submission() {
-    local key="$1" mime="$2" mail_from="$3" rcpt_to="$4"
+    local mime="$1" mail_from="$2" rcpt_to="$3"
     local headers
-    headers="$(console_auth_headers "$key")"
+    headers="$(console_auth_headers)"
 
     if [[ ! -f "$mime" ]]; then
         echo "No message to submit at $mime." >&2

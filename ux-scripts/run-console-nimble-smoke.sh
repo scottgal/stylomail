@@ -74,7 +74,6 @@ echo "== submitting $CONSOLE_MESSAGE through POST /v1/submissions =="
 # it as a field, and a script that parsed headers out of its own fixture would be
 # measuring its parser as much as the Host.
 console_seed_submission \
-    "$(cat "$CONSOLE_RUN/data/principal.key")" \
     "$CONSOLE_MESSAGE" \
     "billing@paypa1-secure.top" \
     "alice@example.test" || exit 1

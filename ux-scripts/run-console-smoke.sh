@@ -50,7 +50,7 @@ console_seed_management
 # dimensions are all Unavailable. That is the state the pane must render as
 # absent rather than as a number, and it is the only way to reach it without
 # the operator's provider key.
-console_seed_decision "$(cat "$CONSOLE_RUN/data/principal.key")" "$CONSOLE_BASE"
+console_seed_decision "$CONSOLE_BASE"
 
 echo "== driving the console =="
 cd "$CONSOLE_REPO" || exit 1
