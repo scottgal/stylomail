@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using StyloMail.Assessment;
 using StyloMail.Host.Hosting;
 using StyloMail.Nimble;
 
@@ -333,6 +334,102 @@ public sealed class NimbleProviderCompositionTests
         var ready = await anonymous.GetAsync("/health/ready");
 
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+    }
+
+    /// <summary>
+    /// The action, not only the rows: a local model that is down defers every message.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The gap this closes is inference, not safety.</b> The test above proves the rows are
+    /// <c>Unavailable</c> and readiness is <c>ready</c>, and `MailAssessor`'s outage guard is what
+    /// turns an entirely-unavailable semantic layer into <c>Defer</c>. Until this test, nothing
+    /// asserted that the guard actually fires under the local provider, so "a Nimble deployment whose
+    /// model is down defers rather than allows" was read off the predicate rather than measured.
+    /// </para>
+    /// <para>
+    /// <b>The row count here is not the point, and neither is the count of reasons.</b> What is
+    /// asserted is that the action is <c>Defer</c>, that the reason is
+    /// <c>assessment.semantic_unavailable</c>, and that the reason names exactly the signal ids this
+    /// same response reports as <c>Unavailable</c>. A reason that named everything, or nothing, would
+    /// pass a mere presence check and fail this one.
+    /// </para>
+    /// <para>
+    /// The guard's condition and its default are deliberately untouched. A test that needed either
+    /// changed to pass would be a test of the change rather than of the behaviour.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_refused_local_model_defers_every_message_and_names_what_it_could_not_ask()
+    {
+        using var host = new TestHost()
+            .WithAssessmentSecrets(jevApiKey: null, profileMasterKey: MasterKey)
+            .Configure("StyloMail:Assessment:Provider", "Nimble")
+            .Configure("StyloMail:Nimble:Endpoint", RefusingLocalModel);
+
+        using var client = host.ClientAs(TestPrincipals.AcmeSenderKey);
+
+        var response = await client.PostAsJsonAsync("/v1/assessments", TestMessages.Request());
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+
+        // A decision was produced, rather than the refusal a missing assessor gives. Without this the
+        // assertions below could pass on an error body that happened to parse.
+        var action = root.GetProperty("action").GetString();
+        Assert.Equal("Defer", action);
+
+        var outage = root.GetProperty("reasons")
+            .EnumerateArray()
+            .SingleOrDefault(reason => reason.GetProperty("code").GetString()
+                == AssessmentReasonCodes.SemanticUnavailable);
+
+        Assert.True(
+            outage.ValueKind == JsonValueKind.Object,
+            $"Expected reason '{AssessmentReasonCodes.SemanticUnavailable}' on a deferred decision. "
+            + $"Body was: {body}");
+
+        // Exactly the semantic rows this response itself reports as Unavailable, no more and no
+        // fewer.
+        //
+        // The origin filter is load bearing and was learned by running it: other producers report
+        // Unavailable too. On this fixture the behavioural and base-pipeline rows are Unavailable
+        // for their own reasons (no profile history, nothing deterministic to extract), and they
+        // are deliberately NOT named here, because this reason is about the provider that could
+        // not answer. Widening it to every Unavailable row would blame the local model for a
+        // missing profile and send a reader to the wrong subsystem.
+        //
+        // The NotApplicable rows are absent by design as well: nothing was asked of the provider
+        // about them, so they are not part of what was lost, and their absence is what keeps a
+        // not-applicable dimension from being reported as an outage.
+        var unavailable = root.GetProperty("evidence")
+            .EnumerateArray()
+            .Where(row => row.GetProperty("origin").GetString() == "Semantic")
+            .Where(row => row.GetProperty("availability").GetString() == "Unavailable")
+            .Select(row => row.GetProperty("signalId").GetString() ?? string.Empty)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+        var named = outage.GetProperty("evidenceSignalIds")
+            .EnumerateArray()
+            .Select(id => id.GetString() ?? string.Empty)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.NotEmpty(unavailable);
+        Assert.Equal(unavailable, named);
+
+        // And they are the semantic dimensions, not a mix of producers: the guard is about the
+        // provider that could not answer, so naming anything else would send a reader to the wrong
+        // subsystem.
+        Assert.All(named, id => Assert.StartsWith("semantic.", id, StringComparison.Ordinal));
+
+        // The reason explains itself rather than only naming a code, since an operator reading the
+        // ledger sees the message first and a bare code would leave them to look it up.
+        Assert.False(string.IsNullOrWhiteSpace(outage.GetProperty("message").GetString()));
     }
 
     [Fact]
