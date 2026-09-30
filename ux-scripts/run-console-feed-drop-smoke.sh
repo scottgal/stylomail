@@ -23,6 +23,14 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# This script's own scratch directory, set before the harness is sourced because
+# the harness sets CONSOLE_RUN itself. A `${CONSOLE_RUN:-...}` default placed
+# after the source keeps the harness's value rather than this one, and every
+# script then shares the main smoke's directory. An operator can still override
+# it from the outside.
+export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-feed-drop-ux}"
+
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
 
@@ -42,10 +50,10 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# Its own scratch and output directories. The main smoke wipes ux-results
-# wholesale, so sharing them would mean one run's artifacts standing in for
-# another's; this script clears its own subdirectory every time instead.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-feed-drop-ux}"
+# Its own output directory too. The main smoke wipes ux-results wholesale, so
+# sharing it would mean one run's artifacts standing in for another's; this
+# script clears its own subdirectory every time instead. The scratch directory
+# is set above, before the harness is sourced.
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 

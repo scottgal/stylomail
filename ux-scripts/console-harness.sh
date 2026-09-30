@@ -166,14 +166,31 @@ console_start_host() {
     head -c 32 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/profile.key"
     head -c 24 /dev/urandom | xxd -p | tr -d '\n' > "$CONSOLE_RUN/data/principal.key"
 
-    export TYPESAFE_API_KEY="not-a-real-key-harness-only"
-    export STYLOMAIL_PROFILE_KEY="$(cat "$CONSOLE_RUN/data/profile.key")"
+    # The assessment credential, both halves or neither.
+    #
+    # Neither is one of this harness's real states rather than an accident, so
+    # it is a switch like CONSOLE_TRAFFIC. With no credential the Host composes
+    # UnavailableMailAssessor, which throws on every message it is handed, and
+    # readiness answers 503 not_ready with assessor_unavailable in the failed
+    # checks. That is the state the console's failed-checks block exists for and
+    # the only state that reaches it, so ux-scripts/run-console-not-ready-smoke.sh
+    # turns it off on purpose. One secret without the other is a misconfiguration
+    # that refuses to start, so this never produces it.
+    if [[ "${CONSOLE_ASSESSOR:-true}" == "true" ]]; then
+        export TYPESAFE_API_KEY="not-a-real-key-harness-only"
+        export STYLOMAIL_PROFILE_KEY="$(cat "$CONSOLE_RUN/data/profile.key")"
+    else
+        unset TYPESAFE_API_KEY STYLOMAIL_PROFILE_KEY
+    fi
+
     export ASPNETCORE_URLS="$CONSOLE_BASE"
 
     # The semantic provider is pointed at an address that cannot answer, so the
     # pipeline degrades to explicitly-unavailable evidence instead of throwing
     # on a rejected key. That is the state the console has to render honestly,
-    # and it is the only state reachable without a real provider key.
+    # and it is the only state reachable without a real provider key. Read only
+    # when a credential was exported above, so the CONSOLE_ASSESSOR=false run
+    # sets it and never reaches it.
     export StyloMail__Jev__Endpoint="http://127.0.0.1:9/v1/systemone"
 
     # The live feed, on by default here so the main smoke exercises the Hub and
@@ -338,5 +355,16 @@ console_export_app_env() {
     # exported this file shows the pane's rendering over a body the Host did not
     # produce. Both are honest runs, and they are evidence about different
     # things.
-    export STYLOMAIL_SMOKE_DECISION_FILE="$CONSOLE_REPO/ux-scripts/decision-fixture.json"
+    #
+    # A run can decline it, and the not-ready run does. Loading a decision the
+    # Host did not produce, on a Host whose whole point is that it cannot assess
+    # anything, would put a fabricated explanation of a message beside a status
+    # line saying no message can be explained. It does not disturb the assertion
+    # itself (the fixture fills the detail pane, not the list), which is exactly
+    # why it would go unnoticed in a screenshot.
+    if [[ "${CONSOLE_DECISION_FIXTURE:-true}" == "true" ]]; then
+        export STYLOMAIL_SMOKE_DECISION_FILE="$CONSOLE_REPO/ux-scripts/decision-fixture.json"
+    else
+        unset STYLOMAIL_SMOKE_DECISION_FILE
+    fi
 }

@@ -12,6 +12,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-smoke.sh            # the console against a Host with the live feed on
 ./ux-scripts/run-console-no-feed-smoke.sh    # ... against a Host with no feed at all
 ./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
+./ux-scripts/run-console-not-ready-smoke.sh  # ... against a Host that is up and refusing mail
 ```
 
 Run a script, not the YAML. Each sources `console-harness.sh`, which builds the solution it needs,
@@ -53,6 +54,30 @@ the harness has no shell-out action and nothing in a script can stop a process, 
 the console is Live before killing, rather than sleeping a fixed amount: a fixed sleep would be the
 one thing here that makes the test flaky, and flaky is the same as absent for a proof.
 
+## A Host that is up and refusing
+
+Not a feed state, and the reason it has a script of its own. The status line's states are separate
+from the feed's, and the one with something to read is "Connected, not accepting mail": the Host
+answers every request and will refuse the mail it cannot assess, so nothing is broken and nothing
+works. The failed-checks block under the empty queue is where the Host's own check names appear, one
+per line, and `run-console-not-ready-smoke.sh` is the run that puts it on screen. The block had been
+rendered by nothing until then, which is how it kept a defect that no unit test could see - the model
+announced the flag that shows the block and not the list inside it, so the block appeared with its
+heading and nothing under it. `FailedChecks` was right the whole time; the window was never told to
+read it again.
+
+The state is reached by configuration rather than by breaking anything. `console-harness.sh` reads
+`CONSOLE_ASSESSOR` when it starts the Host: `true` (the default) gives it a provider key and an
+endpoint that cannot answer, and `false` gives it no assessment credential at all, which composes an
+assessor that refuses every message and makes readiness answer `503 not_ready` with
+`assessor_unavailable` in the checks. One secret without the other is a misconfiguration that refuses
+to start, so the switch cannot produce it. That run also sets `CONSOLE_DECISION_FIXTURE=false`: a
+decision body the Host did not produce has no place on the screen of a Host that cannot produce one.
+
+The runner prints what `/health/ready` answered before it drives the console, so a red run can be
+told apart from a console bug: if that line is not `HTTP 503`, the Host is what failed and the
+assertions below it are about the wrong thing.
+
 ## Modes
 
 ```bash
@@ -78,6 +103,12 @@ by hand needs `STYLOMAIL_HOST` and `STYLOMAIL_SMOKE_KEY` set, which are the Debu
 
 1. Find the control you want to drive in `Views/MainWindow.axaml`. If it has no `x:Name`, give it one.
 2. Add a `*.yaml` beside the others and run it through the shell script.
+3. If it needs a Host of its own, write a runner for it, and set the switches that configure that Host
+   **before** the `source` - including `CONSOLE_RUN`. The harness assigns `CONSOLE_RUN` itself, so a
+   runner that sets it afterwards with `${CONSOLE_RUN:-...}` keeps the harness's value and silently
+   shares the main smoke's scratch directory. That is two runs writing one tree, which the comment in
+   each runner says cannot happen. It did, in all three of them, until the not-ready script was
+   written and its `ready.json` turned up in another script's directory.
 
 Selectors are Playwright-flavoured: `name=`, `type=`, `text=`, `testid=`, `role=`, `label=`, composed
 with `inside(...)`, `near(...)`, `first(...)`, `nth(n, ...)`, and `type=Button:has-text(Save)`.
@@ -169,8 +200,9 @@ the fastest way to make a run meaningless.
   empty for the same reason, so the join from a message row to its decision has no row to start from.
 - **Two evidence rows that differ only by trend window.** The pane can now tell them apart (they agree
   on signal id and scope, and the producer emits one row per window, "burst" and "slow"), but a run
-  cannot reach them: the harness Host has no assessor, so its decision is a declined one whose
-  evidence is entirely semantic. Behavioural evidence needs a working semantic provider. What the
+  cannot reach them: the harness Host's semantic provider is unreachable, so its decision is a
+  declined one whose evidence is entirely semantic. Behavioural evidence needs a working semantic
+  provider. What the
   smoke does assert is the other half of the same contract, that the qualifier is *absent* on the
   unwindowed rows that make up most of a real response. The windowed case is covered by
   `DecisionViewTests`.

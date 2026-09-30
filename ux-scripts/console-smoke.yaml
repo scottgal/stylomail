@@ -71,6 +71,17 @@ actions:
     matcher: HasText
     value: "The Host is running and can accept mail."
 
+  # And nothing is claimed to have failed, which is the other half of that
+  # sentence rather than a restatement of it. The block below this one is shown
+  # by a flag of its own, so a ready Host with a block on screen would be a
+  # console telling the operator to go and look for a failure that is not there.
+  # The pairing is with ux-scripts/run-console-not-ready-smoke.sh, which starts a
+  # Host that does fail a check and asserts the block is present: one run proves
+  # the block is caused by the failed checks, the other that it is not always up.
+  - type: Expect
+    target: "name=FailedChecksBlock"
+    matcher: Not.IsVisible
+
   # The sidebar is filled from GET /v1/senders, which is a second round trip:
   # the status bar saying Connected only means the first one finished. Given a
   # generous timeout for that reason, and because a cold start pays for

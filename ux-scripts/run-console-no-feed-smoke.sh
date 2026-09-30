@@ -15,11 +15,21 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Set before the harness is sourced, because the harness reads it when it starts
-# the Host. `false` here is what makes the Hub absent: the Host maps the route
-# only when the deployment enabled it, so this is a configuration and not a
-# fault being simulated.
+# Both of these are set before the harness is sourced, because the harness reads
+# them when it starts the Host, and one of them it also *sets*.
+#
+# `false` is what makes the Hub absent: the Host maps the route only when the
+# deployment enabled it, so this is a configuration and not a fault being
+# simulated.
 export CONSOLE_TRAFFIC=false
+
+# This script's own scratch directory, and the assignment has to be here rather
+# than below the source. The harness sets CONSOLE_RUN to the main smoke's path,
+# so a `${CONSOLE_RUN:-...}` default after sourcing keeps that value and this
+# script reuses the main smoke's directory: two runs writing one tree, which is
+# the thing the comment further down says cannot happen. Before the source it
+# defaults correctly, and an operator can still override it from the outside.
+export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-no-feed-ux}"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
@@ -31,17 +41,17 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# A different scratch directory and output directory from the main smoke, so a
-# run of one cannot be read as evidence about the other. Two scripts writing the
-# same ux-results would leave whichever ran last as the only artifact, and the
-# counts would be attributed to the wrong script.
+# A different output directory from the main smoke, so a run of one cannot be
+# read as evidence about the other. Two scripts writing the same ux-results would
+# leave whichever ran last as the only artifact, and the counts would be
+# attributed to the wrong script.
 #
 # The output goes in a subdirectory of ux-results rather than a sibling of it
 # because ux-results is already ignored and a new top-level directory would
 # dirty the shared tree. The main smoke wipes ux-results wholesale, so running
 # it after this one leaves these artifacts to be regenerated rather than stale:
-# this script clears its own subdirectory on every run.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-no-feed-ux}"
+# this script clears its own subdirectory on every run. The scratch directory it
+# shares with nothing is set above, before the harness is sourced.
 CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/no-feed"
 
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"

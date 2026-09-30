@@ -1,0 +1,116 @@
+name: console-not-ready-smoke
+description: >
+  Drives the console against a Host that is up and answering, and that cannot
+  durably accept mail because it has no assessor at all.
+
+  This is the state the console's failed-checks block exists for, and the only
+  state that reaches it. The status line can only say so much: "Connected, not
+  accepting mail" names the condition and not the cause, and a cause an operator
+  cannot read is a support ticket rather than a diagnosis. The block is where the
+  Host's own check names are rendered, one per line, so the operator learns which
+  capability failed rather than that something did.
+
+  Run it through ux-scripts/run-console-not-ready-smoke.sh, not directly: that
+  script starts a Host with no assessment credential and takes it down
+  afterwards. It also prints what /health/ready answered, before the console
+  runs, so a red run can be told apart from a console bug.
+
+  Asserted here:
+    - the status line says the Host is reachable and refusing, rather than
+      unreachable, which is the distinction the console's six states exist for;
+    - the failed-checks block is on screen, with the heading and the Host's own
+      check name in it;
+    - the empty queue pane points at that block, because a pointer to a list
+      that is not on screen is the same small lie as a reassurance;
+    - the rest of the console works, which is what "reachable" has to mean in
+      practice and not only in the status line.
+
+  Not covered here: the same checks in any other combination. This run reaches
+  one of them, assessor_unavailable, because it is the one reachable from
+  configuration alone; spool and database need a filesystem fault and
+  provider_credential needs a provider that answers. The rendering is the same
+  for all of them, so what is proved is the rendering.
+
+default_delay: 250
+
+actions:
+  # The first of the two claims, and the one worth separating: the Host is
+  # reachable. A console that had collapsed these two states into one would
+  # report a Host answering every request as though it were down.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected, not accepting mail"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=StatusDetailText"
+    matcher: HasText
+    value: "The Host is running but cannot durably accept mail right now."
+
+  # The rest of the console is working, so the state above is a statement about
+  # the Host's ability to accept mail and not a broken console.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The assertion this script exists for: a Host that cannot assess queues
+  # nothing, so this pane is empty on a live route, and the operator has to be
+  # told which of the two causes it is.
+  - type: Click
+    target: "type=Button:has-text(Awaiting decision)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Awaiting decision"
+
+  - type: Expect
+    target: "name=FailedChecksBlock"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "name=FailedChecksHeadingText"
+    matcher: HasText
+    value: "The Host reported these failed checks:"
+
+  # The Host's own word for the failure, not the console's paraphrase of it. The
+  # same string is what /v1/assessments answers 503 with, so an operator reading
+  # this and an operator reading a refused request see one name for one state.
+  - type: Expect
+    target: "text=assessor_unavailable"
+    matcher: IsVisible
+    timeout: 10000
+
+  # And the pane's own sentence, which is what turns an empty list into an
+  # explanation. Exact whole text is not used here because the sentence is the
+  # third of three joined by the model, and pinning the whole paragraph would
+  # fail on a wording change that left the meaning intact.
+  - type: Expect
+    target: "name=EmptyListDetailText"
+    matcher: ContainsText
+    value: "The failed checks below name which of the two it is."
+
+  - type: Screenshot
+    value: "01-not-ready"
+    description: "A reachable Host that is refusing mail, with the failed check named"
+
+  # The ledger is a different route on the same Host, so this also shows that
+  # one pane's emptiness has nothing to do with another's answer.
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+
+  - type: Expect
+    target: "name=FailedChecksBlock"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "02-not-ready-ledger"
+    description: "The same Host's decision ledger, empty for the same reason"
