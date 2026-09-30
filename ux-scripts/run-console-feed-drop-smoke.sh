@@ -40,9 +40,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-console_require_app || exit 1
-
-dotnet build "$CONSOLE_REPO/src/StyloMail.Host/StyloMail.Host.csproj" -v quiet --nologo >/dev/null || exit 1
+console_build_all || exit 1
 
 # Its own scratch and output directories. The main smoke wipes ux-results
 # wholesale, so sharing them would mean one run's artifacts standing in for

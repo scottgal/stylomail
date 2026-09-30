@@ -29,7 +29,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-console_require_app || exit 1
+console_build_all || exit 1
 
 # A different scratch directory and output directory from the main smoke, so a
 # run of one cannot be read as evidence about the other. Two scripts writing the
@@ -43,8 +43,6 @@ console_require_app || exit 1
 # this script clears its own subdirectory on every run.
 export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-no-feed-ux}"
 CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/no-feed"
-
-dotnet build "$CONSOLE_REPO/src/StyloMail.Host/StyloMail.Host.csproj" -v quiet --nologo >/dev/null || exit 1
 
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"

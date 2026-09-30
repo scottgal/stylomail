@@ -16,11 +16,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-console_require_app || exit 1
-
-# Built rather than `dotnet run` at launch time, so the pid the harness records
-# is the Host itself and the cleanup can actually stop it.
-dotnet build "$CONSOLE_REPO/src/StyloMail.Host/StyloMail.Host.csproj" -v quiet --nologo >/dev/null || exit 1
+# Both binaries, from a clean checkout, with the output shown. This is the only
+# build step: the Host is built here rather than launched with `dotnet run` so
+# the pid the harness records is the Host itself and the cleanup can stop it.
+console_build_all || exit 1
 
 rm -rf "$CONSOLE_RUN"
 mkdir -p "$CONSOLE_RUN"

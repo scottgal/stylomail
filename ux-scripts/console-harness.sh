@@ -18,7 +18,6 @@
 set -uo pipefail
 
 CONSOLE_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONSOLE_APP="$CONSOLE_REPO/src/StyloMail.Desktop/bin/Debug/net10.0/StyloMail.Desktop"
 CONSOLE_HOST_APP="$CONSOLE_REPO/src/StyloMail.Host/bin/Debug/net10.0/StyloMail.Host"
 CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-ux}"
 
@@ -31,11 +30,39 @@ CONSOLE_BASE="http://127.0.0.1:${CONSOLE_PORT}"
 export DOTNET_ROOT="${DOTNET_ROOT:-/usr/local/share/dotnet}"
 export PATH="/usr/local/share/dotnet:$PATH"
 
-console_require_app() {
-    if [[ ! -e "$CONSOLE_APP" && ! -x "$CONSOLE_APP" ]]; then
-        echo "Build first: dotnet build src/StyloMail.Desktop/StyloMail.Desktop.csproj" >&2
-        exit 1
+# Builds everything a console run needs, from the repo root, with the build's
+# own output shown rather than hidden.
+#
+# This replaces two earlier shapes, and both of them made a fresh checkout fail
+# before a single assertion ran:
+#
+#   1. A refusal. `console_require_app` printed "Build first: dotnet build ..."
+#      and exited 1 instead of building, so a first-time user's only progress
+#      was to work out that the script wanted a prerequisite it would not make.
+#      That message was the first wall on a clean clone and nothing past it was
+#      reachable.
+#   2. A `dotnet build .../StyloMail.Host.csproj -v quiet --nologo >/dev/null`
+#      copied into each runner. Building one project by path rather than through
+#      the solution is the shape that fails to resolve project references in
+#      some clean checkouts (CS0234 on StyloMail.Chat and StyloMail.Jev, CS0006
+#      on missing obj/.../ref/*.dll). I could not reproduce that failure from
+#      this tree, but a solution build cannot have it, and the `>/dev/null` is
+#      indefensible either way: it turned any failure into exit 1 with a 0-byte
+#      log, which is a build failure with its reason deleted.
+#
+# The log is written as well as shown, so it outlives the terminal's scrollback
+# and can still be read after a failed run.
+console_build_all() {
+    local log_dir="${CONSOLE_BUILD_LOG_DIR:-/tmp/stylomail-console-build}"
+    local log="$log_dir/solution.log"
+    mkdir -p "$log_dir"
+    echo "== building StyloMail.slnx for the console harness =="
+    dotnet build "$CONSOLE_REPO/StyloMail.slnx" --nologo 2>&1 | tee "$log"
+    local status="${PIPESTATUS[0]}"
+    if [[ $status -ne 0 ]]; then
+        echo "build failed with exit $status. Full log: $log" >&2
     fi
+    return "$status"
 }
 
 # Starts a throwaway Host and waits for it to answer, rather than sleeping a
@@ -66,7 +93,8 @@ console_start_host() {
     fi
 
     if [[ ! -x "$CONSOLE_HOST_APP" ]]; then
-        echo "Build the Host first: dotnet build src/StyloMail.Host/StyloMail.Host.csproj" >&2
+        echo "No Host binary at $CONSOLE_HOST_APP, so there is nothing to start." >&2
+        echo "console_build_all should have produced it; run it and check its log." >&2
         return 1
     fi
 
