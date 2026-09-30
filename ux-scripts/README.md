@@ -14,13 +14,16 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
 ./ux-scripts/run-console-not-ready-smoke.sh  # ... against a Host that is up and refusing mail
 ./ux-scripts/run-console-nimble-smoke.sh     # ... against a Host with a working local assessor
+./ux-scripts/run-console-quarantine-smoke.sh # ... and a message policy quarantined, then released
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ```
 
-The Nimble run is the only one that needs something installed: a local Ollama on 11435 holding a
-`nimble` model. It is a run of its own rather than a section of the main smoke for that reason, and
-because it is the only one whose Host can fill the middle pane.
+The Nimble and quarantine runs are the only two that need something installed: a local Ollama on 11435
+holding a `nimble` model. They are runs of their own rather than sections of the main smoke for that
+reason, and because they are the only ones whose Host can fill the middle pane. The quarantine run
+needs the model to answer a particular way as well (the message must cross `QuarantineThreshold`), so
+its runner refuses to drive the console unless the route actually quarantined it.
 
 Run a script, not the YAML. Each sources `console-harness.sh`, which builds the solution it needs,
 starts a throwaway Host on loopback with locally generated values, points the console at it, and takes
@@ -44,8 +47,8 @@ scripts used to discard it, which turned a build error into exit 1 and a 0-byte 
 
 Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
 under `ux-results/`, so one run's artifacts can never be read as another's. The main smoke wipes
-`ux-results` wholesale, so running it deletes the other two scripts' screenshots: run those again
-rather than reading a stale image.
+`ux-results` wholesale, so running it deletes the other scripts' screenshots: run those again rather
+than reading a stale image.
 
 ## The live feed's three states
 
@@ -106,8 +109,11 @@ answer) refuses the submission with `503 deferred` and queues nothing, while a N
 with `202`, and a message policy holds comes back in the listing under both `awaiting_decision` and
 `held`. Benign mail is accepted and then absent from every listing, because the listing enumerates
 what needs attention and not what was delivered: an empty queue on that shape is the route working.
-Equally, a held item is not a quarantined one, and `QuarantineThreshold` is 0.80 where the messages
-tried here scored 0.48 to 0.58. The state-by-state account is `ux-scripts/state-coverage.md`.
+Equally, a held item is not a quarantined one: `QuarantineThreshold` is 0.80, and crossing it takes a
+message that fires a lot of *weighted* semantic dimensions at once (the gradient is measured in
+`ux-scripts/state-coverage.md`; sender history and a heavier word list are both measured false), which
+is why the fixture for it is written rather than picked. The state-by-state account is
+`ux-scripts/state-coverage.md`.
 
 `run-console-nimble-smoke.sh` is what makes that shape worth having. It submits
 `tests/StyloMail.Desktop.Tests/fixtures/nimble-held-message.eml` through `POST /v1/submissions`,
@@ -131,6 +137,15 @@ middle pane had no name on its container, so the only assertable control was the
 parent is hidden, and the assertion failed with a row on screen. The block is now `EmptyListBlock` and
 that is what a script asserts on. That is lesson 1 below, walked into for the third time, and the
 reason it is written down.
+
+`run-console-quarantine-smoke.sh` is the same shape for the far side of `QuarantineThreshold`,
+submitting `tests/StyloMail.Desktop.Tests/fixtures/quarantine-threshold-payment-change.eml` (risk
+0.8219178082191781, pinned at 0.822 as rendered) and releasing it from the console. It is a run of its
+own rather than a section of the Nimble one because held and quarantined are different traffic, and
+because the write action only exists on this side: what it asserts is Release absent before the row is
+opened and present after, Confirm refused until a reason is typed, the result line naming the
+principal, and then the listing **emptying**, which is the only visible effect a release has. Two
+defects came out of writing it, one in the app and one in these runners, and both are lessons below.
 
 ## Seeding real traffic, when there is a corpus
 
