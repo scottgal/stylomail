@@ -45,13 +45,33 @@ export PATH="/usr/local/share/dotnet:$PATH"
 #      copied into each runner. Building one project by path rather than through
 #      the solution is the shape that fails to resolve project references in
 #      some clean checkouts (CS0234 on StyloMail.Chat and StyloMail.Jev, CS0006
-#      on missing obj/.../ref/*.dll). I could not reproduce that failure from
-#      this tree, but a solution build cannot have it, and the `>/dev/null` is
-#      indefensible either way: it turned any failure into exit 1 with a 0-byte
-#      log, which is a build failure with its reason deleted.
+#      on missing obj/.../ref/*.dll), and the `>/dev/null` was indefensible
+#      either way: it turned any failure into exit 1 with a 0-byte log, which is
+#      a build failure with its reason deleted.
 #
 # The log is written as well as shown, so it outlives the terminal's scrollback
 # and can still be read after a failed run.
+#
+# ONE RETRY, for a race I reproduced but cannot trigger on demand. Building the
+# solution twice in a fresh clone is green, and deleting a project's
+# obj/.../ref/*.dll does not reproduce anything (MSBuild regenerates it), so the
+# CS0006 I did see once, on ref/StyloMail.AccessProxy.Tests.dll read by
+# StyloMail.Integration.Tests mid-build, is a race between concurrent builds
+# over the shared MSBuild state, not a stale cache. That environment is this
+# fleet's normal one: several agents build this tree at once. A single retry
+# converts that transient into a pass. It cannot hide a real failure, because a
+# genuine compile error fails both attempts, and both exit codes and the second
+# log path are reported.
+#
+# -p:ProduceReferenceAssembly=true is deliberately NOT passed. overview-
+# suggested it after their clean-checkout runs needed it, but the property
+# already reads true in this tree (measured with `dotnet msbuild
+# -getProperty:ProduceReferenceAssembly` on the Host, Core, Desktop and two test
+# projects), so
+# passing it is either a no-op or a forced re-evaluation that happens to
+# regenerate the missing ref assembly. Either way it treats the symptom, and
+# forcing reference assemblies everywhere is not free. The retry is the same
+# remedy without the cargo cult.
 console_build_all() {
     local log_dir="${CONSOLE_BUILD_LOG_DIR:-/tmp/stylomail-console-build}"
     local log="$log_dir/solution.log"
@@ -59,8 +79,22 @@ console_build_all() {
     echo "== building StyloMail.slnx for the console harness =="
     dotnet build "$CONSOLE_REPO/StyloMail.slnx" --nologo 2>&1 | tee "$log"
     local status="${PIPESTATUS[0]}"
+    if [[ $status -eq 0 ]]; then
+        return 0
+    fi
+
+    echo "build failed with exit $status. Full log: $log" >&2
+    if ! grep -qE 'CS0006|CS0234|MSB3026|MSB4018' "$log"; then
+        return "$status"
+    fi
+
+    echo "That reads as the concurrent-build race over shared obj state, not a" >&2
+    echo "compile error. Retrying once:" >&2
+    dotnet build "$CONSOLE_REPO/StyloMail.slnx" --nologo 2>&1 | tee "$log_dir/solution-retry.log"
+    status="${PIPESTATUS[0]}"
     if [[ $status -ne 0 ]]; then
-        echo "build failed with exit $status. Full log: $log" >&2
+        echo "build failed again with exit $status, so this is probably not the" >&2
+        echo "race. Full log: $log_dir/solution-retry.log" >&2
     fi
     return "$status"
 }
