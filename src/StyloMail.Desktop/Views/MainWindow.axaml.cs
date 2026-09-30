@@ -915,32 +915,30 @@ public partial class MainWindow : Window
     /// events: a dropped, duplicated or reordered event rendered directly would
     /// be a permanently wrong screen, and a console showing a stale verdict as
     /// current is worse than one showing nothing.
+    /// <para>
+    /// Which read a notice calls for is decided by
+    /// <see cref="TrafficNoticeRouting"/>, not here. That mapping has rules in
+    /// it and belongs somewhere a test can hand it a notice, which this class is
+    /// not. This class is what performs the read.
+    /// </para>
     /// </remarks>
     private async Task ApplyTrafficNoticeAsync(TrafficNotice notice)
     {
         try
         {
-            await (notice.Recognised switch
+            await (TrafficNoticeRouting.For(notice) switch
             {
-                // Readiness is a fact about the Host and about nothing else, so
-                // the status bar is the whole affected surface.
-                TrafficNoticeKind.ReadinessChanged => RefreshHostAsync(),
+                TrafficNoticeRoute.Readiness => RefreshHostAsync(),
+                TrafficNoticeRoute.Senders => LoadSendersAsync(),
+                TrafficNoticeRoute.Selection => LoadSelectionAsync(),
+                TrafficNoticeRoute.Everything => ResynchroniseAsync(),
 
-                // Where a paused sender shows is the sidebar, and a control
-                // change alters no listing. Re-reading the middle pane here
-                // would make it flicker for no new information.
-                TrafficNoticeKind.SenderControlChanged => LoadSendersAsync(),
-
-                // A row moved in whichever listing is open. Which listing that
-                // is belongs to the selection, so the selection is reloaded.
-                TrafficNoticeKind.DecisionRecorded or TrafficNoticeKind.MessageStateChanged
-                    => LoadSelectionAsync(),
-
-                // A kind this build does not know. A full re-read is always
-                // correct and merely less precise: the read is the truth and
-                // the notice was only a nudge toward it. Dropping it instead
-                // would be the silently frozen feed this surface exists to
-                // prevent.
+                // Unreachable for a route the mapping produced, and the same
+                // answer if it ever is not: a route this build has no read for
+                // gets a full read rather than no read at all. An enum switch
+                // needs this arm (CS8524), so a route added later lands here
+                // rather than failing the build: the cost of that is one round
+                // trip, which is the cheap way to be wrong.
                 _ => ResynchroniseAsync(),
             }).ConfigureAwait(true);
         }

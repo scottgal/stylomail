@@ -214,6 +214,11 @@ the fastest way to make a run meaningless.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.
+- **A notice kind this build does not recognise.** Nothing a script can do puts a frame on the Hub:
+  the actions are UI actions, the transport is the console's own, and a Host built from this tree
+  announces kinds it and the console share. What the console does with an unreadable hint is
+  therefore covered by `TrafficNoticeRoutingTests` rather than by a run, which is why that decision
+  is a pure function in `Api/TrafficNoticeRouting.cs` and no longer a switch inside the window.
 
 Stated rather than left to be discovered, because a script that silently skips a surface reads as
 coverage.
