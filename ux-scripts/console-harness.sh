@@ -376,6 +376,15 @@ console_seed_management() {
 # says the semantic layer never looked. That is the state the console must
 # render as absent rather than as zero, and this is the only way to reach it
 # without the operator's provider key.
+#
+# One limit of this route, measured 2026-09-30, worth knowing before a seeded
+# ledger entry is read as complete: an assessment hands the pipeline an ephemeral
+# payload rather than spooling the message, so the MIME layer never runs and
+# assessment.deterministic_extraction is Unavailable whichever provider is
+# composed. Only POST /v1/submissions spools the bytes and runs that layer, so
+# this call cannot carry a planted deterministic fact at all, and decision 24's
+# corroboration gate is not exercisable through it. console_seed_submission below
+# is the route that does.
 console_seed_decision() {
     local key="$1"
     local base="$2"
@@ -429,8 +438,9 @@ PYEOF
 # listing empty. A submission transfers responsibility, answers with a queue id,
 # and is the only thing that puts a row in the middle pane.
 #
-# The route refuses rather than accepting and holding when it cannot assess
-# (measured 2026-09-30; ux-scripts/state-coverage.md has the table), so a
+# The route refuses rather than accepting and holding on the shapes measured here
+# (2026-09-30; ux-scripts/state-coverage.md has the table, and one unreconciled
+# shape where another lane measured it accepting with a Defer decision), so a
 # submission that produced no queue id is reported as a failure of the run rather
 # than carried past. A run that continued would assert about an empty pane and
 # report the emptiness as a console defect.

@@ -22,23 +22,42 @@ description: >
   policy declines and records the decision with every semantic dimension
   Unavailable. Two things follow from that: it is reached over the API by the
   client the console ships, and the unavailable-is-not-zero rule is asserted
-  over data nothing wrote for the test. A file fixture remains as a Debug-only
-  fallback for a run with no decision to seed, and a screenshot taken from it
-  must say so.
+  over data nothing wrote for the test. A third follows from the route rather
+  than from the provider, and is worth knowing before anything here is trusted
+  to plant a fact: an assessment hands the pipeline an ephemeral payload rather
+  than spooling the message, so the MIME layer never runs and every deterministic
+  row is Unavailable too, whichever provider is composed. Only
+  POST /v1/submissions spools the bytes, so this route cannot plant a
+  deterministic fact at all, and decision 24's corroboration gate is not
+  reachable through it. A file fixture remains as a Debug-only fallback for a
+  run with no decision to seed, and a screenshot taken from it must say so.
 
-  Deliberately not covered here, with reasons. Both were re-measured on
+  Deliberately not covered here, with reasons. The first two were re-measured on
   2026-09-30 (`ux-scripts/probe-submission-route.sh`), because both had been
-  inferred from the route rather than read off a response, and the inference was
-  right about the outcome and wrong about the mechanism:
-    - Releasing a quarantine. It is a write that binds to a queue row, and no
-      run reaches one. The cause is not the provider declining a message: with
-      no assessor the route refuses up front (503 assessor_unavailable) and with
-      an assessor that cannot reach its provider it refuses retryably (503
-      deferred), so nothing is ever accepted and held either way. On a Host with
-      a working local assessor the route accepts (202) and a held message does
-      reach the listing, but quarantine needs a risk index at or above
-      QuarantineThreshold (0.80) and the messages tried scored 0.48 to 0.58. The
-      route's refusal is covered live, and its success path only by unit tests.
+  inferred from the route rather than read off a response; one of them has since
+  been corrected again by a second measurement, and says so below.
+    - Releasing a quarantine. No run here reaches a quarantined row, and the
+      reason is this run's traffic rather than the route: the messages it seeds
+      score 0.48 to 0.58 against a QuarantineThreshold of 0.80. Two earlier
+      readings of this are now wrong and are corrected here. The route does not
+      refuse on every shape that cannot assess: with no assessor it refuses up
+      front (503 assessor_unavailable), and with the Jev provider pointing at an
+      address that cannot answer it refuses retryably (503 deferred), but
+      `ingress-` measured a Nimble host whose model was down accepting with 202
+      and returning a Defer *decision*, which would put deferred rows in the
+      queue rather than leave it empty. The two have not been reconciled and the
+      harness has no switch for that shape; it is owed a probe run, and it
+      decides whether "the queue is empty" or "the queue holds deferred rows" is
+      the right reading. And a quarantine is reachable on a credential-free Host:
+      measured 2026-09-30, one message carrying nine firing weighted semantic
+      dimensions scored 0.9315, came back Quarantined under
+      policy.risk_above_quarantine, and released end to end (Quarantined ->
+      POST /v1/quarantine/{id}/release -> 200 {released: true} -> Queued, with a
+      second call answering {released: false}). So the release is drivable live
+      rather than unit-test-only, and what is missing here is the fixture that
+      crosses the threshold: not a route, and not a privilege, since
+      HostPolicies.Review is already granted to this harness's principal. The
+      route's refusal is covered live; the release is owed a run of its own.
     - A message to its decision. The join itself is implemented and wired
       (`ecb86e1`); what this run cannot do is start one, because on this Host the
       queue listings are empty and a join needs a listed row. That is a fact
