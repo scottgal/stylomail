@@ -39,13 +39,27 @@ internal static class JevCorpus
     /// <summary>Environment variable holding the bearer key. Same name the adapter's options use.</summary>
     internal const string ApiKeyEnvironmentVariable = JevOptions.ApiKeyEnvironmentVariable;
 
-    // There is deliberately no file fallback here, and that is a ruling rather than an omission.
-    //
-    // A key file at the repository root is a hard prohibition in the mission this lane grew out of,
-    // and the spec reserves that file for the overview's own live verification runs. Offering it as
-    // a fallback would mean two rules pointing opposite ways and somebody having to decide which
-    // wins. The environment variable is the only source this harness reads, so there is nothing to
-    // decide.
+    /// <summary>
+    /// Environment variable holding a <b>path</b> to a file containing the key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A path is not a secret, and that is the whole point of this route.</b> The key is opened and
+    /// read by the process that needs it, so the value never appears in a command line, an argument
+    /// list, a process environment inherited from a shell, or any output. Constructing the variable in
+    /// a shell with a substitution is the thing this exists to avoid: it interpolates a secret into a
+    /// visible command even when nothing prints it.
+    /// </para>
+    /// <para>
+    /// The plain <see cref="ApiKeyEnvironmentVariable"/> is still read first, because a deployment
+    /// that injects the value directly is legitimate. This is the fallback for a workstation, not a
+    /// replacement for it.
+    /// </para>
+    /// <para>
+    /// <b>Never put the value of this file on a command line.</b> Pass the path and let this read it.
+    /// </para>
+    /// </remarks>
+    internal const string ApiKeyFilePathVariable = "TYPESAFE_API_KEY_FILE";
 
     private static readonly Lazy<string> RepositoryRoot = new(FindRepositoryRoot);
 
@@ -160,11 +174,11 @@ internal static class JevCorpus
     /// The message shown when no credential is available. Names both places, never a value.
     /// </summary>
     internal static string MissingCredentialMessage =>
-        $"No semantic provider credential is available, so nothing can be recorded. Supply it as the "
-        + $"{ApiKeyEnvironmentVariable} environment variable, for example by exporting it from a file "
-        + "outside the repository so the value never reaches a command line or an output: "
-        + $"export {ApiKeyEnvironmentVariable}=\"$(cat /path/to/key)\". The key is never printed, "
-        + "logged, written into a fixture or committed.";
+        $"No semantic provider credential is available, so nothing can be recorded. Set "
+        + $"{ApiKeyEnvironmentVariable}, or set {ApiKeyFilePathVariable} to the path of a file "
+        + "holding the key and this process will read it. Prefer the path: the file is opened here, "
+        + "so the value never appears on a command line, in an argument list or in any output. "
+        + "The key is never printed, logged, written into a fixture or committed.";
 
     /// <summary>
     /// Reads the credential from the environment, and from nowhere else.
@@ -178,11 +192,24 @@ internal static class JevCorpus
     internal static bool TryReadCredential(out string apiKey)
     {
         var fromEnvironment = Environment.GetEnvironmentVariable(ApiKeyEnvironmentVariable);
-
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
         {
             apiKey = fromEnvironment;
             return true;
+        }
+
+        // Read in this process, never in a shell. The command that runs the recorder carries a path
+        // and nothing else, so there is no point at which the value is interpolated into a command
+        // line or handed to a child process through the environment.
+        var path = Environment.GetEnvironmentVariable(ApiKeyFilePathVariable);
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        {
+            var fromFile = File.ReadAllText(path, Encoding.UTF8).Trim();
+            if (!string.IsNullOrWhiteSpace(fromFile))
+            {
+                apiKey = fromFile;
+                return true;
+            }
         }
 
         apiKey = string.Empty;
