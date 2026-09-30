@@ -20,10 +20,12 @@ namespace StyloMail.Policy;
 /// </orderedlist>
 ///
 /// Within tier 4, a low index authorises delivery only when at least one available deterministic
-/// signal corroborates it. A semantic provider's false negative is indistinguishable from its true
-/// negative, and it arrives as a low value rather than a missing one, so it raises the covered
-/// fraction instead of lowering it and can satisfy both coverage guards. Evidence that the
-/// pipeline can check must therefore agree with the model before the model's calm is acted on.
+/// signal was measured beside it. A semantic provider's false negative is indistinguishable from
+/// its true negative, and it arrives as a low value rather than a missing one, so it raises the
+/// covered fraction instead of lowering it and can satisfy both coverage guards. So the model's
+/// calm is not acted on without something the pipeline can check: measured, and for the reason to
+/// hold, agreeing. The two are not the same claim, and the difference is a filed gap rather than a
+/// detail, since the deterministic findings are unweighted and cannot yet move the index.
 /// </remarks>
 public sealed class MailPolicyEngine
 {
@@ -241,7 +243,7 @@ public sealed class MailPolicyEngine
         // DimensionWeights (every deterministic finding, since those weights are semantic-only) do
         // not contribute to the index, so a displayed-link mismatch at 1.0 cannot raise it and a
         // benign row beside it satisfies this gate. Filed high as
-        // `unweighted-deterministic-findings-cannot-block-an-al`, and the repair is weights with
+        // `unweighted-deterministic-findings-cannot-block-a`, and the repair is weights with
         // declared units rather than a threshold test here, because the deterministic signals carry
         // counts and ratios and bytes, and a bare "value above the hold threshold" rule would hold
         // every message with a stored attachment. Pinned by a test in the policy suite.

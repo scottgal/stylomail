@@ -191,7 +191,7 @@ public sealed class MailPolicyEngineTests
     /// <c>DimensionWeights</c>, which today holds semantic ids only, so the index never counts it,
     /// and the benign row beside it satisfies the gate. A message whose displayed links disagree
     /// with their hosts can therefore still be allowed on a model's word. Filed high as
-    /// `unweighted-deterministic-findings-cannot-block-an-al`; this test flips to Hold when the
+    /// `unweighted-deterministic-findings-cannot-block-a`; this test flips to Hold when the
     /// risk-shaped deterministic signals carry weights with declared units, and it should flip
     /// then rather than be deleted.
     /// </summary>
