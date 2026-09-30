@@ -13,12 +13,20 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-no-feed-smoke.sh    # ... against a Host with no feed at all
 ./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
 ./ux-scripts/run-console-not-ready-smoke.sh  # ... against a Host that is up and refusing mail
+
+./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ```
 
 Run a script, not the YAML. Each sources `console-harness.sh`, which builds the solution it needs,
 starts a throwaway Host on loopback with locally generated values, points the console at it, and takes
 it down again on the way out, including on failure and on interrupt. That is what lets the assertions
 be exact and the run be repeatable from any starting state.
+
+`probe-submission-route.sh` is the odd one out and deliberately so: it asserts nothing, starts the
+same throwaway Host, posts one message and prints what each route answered. A claim about a route, as
+opposed to a claim about a screen, is measured before it is asserted, and a probe that failed would
+have to decide the right answer before measuring it. Its readings, and which console states they do
+and do not reach, are in `ux-scripts/state-coverage.md`.
 
 A fresh clone is enough: nothing has to be built first. The scripts build `StyloMail.slnx` themselves
 with `console_dotnet_build`, which cd's into the repo root and names the solution relatively. That
@@ -77,6 +85,24 @@ decision body the Host did not produce has no place on the screen of a Host that
 The runner prints what `/health/ready` answered before it drives the console, so a red run can be
 told apart from a console bug: if that line is not `HTTP 503`, the Host is what failed and the
 assertions below it are about the wrong thing.
+
+## A Host with a working local assessor
+
+A Host with no cloud credential can still assess: `StyloMail__Assessment__Provider=Nimble` asks a
+local Ollama and needs the master key alone, which is a supported deployment rather than a test
+dodge. `console-harness.sh` reaches it with `CONSOLE_PROVIDER=nimble`, shaped like the other two
+switches, and refuses to start unless something is answering on 11435 with a `nimble` model present:
+a switch that looks on and measures nothing would be worse than one that fails, and 11435 rather than
+Ollama's default 11434 is `NimbleOptions`' decision, so the check has to agree with it.
+
+This is the only shape on which a run fills the queue, and what it fills is narrower than it sounds.
+Measured 2026-09-30 with `probe-submission-route.sh`: the default Host (a Jev endpoint that cannot
+answer) refuses the submission with `503 deferred` and queues nothing, while a Nimble Host accepts it
+with `202`, and a message policy holds comes back in the listing under both `awaiting_decision` and
+`held`. Benign mail is accepted and then absent from every listing, because the listing enumerates
+what needs attention and not what was delivered: an empty queue on that shape is the route working.
+Equally, a held item is not a quarantined one, and `QuarantineThreshold` is 0.80 where the messages
+tried here scored 0.48 to 0.58. The state-by-state account is `ux-scripts/state-coverage.md`.
 
 ## Modes
 
@@ -192,19 +218,29 @@ the fastest way to make a run meaningless.
 
 ## What this harness cannot reach, and why
 
-- **A quarantine release.** `POST /v1/submissions` declines an assessment when the semantic provider
-  is unavailable, which is correct, so no message ever reaches a quarantined state in a run. The
-  release route's refusal is covered here; its success path is covered only by unit tests, and no
-  screenshot of it exists.
-- **A message to its decision.** The ledger is listable and driven here, but the queue listings stay
-  empty for the same reason, so the join from a message row to its decision has no row to start from.
-- **Two evidence rows that differ only by trend window.** The pane can now tell them apart (they agree
-  on signal id and scope, and the producer emits one row per window, "burst" and "slow"), but a run
-  cannot reach them: the harness Host's semantic provider is unreachable, so its decision is a
-  declined one whose evidence is entirely semantic. Behavioural evidence needs a working semantic
-  provider. What the
-  smoke does assert is the other half of the same contract, that the qualifier is *absent* on the
-  unwindowed rows that make up most of a real response. The windowed case is covered by
+- **A quarantine release.** Measured rather than assumed, 2026-09-30: `POST /v1/submissions` does not
+  accept and hold, it refuses, with `503 assessor_unavailable` when there is no assessor and `503
+  deferred` when the assessor cannot reach its provider. So the empty queue on the shapes the
+  committed smokes start is correct behaviour for a correct reason. On a Nimble-backed Host the route
+  accepts (`202`) and a held message does reach the listing, so the missing thing is not a working
+  provider but a message that scores at or above `QuarantineThreshold` (0.80): three single messages
+  scored 0.48, 0.55 and 0.58. The evidence says the dimensions that could close that gap need sender
+  history, which is traffic rather than a harness setting. The release route's refusal is covered
+  here; its success path is covered only by unit tests, and no screenshot of it exists.
+- **A message to its decision.** The ledger is listable and driven here, but on the Host the committed
+  smokes start the queue listings stay empty, so the join from a message row to its decision has no
+  row to start from. A Nimble-backed Host does list a held message, and that row carries the same
+  `internalMessageId` the decision does, so the join has something to stand on: what is owed is the
+  assertion, not the traffic.
+- **Two evidence rows that differ only by trend window.** The pane can tell them apart (they agree on
+  signal id and scope, and the producer emits one row per window, "burst" and "slow"). A run could
+  not reach them while the harness Host's provider was unreachable, because a declined decision's
+  evidence is entirely semantic, and on 2026-09-30 a Nimble-backed Host was measured producing them:
+  `behavioural.trend.velocity` and `.acceleration` over two scopes, one row per window. They are
+  `Unavailable` with `sampleSupport: 0` until there is sender history, so what is reachable is the
+  rendering rather than the measurement, and the assertion is owed here rather than the traffic. What
+  the smoke does assert today is the other half of the same contract, that the qualifier is *absent*
+  on the unwindowed rows that make up most of a real response. The windowed case is covered by
   `DecisionViewTests`.
 - **Recovery after a feed drops.** `run-console-feed-drop-smoke.sh` proves the console announces the
   drop and keeps what it had read. It does not prove the other half, that the console goes back to
@@ -232,8 +268,11 @@ and the ledger records a decision whose semantic dimensions are all `Unavailable
 
 That is a real decision, reached over the API by the client the console ships, and it is what makes
 the `not measured (unavailable)` assertion honest: it is over data nothing wrote for the test. What
-it does not establish is anything about a Host whose provider works. `docs/running.md` and the
-provider key are what that needs, and neither is in this harness's reach.
+it does not establish is anything about a Host whose provider works. A cloud provider key is still
+out of this harness's reach, but a working provider no longer is: `CONSOLE_PROVIDER=nimble` starts a
+Host with a real local assessor, which is how the held message and the windowed evidence rows above
+were reached. The committed smokes still start the unreachable-provider Host on purpose, because
+their assertions are about a decision that could not be measured.
 
 
 ## The old `--screenshot` path is gone

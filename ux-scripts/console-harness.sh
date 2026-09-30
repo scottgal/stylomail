@@ -27,6 +27,11 @@ CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-ux}"
 CONSOLE_PORT="${CONSOLE_PORT:-5271}"
 CONSOLE_BASE="http://127.0.0.1:${CONSOLE_PORT}"
 
+# Where the local decision model is asked whether it is up. 11435 rather than
+# Ollama's default 11434 on purpose: NimbleOptions explains why, and this has to
+# agree with it or the check would pass while the Host failed.
+CONSOLE_NIMBLE_TAGS="${CONSOLE_NIMBLE_TAGS:-http://127.0.0.1:11435/api/tags}"
+
 export DOTNET_ROOT="${DOTNET_ROOT:-/usr/local/share/dotnet}"
 export PATH="/usr/local/share/dotnet:$PATH"
 
@@ -146,6 +151,34 @@ console_build_all() {
 #      the process that must die.
 #   3. It reports the failure rather than continuing, because a harness that
 #      cannot tell whose Host it is talking to is not testing anything.
+# Refuses to start a Nimble Host when the local model is not answering.
+#
+# Ollama on 11435 is a precondition of that shape and not a dependency this
+# harness can install, so the run stops with the reason rather than declining
+# every message for a cause nothing on the console's screen names. The model tag
+# is checked as well as the server: a machine with the server up and the tag
+# missing answers /api/tags happily and then fails every generate, which is the
+# same red run for a different reason, and the difference is one line here.
+#
+# Both checks read the endpoint's default. A runner that overrides
+# StyloMail__Nimble__Endpoint owns its own precondition and this will not see it.
+console_require_local_model() {
+    local tags
+    tags="$(curl -fsS --max-time 3 "$CONSOLE_NIMBLE_TAGS" 2>/dev/null)" || {
+        echo "CONSOLE_PROVIDER=nimble needs the local decision model, and nothing answered" >&2
+        echo "at $CONSOLE_NIMBLE_TAGS. Start it with 'ollama serve' and try again." >&2
+        return 1
+    }
+
+    if ! grep -q '"nimble' <<<"$tags"; then
+        echo "Ollama is answering at $CONSOLE_NIMBLE_TAGS but holds no nimble model, so every" >&2
+        echo "assessment would fail. Pull it first: ollama pull nimble" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 console_start_host() {
     if lsof -nP -iTCP:"$CONSOLE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
         echo "Port $CONSOLE_PORT is already in use, so this run would talk to" >&2
@@ -177,21 +210,56 @@ console_start_host() {
     # turns it off on purpose. One secret without the other is a misconfiguration
     # that refuses to start, so this never produces it.
     if [[ "${CONSOLE_ASSESSOR:-true}" == "true" ]]; then
-        export TYPESAFE_API_KEY="not-a-real-key-harness-only"
         export STYLOMAIL_PROFILE_KEY="$(cat "$CONSOLE_RUN/data/profile.key")"
+
+        # Which semantic provider, when there is one. A switch for the same
+        # reason the other two are: it is a deployment shape rather than a
+        # variation of one.
+        #
+        #   jev (the default) is the hosted provider, with a placeholder key and
+        #      an endpoint that cannot answer. The pipeline therefore degrades to
+        #      explicitly-unavailable evidence rather than throwing on a rejected
+        #      key, and policy declines: the state the console must render as
+        #      absent rather than as zero, and the only one reachable without the
+        #      operator's provider key.
+        #   nimble is the local decision model on Ollama, holding no credential
+        #      at all, so the profile master key alone is a complete deployment
+        #      (decisions 17 and 18) and the assessor is REAL rather than
+        #      simulated. A provider that answers is what turns a declined
+        #      assessment into an assessed one, which is the whole difference
+        #      between a queue that is empty because nothing can be assessed and
+        #      a queue with something in it.
+        CONSOLE_PROVIDER="${CONSOLE_PROVIDER:-jev}"
+
+        if [[ "$CONSOLE_PROVIDER" == "nimble" ]]; then
+            export StyloMail__Assessment__Provider=Nimble
+
+            # The Jev half is deliberately absent: this shape holds no provider
+            # key, and a key nothing reads earns a warning on every boot that
+            # would train a reader to ignore the one that matters.
+            unset TYPESAFE_API_KEY
+        else
+            export TYPESAFE_API_KEY="not-a-real-key-harness-only"
+
+            # Pointed at an address that cannot answer, so the failure is a
+            # degraded assessment rather than a rejection.
+            export StyloMail__Jev__Endpoint="http://127.0.0.1:9/v1/systemone"
+        fi
     else
-        unset TYPESAFE_API_KEY STYLOMAIL_PROFILE_KEY
+        unset TYPESAFE_API_KEY STYLOMAIL_PROFILE_KEY StyloMail__Assessment__Provider
+        unset StyloMail__Jev__Endpoint
     fi
 
     export ASPNETCORE_URLS="$CONSOLE_BASE"
 
-    # The semantic provider is pointed at an address that cannot answer, so the
-    # pipeline degrades to explicitly-unavailable evidence instead of throwing
-    # on a rejected key. That is the state the console has to render honestly,
-    # and it is the only state reachable without a real provider key. Read only
-    # when a credential was exported above, so the CONSOLE_ASSESSOR=false run
-    # sets it and never reaches it.
-    export StyloMail__Jev__Endpoint="http://127.0.0.1:9/v1/systemone"
+    # The local model has to be answering before a Nimble Host is worth
+    # starting. Checked here rather than left to the assessment, because a
+    # stopped Ollama produces a Host that declines every message for a reason
+    # nothing on the console's screen names: the run would go red on assertions
+    # about a queue, and the cause would be one process that was never started.
+    if [[ "${CONSOLE_ASSESSOR:-true}" == "true" && "$CONSOLE_PROVIDER" == "nimble" ]]; then
+        console_require_local_model || return 1
+    fi
 
     # The live feed, on by default here so the main smoke exercises the Hub and
     # screenshots the console following it. It is off by default in a real
