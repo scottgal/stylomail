@@ -52,64 +52,78 @@ export PATH="/usr/local/share/dotnet:$PATH"
 # The log is written as well as shown, so it outlives the terminal's scrollback
 # and can still be read after a failed run.
 #
-# BUILT SERIALLY (-m:1), which is the fix for the race rather than a way round
-# it. A parallel solution build failed intermittently in pristine clones with
+# BUILT BY A RELATIVE PATH FROM THE REPO ROOT, which is what door 2 actually
+# was. The old line and my first replacement both passed an absolute path built
+# from a shell `pwd`, and on this machine that is not the same path twice: /tmp
+# is a symlink to /private/tmp, so one invocation spells the projects /tmp/...
+# and the next spells the same projects /private/tmp/... MSBuild keys projects
+# by resolved path, so those are two identities for one project, and it builds
+# them against each other.
 #
-#   error : System.IO.IOException: The process cannot access the file
-#   '.../src/StyloMail.Host/obj/Debug/net10.0/rjsmrazor.dswa.cache.json'
-#   because it is being used by another process.
+# What that looks like from outside, all of it seen in pristine clones under
+# /tmp: the same project restored twice in one log under the two spellings;
+# `error : System.IO.IOException: The process cannot access the file
+# '.../StyloMail.Host/obj/Debug/net10.0/rjsmrazor.dswa.cache.json' because it is
+# being used by another process`; `CS0006: Metadata file '.../obj/Debug/
+# net10.0/ref/StyloMail.AccessProxy.Tests.dll' could not be found` while
+# StyloMail.Integration.Tests compiled; and a Host that built clean, reported
+# success, then died at launch with FileNotFoundException on StyloMail.Core
+# because its dependencies had landed under the other spelling. That last one
+# cost two rounds of debugging a build that had said it succeeded.
 #
-# and, once, with `CS0006: Metadata file '.../obj/Debug/net10.0/ref/
-# StyloMail.AccessProxy.Tests.dll' could not be found` while
-# StyloMail.Integration.Tests compiled. Both are two MSBuild nodes touching one
-# project's output at once, and the holder is not external: `lsof` on the cache
-# file minutes later shows nothing holding it, no lingering node has a handle
-# into that clone, and no other agent is building it. Deleting a project's
-# obj/.../ref/*.dll and rebuilding does not reproduce CS0006 either, because
-# MSBuild regenerates it, which rules out a stale cache. Serial project builds
-# remove the whole class by construction, and two serial builds in a fresh clone
-# are green with every ref assembly present. The cost is build time on a harness
-# that runs a few times a day.
+# Measured directly in a clone under /tmp: building the absolute path logs both
+# spellings in a single run, building `StyloMail.slnx` after cd into the repo
+# root logs one. The runners already used the relative form for `dotnet run`, so
+# this only makes the build agree with them. The two absolute-path runs in the
+# shared repo's own tree never failed, because /Users/... is not a symlink and
+# there was only ever one spelling there: the defect existed only in a clone,
+# which is exactly where a fresh user starts.
 #
-# ONE RETRY is kept anyway, because the errors above can also come from a
-# concurrent build in the shared tree, which is this fleet's normal condition
-# and not something -m:1 can fix. It cannot hide a real failure: a genuine
-# compile error fails both attempts, and both exit codes and the second log path
-# are reported.
+# ONE RETRY is kept for a different cause of the same symptoms, a genuinely
+# concurrent build by another agent in the shared tree, which this fleet does
+# routinely and a relative path cannot fix. It cannot hide a real failure: a
+# genuine compile error fails both attempts, and both exit codes and the second
+# log path are reported.
 #
 # -p:ProduceReferenceAssembly=true is deliberately NOT passed. overview-
 # suggested it after their clean-checkout runs needed it, but the property
 # already reads true in this tree (measured with `dotnet msbuild
 # -getProperty:ProduceReferenceAssembly` on the Host, Core, Desktop and two test
-# projects), so passing it is either a no-op or a forced re-evaluation that
-# happens to regenerate the missing ref assembly. Either way it treats the
-# symptom, and forcing reference assemblies everywhere is not free.
+# projects). Forcing it treats a symptom of the identity clash above, and the
+# clash is the thing worth removing.
+# The build on its own, so the retry runs the identical command rather than a
+# copy that can drift. cd into the repo root and name the solution relatively,
+# which is the whole point: see the note above.
+console_dotnet_build() {
+    ( cd "$CONSOLE_REPO" && dotnet build StyloMail.slnx --nologo 2>&1 )
+}
+
 console_build_all() {
     local log_dir="${CONSOLE_BUILD_LOG_DIR:-/tmp/stylomail-console-build}"
     local log="$log_dir/solution.log"
     mkdir -p "$log_dir"
-    echo "== building StyloMail.slnx for the console harness (serial) =="
-    dotnet build "$CONSOLE_REPO/StyloMail.slnx" -m:1 --nologo 2>&1 | tee "$log"
+    echo "== building StyloMail.slnx for the console harness =="
+    console_dotnet_build | tee "$log"
     local status="${PIPESTATUS[0]}"
     if [[ $status -eq 0 ]]; then
         return 0
     fi
 
     echo "build failed with exit $status. Full log: $log" >&2
-    # The last two are the race's own words: this SDK writes the file collision
-    # as a bare `error : System.IO.IOException` with no MSB code at all, so a
-    # signature list of codes alone would miss it, and did.
+    # The last pattern is the file collision's own words: this SDK writes it as
+    # a bare `error : System.IO.IOException` with no MSB code at all, so a list
+    # of codes alone missed it, and a run that needed the retry did not get one.
     if ! grep -qE 'CS0006|CS0234|MSB3026|MSB4018|being used by another process' "$log"; then
         return "$status"
     fi
 
-    echo "That reads as the concurrent-build race over shared obj state, not a" >&2
-    echo "compile error. Retrying once:" >&2
-    dotnet build "$CONSOLE_REPO/StyloMail.slnx" -m:1 --nologo 2>&1 | tee "$log_dir/solution-retry.log"
+    echo "That reads as two builds colliding over one tree, not a compile error." >&2
+    echo "Retrying once:" >&2
+    console_dotnet_build | tee "$log_dir/solution-retry.log"
     status="${PIPESTATUS[0]}"
     if [[ $status -ne 0 ]]; then
-        echo "build failed again with exit $status, so this is probably not the" >&2
-        echo "race. Full log: $log_dir/solution-retry.log" >&2
+        echo "build failed again with exit $status, so this is probably not a" >&2
+        echo "collision. Full log: $log_dir/solution-retry.log" >&2
     fi
     return "$status"
 }
