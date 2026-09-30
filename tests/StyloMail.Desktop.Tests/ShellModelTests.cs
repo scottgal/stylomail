@@ -948,6 +948,34 @@ public sealed class ShellModelTests
     }
 
     /// <summary>
+    /// The failed checks are announced, not merely correct.
+    /// </summary>
+    /// <remarks>
+    /// The block that lists them is bound to this property and the model hands
+    /// over whatever list the Host's answer carried, so a window that is never
+    /// told to read it again keeps the empty list it read before the first answer
+    /// arrived. The result on screen is a heading with nothing under it, which
+    /// the two tests above cannot see: they read the property, and the property
+    /// is right.
+    /// </remarks>
+    [Fact]
+    public void The_failed_checks_are_announced_when_the_status_changes()
+    {
+        var model = ShellModel.CreateDefault();
+        var raised = Watch(model);
+
+        model.Status = HostStatus.From(new ReadinessResponse
+        {
+            Status = "not_ready",
+            FailedChecks = ["assessor_unavailable"],
+        });
+
+        Assert.Contains(nameof(ShellModel.FailedChecks), raised);
+        Assert.Contains(nameof(ShellModel.HasFailedChecks), raised);
+        Assert.Equal(["assessor_unavailable"], model.FailedChecks);
+    }
+
+    /// <summary>
     /// The status bar's feed line is notified, not merely assigned.
     /// </summary>
     /// <remarks>

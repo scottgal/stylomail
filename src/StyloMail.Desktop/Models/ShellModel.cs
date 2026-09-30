@@ -128,6 +128,16 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(StatusDetail));
             Raise(nameof(HasFailedChecks));
 
+            // The list itself, and not only the flag that reveals the block
+            // holding it. The heading in that block is a literal and the list
+            // under it is bound to this property, which the window had already
+            // read as empty before the first readiness answer arrived. Announcing
+            // only the flag put a heading on screen with nothing beneath it: the
+            // operator is told the Host reported failed checks and cannot see
+            // which. Found by running the console against a Host with no
+            // assessor, which is the only state that reaches the block at all.
+            Raise(nameof(FailedChecks));
+
             // The queue's empty text names the failed checks, but only when
             // there are any, and readiness arrives after the pane is already on
             // screen. Without this the sentence keeps whichever answer was true
