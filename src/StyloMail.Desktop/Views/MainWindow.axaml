@@ -130,7 +130,9 @@
 
                                                                 <StackPanel Grid.Column="1">
                                                                     <TextBlock Classes="rowTitle" Text="{Binding Title}" />
-                                                                    <TextBlock Classes="rowSubtitle" Text="{Binding Detail}" />
+                                                                    <TextBlock Classes="rowSubtitle"
+                                                                               AutomationProperties.AutomationId="{Binding DetailAutomationId}"
+                                                                               Text="{Binding Detail}" />
                                                                 </StackPanel>
                                                             </Grid>
                                                         </Button>
@@ -183,8 +185,20 @@
                     <Border DockPanel.Dock="Top" Padding="16,12,16,10">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0">
-                                <TextBlock Classes="paneTitle" Text="{Binding SelectedPaneTitle}" />
-                                <TextBlock Classes="paneDetail" Text="{Binding SelectedPaneDetail}" />
+                                <!--
+                                    Named so a script can tell which
+                                    destination the pane is showing. The
+                                    sidebar repeats each entry's detail under
+                                    its title, so an assertion on the text
+                                    alone is satisfied by the sidebar and says
+                                    nothing about the pane.
+                                -->
+                                <TextBlock x:Name="PaneTitleText"
+                                           Classes="paneTitle"
+                                           Text="{Binding SelectedPaneTitle}" />
+                                <TextBlock x:Name="PaneDetailText"
+                                           Classes="paneDetail"
+                                           Text="{Binding SelectedPaneDetail}" />
                             </StackPanel>
 
                             <!--
@@ -207,13 +221,20 @@
                     <!-- Shown when the pane has nothing to list, and says why. -->
                     <StackPanel VerticalAlignment="Center"
                                 Spacing="8"
-                                IsVisible="{Binding !HasMessages}">
+                                IsVisible="{Binding !HasAnyRows}">
                         <TextBlock Classes="emptyTitle" Text="Nothing to list" />
                         <TextBlock x:Name="EmptyListDetailText"
                                    Classes="emptyDetail"
                                    Text="{Binding EmptyListDetail}" />
                     </StackPanel>
 
+                    <!--
+                        The two listings share one cell rather than sitting
+                        beside each other: only one is ever populated, because
+                        applying either empties the other, and a Grid stops a
+                        hidden list from stealing the height of a visible one.
+                    -->
+                    <Grid>
                     <ListBox x:Name="MessageList"
                              ItemsSource="{Binding Messages}"
                              SelectedItem="{Binding SelectedMessage}"
@@ -244,6 +265,82 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <!--
+                        The decision ledger. A row is a summary, so it carries
+                        what a reviewer needs to decide whether to open it and
+                        nothing more: the action, the risk index with its
+                        caveat, the first reason in policy's own words, and a
+                        count of coverage flags when the decision rests on
+                        reduced coverage.
+                    -->
+                    <ListBox x:Name="DecisionList"
+                             ItemsSource="{Binding Decisions}"
+                             SelectedItem="{Binding SelectedDecision}"
+                             SelectionChanged="OnDecisionSelectionChanged"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             IsVisible="{Binding HasDecisions}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,4" Spacing="2">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="rowTitle"
+                                                   Text="{Binding HeadlineReason}"
+                                                   TextWrapping="Wrap" />
+
+                                        <StackPanel Grid.Column="1"
+                                                    HorizontalAlignment="Right"
+                                                    Margin="8,0,0,0">
+                                            <TextBlock Classes="rowTitle" Text="{Binding ActionLabel}" />
+                                            <TextBlock Classes="rowSubtitle"
+                                                       Text="{Binding AssessedAtLabel}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <TextBlock Classes="rowSubtitle"
+                                               Text="{Binding RiskIndexLabel}" />
+
+                                    <TextBlock Classes="rowSubtitle"
+                                               Text="{Binding InternalMessageId}" />
+
+                                    <TextBlock Classes="rowSubtitle"
+                                               IsVisible="{Binding HasShadow}"
+                                               Text="{Binding ShadowLabel}" />
+
+                                    <!--
+                                        Said only when it applies, like the
+                                        post-delivery caveat: a marker on every
+                                        row is one nobody reads.
+                                    -->
+                                    <TextBlock Classes="rowSubtitle"
+                                               IsVisible="{Binding HasCoverage}"
+                                               Text="{Binding CoverageLabel}" />
+
+                                    <!--
+                                        An explicit control rather than
+                                        relying on selection alone. A row is a
+                                        summary, so opening it costs a second
+                                        round trip, and saying so is honest.
+                                        It is also the only way a driving
+                                        script can reach this: the harness
+                                        clicks by raising the Click event,
+                                        which a ListBoxItem has no handler
+                                        for, so a click that selects a row
+                                        silently does nothing.
+                                    -->
+                                    <Button Classes="rowButton"
+                                            HorizontalAlignment="Right"
+                                            Margin="0,4,0,0"
+                                            Content="Open decision"
+                                            AutomationProperties.AutomationId="{Binding OpenAutomationId}"
+                                            Click="OnOpenDecisionClick" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    </Grid>
                 </DockPanel>
             </Border>
 
@@ -336,6 +433,22 @@
                                    Classes="paneDetail"
                                    Margin="0,2,0,4"
                                    Text="{Binding RiskIndexLabel}" />
+
+                        <!--
+                            Seen after delivery. Every action this decision names
+                            is post-hoc, and rendering it like any other would
+                            tell an operator the system could have intervened when
+                            it only reacted. Shown only when it is true, because a
+                            caveat on every decision is one nobody reads.
+                        -->
+                        <Border x:Name="PostDeliveryBanner"
+                                Classes="cardWarning"
+                                Margin="0,0,0,10"
+                                IsVisible="{Binding IsPostDelivery}">
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding PostDeliveryCaveat}" />
+                        </Border>
 
                         <!--
                             A message can be assessed more than once. Showing

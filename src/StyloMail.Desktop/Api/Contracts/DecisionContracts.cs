@@ -27,6 +27,20 @@ public sealed record DecisionResponse
 
     public required MailAction Action { get; init; }
 
+    /// <summary>Where this message came from. Email is the only channel we can refuse before delivery.</summary>
+    public required ChannelContext Channel { get; init; }
+
+    /// <summary>
+    /// Whether anything could have been done, or whether it was already gone.
+    /// </summary>
+    /// <remarks>
+    /// Required rather than defaulted, matching the assessment. Defaulting it
+    /// would silently assert <see cref="DeliveryTiming.PreAcceptance"/> on a
+    /// decision that says nothing of the kind, which is the most consequential
+    /// possible default on this type.
+    /// </remarks>
+    public required DeliveryTiming DeliveryTiming { get; init; }
+
     /// <summary>In shadow mode, the action policy would have taken. Forwarding still occurred.</summary>
     public MailAction? ProposedActionInShadow { get; init; }
 

@@ -117,12 +117,6 @@ console_start_host() {
     return 1
 }
 
-# Kills only the Host this script started, by the pid it recorded.
-#
-# Deliberately not a pattern kill. `pkill -f StyloMail.Host` would take down
-# every Host on the machine, including one another agent is running on a
-# different port, and this repository has several agents that start one. A
-# cleanup step that reaches outside what it started is worse than no cleanup.
 # Gives the throwaway Host something to group.
 #
 # A fresh Host has one principal and no companies, so the sidebar would show a
@@ -153,6 +147,66 @@ console_seed_management() {
     echo "seeded company $company with the harness principal filed under it"
 }
 
+# Produces a real decision on the throwaway Host and names it for the console.
+#
+# This is the piece that makes the run an integration test rather than a smoke.
+# An assessment-only call is recorded in the ledger, so the console can open it
+# over GET /v1/decisions/{id} and render evidence the Host actually produced.
+#
+# The provider is pointed at an unreachable address, so every semantic dimension
+# comes back Unavailable and policy declines: the decision is a real one that
+# says the semantic layer never looked. That is the state the console must
+# render as absent rather than as zero, and this is the only way to reach it
+# without the operator's provider key.
+console_seed_decision() {
+    local key="$1"
+    local base="$2"
+
+    printf 'From: "Accounts" <security@exampple.test>\r\nTo: alice@example.test\r\nSubject: Urgent: verify your account\r\nDate: Tue, 22 Sep 2026 10:00:00 +0000\r\nMessage-ID: <harness-%s@exampple.test>\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset="utf-8"\r\n\r\n<html><body><p>Verify your account within 24 hours.</p><p><a href="http://198.51.100.9/v">https://accounts.example.test/login</a></p></body></html>\r\n' "$$" > "$CONSOLE_RUN/seed.eml"
+
+    local raw
+    raw="$(base64 -i "$CONSOLE_RUN/seed.eml" | tr -d '\n')"
+
+    python3 - "$raw" > "$CONSOLE_RUN/seed.json" <<'PYEOF'
+import json, sys
+print(json.dumps({
+    "direction": "Inbound",
+    "mailFrom": "security@exampple.test",
+    "rcptTo": ["alice@example.test"],
+    "rawMime": sys.argv[1],
+    "connectingIp": "198.51.100.9",
+}))
+PYEOF
+
+    curl -fsS -X POST \
+        -H "X-StyloMail-Key: $key" -H "Content-Type: application/json" \
+        --data @"$CONSOLE_RUN/seed.json" "$base/v1/assessments" \
+        > "$CONSOLE_RUN/decision.json" 2>"$CONSOLE_RUN/seed.err" || {
+        echo "Could not seed a decision; the pane will show its empty state." >&2
+        return 0
+    }
+
+    local id
+    id="$(sed -n 's/.*"assessmentId":"\([^"]*\)".*/\1/p' "$CONSOLE_RUN/decision.json")"
+
+    if [[ -z "$id" ]]; then
+        echo "The assessment answered without an id; the pane will show its empty state." >&2
+        return 0
+    fi
+
+    echo "seeded decision $id"
+
+    # Exported for the console, which opens it over the API rather than reading
+    # a file: the point of seeding it is that it is real.
+    export STYLOMAIL_SMOKE_DECISION_ID="$id"
+}
+
+# Kills only the Host this script started, by the pid it recorded.
+#
+# Deliberately not a pattern kill. `pkill -f StyloMail.Host` would take down
+# every Host on the machine, including one another agent is running on a
+# different port, and this repository has several agents that start one. A
+# cleanup step that reaches outside what it started is worse than no cleanup.
 console_stop_host() {
     if [[ -n "${CONSOLE_HOST_PID:-}" ]]; then
         kill "$CONSOLE_HOST_PID" 2>/dev/null || true

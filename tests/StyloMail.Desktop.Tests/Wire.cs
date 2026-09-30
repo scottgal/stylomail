@@ -31,6 +31,8 @@ internal static class Wire
           "assessmentId": "asm_0f4d2a",
           "internalMessageId": "msg_9c1b7e",
           "action": "Quarantine",
+          "channel": { "kind": "Email", "workspaceId": null, "channelId": null, "threadId": null },
+          "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.82,
           "reasons": [
@@ -140,6 +142,8 @@ internal static class Wire
           "assessmentId": "asm_0f4d2b",
           "internalMessageId": "msg_9c1b7f",
           "action": "Allow",
+          "channel": { "kind": "Email", "workspaceId": null, "channelId": null, "threadId": null },
+          "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.04,
           "reasons": [],
@@ -174,6 +178,8 @@ internal static class Wire
           "assessmentId": "asm_0f4d2c",
           "internalMessageId": "msg_9c1b80",
           "action": "Allow",
+          "channel": { "kind": "Email", "workspaceId": null, "channelId": null, "threadId": null },
+          "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": "Quarantine",
           "riskIndex": 0.77,
           "reasons": [],
@@ -319,6 +325,91 @@ internal static class Wire
                 "conversationContextMissing": false
               },
               "assessedAt": "2026-09-22T10:00:00+00:00"
+            }
+          ],
+          "nextCursor": null,
+          "hasMore": false
+        }
+        """;
+
+    /// <summary>
+    /// Two ledger rows at the two ends of what a summary can say: one with
+    /// nothing wrong with its coverage and no shadow action, one recorded in
+    /// shadow with a proposal that differs from what happened.
+    /// </summary>
+    /// <remarks>
+    /// The clean row is the one that matters for the marker: <c>bodyParsed</c>
+    /// alone is the ordinary path and is not a finding, so a row that rendered
+    /// a coverage marker for it would put one on every row in the ledger.
+    /// </remarks>
+    public const string DecisionListingCleanAndShadowed = """
+        {
+          "tenantId": "smoke",
+          "action": null,
+          "decisions": [
+            {
+              "assessmentId": "asm_clean",
+              "internalMessageId": "msg_clean",
+              "action": "Allow",
+              "proposedActionInShadow": null,
+              "riskIndex": 0.01,
+              "reasons": [
+                {
+                  "code": "no_findings",
+                  "message": "Nothing about this message was anomalous.",
+                  "evidenceSignalIds": []
+                }
+              ],
+              "versions": {
+                "policyVersion": "policy-7",
+                "classifierModelVersion": "jev-1.13.0",
+                "questionSchemaVersion": "questions-3",
+                "preprocessingVersion": "preprocess-2",
+                "regimeId": null
+              },
+              "coverage": {
+                "bodyParsed": true,
+                "htmlPresent": true,
+                "hasAttachments": false,
+                "htmlTextDisagreement": false,
+                "parserLimitExceeded": false,
+                "contentEncrypted": false,
+                "truncated": false,
+                "conversationContextMissing": false
+              },
+              "assessedAt": "2026-09-22T10:00:00+00:00"
+            },
+            {
+              "assessmentId": "asm_shadow",
+              "internalMessageId": "msg_shadow",
+              "action": "Allow",
+              "proposedActionInShadow": "Quarantine",
+              "riskIndex": 0.64,
+              "reasons": [
+                {
+                  "code": "campaign_near_duplicate",
+                  "message": "Matches a campaign whose earlier copies were quarantined.",
+                  "evidenceSignalIds": ["sig_campaign"]
+                }
+              ],
+              "versions": {
+                "policyVersion": "policy-7",
+                "classifierModelVersion": "jev-1.13.0",
+                "questionSchemaVersion": "questions-3",
+                "preprocessingVersion": "preprocess-2",
+                "regimeId": null
+              },
+              "coverage": {
+                "bodyParsed": true,
+                "htmlPresent": true,
+                "hasAttachments": false,
+                "htmlTextDisagreement": false,
+                "parserLimitExceeded": false,
+                "contentEncrypted": false,
+                "truncated": true,
+                "conversationContextMissing": false
+              },
+              "assessedAt": "2026-09-22T10:05:00+00:00"
             }
           ],
           "nextCursor": null,
@@ -578,6 +669,8 @@ internal static class Wire
           "assessmentId": "asm_0f4d2a",
           "internalMessageId": "msg_9c1b7e",
           "action": "{{action}}",
+          "channel": { "kind": "Email", "workspaceId": null, "channelId": null, "threadId": null },
+          "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.5,
           "reasons": [],

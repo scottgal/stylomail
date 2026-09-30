@@ -491,13 +491,223 @@ public sealed class ShellModelTests
         Assert.Empty(model.Messages);
     }
 
+    /// <summary>Rows come from the ledger, in the Host's order, as summaries.</summary>
+    [Fact]
+    public void The_ledger_listing_populates_the_list()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        var row = Assert.Single(model.Decisions);
+        Assert.True(model.HasDecisions);
+
+        Assert.Equal("asm_0f4d2a", row.AssessmentId);
+        Assert.Equal("msg_9c1b7e", row.InternalMessageId);
+        Assert.Equal(MailAction.Quarantine, row.Action);
+        Assert.Equal("Quarantine", row.ActionLabel);
+
+        // The most significant reason, in policy's own words: the first, and
+        // never resorted here.
+        Assert.Equal(
+            "Message requests credentials and the sender has no trusted history.",
+            row.HeadlineReason);
+    }
+
+    /// <summary>
+    /// The risk index keeps its caveat on a ledger row.
+    /// </summary>
+    /// <remarks>
+    /// The ledger is where the number is most likely to be read alone, and it
+    /// is the field most likely to be quoted as a probability. The caveat is
+    /// therefore restated on the row rather than assumed to have been read in
+    /// the detail pane.
+    /// </remarks>
+    [Fact]
+    public void A_ledger_row_never_presents_the_risk_index_as_a_probability()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        var row = model.Decisions[0];
+
+        Assert.Contains("an index, not a probability", row.RiskIndexLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("%", row.RiskIndexLabel, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A decision resting on reduced coverage can be seen while scanning.
+    /// </summary>
+    /// <remarks>
+    /// The contract puts coverage on the summary row for exactly this reason: a
+    /// decision taken over reduced coverage is a weaker one, and a reviewer
+    /// should not have to open every row to find which ones those are.
+    /// </remarks>
+    [Fact]
+    public void A_ledger_row_carries_its_coverage_flags()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        var row = model.Decisions[0];
+
+        // The fixture's row has html and text disagreeing, which is a finding
+        // rather than an absence.
+        Assert.True(row.HasCoverage);
+        Assert.Contains(row.Coverage, flag => flag.Name == "html_text_disagreement");
+        Assert.Equal("1 coverage flag", row.CoverageLabel);
+    }
+
+    /// <summary>A row with nothing wrong with its coverage says nothing about it.</summary>
+    /// <remarks>
+    /// <c>bodyParsed</c> alone is the ordinary path and is not a finding, so a
+    /// row that rendered a marker for it would put one on every row in the
+    /// ledger, which is how a marker stops being read.
+    /// </remarks>
+    [Fact]
+    public void An_ordinary_row_shows_no_coverage_marker()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListingCleanAndShadowed));
+
+        var clean = model.Decisions[0];
+
+        Assert.False(clean.HasCoverage);
+        Assert.Empty(clean.Coverage);
+    }
+
+    /// <summary>
+    /// A shadow decision keeps both actions, and says which one it would have
+    /// been.
+    /// </summary>
+    /// <remarks>
+    /// In shadow mode the recorded action is what happened and the proposed one
+    /// is what would have happened: forwarding still occurred. A row that
+    /// showed only the proposal would misreport what the platform did, and one
+    /// that showed only the action would hide that policy disagreed.
+    /// </remarks>
+    [Fact]
+    public void A_shadow_row_shows_both_the_action_and_the_proposal()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListingCleanAndShadowed));
+
+        var shadowed = model.Decisions[1];
+
+        Assert.Equal("Allow", shadowed.ActionLabel);
+        Assert.True(shadowed.HasShadow);
+        Assert.Equal("Would have been Quarantine", shadowed.ShadowLabel);
+
+        // And its reduced coverage is visible while scanning, which is why the
+        // contract puts coverage on the summary at all.
+        Assert.True(shadowed.HasCoverage);
+        Assert.Contains(shadowed.Coverage, flag => flag.Name == "truncated");
+
+        Assert.False(model.Decisions[0].HasShadow);
+    }
+
+    /// <summary>
+    /// Only one of the two listings is ever populated.
+    /// </summary>
+    /// <remarks>
+    /// Both lists share one cell in the pane, so rows left behind in the hidden
+    /// one are drawn the next time that destination is selected, under the
+    /// heading of something else.
+    /// </remarks>
+    [Fact]
+    public void Applying_one_listing_empties_the_other()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+        Assert.True(model.HasDecisions);
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+
+        Assert.Empty(model.Decisions);
+        Assert.False(model.HasDecisions);
+        Assert.True(model.HasAnyRows);
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        Assert.Empty(model.Messages);
+        Assert.False(model.HasMessages);
+    }
+
+    /// <summary>
+    /// The empty state is driven by both lists, not just the message one.
+    /// </summary>
+    /// <remarks>
+    /// This is the defect the two-list pane introduced: with the empty panel
+    /// bound to <c>!HasMessages</c>, a populated ledger drew "Nothing to list"
+    /// on top of its own rows.
+    /// </remarks>
+    [Fact]
+    public void A_populated_ledger_hides_the_empty_pane()
+    {
+        var model = ShellModel.CreateDefault();
+        var raised = Watch(model);
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        Assert.True(model.HasAnyRows);
+        Assert.Contains(nameof(ShellModel.HasAnyRows), raised);
+    }
+
+    /// <summary>An unreadable ledger is not an empty one.</summary>
+    /// <remarks>
+    /// The ledger's emptiness is a claim about the whole system: it says
+    /// nothing has been assessed on this Host. Rendering a failed listing as
+    /// that claim would send an operator to look at the pipeline when the
+    /// console is what could not ask.
+    /// </remarks>
+    [Fact]
+    public void An_unreadable_ledger_says_so_rather_than_looking_empty()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.SelectedItem = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Title == "Decisions");
+
+        model.BeginLedgerLookup();
+        Assert.Contains("Looking up", model.EmptyListDetail, StringComparison.Ordinal);
+
+        model.LedgerUnavailable();
+        Assert.Contains("could not be read", model.EmptyListDetail, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The detail pane's empty text names a control that is on screen.
+    /// </summary>
+    /// <remarks>
+    /// With the ledger selected there is no message list, so "select a message"
+    /// would name something the operator cannot see.
+    /// </remarks>
+    [Fact]
+    public void The_ledger_pane_asks_for_a_decision_not_a_message()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.SelectedItem = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Ledger is not null);
+
+        Assert.Contains("Select a decision", model.DecisionUnavailableReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("Select a message", model.DecisionUnavailableReason, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Every entry names the route behind it, including the missing ones, so
     /// that "nothing here may be the only way to do something" stays checkable
     /// by looking at the window rather than only in review.
     /// </summary>
     [Fact]
-    public void The_entries_awaiting_a_route_say_what_is_missing()
+    public void The_decisions_entry_lists_the_ledger_route_it_calls()
     {
         var model = ShellModel.CreateDefault();
 
@@ -505,22 +715,34 @@ public sealed class ShellModelTests
             .SelectMany(section => section.Items)
             .Single(item => item.Title == "Decisions");
 
-        Assert.Equal(SidebarItemState.AwaitingRoute, decisions.State);
-        Assert.True(decisions.IsBlocked);
-        Assert.Contains("enumerates the ledger", decisions.Detail, StringComparison.Ordinal);
+        Assert.Equal(SidebarItemState.Available, decisions.State);
+        Assert.False(decisions.IsBlocked);
+
+        // The route, named on the entry, so the sidebar stays checkable at a
+        // glance against what the client actually sends.
+        Assert.Equal("GET /v1/decisions", decisions.Detail);
+        Assert.NotNull(decisions.Ledger);
+        Assert.Null(decisions.Ledger!.Action);
     }
 
     /// <summary>
-    /// Every route the console is built on exists, so nothing else is blocked.
+    /// Nothing is blocked any more, and this is the assertion that would have
+    /// caught the stale marker.
     /// </summary>
     /// <remarks>
-    /// The counterpart to the test above, and the reason it is worth having:
-    /// a blocked marker that appears on entries whose routes do exist would
-    /// make the marker meaningless, and the marker is the only thing telling an
-    /// operator that a pane is not merely empty.
+    /// "Decisions" sat marked <c>AwaitingRoute</c> claiming nothing enumerated
+    /// the ledger, long after <c>GET /v1/decisions</c> shipped and while the
+    /// client was already complete against it. A blocked marker outliving its
+    /// blocker is a false statement about the system that survives review by
+    /// looking deliberate, which is exactly what this test is for.
+    ///
+    /// <para>
+    /// It asserts the whole set rather than the absence of one entry, so the
+    /// next entry to be unblocked has to come here and say so.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void Nothing_whose_route_exists_is_marked_blocked()
+    public void Nothing_is_marked_blocked_because_every_listed_route_exists()
     {
         var model = ShellModel.CreateDefault();
 
@@ -530,7 +752,7 @@ public sealed class ShellModelTests
             .Select(item => item.Title)
             .ToList();
 
-        Assert.Equal(["Decisions"], blocked);
+        Assert.Empty(blocked);
     }
 
     [Fact]
@@ -586,16 +808,23 @@ public sealed class ShellModelTests
     /// nothing to show, or the console cannot look. "Nothing here" against a
     /// pane that is blocked reads as the first, which is the wrong one.
     /// </summary>
+    /// <remarks>
+    /// Built on a synthesised entry rather than one from
+    /// <see cref="ShellModel.CreateDefault"/>, because nothing in the shipped
+    /// sidebar is blocked any more. The mechanism stays covered: it is what
+    /// made the stale ledger marker visible, and the next gap will use it.
+    /// </remarks>
     [Fact]
     public void A_blocked_pane_explains_that_it_needs_a_route()
     {
         var model = ShellModel.CreateDefault();
 
-        model.SelectedItem = model.Sections
-            .SelectMany(section => section.Items)
-            .Single(item => item.Title == "Decisions");
+        model.SelectedItem = new SidebarItem(
+            "Traffic",
+            SidebarItemState.AwaitingRoute,
+            "needs a route that does not exist yet");
 
-        Assert.Contains("enumerates the ledger", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("needs a route that does not exist yet", model.EmptyListDetail, StringComparison.Ordinal);
         Assert.Contains("does not read the database", model.EmptyListDetail, StringComparison.Ordinal);
     }
 

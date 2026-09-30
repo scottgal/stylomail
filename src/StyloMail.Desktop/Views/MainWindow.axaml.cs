@@ -209,6 +209,12 @@ public partial class MainWindow : Window
     {
         if (_services is null) return;
 
+        if (_model.SelectedItem?.Ledger is { } ledger)
+        {
+            await LoadLedgerAsync(ledger, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (_model.SelectedItem?.Queue is not { } state)
         {
             await OnUiThreadAsync(() => _model.ApplyMessages(Empty)).ConfigureAwait(false);
@@ -236,13 +242,46 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Fills the middle pane from the decision ledger.
+    /// </summary>
+    /// <remarks>
+    /// A failure is reported on the pane as well as the status bar, because an
+    /// empty ledger and an unreadable one are the same picture and different
+    /// facts. The ledger is the one listing whose emptiness is a claim about
+    /// the whole system ("nothing has been assessed"), so it is the one where
+    /// getting that wrong matters most.
+    /// </remarks>
+    private async Task LoadLedgerAsync(LedgerListing ledger, CancellationToken cancellationToken)
+    {
+        await OnUiThreadAsync(_model.BeginLedgerLookup).ConfigureAwait(false);
+
+        DecisionListingResponse listing;
+
+        try
+        {
+            listing = await _services!
+                .Client
+                .GetDecisionsAsync(action: ledger.Action, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Ledger] {failure.Failure}: {failure.Message}");
+
+            await OnUiThreadAsync(_model.LedgerUnavailable).ConfigureAwait(false);
+            return;
+        }
+
+        await OnUiThreadAsync(() => _model.ApplyDecisions(listing)).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Opens a decision by its assessment id and shows it in the detail pane.
     /// </summary>
     /// <remarks>
-    /// The route exists and works. What does not exist is any way to reach it
-    /// from the list: neither the message rows nor the submission detail carry
-    /// an assessment id, so today a decision can only be opened by an id the
-    /// caller already holds. That gap is why this is not wired to a click.
+    /// Both routes into a decision end here: the ledger lists summaries and a
+    /// row carries the id that fetches the full explanation, and a message row
+    /// reaches it through the ledger filtered by its internal message id.
     /// </remarks>
     public async Task<bool> OpenDecisionAsync(string assessmentId, CancellationToken cancellationToken = default)
     {
@@ -283,6 +322,21 @@ public partial class MainWindow : Window
     /// </remarks>
     private async Task LoadHarnessDecisionAsync(CancellationToken cancellationToken = default)
     {
+        // A decision the Host actually produced is preferred over the fixture,
+        // and the preference is the point: a live decision exercises the client,
+        // the contract and the pane together, where a fixture exercises the pane
+        // alone. It also means the pane's assertions are about real evidence,
+        // including the dimensions a real outage leaves Unavailable.
+        var live = Environment.GetEnvironmentVariable("STYLOMAIL_SMOKE_DECISION_ID");
+
+        if (!string.IsNullOrWhiteSpace(live))
+        {
+            if (await OpenDecisionAsync(live, cancellationToken).ConfigureAwait(true)) return;
+
+            Console.Error.WriteLine(
+                $"[Harness] This Host has no decision {live}; falling back to the fixture.");
+        }
+
         var path = Environment.GetEnvironmentVariable("STYLOMAIL_SMOKE_DECISION_FILE");
 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
@@ -892,5 +946,63 @@ public partial class MainWindow : Window
         }
 
         await LoadDecisionForSelectedMessageAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens the ledger row's decision in the detail pane.
+    /// </summary>
+    /// <remarks>
+    /// A ledger row is a summary, so selecting one is a second round trip to
+    /// <c>GET /v1/decisions/{id}</c> for the evidence the listing deliberately
+    /// omits. A failure here leaves the pane's stated reason in place rather
+    /// than clearing it, so the operator is not left looking at the previous
+    /// row's explanation under a new selection.
+    /// </remarks>
+    private async void OnDecisionSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_model.SelectedDecision is not { } row)
+        {
+            await OnUiThreadAsync(_model.ClearDecision).ConfigureAwait(true);
+            return;
+        }
+
+        await OpenLedgerRowAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens a ledger row's full decision, from a click or from the row's button.
+    /// </summary>
+    /// <remarks>
+    /// Both routes end here rather than each fetching, because they are the
+    /// same request made two ways: selecting the row and pressing its control
+    /// both mean "show me this one". A row whose decision is already open is
+    /// not fetched again.
+    /// </remarks>
+    private async Task OpenLedgerRowAsync(DecisionRow row)
+    {
+        if (_model.Decision?.AssessmentId == row.AssessmentId) return;
+
+        if (!await OpenDecisionAsync(row.AssessmentId).ConfigureAwait(true))
+        {
+            Console.Error.WriteLine($"[Ledger] Could not open decision {row.AssessmentId}.");
+        }
+    }
+
+    /// <summary>
+    /// The row's own open control.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this exists at all.</b> The harness clicks a control by raising
+    /// its Click event, and a ListBoxItem has no handler for one, so a click on
+    /// a ledger row selects nothing and the harness reports it as success
+    /// anyway. A control with a real Click handler is the only thing a script
+    /// can drive, and it is also the honest affordance for a row that costs a
+    /// round trip to open.
+    /// </remarks>
+    private async void OnOpenDecisionClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not DecisionRow row) return;
+
+        await OpenLedgerRowAsync(row).ConfigureAwait(true);
     }
 }

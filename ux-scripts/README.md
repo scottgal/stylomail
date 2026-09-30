@@ -101,6 +101,22 @@ sidebar sat on "Loading" forever while the status bar said "Connected". The harn
 it either, because there was nothing to report: the only symptom was a row that never appeared.
 Reporting the failure is what turned a mystery into a 401 in one line.
 
+**9. `Click` raises the Click event, so a control that has no Click handler cannot be clicked.**
+It resolved `type=ListBoxItem:has-text(...)`, reported `success: true` with a plausible duration, and
+did nothing at all: the list's `SelectionChanged` never fired, which was proved by logging from the
+handler and seeing no line. A `ListBoxItem` is selected by pointer input, and raising `ClickEvent`
+on it reaches nothing.
+
+The verdict it produced was worse than the missing click. The step after it failed, so the run went
+red on the *app* while the fault was the harness, and the failure text named a pane that was hidden
+for the right reason. Two red runs were spent on the app before the handler log showed the click had
+never arrived.
+
+**The rule: click a control that has a `Click` handler.** If a surface has none, that is a gap in the
+app rather than in the harness: the ledger row gained an explicit `Open decision` button, which is
+also the honest affordance for a row that costs a round trip to open. Anything with a `Click`
+handler, and any `Button` whose content is a layout, is reachable with `type=Button:has-text(...)`.
+
 ## Nothing works without a Host
 
 The console is an API client, so a script with no Host behind it asserts on a first-run state. The
@@ -109,16 +125,31 @@ the fastest way to make a run meaningless.
 
 ## What this harness cannot reach, and why
 
-- **Anything that needs a decision.** An assessment needs a semantic provider key; a rejected key
-  currently fails the whole request rather than degrading to unavailable evidence, and this harness
-  must not hold the operator's real key. So the decision pane, quarantine release and feedback are
-  covered by their own unit tests, not here.
+- **A quarantine release.** `POST /v1/submissions` declines an assessment when the semantic provider
+  is unavailable, which is correct, so no message ever reaches a quarantined state in a run. The
+  release route's refusal is covered here; its success path is covered only by unit tests, and no
+  screenshot of it exists.
+- **A message to its decision.** The ledger is listable and driven here, but the queue listings stay
+  empty for the same reason, so the join from a message row to its decision has no row to start from.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.
 
-Both are stated rather than left to be discovered, because a script that silently skips a surface
-reads as coverage.
+Stated rather than left to be discovered, because a script that silently skips a surface reads as
+coverage.
+
+## What the decision assertions actually stand on
+
+A decision needs a semantic provider key, and a rejected key fails the whole assessment request
+rather than degrading to unavailable evidence. So a run's decision comes from a Host whose provider
+is deliberately unreachable: `console_seed_decision` posts to `/v1/assessments`, policy declines,
+and the ledger records a decision whose semantic dimensions are all `Unavailable`.
+
+That is a real decision, reached over the API by the client the console ships, and it is what makes
+the `not measured (unavailable)` assertion honest: it is over data nothing wrote for the test. What
+it does not establish is anything about a Host whose provider works. `docs/running.md` and the
+provider key are what that needs, and neither is in this harness's reach.
+
 
 ## Relationship to `--screenshot`
 

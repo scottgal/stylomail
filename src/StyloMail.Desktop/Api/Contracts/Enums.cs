@@ -116,3 +116,55 @@ public enum FeedbackLabel
 
     Unwanted = 3,
 }
+
+/// <summary>Where a message came from. Mirrors <c>StyloMail.Core.ChannelKind</c>.</summary>
+public enum ChannelKind
+{
+    /// <summary>SMTP. The only channel with an envelope, and the only one we can refuse before delivery.</summary>
+    Email = 0,
+
+    /// <summary>Slack. A message event arrives after the platform has already delivered it.</summary>
+    Slack = 1,
+
+    /// <summary>Discord. Same post-delivery constraint as Slack.</summary>
+    Discord = 2,
+}
+
+/// <summary>
+/// Whether anything could have been done about a message, or whether it was
+/// already gone.
+/// </summary>
+/// <remarks>
+/// <b>This is the one field on a decision that changes what the decision
+/// means.</b> <see cref="PostDelivery"/> says the platform had already delivered
+/// the message and every action available was post-hoc. A console that rendered
+/// that like any other decision would be telling an operator the system could
+/// have stopped something it only reacted to.
+/// </remarks>
+public enum DeliveryTiming
+{
+    /// <summary>We were in the delivery path and could decline responsibility before delivery.</summary>
+    PreAcceptance = 0,
+
+    /// <summary>The platform had already delivered it. Every action available is post-hoc.</summary>
+    PostDelivery = 1,
+}
+
+/// <summary>
+/// Where a message came from, and what the channel says about who could see it.
+/// </summary>
+/// <remarks>
+/// Every field beyond <see cref="Kind"/> is nullable and null means the channel
+/// does not have that concept. Email has no workspace, so it is null rather than
+/// invented: absence is a distinct state here as it is everywhere else.
+/// </remarks>
+public sealed record ChannelContext
+{
+    public required ChannelKind Kind { get; init; }
+
+    public string? WorkspaceId { get; init; }
+
+    public string? ChannelId { get; init; }
+
+    public string? ThreadId { get; init; }
+}

@@ -26,6 +26,19 @@ public enum SidebarItemState
     NotBuilt,
 }
 
+/// <summary>
+/// Marks a sidebar entry as listing the decision ledger, and what to narrow it by.
+/// </summary>
+/// <remarks>
+/// A type rather than a bool, for the same reason <see cref="SidebarItem.Queue"/>
+/// is an enum: the entry carries the exact query the client will send, so the
+/// sidebar cannot offer a listing the route would refuse. Null action is the
+/// whole ledger, which is what the single entry offers today; a filter earns a
+/// type the moment the route's <c>action</c> parameter is worth exposing, and
+/// the client already accepts one.
+/// </remarks>
+public sealed record LedgerListing(MailAction? Action);
+
 /// <summary>One entry in the sidebar.</summary>
 public sealed class SidebarItem : ObservableObject
 {
@@ -59,6 +72,17 @@ public sealed class SidebarItem : ObservableObject
     /// destination the route would refuse.
     /// </remarks>
     public MessageListState? Queue { get; }
+
+    /// <summary>
+    /// Which slice of the decision ledger this entry lists, when it is one.
+    /// </summary>
+    /// <remarks>
+    /// Mutually exclusive with <see cref="Queue"/> in practice: an entry is a
+    /// destination for one route. Kept as two typed markers rather than one
+    /// object with two nullable halves, because a single entry naming both a
+    /// queue and a ledger would be a bug the type could not express.
+    /// </remarks>
+    public LedgerListing? Ledger { get; init; }
 
     /// <summary>Why it is in this state, or what it counts. Shown under the title.</summary>
     public string? Detail
@@ -146,6 +170,19 @@ public sealed class SidebarItem : ObservableObject
 
     /// <summary>A stable identity for this row's profile control, for the UI harness.</summary>
     public string ProfileAutomationId => $"profile-sender-{PrincipalId ?? Title}";
+
+    /// <summary>
+    /// A stable identity for this row's subtitle, for the UI harness.
+    /// </summary>
+    /// <remarks>
+    /// Named so a script can assert on part of the subtitle rather than all of
+    /// it. A quoted selector is an exact match, and a phrase worth asserting
+    /// often contains an apostrophe, which the selector grammar cannot carry.
+    /// Turning "configured in the host's configuration" into something an
+    /// operator would not write, purely so a test could quote it, would be the
+    /// tail wagging the dog.
+    /// </remarks>
+    public string DetailAutomationId => $"detail-sender-{PrincipalId ?? Title}";
 
     /// <summary>Whether this entry is a sending principal rather than a destination.</summary>
     public bool IsSender { get; init; }

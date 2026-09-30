@@ -42,6 +42,17 @@ export ASPNETCORE_URLS=""
 # invisible behind a single ungrouped row.
 console_seed_management
 
+# And a real decision for the console to render. An assessment-only call is
+# recorded in the ledger, so this is evidence the Host produced rather than a
+# fixture the console wrote for itself.
+#
+# It works because the provider is unreachable, which the harness sets before
+# starting the Host: policy then declines and records a decision whose semantic
+# dimensions are all Unavailable. That is the state the pane must render as
+# absent rather than as a number, and it is the only way to reach it without
+# the operator's provider key.
+console_seed_decision "$(cat "$CONSOLE_RUN/data/principal.key")" "$CONSOLE_BASE"
+
 echo "== driving the console =="
 cd "$CONSOLE_REPO" || exit 1
 
@@ -54,8 +65,13 @@ STATUS=$?
 
 echo
 echo "== result =="
-if [[ -f ux-results/console-smoke.json ]]; then
-    cat ux-results/console-smoke.json
+# The name the harness writes, not the one this used to look for. It read
+# `console-smoke.json`, which nothing has ever written, so every passing run
+# printed an empty result block and the numbers behind the pass were only in
+# the file. A runner that cannot show its own evidence is one step from a
+# runner that does not have any.
+if [[ -f ux-results/result.json ]]; then
+    cat ux-results/result.json
 fi
 echo
 echo "screenshots in ux-results/"

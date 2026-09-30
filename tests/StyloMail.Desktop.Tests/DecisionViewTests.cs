@@ -199,6 +199,148 @@ public sealed class DecisionViewTests
         Assert.Contains("Quarantine", view.ShadowLabel, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A signal id the Host sent twice renders both rows rather than crashing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Found only by driving the console against a real Host.</b> A real
+    /// decision came back with <c>behavioural.trend.velocity</c> in the evidence
+    /// list twice, and the pane's lookup was a <c>ToDictionary</c>, which throws
+    /// on a duplicate key. The whole pane failed to load: the operator saw
+    /// nothing at all, and every unit test passed because every fixture had
+    /// unique ids.
+    ///
+    /// <para>
+    /// Resolving to a lookup rather than keeping the first is deliberate. Two
+    /// rows under one id is real evidence, and silently dropping one would be
+    /// the console editing the Host's answer, which is the same class of mistake
+    /// as rendering an unavailable dimension as zero.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_signal_id_sent_twice_renders_both_rows()
+    {
+        var decision = Decision() with
+        {
+            Evidence =
+            [
+                new EvidenceResponse
+                {
+                    SignalId = "behavioural.trend.velocity",
+                    Origin = EvidenceOrigin.Behavioural,
+                    Availability = EvidenceAvailability.Available,
+                    Value = 0.4,
+                    SourceVersion = "adaptive-1",
+                    ObservedAt = DateTimeOffset.UnixEpoch,
+                    ObservedScope = "sender",
+                },
+                new EvidenceResponse
+                {
+                    SignalId = "behavioural.trend.velocity",
+                    Origin = EvidenceOrigin.Behavioural,
+                    Availability = EvidenceAvailability.Available,
+                    Value = 0.9,
+                    SourceVersion = "adaptive-1",
+                    ObservedAt = DateTimeOffset.UnixEpoch,
+                    ObservedScope = "recipient",
+                },
+            ],
+            Reasons =
+            [
+                new ReasonResponse
+                {
+                    Code = "behaviour.velocity",
+                    Message = "Velocity moved.",
+                    EvidenceSignalIds = ["behavioural.trend.velocity"],
+                },
+            ],
+        };
+
+        var view = DecisionView.From(decision);
+
+        // Both rows survive, and the reason that names the id shows both.
+        Assert.Equal(2, view.Evidence.Count);
+        Assert.Equal(2, view.Reasons[0].Evidence.Count);
+        Assert.Empty(view.Reasons[0].MissingSignalIds);
+        Assert.Equal(["sender", "recipient"], view.Reasons[0].Evidence.Select(e => e.ObservedScope));
+    }
+
+    // ===================== delivery timing =====================
+
+    /// <summary>
+    /// A decision taken after the platform had already delivered says so.
+    /// </summary>
+    /// <remarks>
+    /// This is the one field on a decision that changes what the rest of the
+    /// pane means. Every action a post-delivery decision names is post-hoc, so
+    /// rendering it like any other would tell an operator the system could have
+    /// intervened when it only reacted. The field is required on the assessment
+    /// precisely so it cannot be defaulted into silence.
+    /// </remarks>
+    [Fact]
+    public void A_post_delivery_decision_says_so()
+    {
+        var decision = Decision() with { DeliveryTiming = DeliveryTiming.PostDelivery };
+
+        var view = DecisionView.From(decision);
+
+        Assert.True(view.IsPostDelivery);
+        Assert.NotNull(view.PostDeliveryCaveat);
+        Assert.Contains("already delivered", view.PostDeliveryCaveat, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("post-hoc", view.PostDeliveryCaveat, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The ordinary case carries no banner.
+    /// </summary>
+    /// <remarks>
+    /// A caveat shown on every decision is one an operator stops reading, and
+    /// the whole value of this one is that it is exceptional.
+    /// </remarks>
+    [Fact]
+    public void A_pre_acceptance_decision_carries_no_caveat()
+    {
+        var view = DecisionView.From(Decision());
+
+        Assert.False(view.IsPostDelivery);
+        Assert.Null(view.PostDeliveryCaveat);
+    }
+
+    /// <summary>The channel is shown, because one of them cannot be acted on before delivery.</summary>
+    [Theory]
+    [InlineData(ChannelKind.Email, "Email")]
+    [InlineData(ChannelKind.Slack, "Slack")]
+    [InlineData(ChannelKind.Discord, "Discord")]
+    public void The_channel_is_named(ChannelKind kind, string expected)
+    {
+        var decision = Decision() with { Channel = new ChannelContext { Kind = kind } };
+
+        Assert.Equal(expected, DecisionView.From(decision).ChannelLabel);
+    }
+
+    /// <summary>
+    /// A channel this build does not know fails loudly rather than defaulting.
+    /// </summary>
+    /// <remarks>
+    /// Same rule as the action: a value the console does not recognise is an
+    /// error, never a default. The channel decides whether a decision could
+    /// have been preventative at all, so guessing it would guess the most
+    /// consequential thing on the pane.
+    /// </remarks>
+    [Fact]
+    public async Task An_unknown_channel_fails_loudly()
+    {
+        var json = Wire.Decision.Replace("\"kind\": \"Email\"", "\"kind\": \"Teams\"", StringComparison.Ordinal);
+
+        var exception = await Assert.ThrowsAsync<Api.StyloMailApiException>(
+            () => new Api.StyloMailApiClient(
+                    StubHttpMessageHandler.ReturningJson(json).CreateClient(),
+                    new TestApiKeyProvider())
+                .GetDecisionAsync("asm_0f4d2a"));
+
+        Assert.Equal(Api.StyloMailApiFailure.UnreadableResponse, exception.Failure);
+    }
+
     /// <summary>A decision taken outright has nothing to say about shadow.</summary>
     [Fact]
     public void A_decision_taken_outright_has_no_shadow_label()

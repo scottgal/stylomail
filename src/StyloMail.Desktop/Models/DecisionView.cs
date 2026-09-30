@@ -30,6 +30,29 @@ public sealed class DecisionView
     /// <summary>What policy did.</summary>
     public required string ActionLabel { get; init; }
 
+    /// <summary>Which channel the message came from.</summary>
+    public required string ChannelLabel { get; init; }
+
+    /// <summary>
+    /// Whether anything could have been done, said plainly.
+    /// </summary>
+    /// <remarks>
+    /// <b>The field that changes what the rest of the pane means.</b> A decision
+    /// taken after the platform had already delivered the message had no action
+    /// available that could have stopped it, and every action it does name is
+    /// post-hoc. Rendering that like any other decision would tell an operator
+    /// the system could have intervened when it only reacted.
+    ///
+    /// <para>
+    /// Null when the decision was taken in the delivery path, because there is
+    /// nothing to qualify: the ordinary case needs no banner.
+    /// </para>
+    /// </remarks>
+    public string? PostDeliveryCaveat { get; init; }
+
+    /// <summary>Whether the caveat applies, for a visibility binding.</summary>
+    public bool IsPostDelivery => PostDeliveryCaveat is not null;
+
     /// <summary>
     /// What policy would have done, in shadow mode. Null when this decision was
     /// taken outright.
@@ -82,7 +105,12 @@ public sealed class DecisionView
     {
         ArgumentNullException.ThrowIfNull(decision);
 
-        var bySignal = decision.Evidence.ToDictionary(
+        // A lookup, not a dictionary. A real Host sent the same signal id twice
+        // -- one row per observed scope -- and ToDictionary throws on a
+        // duplicate key, which took the whole pane down: the operator saw
+        // nothing at all. Every fixture had unique ids, so no unit test could
+        // have caught it.
+        var bySignal = decision.Evidence.ToLookup(
             evidence => evidence.SignalId,
             EvidenceView.From,
             StringComparer.Ordinal);
@@ -92,6 +120,16 @@ public sealed class DecisionView
             DecisionCount = decisionCount,
             AssessmentId = decision.AssessmentId,
             ActionLabel = decision.Action.ToString(),
+            ChannelLabel = decision.Channel.Kind.ToString(),
+
+            // Only said when it is true. A banner that appears on every decision
+            // is one an operator stops reading, and the whole value of this one
+            // is that it is exceptional.
+            PostDeliveryCaveat = decision.DeliveryTiming is DeliveryTiming.PostDelivery
+                ? "Seen after delivery. The platform had already delivered this message, so every "
+                    + "action available here is post-hoc: nothing in this decision could have "
+                    + "stopped it."
+                : null,
             ShadowLabel = decision.ProposedActionInShadow is { } proposed
                 ? $"Would have been {proposed}"
                 : null,
@@ -142,15 +180,20 @@ public sealed class ReasonView
     public string MissingEvidenceLabel =>
         $"Evidence referenced by this reason was not returned: {string.Join(", ", MissingSignalIds)}";
 
-    internal static ReasonView From(ReasonResponse reason, IReadOnlyDictionary<string, EvidenceView> bySignal)
+    internal static ReasonView From(ReasonResponse reason, ILookup<string, EvidenceView> bySignal)
     {
         var resolved = new List<EvidenceView>();
         var missing = new List<string>();
 
         foreach (var signalId in reason.EvidenceSignalIds)
         {
-            if (bySignal.TryGetValue(signalId, out var evidence)) resolved.Add(evidence);
-            else missing.Add(signalId);
+            var matches = bySignal[signalId].ToList();
+
+            // Every row sharing the id, not the first. Dropping one would be
+            // the console editing the Host's answer, and the rows are
+            // distinguishable: they carry different scopes.
+            if (matches.Count == 0) missing.Add(signalId);
+            else resolved.AddRange(matches);
         }
 
         return new ReasonView
@@ -252,6 +295,17 @@ public sealed class EvidenceView
 
     public required string SourceVersion { get; init; }
 
+    /// <summary>
+    /// What the observation was scoped to, when the Host said.
+    /// </summary>
+    /// <remarks>
+    /// The field that makes two rows sharing a signal id tellable apart: a
+    /// behavioural signal observed for a sender and for a recipient can carry
+    /// the same id and different values, and a pane that showed them as one row
+    /// would report one number where there were two.
+    /// </remarks>
+    public string? ObservedScope { get; init; }
+
     public required string ValueLabel { get; init; }
 
     public required string ConfidenceLabel { get; init; }
@@ -277,6 +331,7 @@ public sealed class EvidenceView
         Confidence = evidence.Confidence,
         SampleSupport = evidence.SampleSupport,
         SourceVersion = evidence.SourceVersion,
+        ObservedScope = evidence.ObservedScope,
         ValueLabel = evidence.Availability is EvidenceAvailability.Available
             or EvidenceAvailability.ReducedCoverage
             ? evidence.Value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "no value"

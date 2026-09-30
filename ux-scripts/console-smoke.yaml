@@ -1,32 +1,39 @@
 name: console-smoke
 description: >
   Drives the StyloMail operator console end to end against a throwaway Host:
-  the connection the sidebar and status bar report, the decision pane, the
-  confirmation for a sender pause including the rule that it cannot be carried
-  out until a reason is given, and the sidebar's one blocked entry.
+  the connection the sidebar and status bar report, the decision pane over a
+  decision the Host produced, feedback recorded against it, the decision
+  ledger, the confirmation for a sender pause including the rule that it cannot
+  be carried out until a reason is given, the connection screen, and the
+  management dialogs.
 
   Run it through ux-scripts/run-console-smoke.sh, not directly. That script
-  starts the Host these assertions are about, supplies the decision fixture,
-  and takes it all down afterwards, so the run is repeatable from any starting
-  state and leaves nothing behind.
+  starts the Host these assertions are about, seeds a decision through the
+  routes, and takes it all down afterwards, so the run is repeatable from any
+  starting state and leaves nothing behind.
 
   The decision pane is at the top of this script on purpose. It is loaded when
   the window opens, and selecting anything in the sidebar clears it, because a
   detail pane still showing the previous message's decision would be wrong.
   Asserting it after a click is asserting on an empty pane.
 
-  The decision it renders is a fixture (ux-scripts/decision-fixture.json)
-  rather than one the Host produced, and that is a limit of the deployment
-  rather than a shortcut: producing a decision needs a semantic provider key,
-  and a rejected key currently fails the whole assessment request rather than
-  degrading to unavailable evidence. So these assertions are about how the
-  pane renders, which is what a script can honestly check.
+  The decision is one the Host produced, not a fixture. console_seed_decision
+  posts an assessment against a Host whose semantic provider is unreachable, so
+  policy declines and records the decision with every semantic dimension
+  Unavailable. Two things follow from that: it is reached over the API by the
+  client the console ships, and the unavailable-is-not-zero rule is asserted
+  over data nothing wrote for the test. A file fixture remains as a Debug-only
+  fallback for a run with no decision to seed, and a screenshot taken from it
+  must say so.
 
   Deliberately not covered here, with reasons:
-    - Sending feedback, and releasing a quarantine. Both are writes that bind
-      to a decision the Host holds, and this run's decision is one the Host has
-      never seen, so the call would be refused for the right reason and prove
-      nothing. Both are covered by their own unit tests.
+    - Releasing a quarantine. It is a write that binds to a queue row, and no
+      run can reach one: POST /v1/submissions declines when the provider is
+      unavailable, so no message ever reaches a quarantined state here. The
+      route's refusal is covered live, and its success path only by unit tests.
+    - A message to its decision. The ledger is listable, so the ledger pane is
+      driven above, but the queue listings stay empty for the same reason, and
+      the join from a message row to its decision needs a row to start from.
     - Anything behind a native OS dialog. There is none yet; when the API key
       entry lands it will open one, and that is the same wall mylo records.
 
@@ -76,61 +83,97 @@ actions:
   # Senders group under the company an operator filed them in, and the row
   # shows the label rather than the address. Both come from the listing row, so
   # this is the assertion that the sidebar does not need a call per sender.
+  #
+  # `text='Acme'` is exact on purpose, and both halves of that matter.
+  #
+  # Unquoted, `text=Acme` matches any control containing those four characters,
+  # including the sender's own label "Acme outbound", so it passed with grouping
+  # entirely broken: the mutation that makes every sender group under
+  # "Ungrouped" turned this run green. That was measured, not guessed, and it is
+  # the difference between an assertion and a decoration.
+  #
+  # Quoted, it is an exact match against the section header's own text, which is
+  # what the grouping produces and what nothing else in the window says.
   - type: Expect
-    target: "text=Acme"
+    target: "text='Acme'"
     matcher: IsVisible
 
   - type: Expect
     target: "text='Acme outbound'"
     matcher: IsVisible
 
+  # Where the principal's authority came from. The harness principal is
+  # configured by environment, so the row has to say so: a console that could
+  # not tell a minted sender from a configured one could not say which it was
+  # looking at, and revocation differs between them.
+  - type: Expect
+    target: "testid=detail-sender-harness"
+    matcher: ContainsText
+    value: "configured in the host"
+
   - type: Screenshot
     value: "01-connected"
     description: "The console on open: connected, senders grouped by company"
 
-  # ---- the decision pane --------------------------------------------------
+  # ---- the decision pane, over a decision the Host produced ----------------
+  #
+  # Not the fixture. `console_seed_decision` posts an assessment against a Host
+  # whose semantic provider is unreachable, and an assessment-only call is
+  # recorded in the ledger, so this is real evidence reached over
+  # GET /v1/decisions/{id} by the client the console actually ships.
+  #
+  # What that buys is the assertion a fixture cannot make honestly: every
+  # semantic dimension comes back Unavailable, so the pane is showing the
+  # unavailable-is-not-zero rule over data nothing wrote for it.
+
+  - type: Expect
+    target: "text=Defer"
+    matcher: IsVisible
+    timeout: 20000
 
   - type: Expect
     target: "name=RiskIndexText"
     matcher: ContainsText
     value: "an index, not a probability"
-    timeout: 20000
 
-  # Reasons keep policy's order and each carries the evidence behind it.
+  # The reason the pipeline declined, in its own words.
   - type: Expect
-    target: "text=credential_request_high"
+    target: "text=assessment.semantic_unavailable"
     matcher: IsVisible
 
-  - type: Expect
-    target: "text=link_display_mismatch"
-    matcher: IsVisible
-
-  # A reason naming a signal the response did not carry says so, rather than
-  # rendering only the evidence that happened to arrive and looking complete.
-  - type: Expect
-    target: "text='Evidence referenced by this reason was not returned: sig_absent'"
-    matcher: IsVisible
-
-  # Unavailable is not zero: a dimension nobody could measure reads "not
-  # measured", and the score it arrived with is never rendered.
+  # A dimension nobody could measure reads "not measured", never 0.00. This is
+  # the rule the whole project restates, asserted against a real outage.
   - type: Expect
     target: "text='not measured (unavailable)'"
     matcher: IsVisible
 
-  # Reduced coverage shows its score and names why it is weaker.
+  # And the message it names is on the row, so the reason is followed by what
+  # actually happened rather than being an assertion on its own.
   - type: Expect
-    target: "text='Scored over reduced input coverage, so it is real but weaker.'"
+    target: "text='Semantic evidence was entirely unavailable, so no assessment of this message could be made. Responsibility is declined rather than assumed; retry when the provider is reachable.'"
     matcher: IsVisible
 
-  # Feedback needs a recipient before it can be recorded, because both scopes
-  # the Host accepts bind to one.
+  # Delivery timing is PreAcceptance here, so the post-delivery caveat must NOT
+  # appear. A caveat shown on every decision is one nobody reads, and this is
+  # the assertion that it is conditional rather than decorative.
   - type: Expect
-    target: "name=RecordFeedbackButton"
-    matcher: Not.IsEnabled
+    target: "name=PostDeliveryBanner"
+    matcher: Not.IsVisible
 
   - type: Screenshot
     value: "02-decision-pane"
-    description: "Ordered reasons, evidence inline, unavailable-is-not-zero"
+    description: "A real decision: declined, with every semantic dimension unavailable"
+
+  # ---- feedback, against a decision the Host actually holds ---------------
+  #
+  # This is the write that was unreachable before a real decision existed: a
+  # label binds to a decision id, so with no decision there was nothing to bind
+  # one to. The assertion is on the result banner rather than the form, because
+  # the banner is what an operator reads and it is where a failure would show.
+
+  - type: Expect
+    target: "name=RecordFeedbackButton"
+    matcher: Not.IsEnabled
 
   - type: TypeText
     target: "name=FeedbackRecipientBox"
@@ -141,9 +184,18 @@ actions:
     matcher: IsEnabled
     timeout: 5000
 
+  - type: Click
+    target: "name=RecordFeedbackButton"
+
+  - type: Expect
+    target: "name=ActionResultText"
+    matcher: ContainsText
+    value: "Recorded Legitimate"
+    timeout: 10000
+
   - type: Screenshot
-    value: "03-feedback-ready"
-    description: "Feedback enabled once the scope has something to bind to"
+    value: "03-feedback-recorded"
+    description: "A label recorded against the real decision, confirmed in the result banner"
 
   # ---- selecting a queue clears the detail ---------------------------------
   #
@@ -231,26 +283,175 @@ actions:
     value: "07-cancelled"
     description: "Cancelled: the confirmation is gone and nothing was done"
 
-  # ---- the sidebar's blocked entry ----------------------------------------
+  # ---- a real pause, driven through the UI --------------------------------
   #
-  # Nothing enumerates the ledger yet, so this entry says so rather than
-  # looking empty. The distinction is the one the console exists to keep: a
-  # pane that cannot look must not read as a pane with nothing in it.
+  # The cancel above proves nothing was done on a dismissal. This proves the
+  # other half: that pressing Confirm actually reaches the Host and that the
+  # console reflects the new state.
+  #
+  # The assertion is the button flipping from Pause to Resume. That is not
+  # cosmetic: the row only offers Resume when the Host reports the principal
+  # paused, and the console reloads the senders after a successful action, so
+  # the flip cannot happen without the write having landed and been read back.
+
+  - type: Click
+    target: "testid=pause-sender-harness"
+
+  - type: Expect
+    target: "name=PendingActionTitle"
+    matcher: ContainsText
+    value: "Pause"
+
+  - type: TypeText
+    target: "name=PendingReasonBox"
+    value: "harness integration run"
+
+  - type: Click
+    target: "name=ConfirmActionButton"
+
+  - type: Expect
+    target: "name=ActionResultText"
+    matcher: ContainsText
+    value: "Paused harness"
+    timeout: 10000
+
+  - type: Expect
+    target: "testid=resume-sender-harness"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Screenshot
+    value: "08-paused"
+    description: "The principal paused, read back from the Host"
+
+  # And lift it again, so the run leaves the Host as it found it.
+  - type: Click
+    target: "testid=resume-sender-harness"
+
+  - type: TypeText
+    target: "name=PendingReasonBox"
+    value: "harness integration run complete"
+
+  - type: Click
+    target: "name=ConfirmActionButton"
+
+  - type: Expect
+    target: "name=ActionResultText"
+    matcher: ContainsText
+    value: "Resumed harness"
+    timeout: 10000
+
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 10000
+
+  # The audit trail survives the resume, which is why the Host keeps the pause
+  # fields after lifting one.
+  - type: Expect
+    target: "testid=detail-sender-harness"
+    matcher: ContainsText
+    value: "Resumed by harness"
+
+  # ---- the decision ledger ------------------------------------------------
+  #
+  # This entry used to be the sidebar's one blocked destination, claiming that
+  # nothing enumerated the ledger. The route has existed since the listing
+  # shipped: GET /v1/decisions, and the client was already complete against it.
+  # So the pane is driven here as a listing rather than a blocked marker.
+  #
+  # The rows are the Host's, not a fixture. console_seed_decision posted an
+  # assessment earlier in this run, so this is the same real decision the pane
+  # above deep-links by id, reached this time by asking the ledger to list it.
+  # That second reach is the point: it proves the pane can be filled from the
+  # list, which no id-carrying caller could establish.
 
   - type: Click
     target: "type=Button:has-text(Decisions)"
 
-  - type: Wait
-    value: "400"
-
   - type: Expect
-    target: "name=EmptyListDetailText"
-    matcher: ContainsText
-    value: "does not read the database"
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+    timeout: 15000
+
+  # The route, on the pane, so the destination and the call it makes are the
+  # same statement rather than two that could drift.
+  - type: Expect
+    target: "name=PaneDetailText"
+    matcher: HasText
+    value: "GET /v1/decisions"
+
+  # The headline reason, in policy's own words and in full: a quoted selector is
+  # an exact match against the control's whole displayed text, so this fails if
+  # the row shows a code, a prefix, or anything else.
+  - type: Expect
+    target: "text='Semantic evidence was entirely unavailable, so no assessment of this message could be made. Responsibility is declined rather than assumed; retry when the provider is reachable.'"
+    matcher: IsVisible
+    timeout: 15000
+
+  # What policy did, not what it might have done. Defer, because the semantic
+  # provider was unreachable and responsibility is declined rather than assumed.
+  - type: Expect
+    target: "text='Defer'"
+    matcher: IsVisible
+
+  # The risk index keeps its caveat on the row. A ledger is where the number is
+  # most likely to be read on its own, and it is not a probability.
+  - type: Expect
+    target: "text='risk index 0 (an index, not a probability)'"
+    matcher: IsVisible
+
+  # A decision resting on reduced coverage says so while scanning, which is why
+  # the contract puts coverage on the summary rather than only in the detail.
+  # This one had no conversation context.
+  - type: Expect
+    target: "text='1 coverage flag'"
+    matcher: IsVisible
 
   - type: Screenshot
-    value: "08-blocked-pane"
-    description: "The blocked Decisions pane, naming the route it needs"
+    value: "09-ledger"
+    description: "The decision ledger, listing a decision the Host recorded"
+
+  # ---- a ledger row opens the full decision -------------------------------
+  #
+  # A row is a summary and carries no evidence on purpose: a page of full
+  # decisions is unbounded. So selecting one is a second round trip to
+  # GET /v1/decisions/{id}, and this is what proves the row is the handle for
+  # the explanation rather than only a line of text.
+  #
+  # Asserted on the pane container, not on a control inside it: Control.IsVisible
+  # is the control's own property, so a TextBlock in a hidden pane still reports
+  # true. Same trap as the confirmation bar, walked into twice already.
+  #
+  # The row's own control, not the row. The harness clicks by raising the
+  # control's Click event, and a ListBoxItem does not handle one, so a click on
+  # the row itself selects nothing while still reporting success. That cost a
+  # run and is written up in ux-scripts/README.md.
+
+  - type: Click
+    target: "type=Button:has-text(Open decision)"
+
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "an index, not a probability"
+
+  # The rule the whole project restates, now reached through the ledger rather
+  # than through an id: a dimension nobody could measure reads "not measured",
+  # never 0.00.
+  - type: Expect
+    target: "text='not measured (unavailable)'"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "10-ledger-decision"
+    description: "The full decision opened from its ledger row"
 
   # ---- the connection screen ----------------------------------------------
   #
@@ -284,7 +485,7 @@ actions:
     matcher: IsVisible
 
   - type: Screenshot
-    value: "09-connection"
+    value: "12-connection"
     composite: true
     description: "The connection screen over the console"
 
@@ -306,7 +507,7 @@ actions:
     timeout: 5000
 
   - type: Screenshot
-    value: "10-connection-refused"
+    value: "13-connection-refused"
     composite: true
     description: "A remote plain-http address refused, with the reason"
 
@@ -340,7 +541,7 @@ actions:
     matcher: IsVisible
 
   - type: Screenshot
-    value: "11-sender-profile"
+    value: "14-sender-profile"
     composite: true
     description: "The sender profile form, with the not-yet-read fields labelled"
 
@@ -373,7 +574,7 @@ actions:
     matcher: IsVisible
 
   - type: Screenshot
-    value: "12-companies"
+    value: "15-companies"
     composite: true
     description: "The company screen, over the seeded company"
 

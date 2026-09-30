@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
 
@@ -19,6 +20,7 @@ public sealed class ShellModel : ObservableObject
     private HostStatus _status = HostStatus.Unknown;
     private SidebarItem? _selectedItem;
     private MessageRow? _selectedMessage;
+    private DecisionRow? _selectedDecision;
     private bool _isCheckingHost;
     private string? _nextCursor;
     private bool _hasMore;
@@ -75,7 +77,20 @@ public sealed class ShellModel : ObservableObject
         // properties computed from its count. Without this the list pane keeps
         // showing its empty state after the first page arrives, because nothing
         // ever told the binding that HasMessages had changed.
-        Messages.CollectionChanged += (_, _) => Raise(nameof(HasMessages));
+        Messages.CollectionChanged += (_, _) =>
+        {
+            Raise(nameof(HasMessages));
+            Raise(nameof(HasAnyRows));
+        };
+
+        // As above, and for the ledger's own pair: the list pane hides itself
+        // when the collection it is bound to is empty, and only a notification
+        // moves that.
+        Decisions.CollectionChanged += (_, _) =>
+        {
+            Raise(nameof(HasDecisions));
+            Raise(nameof(HasAnyRows));
+        };
 
         // The Record button binds to CanSubmitFeedback, which is computed from
         // this draft. Without forwarding the draft's own changes the button
@@ -88,6 +103,17 @@ public sealed class ShellModel : ObservableObject
     public ObservableCollection<SidebarSection> Sections { get; } = [];
 
     public ObservableCollection<MessageRow> Messages { get; } = [];
+
+    /// <summary>
+    /// One page of the decision ledger, when the ledger entry is selected.
+    /// </summary>
+    /// <remarks>
+    /// A second collection rather than a heterogeneous list, because a ledger
+    /// row and a queue row share no fields: one is a message waiting for
+    /// attention, the other a decision already taken. A union type would have
+    /// to render as neither.
+    /// </remarks>
+    public ObservableCollection<DecisionRow> Decisions { get; } = [];
 
     /// <summary>What the console knows about its Host. Drives the status bar and the Host entry.</summary>
     public HostStatus Status
@@ -150,6 +176,11 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(SelectedPaneTitle));
             Raise(nameof(SelectedPaneDetail));
             Raise(nameof(EmptyListDetail));
+
+            // The detail pane's empty text is written for the destination that
+            // is selected: a ledger entry and a queue give different
+            // instructions, and only one of them is on screen.
+            Raise(nameof(DecisionUnavailableReason));
         }
     }
 
@@ -216,7 +247,12 @@ public sealed class ShellModel : ObservableObject
     /// which one it is. "Nothing here" would be true of all four and useful for
     /// none.
     /// </remarks>
-    public string DecisionUnavailableReason => SelectedMessage switch
+    public string DecisionUnavailableReason => SelectedItem?.Ledger is not null
+        // The ledger pane's own instruction. Without this the pane says
+        // "select a message", which names a control that is not on screen.
+        ? "Select a decision to see it in full, with the evidence behind it."
+
+        : SelectedMessage switch
     {
         null => "Select a message to see the decision behind it.",
 
@@ -293,6 +329,60 @@ public sealed class ShellModel : ObservableObject
 
     public bool HasMessages => Messages.Count > 0;
 
+    /// <summary>Whether the ledger listing put anything in the middle pane.</summary>
+    public bool HasDecisions => Decisions.Count > 0;
+
+    /// <summary>
+    /// Whether the middle pane has any row to show at all.
+    /// </summary>
+    /// <remarks>
+    /// The empty state is driven by this rather than by <see cref="HasMessages"/>
+    /// alone, which was correct while there was only one list. With two, a
+    /// non-empty ledger under a message-only empty check draws the "nothing to
+    /// list" panel on top of its own rows.
+    /// </remarks>
+    public bool HasAnyRows => HasMessages || HasDecisions;
+
+    /// <summary>The ledger row the operator has selected.</summary>
+    public DecisionRow? SelectedDecision
+    {
+        get => _selectedDecision;
+        set
+        {
+            if (!Set(ref _selectedDecision, value)) return;
+
+            Raise(nameof(HasSelectedDecision));
+        }
+    }
+
+    public bool HasSelectedDecision => SelectedDecision is not null;
+
+    /// <summary>What the last ledger listing produced, for the pane's empty state.</summary>
+    private LedgerLookup _ledgerLookup = LedgerLookup.Unknown;
+
+    /// <summary>Marks the ledger listing as in flight, over an empty pane.</summary>
+    public void BeginLedgerLookup()
+    {
+        _ledgerLookup = LedgerLookup.Loading;
+        Raise(nameof(EmptyListDetail));
+    }
+
+    /// <summary>The ledger listing failed, which is not the same as an empty ledger.</summary>
+    public void LedgerUnavailable()
+    {
+        _ledgerLookup = LedgerLookup.Unavailable;
+        Raise(nameof(EmptyListDetail));
+    }
+
+    /// <summary>What a ledger listing produced.</summary>
+    private enum LedgerLookup
+    {
+        Unknown,
+        Loading,
+        Loaded,
+        Unavailable,
+    }
+
     /// <summary>The middle pane's title: whatever the sidebar has selected.</summary>
     public string SelectedPaneTitle => SelectedItem?.Title ?? "Messages";
 
@@ -320,6 +410,16 @@ public sealed class ShellModel : ObservableObject
 
         { State: SidebarItemState.NotBuilt } =>
             "This pane has not been built yet.",
+
+        // The ledger's three empty states are separate sentences, because the
+        // remedies are: an empty ledger means nothing has been assessed, a
+        // failed listing means the console could not ask, and those send an
+        // operator to different places.
+        { Ledger: not null } when _ledgerLookup is LedgerLookup.Loading =>
+            "Looking up the decision ledger.",
+
+        { Ledger: not null } when _ledgerLookup is LedgerLookup.Unavailable =>
+            "The decision ledger could not be read. The status bar carries the reason.",
 
         { EmptyDetail: { Length: > 0 } detail } => detail,
 
@@ -410,19 +510,26 @@ public sealed class ShellModel : ObservableObject
 
         model.Sections.Add(new SidebarSection("Review",
         [
-            // Reading one decision works (GET /v1/decisions/{id}), but nothing
-            // enumerates the ledger, so this pane has no rows to show and no
-            // amount of client work would give it any. Marked blocked rather
-            // than left to look empty, because the two read very differently to
-            // an operator: one says the console cannot look, the other says
-            // there is nothing to find.
+            // Unblocked. This entry read "needs a route that enumerates the
+            // ledger" long after the route landed: GET /v1/decisions has been
+            // served since the ledger listing shipped, and the client has been
+            // complete against it. A blocked marker outliving its blocker is
+            // worse than no marker, because it is a statement about the system
+            // that is no longer true and it survives review by looking
+            // deliberate.
+            //
+            // Rows are summaries, so a row opens the full decision over
+            // GET /v1/decisions/{id} rather than the list carrying evidence it
+            // would have to truncate.
             new SidebarItem(
                 "Decisions",
-                SidebarItemState.AwaitingRoute,
-                "needs a route that enumerates the ledger",
-                "A decision is opened by its identifier, but no route enumerates the ledger, so "
-                    + "this pane cannot list them. The console does not read the database to work "
-                    + "around it."),
+                SidebarItemState.Available,
+                "GET /v1/decisions",
+                "No decisions are recorded. A decision is written when a message is assessed, so "
+                    + "an empty ledger means nothing has been assessed on this Host yet.")
+            {
+                Ledger = new LedgerListing(null),
+            },
         ]));
 
         model.SelectedItem = host;
@@ -841,6 +948,28 @@ public sealed class ShellModel : ObservableObject
         Raise(nameof(HasDecisionHistory));
     }
 
+    /// <summary>
+    /// Empties the detail pane, when the selection no longer names a decision.
+    /// </summary>
+    /// <remarks>
+    /// The draft is cleared with it, for the same reason
+    /// <see cref="ShowDecision"/> clears it: a label half-written against one
+    /// decision must not be left pointing at whatever is opened next, and after
+    /// this there is nothing at all to point at.
+    /// </remarks>
+    public void ClearDecision()
+    {
+        _decisionLookup = DecisionLookup.Unknown;
+        Decision = null;
+        Feedback.Reset();
+
+        Raise(nameof(CanSubmitFeedback));
+        Raise(nameof(DecisionCount));
+        Raise(nameof(DecisionHistoryNote));
+        Raise(nameof(HasDecisionHistory));
+        Raise(nameof(DecisionUnavailableReason));
+    }
+
     /// <summary>Whether the feedback draft can be sent against the open decision.</summary>
     public bool CanSubmitFeedback =>
         Decision is not null && Feedback.CanSubmitFor(Decision.AssessmentId);
@@ -860,11 +989,66 @@ public sealed class ShellModel : ObservableObject
             Messages.Add(MessageRow.From(message));
         }
 
+        // The other list is emptied rather than left behind. Only one of the
+        // two is ever displayed, so leaving rows in the hidden one means the
+        // next selection draws a pane full of rows belonging to the previous
+        // destination.
+        ClearDecisions();
+
         NextCursor = listing.NextCursor;
         HasMore = listing.HasMore;
 
         SelectedMessage = null;
         Decision = null;
+    }
+
+    /// <summary>Replaces the list pane's contents with one page of the decision ledger.</summary>
+    /// <remarks>
+    /// Rows are summaries. The full decision, with its evidence, is one
+    /// <c>GET /v1/decisions/{id}</c> away when a row is opened, so the list does
+    /// not carry a payload it would have to truncate per message.
+    /// </remarks>
+    public void ApplyDecisions(DecisionListingResponse listing)
+    {
+        ArgumentNullException.ThrowIfNull(listing);
+
+        Decisions.Clear();
+
+        foreach (var decision in listing.Decisions)
+        {
+            Decisions.Add(DecisionRow.From(decision));
+        }
+
+        _ledgerLookup = LedgerLookup.Loaded;
+
+        // The message list goes, for the reason above, and so does any decision
+        // the detail pane was showing: a decision opened from a message, still
+        // on screen under a ledger heading, would attribute one view's
+        // reasoning to another's.
+        ClearMessages();
+
+        NextCursor = listing.NextCursor;
+        HasMore = listing.HasMore;
+
+        SelectedMessage = null;
+        SelectedDecision = null;
+        Decision = null;
+
+        Raise(nameof(EmptyListDetail));
+    }
+
+    /// <summary>Empties the message list without touching the ledger's state.</summary>
+    private void ClearMessages()
+    {
+        Messages.Clear();
+        SelectedMessage = null;
+    }
+
+    /// <summary>Empties the ledger list without touching the message list's state.</summary>
+    private void ClearDecisions()
+    {
+        Decisions.Clear();
+        SelectedDecision = null;
     }
 }
 
@@ -950,4 +1134,143 @@ public sealed class MessageRow
     };
 
     public string AttemptsLabel => Attempts == 1 ? "1 attempt" : $"{Attempts} attempts";
+}
+
+/// <summary>
+/// One row in the middle pane when the decision ledger is selected.
+/// </summary>
+/// <remarks>
+/// <b>Built from what a summary carries, and nothing else.</b> The listing
+/// deliberately omits evidence, because a page of full decisions is unbounded
+/// and the evidence volume is per-message. So a row shows what a reviewer needs
+/// to decide whether to open it, and the row itself is the thing that opens the
+/// rest.
+///
+/// <para>
+/// The reasons are carried as their sentences rather than their codes. A list
+/// of codes alone makes a reviewer open every row to find out which ones are
+/// interesting, which is the work the list exists to save; the detail pane
+/// still shows the codes alongside.
+/// </para>
+/// </remarks>
+public sealed class DecisionRow
+{
+    /// <summary>The decision's identity, and what opens it in full.</summary>
+    public required string AssessmentId { get; init; }
+
+    /// <summary>
+    /// The message this decision was taken about, shown so a row can be
+    /// correlated with a queue row by eye.
+    /// </summary>
+    /// <remarks>
+    /// Shown rather than made clickable. The message listing takes no id
+    /// filter, so a row that looked like a link here would be a dead end; the
+    /// id is still the only handle a reviewer has for tying a ledger row to
+    /// the message it was about.
+    /// </remarks>
+    public required string InternalMessageId { get; init; }
+
+    public required MailAction Action { get; init; }
+
+    /// <summary>
+    /// What policy would have done, when this decision ran in shadow mode.
+    /// </summary>
+    /// <remarks>
+    /// Kept out of the action column rather than replacing it: in shadow mode
+    /// the recorded action is what happened and the proposed one is what would
+    /// have happened, and a row that showed only the latter would misreport
+    /// what the platform did.
+    /// </remarks>
+    public string? ShadowLabel { get; init; }
+
+    public bool HasShadow => ShadowLabel is not null;
+
+    /// <summary>
+    /// The risk index, with the same caveat it carries everywhere else.
+    /// </summary>
+    /// <remarks>
+    /// Restated on the row rather than assumed to have been read in the detail.
+    /// It is the number most likely to be quoted out of context, and a ledger
+    /// is where it is most likely to be read alone.
+    /// </remarks>
+    public required string RiskIndexLabel { get; init; }
+
+    /// <summary>
+    /// The most significant reason, in policy's own words.
+    /// </summary>
+    /// <remarks>
+    /// The first, because the reasons arrive in policy's order and are never
+    /// resorted here. A row with no reasons says so rather than rendering
+    /// blank: a decision whose reasons were dropped is not a decision with
+    /// nothing wrong with it.
+    /// </remarks>
+    public required string HeadlineReason { get; init; }
+
+    /// <summary>When the decision was taken, in UTC and labelled as such.</summary>
+    public required string AssessedAtLabel { get; init; }
+
+    /// <summary>
+    /// The coverage flags that are set, so a weaker decision is visible while
+    /// scanning.
+    /// </summary>
+    /// <remarks>
+    /// On the row for the reason the contract gives: a decision taken over
+    /// reduced coverage is a weaker one, and a reviewer should be able to see
+    /// which rows those are without opening each. Only the true flags, as in
+    /// the detail pane, so an ordinary row shows nothing here.
+    /// </remarks>
+    public required IReadOnlyList<CoverageFlag> Coverage { get; init; }
+
+    public bool HasCoverage => Coverage.Count > 0;
+
+    /// <summary>How many coverage flags are set, spelled out for a narrow column.</summary>
+    public string CoverageLabel => Coverage.Count == 1
+        ? "1 coverage flag"
+        : $"{Coverage.Count} coverage flags";
+
+    public string ActionLabel => Action.ToString();
+
+    /// <summary>
+    /// A stable identity for this row's open control, for the UI harness.
+    /// </summary>
+    /// <remarks>
+    /// The row is generated from a data template, so it cannot have a unique
+    /// <c>x:Name</c>; an automation id can be bound, as
+    /// <see cref="SidebarItem.PauseAutomationId"/> is. Built from the
+    /// assessment id, which is the decision's identity rather than a position
+    /// in the list.
+    ///
+    /// <para>
+    /// <b>A script cannot use this</b>, because the id is minted by the Host
+    /// and the script has no way to know it. There the label is the handle.
+    /// This exists for the REPL and for anything that already holds an id.
+    /// </para>
+    /// </remarks>
+    public string OpenAutomationId => $"open-decision-{AssessmentId}";
+
+    /// <summary>Builds a row from one ledger summary.</summary>
+    public static DecisionRow From(DecisionSummaryResponse decision)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+
+        return new DecisionRow
+        {
+            AssessmentId = decision.AssessmentId,
+            InternalMessageId = decision.InternalMessageId,
+            Action = decision.Action,
+            ShadowLabel = decision.ProposedActionInShadow is { } proposed
+                ? $"Would have been {proposed}"
+                : null,
+            RiskIndexLabel = string.Create(
+                CultureInfo.InvariantCulture,
+                $"risk index {decision.RiskIndex:0.###} (an index, not a probability)"),
+            HeadlineReason = decision.Reasons.Count > 0
+                ? decision.Reasons[0].Message
+                : "No reason was recorded with this decision.",
+            AssessedAtLabel = decision.AssessedAt
+                .ToUniversalTime()
+                .ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture),
+            Coverage = CoverageFlag.From(decision.Coverage),
+        };
+    }
 }
