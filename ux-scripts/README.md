@@ -14,10 +14,19 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
 ```
 
-Run a script, not the YAML. Each sources `console-harness.sh`, which starts a throwaway Host on
-loopback with locally generated values, points the console at it, and takes it down again on the way
-out, including on failure and on interrupt. That is what lets the assertions be exact and the run be
-repeatable from any starting state.
+Run a script, not the YAML. Each sources `console-harness.sh`, which builds the solution it needs,
+starts a throwaway Host on loopback with locally generated values, points the console at it, and takes
+it down again on the way out, including on failure and on interrupt. That is what lets the assertions
+be exact and the run be repeatable from any starting state.
+
+A fresh clone is enough: nothing has to be built first. The scripts build `StyloMail.slnx` themselves
+with `console_dotnet_build`, which cd's into the repo root and names the solution relatively. That
+relative path is not a style choice. Naming it absolutely made MSBuild treat one project as two
+identities under `/tmp` (a symlink to `/private/tmp` on macOS) and build them against each other, and
+the symptoms were a Host that built clean and then died at launch, plus intermittent `CS0006` on
+`obj/.../ref/*.dll`. The build's output is shown and also written to
+`/tmp/stylomail-console-build/solution.log`, so a failure is readable after the fact; the three
+scripts used to discard it, which turned a build error into exit 1 and a 0-byte log.
 
 Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
 under `ux-results/`, so one run's artifacts can never be read as another's. The main smoke wipes
