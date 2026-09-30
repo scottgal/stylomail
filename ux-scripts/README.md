@@ -158,8 +158,22 @@ as though it had would read as coverage. The command is the interface pinned wit
 --base-url <url> --key-file <path> --batch <dir>`, with the key read from a path rather than passed
 as an argument, which is why what the harness hands over is its own `principal.key` file. The CLI
 path defaults to `tools/corpus/corpus.py` and `CONSOLE_CORPUS_CLI` overrides it, so corpus-'s choice
-of entry point does not need an edit here. No committed script calls it yet: which script seeds a
-batch and what it then asserts is the next step, and it waits on that CLI existing.
+of entry point does not need an edit here. The switch is wired but **no committed runner calls it
+yet**, and it has never been exercised end to end under a smoke: which script seeds a batch, and what
+it then asserts, is the next step. A verified invocation is not a verified run.
+
+Two things `corpus-` verified against this harness on 2026-10-01, so a future reader does not have to
+re-derive them:
+
+- **The invocation and the key file both match their CLI as written.** The flag set above is their
+  `seed` signature, and the file the harness writes (`head -c 24 /dev/urandom | xxd -p | tr -d '\n'`,
+  a bare hex string) is exactly what their reader wants: `read_text().strip()`, used verbatim as
+  `X-StyloMail-Key`.
+- **Their `seed` exits non-zero when nothing was accepted, and this harness relays that as a failure.**
+  That is deliberate coupling rather than a nuisance. A batch where every message Allows still exits 0,
+  so benign traffic seeds normally. But a batch in which every message is refused stops the console run
+  there, which is right: a run that seeded nothing and then asserted on an empty listing would be
+  measuring the absence of its own input.
 
 ## Modes
 
