@@ -1,0 +1,180 @@
+name: console-nimble-smoke
+description: >
+  Drives the console over a message the Host actually held, and opens that
+  message's decision from its row.
+
+  Run it through ux-scripts/run-console-nimble-smoke.sh, not directly. That
+  script starts a Host whose assessor works, submits one message through
+  POST /v1/submissions, refuses to continue unless the route held it, and takes
+  it all down afterwards. The message is
+  tests/StyloMail.Desktop.Tests/fixtures/nimble-held-message.eml, which is where
+  a tracked .eml has to live in this tree. It is a runner of its own because
+  every other console run reaches a Host that cannot assess: the main smoke's
+  provider is pointed at an address that cannot answer, so nothing is ever queued
+  and the middle pane is empty for a correct reason.
+
+  So this is the run that puts a row in the middle pane, and the run that reaches
+  the message-to-decision join. The join has been implemented and wired since
+  ecb86e1, and no run had ever exercised it, because a join needs a listed row to
+  start from and every listing was empty.
+
+  Two things in the script below are doing more work than they look like:
+
+    - The pane is asserted empty before the row button is pressed. That is what
+      makes the assertion after it about the join rather than about a pane that
+      was already full. The fixture that could fill this pane at window open is
+      declined by the runner for the same reason: a body loaded from a file would
+      let every assertion below pass with the join never having run, and no
+      screenshot would say so.
+    - The risk index is quoted exactly (0.575), not matched loosely. It is the
+      model's own number for this message, measured and stable across repeats,
+      and it is what distinguishes the decision this message produced from any
+      other decision on the Host. A model change moves it; the run then fails on
+      the value rather than passing on the shape, which is the honest outcome for
+      a script whose precondition is a disposition it does not control.
+
+  The queue is opened twice, under both listings the route enumerates a held
+  message in. That is not redundancy: `awaiting_decision` is the default listing
+  and `held` is the disposition, and a console that showed the row under one and
+  not the other would be reading one route for two states.
+
+  Selector notes carry over from console-smoke.yaml: the sidebar rows are
+  Buttons whose content is a layout, so they are reached with has-text rather
+  than text=; and a locator matches controls that are not visible, so the
+  selectors here are kept to strings that appear on one control.
+
+default_delay: 250
+
+actions:
+  # The window opens, checks the Host and loads the senders, so this is a round
+  # trip to a real process rather than a fixed sleep.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  # And it is pointed at this run's Host rather than at whatever else may be
+  # listening: the console reports the address it is talking to.
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: ContainsText
+    value: "127.0.0.1"
+
+  # ---- the held message, under both listings that enumerate it --------------
+  #
+  # "Awaiting" rather than the whole label: has-text takes a single token in this
+  # harness, and the substring is unique among the buttons on screen. The main
+  # smoke reaches its queues the same way.
+
+  - type: Click
+    target: "type=Button:has-text(Awaiting)"
+    description: "Select the default queue listing"
+
+  - type: Expect
+    target: "type=Button:has-text(Open message)"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Screenshot
+    value: "01-awaiting-decision"
+    description: "The held message listed under awaiting_decision, the default listing"
+
+  - type: Click
+    target: "type=Button:has-text(Held)"
+    description: "Select the held listing"
+
+  - type: Expect
+    target: "type=Button:has-text(Open message)"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The pane is not showing its own explanation of emptiness, which is the other
+  # thing an empty middle pane can be saying and the one an operator would read
+  # as "nothing needs attention".
+  #
+  # Asserted on the block, not on the text inside it. Control.IsVisible is the
+  # control's own property, so EmptyListDetailText reports true while the block
+  # containing it is hidden: the first run of this script asserted on the text
+  # and failed with a row on screen, which is exactly the trap README's first
+  # lesson describes. The block was given a name to make it assertable.
+  - type: Expect
+    target: "name=EmptyListBlock"
+    matcher: Not.IsVisible
+
+  - type: Screenshot
+    value: "02-held-listing"
+    description: "The same message listed under held"
+
+  # ---- the join, which is the point of this run ----------------------------
+
+  # Asserted on the pane, not on a control inside it: Control.IsVisible is the
+  # control's own property, so a TextBlock inside a hidden pane still reports
+  # true. Same trap as the confirmation bar in the main smoke.
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: Not.IsVisible
+    description: "Nothing has been opened yet, so the pane is empty"
+
+  # The row's own control, not the row: the harness clicks by raising the
+  # control's Click event, and a ListBoxItem has no handler for one, so a click
+  # on the row itself selects nothing while reporting success.
+  - type: Click
+    target: "type=Button:has-text(Open message)"
+    description: "Open the held message's own decision"
+
+  # A row carries a summary; this costs two round trips to GET /v1/decisions
+  # filtered by the message's internal id and then GET /v1/decisions/{id}, so it
+  # is waited out rather than slept through.
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The message's own decision, by the model's own number for it. This is what
+  # makes the pane's contents about this message rather than about any decision
+  # the Host holds.
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "risk index 0.575"
+
+  # And the rule that number is rendered with, which is not decoration: an index
+  # is not a probability, and a pane that showed it as one would be the exact
+  # error the whole project restates.
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "an index, not a probability"
+
+  # What policy did with the message, which is the same fact the row is showing
+  # from the other side: the row says Held, the decision says Hold.
+  - type: Expect
+    target: "text='Hold'"
+    matcher: IsVisible
+
+  # The reason that produced the number, in the code policy gave it. A pane that
+  # showed the index without the reason for it would be the thing the ledger's
+  # rows exist to avoid, and this is the reason code the decision's own body
+  # carries first.
+  - type: Expect
+    target: "text=policy.risk_above_hold"
+    matcher: IsVisible
+
+  # And a signal that was actually measured. On this Host the semantic dimensions
+  # answer, so this row is Available with a value; on the main smoke's Host the
+  # same signal is "not produced", which is the difference between the two runs
+  # and the reason both exist.
+  - type: Expect
+    target: "text=semantic.credential_request"
+    matcher: IsVisible
+
+  # What the alert explains but the caveat above already said for the ledger:
+  # one dimension contributed nothing and was masked rather than treated as zero.
+  - type: Expect
+    target: "text=evidence.masked_dimensions"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "03-joined-decision"
+    description: "The held message's own decision, opened from its row"

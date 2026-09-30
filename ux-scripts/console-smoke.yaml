@@ -26,14 +26,27 @@ description: >
   fallback for a run with no decision to seed, and a screenshot taken from it
   must say so.
 
-  Deliberately not covered here, with reasons:
+  Deliberately not covered here, with reasons. Both were re-measured on
+  2026-09-30 (`ux-scripts/probe-submission-route.sh`), because both had been
+  inferred from the route rather than read off a response, and the inference was
+  right about the outcome and wrong about the mechanism:
     - Releasing a quarantine. It is a write that binds to a queue row, and no
-      run can reach one: POST /v1/submissions declines when the provider is
-      unavailable, so no message ever reaches a quarantined state here. The
+      run reaches one. The cause is not the provider declining a message: with
+      no assessor the route refuses up front (503 assessor_unavailable) and with
+      an assessor that cannot reach its provider it refuses retryably (503
+      deferred), so nothing is ever accepted and held either way. On a Host with
+      a working local assessor the route accepts (202) and a held message does
+      reach the listing, but quarantine needs a risk index at or above
+      QuarantineThreshold (0.80) and the messages tried scored 0.48 to 0.58. The
       route's refusal is covered live, and its success path only by unit tests.
-    - A message to its decision. The ledger is listable, so the ledger pane is
-      driven above, but the queue listings stay empty for the same reason, and
-      the join from a message row to its decision needs a row to start from.
+    - A message to its decision. The join itself is implemented and wired
+      (`ecb86e1`); what this run cannot do is start one, because on this Host the
+      queue listings are empty and a join needs a listed row. That is a fact
+      about the Host this script talks to, not about the join, which is why it
+      has a script of its own: run-console-nimble-smoke.sh starts a Host that can
+      assess, lists a held message and opens that message's decision from its
+      row. This run keeps the empty-when-nothing-can-be-assessed case, which is
+      the only case its Host can produce.
     - Anything behind a native OS dialog. There is none yet; when the API key
       entry lands it will open one, and that is the same wall mylo records.
 

@@ -296,6 +296,43 @@ public sealed class ShellModelTests
         Assert.Contains("could not be read", model.DecisionUnavailableReason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The message row's open control is named after the row it opens.
+    /// </summary>
+    /// <remarks>
+    /// The name is a contract with `ux-scripts/console-nimble-smoke.yaml`, which
+    /// cannot compute it and has to state it: a run reaches the
+    /// message-to-decision join by pressing this control, so a rename that
+    /// nothing asserts is a script that fails with a selector error rather than
+    /// a compile error. Pinned here so the failure lands on the change instead.
+    /// </remarks>
+    [Fact]
+    public void A_message_row_names_its_own_open_control_after_its_queue_id()
+    {
+        var row = new MessageRow
+        {
+            QueueId = "q-abc",
+            State = Api.Contracts.DeliveryState.Held,
+            Attempts = 1,
+            Recipients = ["alice@example.test"],
+        };
+
+        Assert.Equal("open-message-q-abc", row.OpenAutomationId);
+
+        // Two rows in one listing must not collide: the panel would give the
+        // script whichever it found first, which is a wrong-row failure that
+        // looks like a pass.
+        var other = new MessageRow
+        {
+            QueueId = "q-def",
+            State = Api.Contracts.DeliveryState.Held,
+            Attempts = 1,
+            Recipients = ["alice@example.test"],
+        };
+
+        Assert.NotEqual(row.OpenAutomationId, other.OpenAutomationId);
+    }
+
     /// <summary>A row with no join key is not a row without a decision.</summary>
     [Fact]
     public void A_message_without_a_join_key_says_the_host_stopped_sending_it()

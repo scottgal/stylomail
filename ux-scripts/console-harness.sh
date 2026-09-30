@@ -421,6 +421,122 @@ PYEOF
     export STYLOMAIL_SMOKE_DECISION_ID="$id"
 }
 
+# Submits one message through the write path, and reports what the route did.
+#
+# This is POST /v1/submissions, which is not the same route as the assessment
+# call above and does not reach the same pane. An assessment transfers no
+# responsibility: it writes a decision to the ledger and leaves every queue
+# listing empty. A submission transfers responsibility, answers with a queue id,
+# and is the only thing that puts a row in the middle pane.
+#
+# The route refuses rather than accepting and holding when it cannot assess
+# (measured 2026-09-30; ux-scripts/state-coverage.md has the table), so a
+# submission that produced no queue id is reported as a failure of the run rather
+# than carried past. A run that continued would assert about an empty pane and
+# report the emptiness as a console defect.
+#
+# The envelope is passed in rather than parsed out of the file: the route takes
+# mailFrom and rcptTo as fields, and a helper that read them out of the MIME
+# would be measuring its own parser as much as the Host. The idempotency key is
+# per-run, because a replayed key returns the earlier submission instead of
+# assessing again, which would turn a second submission into a read of the
+# first one's answer.
+console_seed_submission() {
+    local key="$1" mime="$2" mail_from="$3" rcpt_to="$4"
+    local headers
+    headers="$(console_auth_headers "$key")"
+
+    if [[ ! -f "$mime" ]]; then
+        echo "No message to submit at $mime." >&2
+        return 1
+    fi
+
+    # A local model answers in seconds and the assessment asks it more than one
+    # question, so the deadline follows the provider rather than a fixed value
+    # chosen for the hosted one.
+    local timeout="${CONSOLE_SUBMIT_TIMEOUT:-60}"
+    if [[ "${CONSOLE_PROVIDER:-jev}" == "nimble" ]]; then
+        timeout="${CONSOLE_SUBMIT_TIMEOUT:-300}"
+    fi
+
+    local raw
+    raw="$(base64 -i "$mime" | tr -d '\n')"
+
+    python3 - "$raw" "$mail_from" "$rcpt_to" > "$CONSOLE_RUN/submission.json" <<'PYEOF'
+import json, sys
+print(json.dumps({
+    "direction": "Inbound",
+    "mailFrom": sys.argv[2],
+    "rcptTo": [sys.argv[3]],
+    "rawMime": sys.argv[1],
+    "connectingIp": "198.51.100.9",
+}))
+PYEOF
+
+    local code
+    code="$(curl -sS -o "$CONSOLE_RUN/submission-post.json" -w '%{http_code}' \
+        --max-time "$timeout" \
+        -H @"$headers" \
+        -H "Content-Type: application/json" \
+        -H "Idempotency-Key: console-$$" \
+        --data @"$CONSOLE_RUN/submission.json" \
+        "$CONSOLE_BASE/v1/submissions" 2>"$CONSOLE_RUN/submission-post.err")"
+
+    if [[ "$code" != "200" && "$code" != "201" && "$code" != "202" ]]; then
+        echo "POST /v1/submissions answered HTTP $code, so nothing was queued." >&2
+        # The body, not the request. An error body is the route's own reason for
+        # refusing, and the reason is the thing worth reading.
+        cat "$CONSOLE_RUN/submission-post.json" >&2
+        echo >&2
+        return 1
+    fi
+
+    # Read with python rather than sed: the response is one line and a greedy
+    # match would take the last id on it, which is the assessment's rather than
+    # the queue's.
+    #
+    # One value per line, read a line at a time, rather than fields joined by a
+    # separator. Tab is IFS whitespace, so `read` collapses runs of it and the
+    # empty fields shift: the first version of this joined the four values with
+    # tabs and reported the *delivery state* as the message state, because the
+    # two empty fields between them collapsed away. A line is not collapsible.
+    local fields=()
+    while IFS= read -r line; do fields+=("$line"); done < <(python3 - "$CONSOLE_RUN/submission-post.json" <<'PYEOF'
+import json, sys
+try:
+    body = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit(0)
+recipients = body.get("recipients") or []
+print(body.get("queueId") or "")
+print(body.get("status") or "")
+print(recipients[0].get("action", "") if recipients else "")
+print(recipients[0].get("deliveryState", "") if recipients else "")
+PYEOF
+)
+
+    # Reported to the caller through these rather than through stdout, so a
+    # runner does not have to parse this file a second time and cannot parse it
+    # a second, different way. The response carries no state for the message as
+    # a whole: it carries `status` for the submission and a delivery state per
+    # recipient, which is why the two are read from different places here.
+    CONSOLE_SUBMISSION_QUEUE_ID="${fields[0]:-}"
+    CONSOLE_SUBMISSION_STATUS="${fields[1]:-}"
+    CONSOLE_SUBMISSION_ACTION="${fields[2]:-}"
+    CONSOLE_SUBMISSION_DELIVERY="${fields[3]:-}"
+
+    if [[ -z "$CONSOLE_SUBMISSION_QUEUE_ID" ]]; then
+        echo "The route accepted the message but returned no queue id, so delivery" >&2
+        echo "responsibility did not transfer and no listing will carry it. Body:" >&2
+        cat "$CONSOLE_RUN/submission-post.json" >&2
+        echo >&2
+        return 1
+    fi
+
+    echo "submitted queue $CONSOLE_SUBMISSION_QUEUE_ID: status $CONSOLE_SUBMISSION_STATUS," \
+        "action $CONSOLE_SUBMISSION_ACTION, delivery $CONSOLE_SUBMISSION_DELIVERY"
+}
+
 # Seeds a corpus batch through the Host, when there is a batch to seed.
 #
 # corpus- owns the traffic and tools/corpus/; this harness consumes a batch

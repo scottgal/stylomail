@@ -239,8 +239,20 @@
 
                     <Border DockPanel.Dock="Top" Height="1" Classes="separator" />
 
-                    <!-- Shown when the pane has nothing to list, and says why. -->
-                    <StackPanel VerticalAlignment="Center"
+                    <!--
+                        Shown when the pane has nothing to list, and says why.
+
+                        Named on the container rather than only on the text
+                        inside it, because a driving script needs to assert that
+                        this whole block is absent when the pane has rows.
+                        Control.IsVisible is the control's own property, not its
+                        effective visibility, so EmptyListDetailText reports true
+                        while its parent is hidden and an assertion on it passes
+                        either way. That is ux-scripts/README.md's first lesson,
+                        and this is the third time it has been walked into.
+                    -->
+                    <StackPanel x:Name="EmptyListBlock"
+                                VerticalAlignment="Center"
                                 Spacing="8"
                                 IsVisible="{Binding !HasAnyRows}">
                         <TextBlock Classes="emptyTitle" Text="Nothing to list" />
@@ -309,6 +321,24 @@
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                                         <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />
                                         <TextBlock Classes="rowSubtitle" Text="{Binding AttemptsLabel}" />
+
+                                        <!--
+                                            The ledger's row button, for the
+                                            same reason and added the same way:
+                                            a driving script clicks by raising
+                                            the control's Click event, which a
+                                            ListBoxItem has no handler for, and
+                                            this is the affordance that makes
+                                            "why was this held" reachable from
+                                            the list rather than only from the
+                                            ledger.
+                                        -->
+                                        <Button Classes="rowButton"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,4,0,0"
+                                                Content="Open message"
+                                                AutomationProperties.AutomationId="{Binding OpenAutomationId}"
+                                                Click="OnOpenMessageClick" />
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>

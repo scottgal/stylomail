@@ -13,9 +13,14 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-no-feed-smoke.sh    # ... against a Host with no feed at all
 ./ux-scripts/run-console-feed-drop-smoke.sh  # ... against a Host killed mid-run
 ./ux-scripts/run-console-not-ready-smoke.sh  # ... against a Host that is up and refusing mail
+./ux-scripts/run-console-nimble-smoke.sh     # ... against a Host with a working local assessor
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ```
+
+The Nimble run is the only one that needs something installed: a local Ollama on 11435 holding a
+`nimble` model. It is a run of its own rather than a section of the main smoke for that reason, and
+because it is the only one whose Host can fill the middle pane.
 
 Run a script, not the YAML. Each sources `console-harness.sh`, which builds the solution it needs,
 starts a throwaway Host on loopback with locally generated values, points the console at it, and takes
@@ -103,6 +108,29 @@ with `202`, and a message policy holds comes back in the listing under both `awa
 what needs attention and not what was delivered: an empty queue on that shape is the route working.
 Equally, a held item is not a quarantined one, and `QuarantineThreshold` is 0.80 where the messages
 tried here scored 0.48 to 0.58. The state-by-state account is `ux-scripts/state-coverage.md`.
+
+`run-console-nimble-smoke.sh` is what makes that shape worth having. It submits
+`tests/StyloMail.Desktop.Tests/fixtures/nimble-held-message.eml` through `POST /v1/submissions`,
+refuses to drive the console
+unless the route held it, and then opens that message's decision from its own row. Two things about
+it are worth copying:
+
+- **It asserts the pane is empty before it presses the row's button.** Without that, "the pane shows
+  the decision" would pass on a pane that had been filled some other way, and the run would be
+  evidence about rendering rather than about the join. For the same reason it sets
+  `CONSOLE_DECISION_FIXTURE=false`: the file fixture fills this pane at window open, and a run that
+  left it on could pass every assertion below with the join never having executed.
+- **It pins the risk index at 0.575 rather than matching loosely.** That is the model's own number
+  for this message, and it is what makes the pane's contents about *this* message. A model change
+  moves it and the run fails on the value, which is the right outcome for a script whose precondition
+  is a disposition it does not control.
+
+Its first run also found a gap in the app rather than in the script. The empty-state block over the
+middle pane had no name on its container, so the only assertable control was the text inside it, and
+`Control.IsVisible` is the control's own property: `EmptyListDetailText` reports visible while its
+parent is hidden, and the assertion failed with a row on screen. The block is now `EmptyListBlock` and
+that is what a script asserts on. That is lesson 1 below, walked into for the third time, and the
+reason it is written down.
 
 ## Seeding real traffic, when there is a corpus
 
@@ -240,21 +268,21 @@ the fastest way to make a run meaningless.
   scored 0.48, 0.55 and 0.58. The evidence says the dimensions that could close that gap need sender
   history, which is traffic rather than a harness setting. The release route's refusal is covered
   here; its success path is covered only by unit tests, and no screenshot of it exists.
-- **A message to its decision.** The ledger is listable and driven here, but on the Host the committed
-  smokes start the queue listings stay empty, so the join from a message row to its decision has no
-  row to start from. A Nimble-backed Host does list a held message, and that row carries the same
-  `internalMessageId` the decision does, so the join has something to stand on: what is owed is the
-  assertion, not the traffic.
+- **A message to its decision.** Reached: `run-console-nimble-smoke.sh`, from a held row the Host
+  itself listed, over `POST /v1/submissions`. The committed smokes that start a Host which cannot
+  assess still cannot start one, because a join needs a listed row and their listings are empty by
+  design; that is a fact about those Hosts rather than about the join.
 - **Two evidence rows that differ only by trend window.** The pane can tell them apart (they agree on
-  signal id and scope, and the producer emits one row per window, "burst" and "slow"). A run could
-  not reach them while the harness Host's provider was unreachable, because a declined decision's
-  evidence is entirely semantic, and on 2026-09-30 a Nimble-backed Host was measured producing them:
-  `behavioural.trend.velocity` and `.acceleration` over two scopes, one row per window. They are
-  `Unavailable` with `sampleSupport: 0` until there is sender history, so what is reachable is the
-  rendering rather than the measurement, and the assertion is owed here rather than the traffic. What
-  the smoke does assert today is the other half of the same contract, that the qualifier is *absent*
-  on the unwindowed rows that make up most of a real response. The windowed case is covered by
-  `DecisionViewTests`.
+  signal id and scope, and the producer emits one row per window, "burst" and "slow"). What a Nimble
+  Host was measured producing on 2026-09-30 is those rows in the *response*:
+  `behavioural.trend.velocity` and `.acceleration` over two scopes, one row per window, each
+  `Unavailable` with `sampleSupport: 0` until there is sender history. They are not drawn, and that
+  is the same measurement seen from the other side: the pane renders a decision's evidence under the
+  reasons that cite it, and no reason cites a trend signal while every one of them is unavailable, so
+  the windowed rows never reach the screen. What reaches it needs sender history, which is traffic.
+  What the smoke asserts today is the other half of the same contract, that the qualifier is *absent*
+  on the unwindowed rows that make up most of a real response. The windowed rendering is covered by
+  `DecisionViewTests`; no run reaches it.
 - **Recovery after a feed drops.** `run-console-feed-drop-smoke.sh` proves the console announces the
   drop and keeps what it had read. It does not prove the other half, that the console goes back to
   `Live` and re-reads the visible surface when the Host returns. That needs a Host that comes back on

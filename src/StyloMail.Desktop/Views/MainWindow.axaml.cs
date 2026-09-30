@@ -42,6 +42,17 @@ public partial class MainWindow : Window
     private readonly ShellModel _model;
 
     /// <summary>
+    /// Set while a row's open button is assigning the selection itself.
+    /// </summary>
+    /// <remarks>
+    /// The button selects the row and then loads its decision, and the
+    /// selection raises <c>SelectionChanged</c> when the row was not already
+    /// selected. Without this the same row would be fetched twice, once by the
+    /// event and once by the click, which is two requests for one intention.
+    /// </remarks>
+    private bool _openingMessageFromRowButton;
+
+    /// <summary>
     /// Completes once the window has loaded what it loads on open.
     /// </summary>
     /// <remarks>
@@ -1130,6 +1141,9 @@ public partial class MainWindow : Window
     /// </remarks>
     private async void OnMessageSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        // The row's own button is mid-assignment and loads what it selected.
+        if (_openingMessageFromRowButton) return;
+
         if (_model.SelectedMessage is null)
         {
             await OnUiThreadAsync(_model.NoDecisionsForMessage).ConfigureAwait(true);
@@ -1195,5 +1209,41 @@ public partial class MainWindow : Window
         if ((sender as Control)?.DataContext is not DecisionRow row) return;
 
         await OpenLedgerRowAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The message row's own open control.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this exists at all.</b> The same reason the ledger's does: the
+    /// harness clicks a control by raising its Click event, and a ListBoxItem
+    /// has no handler for one, so a click on the row does nothing while the
+    /// run reports success. That made the message-to-decision join, which is
+    /// implemented and wired, unreachable from a run for want of a control to
+    /// press.
+    ///
+    /// <para>
+    /// The work is the selection's work rather than a second implementation of
+    /// it: selecting the row is exactly what the pane already does, and the
+    /// same loader runs. A row that is already selected has no selection change
+    /// to fire, so the flag below only stops the event from fetching a second
+    /// time.
+    /// </para>
+    /// </remarks>
+    private async void OnOpenMessageClick(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not MessageRow row) return;
+
+        _openingMessageFromRowButton = true;
+        try
+        {
+            _model.SelectedMessage = row;
+        }
+        finally
+        {
+            _openingMessageFromRowButton = false;
+        }
+
+        await LoadDecisionForSelectedMessageAsync().ConfigureAwait(true);
     }
 }

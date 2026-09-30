@@ -1214,6 +1214,19 @@ public sealed class MessageRow
     };
 
     public string AttemptsLabel => Attempts == 1 ? "1 attempt" : $"{Attempts} attempts";
+
+    /// <summary>
+    /// The row's own open control, and the only part of the row a script can
+    /// reach.
+    /// </summary>
+    /// <remarks>
+    /// The same reason <see cref="DecisionRow.OpenAutomationId"/> exists: the
+    /// harness clicks a control by raising its Click event, and a ListBoxItem
+    /// has no handler for one, so a click on the row itself selects nothing
+    /// while the harness reports success. Carrying the queue id in the name
+    /// rather than a fixed string is what lets a run say which row it opened.
+    /// </remarks>
+    public string OpenAutomationId => $"open-message-{QueueId}";
 }
 
 /// <summary>
