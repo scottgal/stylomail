@@ -73,14 +73,6 @@
 
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
     <!--
-      Debug only, and it is the harness in Screenshot.cs rather than anything
-      the app needs to run. It renders the window into a bitmap with no display
-      and no window on screen, which is what lets a screenshot be taken without
-      stealing focus on every build. Pinned to the app's Avalonia version: a
-      mismatch here fails at startup with a TypeLoadException inside the
-      headless clipboard stub, which reads as anything but a version problem.
-    -->
-    <!--
       The live UI harness: Playwright-style locators, real pointer input, YAML
       playback, a REPL and an MCP server, so the console can be driven and
       iterated rather than only photographed. Debug only, like everything else
@@ -101,6 +93,14 @@
       clipboard stub one minor version behind the core fails at startup with a
       TypeLoadException, which reads as anything but a version problem. mylo
       carries the same pin for the same reason.
+
+      This is what makes the ux-headless mode work (the flag is spelled with two
+      leading dashes, which an XML comment cannot hold): rendering with no display
+      and no window on screen, so a scripted run does not put a window up and
+      steal focus on every launch, which is what makes a batch of scripts unusable
+      while it runs. UseHeadlessDrawing stays false in Program.cs: true skips
+      real drawing, so every screenshot would come back blank and a script would
+      still pass, which is worse than a failure.
     -->
     <PackageReference Include="Avalonia.Headless" Version="11.3.12" />
   </ItemGroup>

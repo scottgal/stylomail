@@ -199,17 +199,17 @@ it does not establish is anything about a Host whose provider works. `docs/runni
 provider key are what that needs, and neither is in this harness's reach.
 
 
-## Relationship to `--screenshot`
+## The old `--screenshot` path is gone
 
-`src/StyloMail.Desktop/Screenshot.cs` is an older, dependency-free single-shot capture behind
-`--screenshot <path>`. It predates this harness and **overlaps with it**. Everything it does, this one
-does better: it drives the real app rather than a one-shot render, and it can assert rather than only
-photograph.
+There used to be a second, older way to photograph the console: `src/StyloMail.Desktop/Screenshot.cs`
+behind `--screenshot <path>`, a dependency-free single-shot render. It overlapped with this harness
+and did less, so it was deleted rather than maintained (`Program.cs` lost the flag, the branch in
+`Main` and `BuildHeadlessApp`, which existed only for it). Nothing here ever used it.
 
-The reason it used to survive is gone. It injected a decision body from a file
-(`STYLOMAIL_SMOKE_DECISION_FILE`), which was the only way to photograph the decision pane without a
-provider key; that input now lives in the app's Debug startup path (`LoadHarnessDecisionAsync`, which
-prefers a decision the Host actually produced over the fixture) and this harness drives the pane over
-the API. So `--screenshot` is a second way to do one thing, and it should be deleted rather than
-maintained. It is still here because removing a flag is its own change with its own review, not
-because anything depends on it: no script uses it.
+Two pieces of it are worth remembering, because they are why it took a change of its own to remove.
+It injected a decision body from a file (`STYLOMAIL_SMOKE_DECISION_FILE`), which was once the only way
+to photograph the decision pane without a provider key; that input now lives in the app's Debug
+startup path (`LoadHarnessDecisionAsync`, which prefers a decision the Host actually produced over the
+fixture), so the flag was redundant the moment this harness could drive the pane over the API. And it
+kept `Avalonia.Headless` referenced, which this harness also needs for `--ux-headless`: the package
+stays, and its pin is still explained in `StyloMail.Desktop.csproj`.
