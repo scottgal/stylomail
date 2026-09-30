@@ -552,14 +552,29 @@ public partial class MainWindow : Window
             result = Describe(failure);
         }
 
-        await OnUiThreadAsync(() =>
-        {
-            _model.CompleteAction(result, failed);
+        await OnUiThreadAsync(() => _model.CompleteAction(result, failed)).ConfigureAwait(false);
 
-            // A sender's controls move with the action, so the buttons match
-            // what the Host now holds rather than what it held a moment ago.
-            if (!failed) _ = RefreshSendersAsync();
-        }).ConfigureAwait(false);
+        if (failed) return;
+
+        // A sender's controls move with the action, so the buttons match what
+        // the Host now holds rather than what it held a moment ago.
+        await RefreshSendersAsync().ConfigureAwait(false);
+
+        // And a release moves a row out of the listing that is on screen. Before
+        // this, the released row stayed listed: a pane showing the operator
+        // something the Host no longer holds, with the Release button still
+        // offered for a message that is now queued for delivery. The re-read is
+        // also what makes the row's disappearance assertable, rather than a
+        // difference between a listing that is current and one that was never
+        // refreshed and happens to look the same.
+        //
+        // Only a release needs it. A pause moves a sender's controls and not a
+        // queue: the listings are inbound mail, and a sender control does not
+        // change which messages are waiting for attention.
+        if (request.Kind == Models.ActionKind.ReleaseQuarantine)
+        {
+            await LoadSelectionAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task RefreshSendersAsync()

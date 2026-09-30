@@ -1,0 +1,220 @@
+name: console-quarantine-smoke
+description: >
+  Drives the console over a message the Host actually quarantined, and releases
+  it from the list.
+
+  Run it through ux-scripts/run-console-quarantine-smoke.sh, not directly. That
+  script starts a Host whose assessor works, submits one message through
+  POST /v1/submissions, refuses to continue unless the route quarantined it, and
+  takes it all down afterwards. The message is
+  tests/StyloMail.Desktop.Tests/fixtures/quarantine-threshold-payment-change.eml,
+  which was written to cross QuarantineThreshold (0.80) by firing enough weighted
+  semantic dimensions at once, and measured at 0.8219178082191781 on a wiped Host.
+
+  So this is the run that puts state 3 (a quarantined item that can be released)
+  and state 9 (a release's success path) on the screen rather than only on the
+  route. Both were measured against the Host's own routes before this run
+  existed; ux-scripts/state-coverage.md carries that table. What no run had
+  shown is the console's half: the Release affordance, the confirmation, and
+  what the screen says afterwards.
+
+  Three things here are doing more work than they look like:
+
+    - Release is asserted absent before the row is opened and present after.
+      That is not decoration: CanReleaseSelected is a quarantined message being
+      selected, so the absent-then-present pair is what shows the affordance
+      tracks the selection rather than being always offered.
+    - The reason box is typed into before Confirm is pressed. Confirm is refused
+      until a reason is given, so the assertion that it is disabled first is
+      about a real gate and not about a delay.
+    - After the release the assertion is that the row is GONE, not that it moved
+      somewhere. A released row is Queued, and GET /v1/messages enumerates only
+      awaiting_decision, held and quarantined, so the released row appears in no
+      listing at all: the visible effect of a release is the listing emptying.
+      That assertion only holds because a successful action now re-reads the
+      listing. Before that fix the row stayed on screen, and this script's last
+      three assertions would have failed against the app, which is how the gap
+      was found.
+
+  A model change moves the risk index and this script fails on the value rather
+  than passing on the shape. That is the honest outcome for a script whose
+  precondition is a disposition it does not control.
+
+  Selector notes carry over from console-smoke.yaml: the sidebar rows are
+  Buttons whose content is a layout, so they are reached with has-text rather
+  than text=; a locator matches controls that are not visible, so the assertions
+  about absence are made on named containers (EmptyListBlock) or on controls the
+  binding actually hides (ReleaseMessageButton), never on a TextBlock inside a
+  hidden parent.
+
+default_delay: 250
+
+actions:
+  # The window opens, checks the Host and loads the senders, so this is a round
+  # trip to a real process rather than a fixed sleep.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: ContainsText
+    value: "127.0.0.1"
+
+  # ---- the quarantined listing ---------------------------------------------
+
+  - type: Click
+    target: "type=Button:has-text(Quarantined)"
+    description: "Select the quarantined listing"
+
+  - type: Expect
+    target: "type=Button:has-text(Open message)"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The pane is not showing its own explanation of emptiness, which is the other
+  # thing an empty middle pane can be saying.
+  - type: Expect
+    target: "name=EmptyListBlock"
+    matcher: Not.IsVisible
+
+  # Nothing is selected yet, so the one write action the console offers is not
+  # offered. Asserted so that the visibility after opening the row is a change
+  # rather than a control that was always there.
+  - type: Expect
+    target: "name=ReleaseMessageButton"
+    matcher: Not.IsVisible
+
+  - type: Screenshot
+    value: "01-quarantined-listing"
+    description: "The quarantined message listed, with no release offered yet"
+
+  # ---- opening the row -----------------------------------------------------
+
+  # The row's own control, not the row: the harness clicks by raising the
+  # control's Click event, and a ListBoxItem has no handler for one. This is also
+  # what selects the message, so it is what makes Release reachable.
+  - type: Click
+    target: "type=Button:has-text(Open message)"
+    description: "Open the quarantined message"
+
+  - type: Expect
+    target: "name=ReleaseMessageButton"
+    matcher: IsVisible
+    timeout: 20000
+    description: "The selection is quarantined, so releasing it is offered"
+
+  # The decision behind the quarantine, from the message-to-decision join. The
+  # message's own number for this Host, quoted exactly.
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "risk index 0.822"
+    timeout: 20000
+
+  # The rule that produced it. A quarantine is a risk crossing a threshold, and
+  # the pane should say which threshold rather than only how high the number was.
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text=policy.risk_above_quarantine"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "02-quarantined-opened"
+    description: "The quarantined message's own decision, with release now offered"
+
+  # ---- the release, and the confirmation it does not happen on -------------
+
+  - type: Click
+    target: "name=ReleaseMessageButton"
+    description: "Ask to release; nothing is carried out on the first click"
+
+  - type: Expect
+    target: "name=ActionConfirmBar"
+    matcher: IsVisible
+    timeout: 5000
+
+  - type: Expect
+    target: "name=PendingActionTitle"
+    matcher: ContainsText
+    value: "Release"
+
+  # The consequence in the console's own words, which is the sentence an operator
+  # is agreeing to. Asserted because it is the half of the confirmation that says
+  # what the action does rather than what it is called.
+  - type: Expect
+    target: "name=PendingActionConsequence"
+    matcher: ContainsText
+    value: "cannot be undone"
+
+  # A reason is required, so Confirm is refused until one is given. This is the
+  # gate, not a delay to wait out.
+  - type: Expect
+    target: "name=ConfirmActionButton"
+    matcher: Not.IsEnabled
+
+  - type: Screenshot
+    value: "03-confirm-needs-a-reason"
+    description: "The confirmation, with Confirm refused until a reason is given"
+
+  - type: TypeText
+    target: "name=PendingReasonBox"
+    value: "harness quarantine run"
+
+  - type: Expect
+    target: "name=ConfirmActionButton"
+    matcher: IsEnabled
+    timeout: 5000
+
+  - type: Click
+    target: "name=ConfirmActionButton"
+
+  # The release is recorded against the principal that asked for it, so the
+  # result line names one. Matched on the part the console composes rather than
+  # on the queue id, which is per-run.
+  - type: Expect
+    target: "name=ActionResultText"
+    matcher: ContainsText
+    value: "released. Recorded against"
+    timeout: 20000
+
+  # ---- and the row is gone, which is the visible effect of a release -------
+
+  # Re-read from the Host after the action, so a released row leaves the listing.
+  # Asserted on the block, not on the text inside it: Control.IsVisible is the
+  # control's own property, so EmptyListDetailText reports true while the block
+  # containing it is hidden.
+  - type: Expect
+    target: "name=EmptyListBlock"
+    matcher: IsVisible
+    timeout: 20000
+
+  # Asserted on the listing itself, which is a named control whose visibility
+  # binding is HasMessages, rather than on the row's Open message button.
+  #
+  # The first draft asserted Not.IsVisible on "type=Button:has-text(Open message)"
+  # and failed: the harness fails an Expect whose locator matches no control at
+  # all, whichever polarity the matcher has. "Expected ... to not(be visible)"
+  # reads as "should not be there", and the author of that line takes a control
+  # that is absent to satisfy it. It does not: Last seen was "Locator did not
+  # match any control". README lesson 10. A named control that exists in the tree
+  # and is hidden by a binding is the shape that can carry this assertion, which
+  # is the same reason EmptyListBlock is asserted above rather than its text.
+  - type: Expect
+    target: "name=MessageList"
+    matcher: Not.IsVisible
+
+  # The selection was cleared along with the row, so the write action is no
+  # longer offered: there is nothing left that could be released.
+  - type: Expect
+    target: "name=ReleaseMessageButton"
+    matcher: Not.IsVisible
+
+  - type: Screenshot
+    value: "04-released-and-gone"
+    description: "After the release: the result line, and the listing emptied"

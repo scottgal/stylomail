@@ -75,4 +75,9 @@ fi
 echo
 echo "screenshots in ux-results/"
 
-exit $STATUS
+# The harness's exit code is not its verdict: a failing script exits 0. Read the
+# verdict from result.json before reporting anything. This is the runner the
+# fleet's completion gate calls, so a green tick here that came from an exit code
+# rather than from the assertions is the one failure mode that matters most.
+console_final_status "ux-results/result.json" "$STATUS"
+exit $?

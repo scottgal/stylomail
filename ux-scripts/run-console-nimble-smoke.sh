@@ -125,4 +125,7 @@ fi
 echo
 echo "screenshots in $CONSOLE_RESULTS/"
 
-exit $STATUS
+# The harness's exit code is not its verdict: a failing script exits 0. Read the
+# verdict from result.json before reporting anything.
+console_final_status "$CONSOLE_RESULTS/result.json" "$STATUS"
+exit $?

@@ -666,3 +666,75 @@ console_export_app_env() {
         unset STYLOMAIL_SMOKE_DECISION_FILE
     fi
 }
+
+# The run's verdict, read from result.json, and the status a runner should exit
+# with.
+#
+# The exit code of the harness process is not its verdict. Measured 2026-10-01:
+# a script whose twenty-sixth action failed printed "Result: FAIL", wrote
+# `"success": false` to result.json, and `dotnet run` still exited 0. Every
+# runner in this directory did `exit $STATUS` on that code, so a console that
+# failed every assertion would have been reported to the fleet as a passing run:
+# a green tick with the evidence in a file nobody read. That is README lesson 8
+# ("a silently swallowed failure is invisible to a harness too") turned on the
+# runner, and it is the reason the failing run and the passing run were
+# indistinguishable from the outside.
+#
+# So the verdict is read where it is written. The process status is still
+# honoured, because that is what catches a run that never got as far as writing
+# result.json, and a missing file is itself a failure rather than an absence of
+# one.
+#
+# Returning rather than exiting, so the caller's `exit` is visible at the call
+# site and a runner cannot exit 0 by forgetting to propagate anything.
+console_final_status() {
+    local file="$1" run_status="${2:-0}"
+
+    if [[ ! -f "$file" ]]; then
+        echo "No result.json at $file, so the run did not finish." >&2
+        return 1
+    fi
+
+    python3 - "$file" <<'PYEOF'
+import json, sys
+
+try:
+    body = json.load(open(sys.argv[1]))
+except Exception as error:
+    print(f"result.json is not readable JSON: {error}", file=sys.stderr)
+    raise SystemExit(2)
+
+# actionResults, not actions. An earlier reader of mine asked for "actions" and
+# reported every run as "0 actions, 0 failed", which is a passing count for a
+# run that did nothing: the same defect in a smaller place.
+#
+# And the schema is nested, which is the second thing a reader here has to know:
+# an entry is {"action": {"type": <int>, "target", "matcher", "value"}, "success",
+# "duration", "errorMessage", "metrics"}. The failure's text is at the entry's top
+# level and the fields that identify it are one level down. The first version of
+# this read target and type off the top level and printed "failed: ? ::" for the
+# one action that mattered, which is a reader that cannot tell you what broke.
+actions = body.get("actionResults") or []
+failed = [a for a in actions if not a.get("success", True)]
+
+print(f"verdict: success={body.get('success')}, {len(actions)} actions, {len(failed)} failed")
+for entry in failed[:5]:
+    action = entry.get("action") or {}
+    where = " ".join(
+        part for part in (action.get("target"), action.get("matcher")) if part
+    )
+    reason = entry.get("errorMessage") or entry.get("message") or ""
+    print(f"    failed: {where or '(no action recorded)'} :: {reason}".rstrip())
+
+raise SystemExit(0 if body.get("success") else 1)
+PYEOF
+    local verdict=$?
+
+    if (( run_status != 0 )); then
+        echo "the harness process exited $run_status, so the verdict above is not the" >&2
+        echo "whole story" >&2
+        return "$run_status"
+    fi
+
+    return "$verdict"
+}

@@ -251,6 +251,47 @@ app rather than in the harness: the ledger row gained an explicit `Open decision
 also the honest affordance for a row that costs a round trip to open. Anything with a `Click`
 handler, and any `Button` whose content is a layout, is reachable with `type=Button:has-text(...)`.
 
+**10. `Not.IsVisible` fails when the locator matches nothing, and it reads as though it would not.**
+Found 2026-10-01 writing the quarantine run. The assertion was
+
+```yaml
+  - type: Expect
+    target: "type=Button:has-text(Open message)"
+    matcher: Not.IsVisible
+```
+
+after a release, meaning "the row is gone". It failed, after the full 5000 ms, with `expected
+'type=Button:has-text(Open message)' to not(be visible)` and `Last seen: Locator ... did not match
+any control`. So a locator that resolves to no control is a failure whichever polarity the matcher
+has, and "not visible" is not a description of "not there". A locator is a *query*, and the harness
+refuses to answer a question about a control it could not find.
+
+The cost is a false red with a plausible story: the step above it had just asserted the listing
+empty, so "the row is gone but the assertion about it failed" reads as the app keeping the row
+somewhere. Nothing to do with the app, and the useful assertion was already the one that passed.
+
+**The rule: assert absence on a named control that exists and is hidden by a binding.** `name=` is a
+direct lookup, so the control is found and its `IsVisible` can be answered; `name=MessageList` (gated
+on `HasMessages`), `name=EmptyListBlock` and `name=ReleaseMessageButton` (gated on a selection) are
+all of that shape. `type=…:has-text(…)` is for *finding* a control to act on, not for asserting that
+one is absent. This is lesson 1 from the other side: there the trap was reading a hidden control's
+`IsVisible` as effective visibility, here it is asking about a control that is not in the tree at all.
+
+## The runner's exit code is not the run's verdict
+
+Every runner here used to end `exit $STATUS` on the status of `dotnet run`, and that status does not
+carry the verdict. Measured 2026-10-01: the quarantine run's twenty-sixth action failed, the harness
+printed `Result: FAIL`, wrote `"success": false` to `result.json`, and the process still exited 0. A
+console that failed every assertion would have been reported to the fleet as a passing run: a green
+tick with the evidence in a file nobody read. It is lesson 8 turned on the instrument itself, and it
+is why a failing run and a passing run looked identical from outside.
+
+So the verdict is read where it is written. `console_final_status <result.json> <process status>`
+prints `success=…, N actions, M failed` with the failed actions named, and returns non-zero unless
+the run passed; all six runners end with it. The process status is still honoured, and a missing
+`result.json` is a failure rather than an absence of one, because that is a run that never got far
+enough to have a verdict. Read the file, never the exit code.
+
 ## Nothing works without a Host
 
 The console is an API client, so a script with no Host behind it asserts on a first-run state. The
