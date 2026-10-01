@@ -158,6 +158,44 @@ console_newest_mtime() {
     echo "$newest"
 }
 
+# A check script owns its run directory and deletes it, twice. `export
+# CONSOLE_RUN="${CONSOLE_RUN:-<default>}"` only substitutes when the variable is
+# EMPTY, so a caller that already has it exported hands over ITS OWN directory and
+# the `rm -rf` takes a live run's principal key and artifacts with it. Measured
+# 2026-10-01 by `overview-` at source in check-build-fingerprint.sh, filed HIGH;
+# check-stop-host-bounded.sh had the identical line, and in that file the first thing
+# it does to the directory is overwrite `auth.headers` with a placeholder, which is
+# the credential file itself.
+#
+# The guard is here rather than inline in each check for the reason this repository
+# already gives about controls: two copies of a rule is how one of them stops
+# holding. Assert rather than refuse-to-adopt, because a check legitimately runs
+# against a directory of its own under this lane's scratch.
+#
+# The second test is for a prefix collision as much as for escaping:
+# `.styloagent/scratch/desktop-decoy` starts with the string
+# `.styloagent/scratch/desktop` while being a different directory, so the pattern
+# carries the slash.
+console_assert_run_dir_is_ours() {
+    local script="$1" effect="${2:-writes into}" allowed="$CONSOLE_REPO/.styloagent/scratch/desktop"
+
+    if [[ -n "${CONSOLE_RUN:-}" && ( "$CONSOLE_RUN" == "$allowed"/* && "$CONSOLE_RUN" != *"/.."* ) ]]; then
+        return 0
+    fi
+
+    # The consequence is the CALLER's to state, because the three callers do not do
+    # the same thing to the directory. This message said "deletes its run directory"
+    # for all of them, and that became false the moment stamp-host-build.sh, which
+    # deletes nothing, called it. A warning that describes a hazard the reader does
+    # not face is how a real one gets discounted.
+    printf 'refusing to run: CONSOLE_RUN is set to\n\n  %s\n\n' "$CONSOLE_RUN" >&2
+    printf 'which is not under this lane scratch (%s/). This script %s its run\n' "$allowed" "$effect" >&2
+    printf 'directory, so an inherited value would act on a live run: its principal key\n' >&2
+    printf 'and its artifacts. Re-run it as:\n\n' >&2
+    printf '  env -u CONSOLE_RUN %s\n\n' "$script" >&2
+    return 1
+}
+
 console_record_build_fingerprint() {
     local out_dir manifest file count fingerprint newest
     out_dir="$(dirname "$CONSOLE_HOST_APP")"

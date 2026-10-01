@@ -31,20 +31,39 @@
 # is taken at all. It exercises the function directly against a directory of
 # stand-in assemblies. Whether console_build_all calls it on its success path is a
 # reading of console-harness.sh, not something this file can see.
+#
+# AND THIS FILE IS NOT THE INSTRUMENT. Said at the top because the name says
+# otherwise and because it cost the fleet a broadcast on 2026-10-01: `overview-`
+# told every lane to "USE IT" instead of hand-rolling a build hash, and a lane that
+# obeyed got a green about the function, exit 0, and nothing naming its build,
+# because the assemblies this file fingerprints are the stand-ins it writes itself
+# (cases 1 and 7). Two lanes read the file and caught it. To stamp a REAL build, do
+# not run this: run `ux-scripts/stamp-host-build.sh`, which points the function at
+# the directory you name. This file's output is a verdict about the function, and a
+# verdict is not a stamp.
 
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
-# Its own run directory, so no real run's key file or artifact can be touched by
-# this. Under the lane's scratch rather than /tmp for the reason README gives: an
-# artifact in /tmp is shared, invisible to the fleet, and old enough to be misread
-# as current.
+# Its own run directory, under the lane's scratch rather than /tmp for the reason
+# README gives: an artifact in /tmp is shared, invisible to the fleet, and old enough
+# to be misread as current.
 export CONSOLE_RUN="${CONSOLE_RUN:-$REPO/.styloagent/scratch/desktop/build-fingerprint-scratch}"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
+
+# And the sentence above was false as first written. `${CONSOLE_RUN:-...}` keeps an
+# INHERITED value, so a caller with it exported handed this file its own run
+# directory, which the `rm -rf` below then deleted. `overview-` measured it at source
+# and filed it HIGH on 2026-10-01; `policy-` and `conversation-` read the same file
+# and found it independently. The guard refuses rather than adopts, and it is shared
+# with the sibling check so the two cannot drift.
+if ! console_assert_run_dir_is_ours "$0" "deletes and then writes its checks into"; then
+    exit 2
+fi
 
 failures=0
 case_number=0
@@ -343,6 +362,86 @@ if is_digest "$twin_id" && is_digest "$here_id" && [[ "$twin_id" != "$here_id" ]
     pass "same file name, different directory, different content, different id"
 else
     fail "the id did not move across directories: '$twin_id' then '$here_id'"
+fi
+
+# Case 8: an inherited CONSOLE_RUN is refused, not adopted and deleted. This is the
+# HIGH defect `overview-` measured in this file at `e50fffc`: `${CONSOLE_RUN:-...}`
+# keeps an inherited value, so a caller mid-run handed over its own run directory and
+# the `rm -rf` took it. The case runs this file as a SUBPROCESS, because the guard
+# fires at the top of the script and cannot be reached from inside it.
+#
+# The decoy's name deliberately begins with the scratch prefix while being a
+# different directory, so a pattern written without the trailing slash would match
+# it and let the defect back in. `.styloagent/scratch/desktop-decoy` against
+# `.styloagent/scratch/desktop/`.
+if [[ -n "${CONSOLE_FINGERPRINT_CHILD:-}" ]]; then
+    # The control below runs this whole file, so without a stop the child would run
+    # this case and start a grandchild, and so on: the first draft did exactly that
+    # and had to be killed. The marker is set by that one invocation and by nothing
+    # else. It is reported rather than passed over, because a check that quietly
+    # skips a shape is the defect this file exists to catch, one level down.
+    echo "case 8: skipped in the child case 8 started, so the guard runs exactly once"
+else
+case_number=$((case_number + 1))
+echo "case $case_number: a caller's run directory is refused, not adopted and deleted"
+
+decoy="$REPO/.styloagent/scratch/desktop-decoy-for-case-8"
+rm -rf "$decoy"
+mkdir -p "$decoy/data"
+printf 'a-callers-principal-key\n' > "$decoy/data/principal.key"
+
+output="$(env CONSOLE_RUN="$decoy" CONSOLE_FINGERPRINT_CHILD=1 bash "$HERE/check-build-fingerprint.sh" 2>&1)"
+status=$?
+
+if (( status == 2 )); then
+    pass "refused with exit 2 rather than running and deleting"
+else
+    fail "ran anyway with an inherited CONSOLE_RUN, exit $status"
+fi
+
+if [[ "$output" == *"refusing to run"* ]]; then
+    pass "the refusal says so on stderr rather than failing an assertion"
+else
+    fail "refused without saying why: $output"
+fi
+
+if [[ "$output" == *"env -u CONSOLE_RUN"* ]]; then
+    pass "the refusal names the way to run it anyway"
+else
+    fail "the refusal does not say how to proceed: $output"
+fi
+
+if [[ -f "$decoy/data/principal.key" ]]; then
+    pass "the caller's key file survived, which is the whole point"
+else
+    fail "the caller's run directory was deleted or emptied"
+fi
+
+# The control for the refusal: the same guard, given a directory that IS under the
+# lane's scratch, must let it through. Without this, "it refused" could be a script
+# that refuses everything, and a guard that never opens is not a guard.
+#
+# It calls the guard directly rather than running this whole file as a child. The
+# child form made the control inherit every other case's verdict, which showed up
+# the moment the falsification ran: inside a copy mutated at case 2, the control
+# child ran the mutated case, exited 1, and case 8 reported red for a reason that
+# had nothing to do with the guard. That is the guard's own lesson turned on itself,
+# an assertion reading a population it did not mean to sample. The refusal above
+# still runs the whole script, because what it has to prove is that the guard is
+# WIRED IN and not merely correct, and mutation D in the falsification is what
+# catches the wiring being removed.
+ours="$REPO/.styloagent/scratch/desktop/case-8-ours"
+rm -rf "$ours"
+env CONSOLE_RUN="$ours" bash -c 'source "$1"; console_assert_run_dir_is_ours "$2"' _ "$HERE/console-harness.sh" "$0" >/dev/null 2>&1
+status=$?
+
+if (( status == 0 )); then
+    pass "the same guard lets a directory under the lane's scratch through"
+else
+    fail "a directory under the lane's own scratch was refused too, exit $status"
+fi
+
+rm -rf "$decoy" "$ours"
 fi
 
 rm -rf "$CONSOLE_RUN"

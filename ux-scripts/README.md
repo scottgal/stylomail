@@ -24,6 +24,9 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
 ./ux-scripts/check-build-fingerprint.sh      # not a smoke: checks what the build records about itself
 ./ux-scripts/check-stop-host-bounded.sh      # not a smoke: checks the stop path cannot hang
+./ux-scripts/stamp-host-build.sh             # not a smoke: stamps a real build directory, the instrument
+                                             #   the check above is a check of
+./ux-scripts/falsify-build-fingerprint.sh    # not a smoke: proves the fingerprint check can go red
 ```
 
 `run-console-address-change-smoke.sh` is the only run that changes the Host mid-run from inside the
@@ -94,23 +97,52 @@ this run's numbers to a build this run did not produce. A run that cannot stamp 
 and cite it as this run's build.
 
 `./ux-scripts/check-build-fingerprint.sh` checks that without a Host or a build, in seconds, against a
-directory of stand-in assemblies: seven cases, 0 failures. The case that matters is the falsifiable one:
+directory of stand-in assemblies: eight cases, 0 failures. The case that matters is the falsifiable one:
 one file's bytes change with the file's size and mtime held fixed, and the id has to move. It also pins
 the other direction (a new mtime alone leaves the identity alone), every absence path, and the header
 that names the directory, which is checked by reading two directories in turn and requiring the header
-to follow. The falsification is kept at
-`.styloagent/scratch/desktop/test-build-fingerprint-is-load-bearing.sh` and mutates copies in scratch,
-never the shared tree.
+to follow.
 
-What it does **not** establish is that the stamp is taken on a real run: it exercises the function
-directly, and the wiring into `console_build_all` is a reading of that file rather than a measurement of
-one, because no smoke has run since the stamp was added.
+**It is the check of the stamp, not the instrument**, and saying so cost the fleet a broadcast on
+2026-10-01. `overview-` told every lane to run it instead of hand-rolling a build hash; its stand-ins
+are files it writes itself, so following that literally returns a verdict about the function, exit 0,
+and nothing naming your build. Two lanes read the file and caught it, and the file's own header now
+opens by saying so. To stamp a real build, run `./ux-scripts/stamp-host-build.sh [directory]`: it points
+the function at the directory you name (the Host's output directory by default), reads it, and writes
+the manifest and id into this lane's scratch. Run against the Host's output directory on 2026-10-01 it
+reproduced `6bc278b14c33` over 18 assemblies, which is the number two other lanes had already recorded.
+
+The last case is the guard on `CONSOLE_RUN`. `${CONSOLE_RUN:-...}` substitutes only when the variable is
+**unset**, so a caller who had it exported handed the script its own run directory, which the script then
+`rm -rf`'d and started writing into; `overview-` measured it at source and filed it HIGH. The script now
+refuses unless `CONSOLE_RUN` is unset or resolves under this lane's scratch, and the guard is shared
+(`console_assert_run_dir_is_ours`, which takes each caller's own description of what it does to the
+directory, so the warning never describes a hazard that caller does not face). The sibling has the same
+call and the sharper first move: it writes a placeholder OVER `auth.headers`, where a run keeps its
+principal key. Each of the three scripts asserts the refusal in its own cases, because what has to be true
+is that *this* file calls the guard, not that the guard works.
+
+The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
+never the shared tree. Six mutations, one per pass, each with the exact set of
+cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
+dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
+sibling's guard call dropped (7). One per pass because two of them target case 8, and a red that two
+mutations could have caused names neither property. Each pass also asserts its own pattern still matched:
+a mutation whose perl stops matching is a no-op, and in this session that no-op first read as a clean
+pass, then was reported as "applied" by a precondition that had copied the same stale pattern.
+
+What none of this establishes is that the stamp is taken on a real run. The check exercises the function
+directly and `stamp-host-build.sh` names a real directory, but whether `console_build_all` calls it on a
+success path is a reading of that file rather than a measurement of one, and no smoke has run since the
+stamp was added.
 
 That log used to live in `/tmp`, and it moved on 2026-10-01 because four agents lost time reading
 stale console logs there: `/tmp` is shared, invisible to the fleet's `recent_files` view, and old
-enough to be mistaken for current evidence. Artifacts go in this lane's scratch. The `CONSOLE_RUN`
-directory of each script stays under `/tmp` on purpose: it holds the per-run principal key, and
-scratch would keep a credential-bearing file indefinitely where `/tmp` has it removed on the way out.
+enough to be mistaken for current evidence. Artifacts go in this lane's scratch, and the three check
+and stamp scripts keep their `CONSOLE_RUN` there too, because what they put in it is a placeholder plus
+an artifact meant to be read after a failure. The *run* scripts are the exception and stay under `/tmp`
+on purpose: their `CONSOLE_RUN` holds the per-run principal key, and scratch would keep a
+credential-bearing file indefinitely where `/tmp` has it removed on the way out.
 
 Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
 under `ux-results/`, and it clears only its own. The main smoke writes into `ux-results/console-smoke/`

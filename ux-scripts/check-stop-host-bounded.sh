@@ -36,13 +36,23 @@ REPO="$(cd "$HERE/.." && pwd)"
 # Short so the check takes seconds rather than half a minute.
 export CONSOLE_HOST_STOP_WAIT=5
 
-# Its own run directory, so no real run's key file can be touched by this. Under
-# the lane's scratch rather than /tmp, because an artifact in /tmp is not
-# evidence and this one exists to be read after a failure.
+# Its own run directory, under the lane's scratch rather than /tmp, because an
+# artifact in /tmp is not evidence and this one exists to be read after a failure.
 export CONSOLE_RUN="${CONSOLE_RUN:-$REPO/.styloagent/scratch/desktop/stop-host-bounded-scratch}"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
+
+# The sentence above used to read "so no real run's key file can be touched by
+# this", and it was false: `${CONSOLE_RUN:-...}` keeps an INHERITED value, so a
+# caller with CONSOLE_RUN exported handed this file its own run directory. This file
+# then `rm -rf`s it and, worse, writes a placeholder OVER `auth.headers`, which is
+# where a run keeps its principal key. `overview-` measured the same defect in the
+# fingerprint check on 2026-10-01 and filed it HIGH; this one had the identical line
+# and a sharper first move. The guard is shared so the two cannot drift apart.
+if ! console_assert_run_dir_is_ours "$0" "deletes and then writes a placeholder key into"; then
+    exit 2
+fi
 
 failures=0
 case_number=0
@@ -363,6 +373,63 @@ if [[ "$output" == *"netstat"* ]]; then
     pass "the message says how to find what holds it, without lsof"
 else
     fail "the message does not say how to find the holder: $output"
+fi
+
+# Case 7: the guard. This file carried the same `${CONSOLE_RUN:-...}` line as the
+# fingerprint check, and a sharper first move: case 2 above writes a placeholder
+# OVER `$CONSOLE_RUN/auth.headers`, which is where a run keeps its principal key.
+# So the refusal is asserted HERE and not merely assumed to follow from the shared
+# function, because what has to be true is that this file calls it. Mutation F in
+# the falsification removes that call and this case is what goes red.
+if [[ -n "${CONSOLE_STOP_CHILD:-}" ]]; then
+    echo "case 7: skipped in the child case 7 started, so the guard runs exactly once"
+else
+case_number=$((case_number + 1))
+echo "case $case_number: a caller's run directory is refused, not adopted and overwritten"
+
+decoy="$REPO/.styloagent/scratch/desktop-decoy-for-stop-case"
+rm -rf "$decoy"
+mkdir -p "$decoy"
+printf 'a-callers-principal-key\n' > "$decoy/auth.headers"
+
+output="$(env CONSOLE_RUN="$decoy" CONSOLE_STOP_CHILD=1 bash "$HERE/check-stop-host-bounded.sh" 2>&1)"
+status=$?
+
+if (( status == 2 )); then
+    pass "refused with exit 2 rather than running"
+else
+    fail "ran anyway with an inherited CONSOLE_RUN, exit $status"
+fi
+
+if [[ "$output" == *"refusing to run"* ]]; then
+    pass "the refusal says so on stderr rather than failing an assertion"
+else
+    fail "refused without saying why: $output"
+fi
+
+# The value, not just the file's existence: this file's destructive move is an
+# overwrite, so a case that only checked for a file would pass on a wrecked one.
+if [[ -f "$decoy/auth.headers" && "$(<"$decoy/auth.headers")" == "a-callers-principal-key" ]]; then
+    pass "the caller's key file is intact, which is the whole point"
+else
+    fail "the caller's key file was overwritten or deleted"
+fi
+
+# The control, and it calls the guard directly for the reason the fingerprint
+# check's control does: a child running this whole file would inherit every other
+# case's verdict and make this case red for reasons that are not the guard.
+ours="$REPO/.styloagent/scratch/desktop/stop-case-ours"
+rm -rf "$ours"
+env CONSOLE_RUN="$ours" bash -c 'source "$1"; console_assert_run_dir_is_ours "$2"' _ "$HERE/console-harness.sh" "$0" >/dev/null 2>&1
+status=$?
+
+if (( status == 0 )); then
+    pass "the same guard lets a directory under the lane's scratch through"
+else
+    fail "a directory under the lane's own scratch was refused too, exit $status"
+fi
+
+rm -rf "$decoy" "$ours"
 fi
 
 rm -rf "$CONSOLE_RUN"
