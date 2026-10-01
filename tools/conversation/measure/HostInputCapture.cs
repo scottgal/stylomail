@@ -85,7 +85,7 @@ internal static class HostInputCapture
             .AssessAsync(analysis, context, CancellationToken.None, rawMessage)
             .ConfigureAwait(false);
 
-        return new Capture(assessment.Cache.KeyDigest, capturing.Input);
+        return new Capture(assessment.Cache?.KeyDigest, capturing.Input);
     }
 
     /// <summary>Stands where the model stands, and keeps what it was shown.</summary>
@@ -106,11 +106,15 @@ internal static class HostInputCapture
         {
             Input = input;
 
+            // The reason stamp follows the established "never reached a provider" convention, and it
+            // is a placeholder rather than a measurement: the pipeline's caching decorator REPLACES
+            // this provenance with its own, keyed on the input it was handed, so the digest the
+            // capture reads is the Host's own key and never this string.
             return ValueTask.FromResult(new SemanticAssessment
             {
                 Evidence = [],
                 ResolvedModelVersion = "conversation-capture",
-                Cache = new CacheProvenance { Hit = false, KeyDigest = null, Stale = false },
+                Cache = new CacheProvenance { Hit = false, KeyDigest = "never-asked", Stale = false },
             });
         }
     }
