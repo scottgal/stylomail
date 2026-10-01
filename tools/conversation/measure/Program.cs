@@ -174,7 +174,8 @@ internal static class Program
         // The dry and key modes above return before this point, so they never reach a warmup. These
         // three do reach it and consult no model: `mime` and `arms-current` are input assembly, and
         // `site-participants-dry` prints the rewrite it would make without asking anyone about it.
-        var modelFree = which is "mime" or "arms-current" or "site-participants-dry";
+        var modelFree = which is "mime" or "arms-current" or "site-participants-dry"
+            or "participants-sharp-dry";
 
         if (modelFree)
         {
@@ -326,6 +327,25 @@ internal static class Program
         {
             await SiteParticipants(runner, dry: true);
             ran.Add("site-participants-dry");
+        }
+
+        // The confound `site-participants` named in its own verdict. That cell wrote one address into
+        // every turn, so both of its variants collapsed the window from two distinct senders to one,
+        // and "the identity of the sender" is not separated from "the number of distinct senders".
+        // This cell holds the count and moves the identity, then holds neither and moves the count,
+        // so a difference between those two conditions is the count rather than the identity.
+        if (which is "participants-sharp")
+        {
+            await ParticipantsSharp(runner, dry: false);
+            ran.Add("participants-sharp");
+        }
+
+        // No calls, for the same reason `site-participants-dry` exists: a rewrite that cannot reach
+        // every turn is a defect in the cell and must be found without the model in the loop.
+        if (which is "participants-sharp-dry")
+        {
+            await ParticipantsSharp(runner, dry: true);
+            ran.Add("participants-sharp-dry");
         }
 
         Console.WriteLine();
@@ -3385,6 +3405,418 @@ internal static class Program
             verdict,
         });
         Console.WriteLine();
+    }
+
+    /// <summary>
+    /// The parts of a prior turn held while the window's senders move, named once for the artifact.
+    /// </summary>
+    /// <remarks>
+    /// Held rather than varied because the accepted cell held them too, so every move in this series
+    /// of cells is on the same field, the sender address. Recorded in the artifact so the choice is
+    /// stated rather than inferred from the letters.
+    /// </remarks>
+    private static readonly string[] HeldFields = ["display names", "subjects", "turn bodies"];
+
+    /// <summary>
+    /// The confound <c>site-participants</c> named: does the letter follow who the window's senders
+    /// are, or how many of them there are?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this cell exists.</b> <c>site-participants</c> replaced the window's sender addresses
+    /// with one address written into every turn, so both of its variants also collapsed the window
+    /// from two distinct senders to one. Its two directions therefore shared a structural change and
+    /// the reading it supports is the coarser one: two distinct senders answer B, one answers A. That
+    /// is a statement about the count and not about the identity, and this cell separates them.
+    /// </para>
+    /// <para>
+    /// <b>The two conditions differ in one turn's address.</b> The anchor window's senders are mapped
+    /// through a bijection onto two new addresses, which preserves the equality pattern across turns
+    /// exactly, so the count of distinct senders is held and only who they are moves. The count
+    /// condition then writes the first of those new addresses into all three turns. The two
+    /// conditions are identical in turn 1 and turn 3 and differ only in turn 2, so a difference
+    /// between them is the address of one turn and nothing else.
+    /// </para>
+    /// <para>
+    /// <b>Held fields, stated because they are a choice.</b> Display names, subjects and turn bodies
+    /// are held, exactly as in the accepted cell, so what moves is the address in both conditions.
+    /// A turn whose display name then disagrees with its address is the same held-field consequence
+    /// the accepted cell had, and it is named in the artifact rather than left to be noticed.
+    /// </para>
+    /// <para>
+    /// <b>Read against the anchor, not against each other alone.</b> The anchor is the Host's own
+    /// captured input, reproduced in-run by its key. Its letter is already established by six prior
+    /// observations, so the discriminator is whether the identity condition moves off the anchor
+    /// while the count condition does.
+    /// </para>
+    /// </remarks>
+    private static async Task ParticipantsSharp(Runner runner, bool dry)
+    {
+        // Two addresses in neither the window nor the envelope. The envelope's own sender is
+        // deliberately not one of them: writing it in would make the identity condition the
+        // `own` condition of the cell this one is sharpening.
+        const string NewFirst = "sharp-one@example.test";
+        const string NewSecond = "sharp-two@example.test";
+
+        var window = Threads.All[0].PriorTurns;
+
+        var analysis = Corpus.Analyze("reply-in-thread", window, authenticated: true, HostVerifierId, HostTenantId);
+
+        var capture = await HostInputCapture.CaptureAsync(
+            Path.Combine(ResultsDirectory, "capture"),
+            analysis.Message!,
+            HostTenantId,
+            Corpus.Bytes("reply-in-thread"));
+
+        if (capture.Input is null)
+        {
+            Console.WriteLine("REFUSING: the capture produced no input, so there is no anchor to vary.");
+            return;
+        }
+
+        var served = ReadE2eDigest("arm2-reply-in-thread-mismatched");
+        var anchor = capture.Input;
+        var turns = anchor.Message.ConversationContext ?? [];
+        var ownSender = anchor.Message.Envelope.MailFrom;
+
+        Console.WriteLine("== participants-sharp: is it who the window's senders are, or how many there are? ==");
+        Console.WriteLine($"anchor digest : {capture.Digest ?? "none"}");
+        Console.WriteLine($"served digest : {served ?? "NOT FOUND"}");
+        Console.WriteLine(capture.Digest is not null && string.Equals(capture.Digest, served, StringComparison.Ordinal)
+            ? "the anchor is the Host's input: its key reproduces the digest that arm was served."
+            : "THE ANCHOR DOES NOT MATCH: what follows varies an input that is not the Host's.");
+        Console.WriteLine($"window turns  : {turns.Count}");
+        Console.WriteLine();
+
+        var originals = new List<string>(turns.Count);
+
+        for (var i = 0; i < turns.Count; i++)
+        {
+            var address = SenderAddress(turns[i]);
+
+            if (address is null)
+            {
+                Console.WriteLine(
+                    $"REFUSING: prior turn {i + 1} carries no sender address, so 'who the window's "
+                    + "senders are' has no site in it and a rewrite would be a change to nothing.");
+                return;
+            }
+
+            originals.Add(address);
+        }
+
+        var distinct = originals.Distinct(StringComparer.Ordinal).ToList();
+
+        Console.WriteLine($"distinct senders in the anchor window: {distinct.Count}");
+
+        // A one-sender anchor cannot express "hold the count and move the identity": the bijection
+        // would have nothing to map and the identity condition would be the count condition.
+        if (distinct.Count < 2)
+        {
+            Console.WriteLine(
+                $"REFUSING: the window carries {distinct.Count} distinct sender address(es), so the "
+                + "identity condition cannot hold the count while it moves the identity. No call was made.");
+            return;
+        }
+
+        // The bijection must not collide with the envelope's sender, or the identity condition becomes
+        // the `own` condition of the cell this one exists to sharpen.
+        if (string.Equals(NewFirst, NewSecond, StringComparison.Ordinal)
+            || string.Equals(NewFirst, ownSender, StringComparison.Ordinal)
+            || string.Equals(NewSecond, ownSender, StringComparison.Ordinal)
+            || originals.Contains(NewFirst, StringComparer.Ordinal)
+            || originals.Contains(NewSecond, StringComparer.Ordinal))
+        {
+            Console.WriteLine(
+                "REFUSING: a replacement address collides with another replacement, with the "
+                + "envelope's own sender, or with an address already in the window. No call was made.");
+            return;
+        }
+
+        // First appearance decides the pairing, so the mapping is a bijection and the per-turn
+        // equality pattern survives it unchanged.
+        var replacements = new List<string>(turns.Count);
+
+        for (var i = 0; i < originals.Count; i++)
+        {
+            replacements.Add(distinct.IndexOf(originals[i]) % 2 == 0 ? NewFirst : NewSecond);
+        }
+
+        var identityTurns = RewriteSenders(turns, replacements);
+        var countTurns = RewriteSenders(turns, [.. turns.Select(_ => NewFirst)]);
+
+        if (identityTurns is null || countTurns is null)
+        {
+            Console.WriteLine(
+                "REFUSING: at least one prior turn was left unchanged, so a run would report the "
+                + "window's senders as having moved when they had not been. No call was made.");
+            return;
+        }
+
+        var identityDistinct = identityTurns
+            .Select(t => SenderAddress(t) ?? "?")
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        var countDistinct = countTurns
+            .Select(t => SenderAddress(t) ?? "?")
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        // Checked rather than assumed: the bijection preserving the equality pattern is the whole
+        // basis for calling the first condition a move of identity with the count held, and a
+        // replacement that silently collided would make it a second count condition.
+        if (identityDistinct != distinct.Count)
+        {
+            Console.WriteLine(
+                $"REFUSING: the identity condition carries {identityDistinct} distinct senders against "
+                + $"the anchor's {distinct.Count}, so it moves the count as well as the identity and is "
+                + "not the condition it is reported as. No call was made.");
+            return;
+        }
+
+        if (countDistinct != 1)
+        {
+            Console.WriteLine(
+                $"REFUSING: the count condition carries {countDistinct} distinct senders rather than 1. "
+                + "No call was made.");
+            return;
+        }
+
+        var differing = identityTurns
+            .Zip(countTurns)
+            .Count(p => !string.Equals(p.First, p.Second, StringComparison.Ordinal));
+
+        // The per-turn equality pattern, not the addresses: which turns share a sender is the whole
+        // content of "how many distinct senders there are", and an address is not printed by this
+        // lane. A bijection cannot change the pattern, which is why the identity condition can hold
+        // the count while it moves who the senders are.
+        Console.WriteLine($"  anchor   pattern {Pattern(originals)}");
+        Console.WriteLine($"  identity pattern {Pattern(identityTurns.Select(t => SenderAddress(t) ?? "?").ToList())}");
+        Console.WriteLine($"  count    pattern {Pattern(countTurns.Select(t => SenderAddress(t) ?? "?").ToList())}");
+        Console.WriteLine();
+        Console.WriteLine(
+            $"the two conditions differ in {differing} of {turns.Count} turn(s); the count is held at "
+            + $"{distinct.Count} by the identity condition and moved to 1 by the count condition.");
+        Console.WriteLine();
+
+        if (dry)
+        {
+            Console.WriteLine(
+                differing == 1
+                    ? "DRY: the identity condition holds the count and moves the identity, the count "
+                        + "condition moves the count, and the two differ in exactly one turn's address. "
+                        + "No call was made."
+                    : "DRY: the two conditions differ in more than one turn's address, so a difference "
+                        + "between them would not be the count alone. No call was made.");
+
+            Console.WriteLine();
+            return;
+        }
+
+        var identityInput = anchor with { Message = anchor.Message with { ConversationContext = identityTurns } };
+        var countInput = anchor with { Message = anchor.Message with { ConversationContext = countTurns } };
+
+        var plan = new (string Label, SemanticMailInput Input)[]
+        {
+            ("anchor", anchor),
+            ("identity", identityInput), ("identity", identityInput), ("identity", identityInput),
+            ("count", countInput), ("count", countInput), ("count", countInput),
+            ("anchor", anchor),
+        };
+
+        var answers = new Dictionary<string, List<(string Continuity, string? Digest)>>(StringComparer.Ordinal)
+        {
+            ["anchor"] = [],
+            ["identity"] = [],
+            ["count"] = [],
+        };
+
+        foreach (var (label, input) in plan)
+        {
+            var result = await runner.CallAsync(input, CancellationToken.None);
+
+            answers[label].Add((result.Continuity, result.KeyDigest));
+
+            Console.WriteLine(
+                $"  {label,-9} continuity={result.Continuity,-15} adapter digest={result.KeyDigest ?? "none"}");
+            Console.Out.Flush();
+        }
+
+        Console.WriteLine();
+
+        var anchors = answers["anchor"];
+
+        var comparable = OneSet(anchors) && OneSet(answers["identity"]) && OneSet(answers["count"]);
+
+        string verdict;
+
+        if (!comparable)
+        {
+            verdict =
+                "not comparable: at least one group of calls did not answer one letter at one digest, so "
+                + "the groups are not sets of repeats and a difference between them is not the change.";
+        }
+        else
+        {
+            var baseline = anchors[0].Continuity;
+            var identityMoved = !string.Equals(answers["identity"][0].Continuity, baseline, StringComparison.Ordinal);
+            var countMoved = !string.Equals(answers["count"][0].Continuity, baseline, StringComparison.Ordinal);
+
+            verdict = (identityMoved, countMoved) switch
+            {
+                (false, true) =>
+                    $"THE LETTER FOLLOWS THE NUMBER OF DISTINCT SENDERS: holding the count at "
+                    + $"{distinct.Count} and changing only who the senders are leaves the answer at "
+                    + $"{baseline}, while dropping the count to 1 moves it to {answers["count"][0].Continuity} "
+                    + $"({answers["count"].Count} of {answers["count"].Count}). So the confound in "
+                    + "`site-participants` was the whole effect and its reading survives: two distinct "
+                    + "senders answer B, one answers A.",
+                (true, true) =>
+                    $"THE SENDER IDENTITY MATTERS: changing only who the window's senders are, with the "
+                    + $"count held at {distinct.Count}, moves the answer off {baseline} to "
+                    + $"{answers["identity"][0].Continuity}, and dropping the count to 1 also reaches "
+                    + $"{answers["count"][0].Continuity}. Both conditions are A against the anchor's "
+                    + $"{baseline}, so the letter is not following the count alone and the confound in "
+                    + "`site-participants` was not the whole effect.",
+                (true, false) =>
+                    $"THE LETTER FOLLOWS THE IDENTITY AND NOT THE COUNT: changing only who the window's "
+                    + $"senders are moves the answer off {baseline} to {answers["identity"][0].Continuity}, "
+                    + $"while dropping the count to 1 leaves it at {answers["count"][0].Continuity}. That is "
+                    + "the opposite of the count reading and it is reported as measured, not explained.",
+                _ =>
+                    $"NEITHER CONDITION MOVES IT: with the count held at {distinct.Count} and with the "
+                    + $"count at 1 the answer is {baseline}, the anchor's own letter. So the "
+                    + "`site-participants` reading does not reproduce on this shape, and the confound it "
+                    + "named is not the whole story either.",
+            };
+        }
+
+        Console.WriteLine(verdict);
+
+        Write("participants-sharp", new
+        {
+            tenant = HostTenantId,
+            anchor_digest = capture.Digest,
+            served_digest = served,
+            anchor_matches_served = capture.Digest is not null
+                && string.Equals(capture.Digest, served, StringComparison.Ordinal),
+            window_turns = turns.Count,
+            distinct_senders_in_anchor = distinct.Count,
+            identity_distinct_senders = identityDistinct,
+            count_distinct_senders = countDistinct,
+            anchor_pattern = Pattern(originals),
+            identity_pattern = Pattern(identityTurns.Select(t => SenderAddress(t) ?? "?").ToList()),
+            count_pattern = Pattern(countTurns.Select(t => SenderAddress(t) ?? "?").ToList()),
+            conditions_differ_in_turns = differing,
+            held_fields = HeldFields,
+            anchor_answers = anchors.Select(a => a.Continuity).ToList(),
+            anchor_digests = anchors.Select(a => a.Digest).ToList(),
+            identity_answers = answers["identity"].Select(a => a.Continuity).ToList(),
+            identity_digests = answers["identity"].Select(a => a.Digest).ToList(),
+            count_answers = answers["count"].Select(a => a.Continuity).ToList(),
+            count_digests = answers["count"].Select(a => a.Digest).ToList(),
+            verdict,
+        });
+        Console.WriteLine();
+    }
+
+    /// <summary>The sender address on a prior turn's first line, or null if the turn carries none.</summary>
+    /// <remarks>
+    /// The read half of <see cref="RewriteSender"/> and deliberately the same parse: a helper that
+    /// found an address the rewrite could not replace would let a condition be reported as a move
+    /// that never happened.
+    /// </remarks>
+    private static string? SenderAddress(string turn)
+    {
+        var newline = turn.IndexOf('\n');
+        var firstLine = newline < 0 ? turn : turn[..newline];
+
+        var open = firstLine.IndexOf('<');
+        var close = firstLine.IndexOf('>');
+
+        if (open >= 0 && close > open)
+        {
+            return firstLine[(open + 1)..close];
+        }
+
+        var lastSpace = firstLine.LastIndexOf(' ');
+        var start = lastSpace + 1;
+        var end = firstLine.Length;
+
+        if (start >= end)
+        {
+            return null;
+        }
+
+        var token = firstLine[start..end];
+
+        return token.Contains('@', StringComparison.Ordinal) ? token : null;
+    }
+
+    /// <summary>
+    /// The window with each turn's sender replaced by the address at the same position, or null if
+    /// any turn was left unchanged.
+    /// </summary>
+    /// <remarks>
+    /// One address per turn rather than one address for all of them, because the condition that holds
+    /// the number of distinct senders has to write a different address into a turn the anchor gave a
+    /// different sender. <b>A turn that is not rewritten is a refusal, not a pass</b>, for the same
+    /// reason it is in <see cref="RewriteParticipants"/>.
+    /// </remarks>
+    private static IReadOnlyList<string>? RewriteSenders(IReadOnlyList<string> turns, IReadOnlyList<string> addresses)
+    {
+        if (addresses.Count != turns.Count)
+        {
+            return null;
+        }
+
+        var rewritten = new List<string>(turns.Count);
+
+        for (var i = 0; i < turns.Count; i++)
+        {
+            var changed = RewriteSender(turns[i], addresses[i]);
+
+            if (ReferenceEquals(changed, turns[i]))
+            {
+                return null;
+            }
+
+            rewritten.Add(changed);
+        }
+
+        return rewritten;
+    }
+
+    /// <summary>
+    /// Which turns share a sender, as the index of each turn's sender in order of first appearance.
+    /// </summary>
+    /// <remarks>
+    /// An address is never printed by this lane, so the pattern is how a per-turn sender mapping is
+    /// reported: <c>0, 1, 0</c> is two distinct senders alternating. It is also the property the
+    /// identity condition has to preserve, since a bijection over the senders leaves this unchanged
+    /// while the count of distinct senders stays where it was.
+    /// </remarks>
+    private static string Pattern(IReadOnlyList<string> senders)
+    {
+        var seen = new List<string>();
+
+        var indices = new List<int>(senders.Count);
+
+        foreach (var sender in senders)
+        {
+            var at = seen.IndexOf(sender);
+
+            if (at < 0)
+            {
+                seen.Add(sender);
+                at = seen.Count - 1;
+            }
+
+            indices.Add(at);
+        }
+
+        return string.Join(", ", indices);
     }
 
     /// <summary>Whether a group of calls is one letter at one digest, which is what makes it repeatable.</summary>
