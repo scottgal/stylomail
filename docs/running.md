@@ -65,7 +65,8 @@ Verified by running, with the process failing to start on each:
 
 | Configuration | Observed |
 | --- | --- |
-| `TYPESAFE_API_KEY` set, `STYLOMAIL_PROFILE_KEY` absent | refuses to start, names the missing variable |
+| `TYPESAFE_API_KEY` set, `STYLOMAIL_PROFILE_KEY` absent, **default provider** | refuses to start, names the missing variable |
+| the same pair with the **local provider** selected | starts and warns, `/health/ready` reports `not_ready` (the required secrets follow the provider: see §6) |
 | both set, profile key under 32 bytes | refuses to start, names the variable **and the length** |
 | ingress bound larger than the queue's | refuses to start, names **both** values |
 | Cloudflare intake enabled with no secret | refuses to start, names the variable |
@@ -181,12 +182,49 @@ them; the names live as constants beside `HostCredentials` so they are defined o
 
 Two consequences worth knowing:
 
-- **`TYPESAFE_API_KEY` and `STYLOMAIL_PROFILE_KEY` are all-or-nothing.** Exactly one of them set is a
-  misconfiguration and the process refuses to start. Running with the Jev key live and no
-  pseudonymisation key would work perfectly in testing and quietly collapse tenant isolation in
-  production.
+- **`TYPESAFE_API_KEY` and `STYLOMAIL_PROFILE_KEY` are all-or-nothing under the hosted provider.**
+  There, exactly one of them set is a misconfiguration and the process refuses to start: running with
+  the Jev key live and no pseudonymisation key would work perfectly in testing and quietly collapse
+  tenant isolation in production. Which secrets are required follows the provider, so the local
+  provider below needs the master key alone, and a provider key it never reads is inert rather than a
+  reason to refuse.
 - **Changing `STYLOMAIL_PROFILE_KEY` is a migration, not a configuration change.** Every stored
   profile key was derived from it and becomes unreadable.
+
+### Choosing the semantic provider
+
+| Key (under `StyloMail:Assessment:`) | Default | Notes |
+| --- | --- | --- |
+| `Provider` | `Jev` | `Jev` or `Nimble`. Matched by name, case-insensitively. |
+
+`Nimble` runs the local decision model instead of the hosted one. Two settings, both under
+`StyloMail:Nimble:`, and both announced in the log at every boot:
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `Endpoint` | `http://127.0.0.1:11435/api/generate` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. |
+| `Model` | `nimble:latest` | Model reference to generate with. |
+
+Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
+its own defaults; the two above are the only ones a Host deployment can currently set.
+
+Three things follow from the choice, and they are the reason it is a named decision rather than a
+fallback:
+
+- **What the deployment must hold changes.** `Jev` needs a provider key and the profile master key.
+  `Nimble` needs the master key alone, because the local adapter holds no credential to pair with.
+  The refusal messages name the missing variable, and they only name the ones the selected provider
+  actually reads.
+- **An unrecognised name refuses to start**, listing the names it accepts. A typo that quietly
+  selected the hosted provider would send a deployment's mail content to a third party while the
+  operator believed a local model was reading it. A bare number is not a name either, so `1` is
+  refused rather than silently meaning the second entry.
+- **A missing secret is not the same failure as a bad name.** A name that means nothing is a startup
+  refusal. A missing master key starts the process, logs
+  `STYLOMAIL ASSESSMENT NOT CONFIGURED`, and leaves `/health/ready` reporting `not_ready` with
+  `assessor_unavailable`, so the deployment is visibly not ready rather than quietly allowing mail.
+
+The selection is read once, at startup, where the assessor is resolved; changing it takes a restart.
 
 ### Transport configuration
 

@@ -40,6 +40,27 @@ _FIELD = r'{name}\s*=\s*"((?:[^"\\]|\\.)*)"'
 # The flagship case for latency: a credential request is the dimension the lane exists to get right.
 FLAGSHIP_CASE = "credential-request"
 
+# The dimension the batching-stability cell points at unless --stability-target overrides it. It was
+# hard-coded to this id, which is why the cell read as a fact about credential_request rather than
+# about the asking shape; the cell is the fleet's controlled measurement of the SHAPE effect, and a
+# second target is what puts another dimension on the same footing.
+STABILITY_TARGET = "semantic.credential_request"
+
+# The two asking shapes, byte-identical between the full run's own cells and the standalone cell
+# below, so "the shapes differ" is a fact about the question count and nothing else.
+SINGLE_QUESTION_TEMPLATE = (
+    "Question: {instructions}\n"
+    "  A = {true_criteria}\n"
+    "  B = {false_criteria}\n\n"
+    "--- MESSAGE ---\n{body}\n--- END MESSAGE ---\n\nReturn only the one-letter code."
+)
+BATCHED_TEMPLATE = (
+    "Answer every question about the message below using the supplied schema.\n"
+    "Each answer is one letter: A or B.\n\n"
+    "{questions}\n\n"
+    "--- MESSAGE ---\n{body}\n--- END MESSAGE ---"
+)
+
 
 def load_dimensions(repo_root: Path) -> list[dict]:
     """Read StyloMail's dimension definitions out of the C# source."""
@@ -150,11 +171,19 @@ def generate(
     prompt: str,
     schema: dict | None = None,
     num_ctx: int | None = None,
+    extra_options: dict | None = None,
 ) -> tuple[dict, float]:
-    """One non-streaming generation. Temperature 0 so a repeat measures the model, not the sampler."""
+    """One non-streaming generation. Temperature 0 so a repeat measures the model, not the sampler.
+
+    `extra_options` exists so a probe can vary one server option against a fixed prompt without a
+    second copy of the request shape. It is merged last, so a probe that sets `num_ctx` both ways on
+    purpose is the probe's business.
+    """
     options: dict = {"temperature": 0}
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
+    if extra_options:
+        options.update(extra_options)
 
     payload: dict = {
         "model": model,
@@ -312,6 +341,212 @@ def truncation_probe(host: str, model: str) -> dict:
     }
 
 
+def measure_effective_window(
+    host: str,
+    model: str,
+    num_ctx: int,
+    extra_options: dict | None = None,
+) -> dict:
+    """The window the server actually applies, measured by saturating it.
+
+    <b>Why this is not `num_ctx`.</b> Comparing a prompt's token count against the *requested*
+    window cannot detect truncation when the server applies a smaller one than it was asked for:
+    the count comes back below the request and the check reads clean. That is decision 26, and it
+    is not hypothetical. A prompt far over the window was measured evaluating at 4,099 tokens with
+    nothing asked, while the model's loaded context is 8,194 and its card claims 262,144.
+
+    So the window is measured rather than assumed: a prompt deliberately larger than any plausible
+    window is evaluated as exactly the window it was cut to, and the plateau of `prompt_eval_count`
+    is that window. The requested value is recorded beside it so a disagreement is visible.
+
+    <b>What the number is, exactly.</b> Not the window: the largest evaluated count the probe could
+    reach below it. The filler is a short repetition, so the plateau is quantised by that
+    repetition, and it lands a couple of tokens above the true window rather than on it. Treat it as
+    a ceiling-with-tolerance, which is what a truncation check needs.
+    """
+    filler = "This paragraph is padding and carries no request of any kind. " * 1500
+    response, _elapsed = generate(
+        host, model, "Classify this message.\n--- MESSAGE ---\n" + filler + "\n--- END MESSAGE ---",
+        schema=single_question_schema(), num_ctx=num_ctx, extra_options=extra_options)
+
+    evaluated = response.get("prompt_eval_count")
+    show = post(host, "/api/show", {"model": model})
+
+    # The architecture-prefixed key, not a fixed one: this server reports `qwen35.context_length`
+    # and has no `general.context_length` at all, so the earlier fixed lookup returned None and
+    # would have kept returning None quietly.
+    info = show.get("model_info") or {}
+    family = (show.get("details") or {}).get("family")
+    loaded = info.get(f"{family}.context_length") if family else None
+    if loaded is None:
+        loaded = next(
+            (value for key, value in info.items() if key.endswith(".context_length")), None)
+
+    return {
+        "requested_num_ctx": num_ctx,
+        "extra_options": extra_options or {},
+        "evaluated_tokens": evaluated,
+        "effective_window_measured": evaluated,
+        "loaded_context_length": loaded,
+        "model_parameters": show.get("parameters"),
+        "probe_characters": len(filler),
+        "note": (
+            "effective_window_measured is the plateau of prompt_eval_count for a prompt larger than "
+            "the window, which is the window the server applied. Truncation is detected by comparing "
+            "a real prompt against THIS, never against requested_num_ctx."
+        ),
+    }
+
+
+def context_slots_probe(args) -> int:
+    """Why the applied window is half the requested one, tested rather than guessed.
+
+    Measured: requested 4096/8192/16384 applied 2050/4098/8194, which is a stable half, not a
+    one-off. The obvious explanation is that the server divides the requested context among parallel
+    slots, so the window one request actually gets is `num_ctx / num_parallel`, and the run above
+    implies two slots. That is a hypothesis and this is the test: hold the prompt fixed and ask for
+    one slot. If the applied window becomes the requested one, the hypothesis is the finding and the
+    repair is to say how many slots the deployment wants. If it does not, the cause is elsewhere and
+    the honest result is "measured, unexplained, and still half".
+
+    Nothing here decides what the adapter should do. It establishes the mechanism, and the adapter's
+    own margin arithmetic is a separate question with a separate owner.
+    """
+    measured = {"host": args.host, "model": args.model, "runs": {}}
+
+    for label, num_ctx, options in (
+        ("8192 default slots", 8192, None),
+        ("8192 one slot", 8192, {"num_parallel": 1}),
+        ("16384 one slot", 16384, {"num_parallel": 1}),
+        ("4096 two slots", 4096, {"num_parallel": 2}),
+    ):
+        window = measure_effective_window(args.host, args.model, num_ctx, extra_options=options)
+        measured["runs"][label] = window
+        ratio = (
+            window["effective_window_measured"] / num_ctx
+            if window["effective_window_measured"] and num_ctx else None
+        )
+        print(f"  {label:<18} requested {num_ctx:>6}  applied "
+              f"{window['effective_window_measured']}  ratio {ratio}")
+
+    # The control that decides whether the number above is a window or an instrument.
+    #
+    # Everything so far saturates the prompt, so a server that simply reported half of what it
+    # evaluated would produce exactly the same table. This sends a prompt comfortably UNDER both
+    # windows and asks the same question at two different requested sizes. An honest count is the
+    # token count of the prompt and does not move when the window does; a halved count would move
+    # with it, and the whole measurement would be a property of the probe rather than the server.
+    short = "This paragraph is padding and carries no request of any kind. " * 60
+    control = {}
+    for num_ctx in (2048, 8192):
+        response, _elapsed = generate(
+            args.host, args.model,
+            "Classify this message.\n--- MESSAGE ---\n" + short + "\n--- END MESSAGE ---",
+            schema=single_question_schema(), num_ctx=num_ctx)
+        control[str(num_ctx)] = {
+            "requested_num_ctx": num_ctx,
+            "evaluated_tokens": response.get("prompt_eval_count"),
+            "characters_sent": len(short),
+        }
+        print(f"  under-window control  requested {num_ctx:>6}  evaluated "
+              f"{response.get('prompt_eval_count')}  characters {len(short)}")
+
+    measured["under_window_control"] = control
+    counts = {entry["evaluated_tokens"] for entry in control.values()}
+    measured["control_reading"] = (
+        "counting is absolute: the same prompt evaluated to the same token count under two "
+        "different windows, so the saturated plateau is the window and not half of the prompt"
+        if len(counts) == 1 else
+        f"counting MOVES with the window ({sorted(counts)}), so the instrument is halving and the "
+        "plateau above is not a window measurement"
+    )
+    print(f"  {measured['control_reading']}")
+
+    Path(args.out).write_text(json.dumps(measured, indent=2, default=str), encoding="utf-8")
+    print(f"\nwrote {args.out}")
+    return 0
+
+
+def window_quantum_probe(args) -> int:
+    """Is the plateau the applied window, or a quantum of the filler that measured it?
+
+    `measure_effective_window` saturates the prompt with a **repeated** paragraph and calls the
+    plateau of `prompt_eval_count` the window. Its own docstring already warns that a repeated filler
+    quantises the plateau, so the number it returns could be the window or could be the window plus
+    however much of the last repetition fitted. The ladder reads 2050 / 4098 / 8194 for 4096 / 8192 /
+    16384, which is half plus two at all three points: an exact arithmetic relation, and exactness is
+    what a quantum artifact would be least likely to produce. This settles it by measuring the same
+    window with fillers of four different quanta.
+
+    Same window, same question, different filler: if the plateau is the window it does not move, and
+    half-plus-two is a property of the server. If it moves with the filler, the plateau is an
+    instrument artifact, the true window is at or below `num_ctx / 2`, and the adapter's derived
+    `NumCtx / 2` is the safe bound rather than a number two tokens short.
+    """
+    fillers = {
+        # Quanta from ~1 token to ~15 tokens, one filler that does not repeat at all, and two small
+        # fillers that should stay well under any window. `word, 2k` is the control that says whether
+        # a small filler is being cut or simply counted: it is the same text as `word, 4k`, half as
+        # long, so if the long one is cut and the short one is not, the cut is visible between them.
+        "single character, 20k": "x" * 20000,
+        "word, 2k": "padding " * 2000,
+        "word, 4k": "padding " * 4000,
+        "sentence, 4k": "This sentence is padding and asks nothing. " * 4000,
+        "paragraph, 1500 (the ladder's filler)":
+            "This paragraph is padding and carries no request of any kind. " * 1500,
+        "non-repeating words": " ".join(f"pad{index}word" for index in range(4000)),
+    }
+
+    measured = {"host": args.host, "model": args.model, "requested_num_ctx": args.num_ctx, "plateaus": {}}
+    for label, filler in fillers.items():
+        response, _elapsed = generate(
+            args.host, args.model,
+            "Classify this message.\n--- MESSAGE ---\n" + filler + "\n--- END MESSAGE ---",
+            schema=single_question_schema(), num_ctx=args.num_ctx)
+        measured["plateaus"][label] = {
+            "characters_sent": len(filler),
+            "evaluated_tokens": response.get("prompt_eval_count"),
+        }
+        print(f"  {label:<40} characters {len(filler):>6}  evaluated "
+              f"{response.get('prompt_eval_count')}")
+
+    # A filler that never reached the cut was never truncated, so its count is the size of its own
+    # prompt and says nothing about the window: the first version of this probe reported that as the
+    # plateau "moving", which is the same mistake as reading an unsaturated prompt as a truncation.
+    # Only fillers that reach within 10 percent of the highest count are evidence about the cut.
+    counts = {
+        label: entry["evaluated_tokens"]
+        for label, entry in measured["plateaus"].items()
+        if entry["evaluated_tokens"]
+    }
+    ceiling = max(counts.values())
+    reached = {label: count for label, count in counts.items() if count >= 0.9 * ceiling}
+    short = {label: count for label, count in counts.items() if count < 0.9 * ceiling}
+    spread = max(reached.values()) - min(reached.values())
+
+    measured["reached_the_cut"] = reached
+    measured["never_reached_the_cut"] = short
+    measured["plateau_invariant"] = spread == 0
+    measured["cut_spread_tokens"] = spread
+    measured["reading"] = (
+        f"every filler that reached the cut returned exactly {next(iter(reached.values()))}, so the "
+        "cut is invariant across filler content and this is the window the server applied"
+        if measured["plateau_invariant"] else
+        f"every filler that reached the cut returned between {min(reached.values())} and "
+        f"{max(reached.values())} tokens, a spread of {spread}, and the fillers agreeing at "
+        f"{min(reached.values())} include one that does not repeat at all. So the cut is a band a few "
+        "tokens wide rather than an exact boundary, the applied window is AT OR BELOW the band's "
+        f"floor ({min(reached.values())}), and a derivation that rounds below that floor is the safe "
+        "one to reason about. Fillers that never reached the cut are excluded: "
+        f"{short}"
+    )
+    print(f"  {measured['reading']}")
+
+    Path(args.out).write_text(json.dumps(measured, indent=2, default=str), encoding="utf-8")
+    print(f"\nwrote {args.out}")
+    return 0
+
+
 def residual_seconds(entry: dict) -> float:
     """Time inside the server that ollama's own counters do not account for.
 
@@ -327,14 +562,14 @@ def residual_seconds(entry: dict) -> float:
 def residency_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int:
     """Does the model stay resident between calls, or reload for each one?
 
-    This turned out to be the dominant latency term: in the shipping-shape run, 8 to 40 seconds
+    This turned out to be the dominant latency term: in the delimited-body run, 8 to 40 seconds
     of every 18 to 60 second call was `load_duration`, and the residual was ~0.02 s. A per-message
     path that reloads a 9 GB model per message is not a latency question, it is a viability one.
     This repeats one call and reports, each time, what ollama says it spent loading and what the
     server reports as resident.
     """
     flagship = bodies.get(FLAGSHIP_CASE) or next(iter(bodies.values()), "")
-    num_ctx = args.shipping_num_ctx
+    num_ctx = args.body_num_ctx
     system = (
         "Answer every question about the message in the user turn, using the supplied schema. "
         "Each answer is one one-letter code: A or B. Return only the codes.\n\n"
@@ -386,25 +621,31 @@ def residency_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int
     return 0
 
 
-def shipping_shape_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int:
-    """Measure the exact request shape the adapter will ship, over every corpus case.
+def delimited_body_shape_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int:
+    """Measure a delimited-body request shape over every corpus case. Exploratory, not shipping.
 
-    The full survey proved that the *shape* of the request changes the answer: the same dimension
-    is B asked alone and A asked in a batch, and the graded value contradicts the letter. So the
-    shape cannot be chosen by taste and then assumed to work. This is the shape I intend to ship:
+    **This is not the shape the adapter sends, and the docstring used to say that it was.** The
+    adapter's user turn is the serialized message *state* (`NimbleSemanticMailClassifier.FitPrompt`),
+    while this sends `--- MESSAGE ---\\n{body}`. The two are not interchangeable: replaying one
+    captured adapter request and substituting only the user turn, the delimited body differs from
+    the adapter's own request in **3 of 11 dimensions** on the flagship case
+    (`.styloagent/scratch/nimble/replay-divergence.json`), which is a claim about this model and
+    nothing about the deployment.
 
-      * questions in `system`, message in `prompt`, so untrusted content never sits in the same
-        string as the instructions, which is the invariant the hosted adapter states and I want
-        to keep;
-      * all askable dimensions in ONE request, matching how the hosted provider is asked;
-      * one-letter codes constrained by a `format` JSON schema;
-      * an explicit num_ctx, with prompt_eval_count checked against it afterwards, because the
-        default window truncates silently.
+    What the shape itself does, and what the adapter also does, so it is worth measuring on its own
+    terms: questions in `system` and the message in `prompt`, so untrusted content never shares a
+    string with the instructions; all askable dimensions in ONE request; one-letter codes
+    constrained by a `format` JSON schema; an explicit num_ctx, with `prompt_eval_count` checked
+    against the **measured** window afterwards, because the requested window is not the applied one.
 
-    Acceptance is not "it returned something": it is twelve codes for twelve questions, an
-    explicit token count under the window, and a recorded answer for every dimension.
+    Acceptance is not "it returned something": it is one code per question, an explicit token count
+    under the applied window, and a recorded answer for every dimension asked.
     """
-    num_ctx = args.shipping_num_ctx
+    num_ctx = args.body_num_ctx
+    window = measure_effective_window(args.host, args.model, num_ctx)
+    effective_window = window["effective_window_measured"]
+    print(f"  effective window measured: {effective_window} "
+          f"(requested {num_ctx}, loaded context {window['loaded_context_length']})")
     system = (
         "Answer every question about the message in the user turn, using the supplied schema. "
         "Each answer is one one-letter code: A or B. Return only the codes.\n\n"
@@ -427,7 +668,16 @@ def shipping_shape_probe(args, dimensions: list[dict], bodies: dict[str, str]) -
 
         codes = parse_codes(response.get("response"))
         prompt_tokens = response.get("prompt_eval_count")
-        truncated = prompt_tokens is not None and prompt_tokens >= num_ctx
+
+        # Against the MEASURED window, never the requested one. `prompt_tokens >= num_ctx` cannot see
+        # truncation when the server applies a smaller window than it was asked for: the count comes
+        # back under the request and the check reads clean. That was decision 26, and it is why the
+        # measured window is a parameter of this comparison rather than an assumption.
+        truncated = (
+            prompt_tokens is not None
+            and effective_window is not None
+            and prompt_tokens >= effective_window
+        )
 
         cases[case_name] = {
             "elapsed_seconds": round(elapsed, 3),
@@ -437,6 +687,7 @@ def shipping_shape_probe(args, dimensions: list[dict], bodies: dict[str, str]) -
                         for k, v in codes.items() if k[1:].isdigit() and int(k[1:]) < len(dimensions)},
             "raw_response": response.get("response"),
             "num_ctx": num_ctx,
+            "effective_window_measured": effective_window,
             "truncation_detected": truncated,
             **summarize(response),
         }
@@ -447,6 +698,7 @@ def shipping_shape_probe(args, dimensions: list[dict], bodies: dict[str, str]) -
         "measured_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "host": args.host,
         "model": args.model,
+        "effective_window": window,
         "shape": {
             "endpoint": "/api/generate",
             "questions": "system",
@@ -599,6 +851,99 @@ def stall_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int:
     return 0
 
 
+def batching_stability_cell(
+    host: str,
+    model: str,
+    target: dict,
+    target_index: int,
+    dimensions: list[dict],
+    questions_all: str,
+    body: str,
+) -> dict:
+    """One dimension, one body, one code path, asked ALONE and BATCHED, three calls each.
+
+    This is the fleet's CONTROLLED measurement of the asking-shape effect, and it is the reason the
+    effect does not rest on a cross-lane inference: the two shapes are byte-identical prompts apart
+    from the number of questions, over the same body and through the same adapter. Read it as a
+    SHAPE comparison and never as a stability claim about the dimension: the single-question shape
+    is itself the variable, so "alone was stable at B" is a fact about the shape, not evidence that
+    B is what this dimension means for this body.
+    """
+    stability: dict = {"dimension": target["id"], "index": target_index, "alone": [], "batched": []}
+    for attempt in range(3):
+        response, elapsed = generate(host, model, SINGLE_QUESTION_TEMPLATE.format(
+            instructions=target["instructions"],
+            true_criteria=target["criteria_true"],
+            false_criteria=target["criteria_false"],
+            body=body), schema=single_question_schema())
+        stability["alone"].append({
+            "attempt": attempt,
+            "answer": parse_codes(response.get("response")).get("answer"),
+            "elapsed_seconds": round(elapsed, 3),
+            "prompt_eval_count": response.get("prompt_eval_count"),
+        })
+
+        response, elapsed = generate(host, model, BATCHED_TEMPLATE.format(
+            questions=questions_all, body=body), schema=answer_schema(len(dimensions)))
+        codes = parse_codes(response.get("response"))
+        stability["batched"].append({
+            "attempt": attempt,
+            "answer": codes.get(f"q{target_index}"),
+            "elapsed_seconds": round(elapsed, 3),
+            "prompt_eval_count": response.get("prompt_eval_count"),
+        })
+
+    alone = [entry["answer"] for entry in stability["alone"]]
+    batched = [entry["answer"] for entry in stability["batched"]]
+    stability["alone_stable"] = len(set(alone)) == 1
+    stability["batched_stable"] = len(set(batched)) == 1
+    stability["shapes_agree"] = set(alone) == set(batched)
+    return stability
+
+
+def stability_probe(args, dimensions: list[dict], bodies: dict[str, str]) -> int:
+    """Run ONLY the batching-stability cell, for the dimension named by --stability-target.
+
+    Added so a dimension can be put on the same controlled footing as `credential_request`, whose
+    cell is the one that established the shape effect in this lane. It runs the SAME cell through
+    the SAME helper, so the two readings cannot drift apart by being two implementations.
+    """
+    by_id = {d["id"]: d for d in dimensions}
+    target = by_id.get(args.stability_target)
+    if target is None:
+        print(f"no dimension with id {args.stability_target!r}; known ids: "
+              + ", ".join(sorted(by_id)), file=sys.stderr)
+        return 1
+
+    target_index = dimensions.index(target)
+    body = bodies.get(FLAGSHIP_CASE) or next(iter(bodies.values()), "")
+    print(f"stability cell: {target['id']} (index {target_index} of {len(dimensions)}), "
+          f"body {FLAGSHIP_CASE}, 3 calls alone and 3 batched, host {args.host}")
+
+    stability = batching_stability_cell(
+        args.host, args.model, target, target_index, dimensions,
+        render_questions(dimensions), body)
+
+    result = {
+        "measured_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "host": args.host,
+        "model": args.model,
+        "corpus_case": FLAGSHIP_CASE,
+        "batching_stability": stability,
+        "note": (
+            "A SHAPE comparison, not a stability claim about the dimension: the single-question "
+            "shape is itself the variable. Same body, same code path, same adapter; the two shapes "
+            "differ only in the question count."
+        ),
+    }
+
+    Path(args.out).write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+    print(f"[stability]     {target['id']}: alone={[e['answer'] for e in stability['alone']]} "
+          f"batched={[e['answer'] for e in stability['batched']]} "
+          f"agree={stability['shapes_agree']}  wrote {args.out}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="nimble")
@@ -614,14 +959,39 @@ def main() -> int:
     parser.add_argument("--answer-shape", action="store_true",
                         help="Run ONLY the answer-shape probe and exit: can the model give a graded "
                              "0..1 answer, or only a one-letter code?")
-    parser.add_argument("--shipping-shape", action="store_true",
-                        help="Run ONLY the intended shipping request shape over every corpus case "
-                             "and exit.")
-    parser.add_argument("--shipping-num-ctx", type=int, default=8192,
-                        help="num_ctx for the shipping-shape probe.")
+    parser.add_argument("--body-shape", action="store_true",
+                        help="Run ONLY the delimited-body shape over every corpus case and exit. This "
+                             "is NOT the shipping shape: the adapter sends the serialized message "
+                             "state as the user turn (NimbleSemanticMailClassifier.FitPrompt), while "
+                             "this sends a delimited bare body, and on the flagship case the two "
+                             "differ in 3 of 11 dimensions. Numbers from it describe the model, never "
+                             "the deployment. Renamed from --shipping-shape, which claimed otherwise.")
+    parser.add_argument("--shipping-shape", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--body-num-ctx", type=int, default=8192,
+                        help="num_ctx for the delimited-body probe.")
     parser.add_argument("--residency", type=int, default=0,
-                        help="Repeat one shipping-shape call this many times and report whether the "
+                        help="Repeat one delimited-body call this many times and report whether the "
                              "model stayed resident between calls, then exit.")
+    parser.add_argument("--window-quantum", action="store_true",
+                        help="Run ONLY the window-quantum probe and exit: is the measured plateau "
+                             "the applied window, or a quantum of the repeated filler that measured "
+                             "it? Five fillers, five calls, one window.")
+    parser.add_argument("--num-ctx", type=int, default=8192,
+                        help="Requested num_ctx for the window-quantum probe.")
+    parser.add_argument("--stability-only", action="store_true",
+                        help="Run ONLY the batching-stability cell and exit: one dimension, one "
+                             "body, asked alone and batched, three calls each. This is the "
+                             "controlled asking-shape measurement, and --stability-target says "
+                             "which dimension it points at.")
+    parser.add_argument("--stability-target", default=STABILITY_TARGET,
+                        help="The dimension id the batching-stability cell points at. Defaults to "
+                             "semantic.credential_request, which is what it has always measured; "
+                             "the cell is about the SHAPE, so a second target puts another "
+                             "dimension on the same footing rather than changing the cell.")
+    parser.add_argument("--context-slots", action="store_true",
+                        help="Run ONLY the context-slots probe and exit: does the server divide the "
+                             "requested num_ctx among parallel slots, which would explain the applied "
+                             "window measuring half the requested one?")
     args = parser.parse_args()
 
     repo_root = Path(args.repo).resolve()
@@ -632,14 +1002,34 @@ def main() -> int:
         print(f"No dimensions parsed from {DIMENSION_SOURCE}", file=sys.stderr)
         return 1
 
+    # Refused rather than redirected, so a script that still passes the old flag fails loudly
+    # instead of quietly measuring a shape under a name that used to claim it was the shipping one.
+    if args.shipping_shape:
+        print(
+            "--shipping-shape was never the shipping shape and has been renamed: the adapter sends "
+            "the serialized message state, this tool sends a delimited body. Use --body-shape, and "
+            "read its numbers as a fact about the model rather than about the deployment.",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.answer_shape:
         return answer_shape_probe(args, dimensions, bodies)
 
-    if args.shipping_shape:
-        return shipping_shape_probe(args, dimensions, bodies)
+    if args.stability_only:
+        return stability_probe(args, dimensions, bodies)
+
+    if args.body_shape:
+        return delimited_body_shape_probe(args, dimensions, bodies)
 
     if args.residency:
         return residency_probe(args, dimensions, bodies)
+
+    if args.context_slots:
+        return context_slots_probe(args)
+
+    if args.window_quantum:
+        return window_quantum_probe(args)
 
     if args.stall_probe:
         return stall_probe(args, dimensions, bodies)
@@ -785,55 +1175,14 @@ def main() -> int:
     #     to separate a real batching effect from ordinary sampling noise: temperature 0 is not a
     #     guarantee of determinism, and a single disagreement is not a finding.
     target_index = next(
-        (i for i, d in enumerate(dimensions) if d["id"] == "semantic.credential_request"), 0)
+        (i for i, d in enumerate(dimensions) if d["id"] == args.stability_target), 0)
     target = dimensions[target_index]
 
-    # Both templates are byte-identical to the prompts used above, so the shapes are comparable.
-    single_template = (
-        "Question: {instructions}\n"
-        "  A = {true_criteria}\n"
-        "  B = {false_criteria}\n\n"
-        "--- MESSAGE ---\n{body}\n--- END MESSAGE ---\n\nReturn only the one-letter code."
-    )
-    batched_template = (
-        "Answer every question about the message below using the supplied schema.\n"
-        "Each answer is one letter: A or B.\n\n"
-        "{questions}\n\n"
-        "--- MESSAGE ---\n{body}\n--- END MESSAGE ---"
-    )
-
-    stability: dict = {"dimension": target["id"], "index": target_index, "alone": [], "batched": []}
-    for attempt in range(3):
-        response, elapsed = generate(args.host, args.model, single_template.format(
-            instructions=target["instructions"],
-            true_criteria=target["criteria_true"],
-            false_criteria=target["criteria_false"],
-            body=flagship_body), schema=single_question_schema())
-        stability["alone"].append({
-            "attempt": attempt,
-            "answer": parse_codes(response.get("response")).get("answer"),
-            "elapsed_seconds": round(elapsed, 3),
-            "prompt_eval_count": response.get("prompt_eval_count"),
-        })
-
-        response, elapsed = generate(args.host, args.model, batched_template.format(
-            questions=questions_all, body=flagship_body), schema=answer_schema(len(dimensions)))
-        codes = parse_codes(response.get("response"))
-        stability["batched"].append({
-            "attempt": attempt,
-            "answer": codes.get(f"q{target_index}"),
-            "elapsed_seconds": round(elapsed, 3),
-            "prompt_eval_count": response.get("prompt_eval_count"),
-        })
-
-    alone = [entry["answer"] for entry in stability["alone"]]
-    batched = [entry["answer"] for entry in stability["batched"]]
-    stability["alone_stable"] = len(set(alone)) == 1
-    stability["batched_stable"] = len(set(batched)) == 1
-    stability["shapes_agree"] = set(alone) == set(batched)
+    stability = batching_stability_cell(
+        args.host, args.model, target, target_index, dimensions, questions_all, flagship_body)
     result["batching_stability"] = stability
-    print(f"[stability]     {target['id']}: alone={alone} batched={batched} "
-          f"agree={stability['shapes_agree']}")
+    print(f"[stability]     {target['id']}: alone={[e['answer'] for e in stability['alone']]} "
+          f"batched={[e['answer'] for e in stability['batched']]} agree={stability['shapes_agree']}")
 
     # 3e. Do the two servers answer the same? The 0.31.1 server on the DEFAULT port serves the
     #     model (a bare ping returns done), so "the old server cannot run it" is NOT established

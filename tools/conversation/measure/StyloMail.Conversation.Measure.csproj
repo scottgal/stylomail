@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A standalone measurement tool, deliberately NOT in StyloMail.slnx.
+
+    It is the reproduction for the conversation lane's reported numbers: it drives the shipping
+    adapter over the shipping MIME parser against the real local model. Keeping it out of the
+    solution means it can never turn a normal `dotnet test` red because a model server is absent,
+    which is the same reason NimbleLiveFact turns itself off rather than failing.
+
+    Run it by project path from the repository root, never by an absolute path built from a shell
+    pwd: /tmp is a symlink on this machine, so one invocation spells the tree /tmp/... and the next
+    spells it /private/tmp/..., MSBuild treats those as two projects, and it builds them against
+    each other.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\StyloMail.Core\StyloMail.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\StyloMail.Mime\StyloMail.Mime.csproj" />
+    <ProjectReference Include="..\..\..\src\StyloMail.Nimble\StyloMail.Nimble.csproj" />
+
+    <!--
+      Assessment is referenced for exactly one thing: SemanticCacheKey.Digest, the function that
+      produces the cache key the Host serves on a response. The site experiment compared that digest
+      against the adapter's own ComputeCacheKeyDigest, which is a different function over a different
+      payload, so no input could ever have matched it. The corrected comparison has to compute the
+      Host's key with the Host's own code and the Host's own options (MailAssessorOptions), and both
+      of those live here. This adds no model client and no network path to the tool.
+    -->
+    <ProjectReference Include="..\..\..\src\StyloMail.Assessment\StyloMail.Assessment.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>StyloMail.Conversation.Measure</RootNamespace>
+    <AssemblyName>conversation-measure</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

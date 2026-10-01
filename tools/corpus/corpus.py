@@ -160,6 +160,39 @@ FACTS: dict[str, dict] = {
             "IS checkable, because reason codes survive the refusal."
         ),
     },
+    "campaign.near_duplicate": {
+        "where": "batch",
+        "site": (
+            "the decision's evidence list, for a message whose wording and security-bearing "
+            "details both agree with a recent message's: the same comparison as the variant, "
+            "answering the other way"
+        ),
+    },
+    "campaign.security_bearing_variant": {
+        # A third `where`, and it is not decoration. Every other fact this corpus plants is a
+        # property of ONE message: `mime` says the bytes carry it, `submission` says the request
+        # carries it. This one is carried by neither, because the same bytes report differently
+        # depending on what preceded them in the batch (`RecentCampaignWindow`, compared against
+        # the deployment's recent messages, `CampaignNearDuplicateDetector.cs`). A consumer that
+        # read this as `mime` would look for the change in the message and find nothing to look at.
+        "where": "batch",
+        "site": (
+            "the decision's evidence list, for a message whose wording reuses a recent message's "
+            "while its security-bearing details do not: the destination is in THIS message's body, "
+            "but the comparison that makes it a finding is against the batch before it"
+        ),
+        "constraint": (
+            "BEHAVIOURAL, NOT DETERMINISTIC, AND BATCH-DEPENDENT. The fingerprint component that "
+            "carries the change is `payment.identifier`, extracted deterministically from the body "
+            "(`SecurityBearingFingerprint.cs:100`), but the SIGNAL is a comparison against recent "
+            "messages, so the same bytes report differently at different positions in a batch. "
+            "Measured 1 Oct, seed 77, count 4: the signal fires on both turn 2s (changed "
+            "destination, reused wording) and on the SECOND turn 1 (index 2), which has a changed "
+            "turn 2 behind it, and not on index 0, which has nothing behind it. Asserted only on "
+            "the indices where it was measured true, so this is a claim about a MESSAGE IN A BATCH "
+            "and not about a message alone."
+        ),
+    },
 }
 
 # Facts a benign message plants **as an expected zero**. A benign message is not a message with
@@ -350,6 +383,24 @@ class MessagePlan:
     # map rather than a list because the relation is directional: the control is meaningless without
     # the claim it protects, and a list would leave a reader to guess which of two fact ids is which.
     controls: dict[str, str] = field(default_factory=dict)
+    # Fact ids that must be ABSENT FROM THE EVIDENCE LIST in this message, not present-and-NotApplicable.
+    # The two are different observations and only one of them is the claim a negative control makes:
+    # a row that is there with `availability: Unavailable` says the pipeline considered the signal and
+    # found nothing to say, while a row that is absent says the signal was never emitted at all. The
+    # `controls` map above cannot express the second, because it is checked through `expected` and
+    # every predicate in that vocabulary describes a ROW. See `expected_predicate`.
+    #
+    # A list sibling to `facts` rather than a predicate on it, because a planted fact is by definition
+    # something this tool put in the message, and a negative control is a claim about the arm rather
+    # than a fact that was planted.
+    #
+    # SCOPE, and it is a real limit rather than a footnote: an absence claim is about the LEDGER, not
+    # the message. A signal absent in a fresh run directory can be present when the same batch is
+    # seeded into a ledger that already holds a similar message, because the campaign window is
+    # populated from what the deployment has already seen. Every driver in this lane starts a fresh
+    # run directory, so the claim holds there; a consumer seeding into a live ledger must check it
+    # there rather than assume it travels.
+    not_planted: list[str] = field(default_factory=list)
     # Which turn of a pair this message is. Null for an unpaired message.
     turn: int | None = None
     # Described but not declared: a change this corpus plants for a lane whose signal id does not
@@ -653,6 +704,12 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
             # No window: the dimension is unanswerable, and saying so is the claim. It is the
             # contrast that makes turn 2's availability mean something.
             facts=["semantic.conversational_continuity"],
+            # The rewrite this pair is built on does not reach the campaign variant, at ANY index of
+            # this profile, and that is asserted rather than described in prose. Measured first: the
+            # only campaign id this profile emits, on any message, is `campaign.near_duplicate`.
+            # Without this the finding "a rewrite is not a template reuse" would live only in the
+            # README, where nothing checks it.
+            not_planted=["campaign.security_bearing_variant"],
             subjects=["Invoice 4471 due on the fourteenth"],
             text=PAIR_TURN1,
             html=None,
@@ -685,6 +742,9 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
         index=index,
         intent=INTENTS["transactional"],
         facts=["semantic.conversational_continuity"],
+        # Same claim as turn 1, and it holds for the CHANGED turn too: a changed destination on a
+        # rewritten message does not reach the campaign variant. See `plan_pair`'s docstring.
+        not_planted=["campaign.security_bearing_variant"],
         subjects=["Re: Invoice 4471 due on the fourteenth"],
         text=second,
         html=None,
@@ -706,6 +766,170 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
     )
 
 
+# A reused template with a changed destination: turn 2 is turn 1 with the bank details swapped and
+# nothing else, which is the canonical shape `SecurityBearingFingerprint.cs:97-103` names in its own
+# comment ("a changed account number is the canonical example of an identical template with a
+# different effect").
+#
+# Why this is a SEPARATE profile from `pair` and not a rewording of it. The two fixtures test
+# different layers and only one of them is deterministic:
+#
+#   `pair`            turn 2 REWRITES turn 1 and supplies it as a conversation window. That is the
+#                     conversational axis, and its signal belongs to a lane whose id does not exist.
+#   `template-variant` turn 2 REUSES turn 1's wording verbatim and supplies NO window. That is the
+#                     campaign axis, whose signal (`campaign.security_bearing_variant`) is already in
+#                     the tree and needs no model.
+#
+# Measured 1 Oct on the committed tree: `pair` reaches `campaign.near_duplicate` only on repeated
+# pairs and NEVER reaches `campaign.security_bearing_variant`, so the pair cannot be the fixture that
+# exercises the variant. The variant needs wording similarity at or above
+# `CampaignDetectionOptions.MinimumSimilarity` (0.85, `CampaignNearDuplicateDetector.cs:57`) and at
+# least `MinimumComparedDimensions` (4, `:59`) shared; a rewrite does not meet that, and that is a
+# property of the fixture rather than of the pipeline. This profile is the one that meets it: with
+# turn 2 reusing turn 1's wording, `campaign.security_bearing_variant` comes back Available with
+# value 1, and its control (same wording, destination kept) never produces the row at all.
+#
+# No conversation window here on purpose. The campaign window is the Host's recent-message store, not
+# the request's `conversationContext`, so supplying one would add the conversational axis to a fixture
+# meant to isolate the campaign axis, and a difference between the turns could then belong to either.
+#
+# The account numbers are deliberately DIFFERENT from the `pair` fixture's (which uses 11112222 and
+# 12345678). Two fixtures that name the same destination are two fixtures that can match each other
+# if a consumer seeds them into one ledger, and a negative control that holds only while no other
+# batch is present is a control that fails for a reason its author did not intend.
+TEMPLATE_TURN1 = (
+    "Dear Accounts Payable, please arrange payment of invoice 4471, which falls due on the "
+    "fourteenth. Our bank details are sort code 20-00-00, account number 44339911, held at Example "
+    "Bank. Please confirm once the transfer has gone out."
+)
+TEMPLATE_TURN2_VARIANT = (
+    "Dear Accounts Payable, please arrange payment of invoice 4471, which falls due on the "
+    "fourteenth. Our bank details are sort code 04-00-04, account number 77889922, held at Example "
+    "Bank. Please confirm once the transfer has gone out."
+)
+# Byte-identical to turn 1 on purpose, spelled out rather than aliased so that an edit to either
+# constant cannot silently change the control. The destination NOT changing is the whole control.
+TEMPLATE_TURN2_CONTROL = TEMPLATE_TURN1
+
+
+def plan_template_variant(seed: int, index: int) -> MessagePlan:
+    """One turn of a template-reuse pair: the same wording twice with the destination swapped.
+
+    The batch is couplets of (turn 1 with destination X, turn 2 with destination Y), all four
+    messages sharing one wording. So index 0 is the only position with no message behind it; every
+    index after it either is a swapped turn 2 or is a turn 1 that REVERTS the destination its
+    predecessor's turn 2 changed. Either way its predecessor carries a different destination under
+    the same wording, which is exactly what the variant signal is defined on.
+
+    So the fact is planted from index 1 onward and asserted ABSENT at index 0. The rule is
+    positional, not by parity, and the difference is measured rather than argued: at seed 77, count
+    4 the variant is absent at index 0 and Available value 1 at indices 1, **2** and 3. Index 2 is a
+    turn 1, not a turn 2: it does not follow its own pair's change, it follows the PREVIOUS pair's
+    changed turn 2 and reverts the destination. A manifest that planted the fact on odd indices
+    would have left index 2 firing, true and unasserted.
+    """
+    if index == 0:
+        return MessagePlan(
+            index=0,
+            intent=INTENTS["transactional"],
+            facts=[],
+            # The position claim, and it is the one that gives `where: batch` its meaning: the same
+            # bytes at index 0 report differently from the same bytes at index 2, because the
+            # signal is a comparison against what came before rather than a property of the message.
+            not_planted=["campaign.security_bearing_variant"],
+            subjects=["Invoice 4471 due on the fourteenth"],
+            text=TEMPLATE_TURN1,
+            html=None,
+            sender_name="Supplier Accounts",
+            sender_address=f"ap@{SENDER_DOMAIN}",
+            auth=_auth_pass(),
+            recipients=[RECIPIENT],
+            direction="Inbound",
+            mail_from=f"ap@{SENDER_DOMAIN}",
+            note="first in the batch: nothing precedes it, so the variant must not fire",
+            turn=1,
+        )
+    turn = 2 if index % 2 else 1
+    return MessagePlan(
+        index=index,
+        intent=INTENTS["transactional"],
+        facts=["campaign.security_bearing_variant"],
+        subjects=["Invoice 4471 due on the fourteenth"],
+        text=TEMPLATE_TURN2_VARIANT if turn == 2 else TEMPLATE_TURN1,
+        html=None,
+        sender_name="Supplier Accounts",
+        sender_address=f"ap@{SENDER_DOMAIN}",
+        auth=_auth_pass(),
+        recipients=[RECIPIENT],
+        direction="Inbound",
+        mail_from=f"ap@{SENDER_DOMAIN}",
+        note=(
+            "turn 2 of a template-reuse pair: the same wording with the account number and sort "
+            "code swapped, so the wording agrees and the security-bearing detail does not"
+            if turn == 2
+            else "turn 1 of the second couplet: it reverts the destination the previous turn 2 "
+            "changed, under the same wording, so the variant fires here too"
+        ),
+        turn=turn,
+    )
+
+
+def plan_template_variant_control(seed: int, index: int) -> MessagePlan:
+    """The same reuse with the destination left alone: identical wording AND identical details.
+
+    This is the negative half, and it is a separate profile for the same reason `pair-control` is:
+    a consumer asking for a control should get one every time rather than half the time.
+
+    It is also the half that keeps the positive honest. A detector that fired
+    `campaign.security_bearing_variant` on ANY reused wording would pass the `template-variant`
+    claim while being wrong about ordinary repeated mail, and this profile is where that shows up.
+    Turn 2 here is turn 1's bytes exactly, so the batch is one template repeated, which is the
+    tightest control available: the ONLY thing that differs from the `template-variant` arm is the
+    destination.
+
+    The declared fact is `campaign.near_duplicate`, which is checkable and is what a repeated
+    template with an UNCHANGED destination is supposed to produce. AND the variant is asserted
+    ABSENT on every message here, via `not_planted`. That second half is the whole point of the arm:
+    without it, a detector that fired the variant on any reused wording would leave BOTH profiles
+    green, because this one asserted nothing about the variant at all. Measured before the claim was
+    added: no message in this profile emits the variant, at any index.
+
+    `near_duplicate` is declared from index 1 onward for the same positional reason as the variant
+    arm: each message repeats its predecessor's bytes exactly, so it is a duplicate of something, and
+    index 0 has nothing behind it. Measured at seed 77, count 4: index 0 reports the row as
+    **Unavailable** rather than omitting it, and indices 1, 2 and 3 report Available value 1. Note
+    the asymmetry with the variant, which is genuinely ABSENT at index 0 rather than Unavailable:
+    that is why the absence claim is `not_planted` on the variant and a plain positional rule for
+    the duplicate, and it is the difference the two mechanisms exist to keep apart.
+    """
+    text = TEMPLATE_TURN2_CONTROL if index % 2 else TEMPLATE_TURN1
+    return MessagePlan(
+        index=index,
+        intent=INTENTS["transactional"],
+        facts=["campaign.near_duplicate"] if index >= 1 else [],
+        # Absent everywhere here, and measured before it was asserted. Index 0 has nothing behind it
+        # and indices 1+ repeat a template without changing anything security-bearing, so no message
+        # in this profile has a variant to report.
+        not_planted=["campaign.security_bearing_variant"],
+        subjects=["Invoice 4471 due on the fourteenth"],
+        text=text,
+        html=None,
+        sender_name="Supplier Accounts",
+        sender_address=f"ap@{SENDER_DOMAIN}",
+        auth=_auth_pass(),
+        recipients=[RECIPIENT],
+        direction="Inbound",
+        mail_from=f"ap@{SENDER_DOMAIN}",
+        note=(
+            "control turn 2 of a template-reuse pair: the same wording and the SAME destination, "
+            "so this is a duplicate and not a variant"
+            if index % 2
+            else "control turn 1 of a template-reuse pair: the template as first sent"
+        ),
+        turn=2 if index % 2 else 1,
+    )
+
+
 PROFILES = {
     # name -> the plan builder for each index, cycled
     "benign": [plan_benign],
@@ -716,6 +940,8 @@ PROFILES = {
     # on a turn 2 whose baseline is in the same batch rather than in the window.
     "pair": [plan_pair],
     "pair-control": [plan_pair_control],
+    "template-variant": [plan_template_variant],
+    "template-variant-control": [plan_template_variant_control],
 }
 
 
@@ -745,11 +971,20 @@ FAILING_AUTH = {"fail", "softfail", "permerror", "hardfail", "temperror", "polic
 def expected_predicate(fact_id: str, plan: MessagePlan) -> dict:
     """The measured predicate the finding must satisfy, derived from the plan rather than assumed.
 
-    Three kinds, because three kinds of claim are real and an integer can express only one:
+    Four shapes of claim can be a predicate on a ROW, and an integer can express only the first, so
+    the predicate is a dict:
 
       {"value": 1}                          a firing dimension
       {"available": true, "value": 0}       present and NOT firing
       {"available": true, "origin": "..."}  a claim about provenance rather than a value
+      {"available": true|false}             whether the signal was computable at all
+
+    A fifth kind of claim is not expressible here at all, because it is a claim that there is NO row:
+    `not_planted` on the plan, written as a sibling `notPlanted` list in the manifest. A signal
+    present with `availability: Unavailable` says the pipeline considered it and found nothing to
+    say; a signal absent from the list says it was never emitted. Those are different observations
+    and `{"available": false}` asserts only the first, which is why a negative control needs the
+    other mechanism rather than a fifth dict.
 
     `deterministic.trusted_authentication_failure` counts the failing mechanisms a **trusted**
     verifier reported, so three trusted failures report 3 and not 1: a first version of this manifest
@@ -782,6 +1017,14 @@ def expected_predicate(fact_id: str, plan: MessagePlan) -> dict:
         # `{"absent": true}` and not a boolean, because the whole point of this schema is that one
         # shape of claim does not get a private vocabulary.
         return {"value": 0}
+    if fact_id == "campaign.security_bearing_variant":
+        # Firing, and nothing subtler: this fact is declared only on the indices where it was
+        # measured to fire, so the predicate does not have to encode the batch position, the
+        # declaration does. A turn that carries the change but sits where nothing precedes it gets
+        # no declared fact rather than a declared zero, because the row is ABSENT from the evidence
+        # list there, not present-and-zero, and this schema has no predicate for absence. See the
+        # README, "the absence the schema cannot yet state".
+        return {"value": 1}
     if fact_id.startswith("envelope."):
         return {"value": 1}
     # A benign message plants its facts as present-and-not-firing: the assertion is that the property
@@ -832,6 +1075,23 @@ def manifest_entry(plan: MessagePlan, raw: bytes, coverage: str) -> dict:
     ]
     dropped = [fact_id for fact_id in plan.facts if fact_id not in facts]
 
+    # An id on both sides is a contradiction, not a precedence question, and this refuses rather than
+    # picking one. It is a defect in the PLAN rather than in any message, so it is raised here where
+    # the plan is turned into a manifest rather than left for `check` to find after a Host has run.
+    both = sorted(set(facts) & set(plan.not_planted))
+    if both:
+        raise ValueError(
+            f"index {plan.index}: {', '.join(both)} declared in BOTH `facts` and `not_planted`. A fact "
+            "cannot be planted and asserted absent at once; the manifest would contradict itself and "
+            "`check` would have to pick a side."
+        )
+    for fact_id in plan.not_planted:
+        if fact_id not in FACTS:
+            raise ValueError(
+                f"index {plan.index}: `not_planted` names {fact_id!r}, which is not a fact this corpus "
+                "knows. A typo here would silently assert nothing."
+            )
+
     planted = []
     for fact_id in facts:
         spec = FACTS[fact_id]
@@ -875,6 +1135,13 @@ def manifest_entry(plan: MessagePlan, raw: bytes, coverage: str) -> dict:
         "windowCharacters": sum(len(entry) for entry in plan.window),
         "intent": {"label": plan.intent, "note": plan.note},
         "planted": planted,
+        # Sibling to `planted`, and the fifth kind of claim this manifest can make: ids that must be
+        # ABSENT from the evidence list rather than present with a value. A different KIND from the
+        # four `expected` predicates, which are all assertions about a row; this asserts no row.
+        # Field present only when the
+        # message makes such a claim, so absence of the field means "nothing asserted absent" rather
+        # than "asserted empty".
+        **({"notPlanted": sorted(plan.not_planted)} if plan.not_planted else {}),
         # A change that is real in the bytes but that no pipeline signal can yet be asked about.
         # Recorded rather than declared: `planted` is a list of claims `check` will hold the pipeline
         # to, and putting an unassertable one there would make a correct pipeline fail. Field present
@@ -1218,6 +1485,16 @@ def cmd_check(args: argparse.Namespace) -> int:
                             "could not be checked: the message was refused at intake, so the "
                             "deterministic layer never assessed its bytes"
                         )
+                # A negative control is NOT satisfied by a message that never ran. Every signal is
+                # absent from a refused message's ledger entry because there are no evidence rows at
+                # all, which is absence for the wrong reason: it would make the control pass on a
+                # message whose bytes the pipeline never looked at. Reported rather than counted.
+                for fact_id in message.get("notPlanted", []):
+                    missing.append(
+                        f"{message['file']}: {fact_id} is asserted ABSENT, which is true here only "
+                        "because the message was refused at intake and no evidence was gathered. "
+                        "Absence for that reason does not test the claim."
+                    )
                 continue
             unseeded.append(message["file"])
             continue
@@ -1238,7 +1515,39 @@ def cmd_check(args: argparse.Namespace) -> int:
                     f"({fact['where']}) at {fact['site']}, {detail}"
                 )
 
-    declared = sum(len(message.get("planted", [])) for message in manifest["messages"])
+        # The negative controls, checked against ABSENCE specifically. A row that is present with
+        # `availability: Unavailable` does NOT satisfy this: it says the pipeline considered the
+        # signal and found nothing to say, which is a different observation from the signal never
+        # having been emitted. Conflating the two is how a control goes toothless.
+        present_ids = {
+            row["signalId"]
+            for row in decision.get("evidence") or []
+            if isinstance(row, dict) and row.get("signalId")
+        }
+        declared_ids = {fact["id"] for fact in message.get("planted", [])}
+        for fact_id in message.get("notPlanted", []):
+            if fact_id not in FACTS:
+                missing.append(
+                    f"{message['file']}: `notPlanted` names {fact_id!r}, which is not a fact this "
+                    "corpus knows, so the assertion checked nothing"
+                )
+            elif fact_id in declared_ids:
+                missing.append(
+                    f"{message['file']}: {fact_id} is declared in BOTH `planted` and `notPlanted`, so "
+                    "the manifest contradicts itself and one of the two is not a claim"
+                )
+            elif fact_id in present_ids:
+                missing.append(
+                    f"{message['file']}: {fact_id} must be ABSENT from the evidence list and it is "
+                    "present there"
+                )
+
+    # Both kinds of claim count, because a batch whose only assertions are negative controls has
+    # something to verify and must not report SKIPPED as though it declared nothing.
+    declared = sum(
+        len(message.get("planted", [])) + len(message.get("notPlanted", []))
+        for message in manifest["messages"]
+    )
     print(f"checked {checked} message(s) against the ledger")
     print(f"states reached: {states or 'none'}")
     if unseeded:
