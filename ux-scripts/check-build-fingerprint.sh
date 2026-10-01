@@ -103,11 +103,29 @@ else
     fail "the count is not 2 assemblies: $output"
 fi
 
-lines="$(wc -l < "$manifest" 2>/dev/null | tr -d ' ')"
+lines="$(grep -c '^[0-9a-f]' "$manifest" 2>/dev/null || true)"
 if [[ "$lines" == "2" ]]; then
-    pass "the manifest has one line per assembly"
+    pass "the manifest has one data line per assembly, the header aside"
 else
-    fail "the manifest has $lines line(s), expected 2"
+    fail "the manifest has $lines data line(s), expected 2"
+fi
+
+# The header names the output directory. The same assembly name exists in several
+# bin directories at once and those are different files, so a manifest of bare
+# names lets two lanes hash "StyloMail.Policy.dll" and conclude they measured
+# different builds. This asserts the leaf name of the directory that was read;
+# case 7 is the control that the header moves when the directory moves, which is
+# what makes "the header names it" mean anything.
+if head -1 "$manifest" | grep -q '^# .*hostout$'; then
+    pass "the header names the directory read: $(head -1 "$manifest")"
+else
+    fail "the header does not name the directory: $(head -1 "$manifest")"
+fi
+
+if grep -q 'MSBuild preserves' "$manifest"; then
+    pass "the manifest says the mtime is not the build time"
+else
+    fail "the manifest does not caveat the mtime column"
 fi
 
 # The manifest is what a reader needs when two runs disagree about a number, so it
@@ -288,6 +306,43 @@ if is_digest "$(cat "$id_file" 2>/dev/null)"; then
     fail "a digest was written by a run that had no shasum to compute one"
 else
     pass "no digest was invented"
+fi
+
+# Case 7: the header follows the directory. A manifest that named one directory
+# while reading another would be worse than no header, because the reader would
+# trust it. Two directories, each with a same-named assembly of different content:
+# the ids must differ (different bytes) and the headers must differ (different
+# paths), so "the header names the directory read" cannot pass by being constant.
+case_number=$((case_number + 1))
+echo "case $case_number: the header follows the directory, so the digests refer to one file each"
+
+twin="$CONSOLE_RUN/twin-website"
+mkdir -p "$twin"
+printf 'policy-from-the-other-place\n' > "$twin/StyloMail.Policy.dll"
+
+CONSOLE_HOST_APP="$twin/StyloMail.Host"
+console_record_build_fingerprint >/dev/null 2>&1
+twin_id="$(cat "$id_file" 2>/dev/null)"
+twin_header="$(head -1 "$manifest")"
+
+mkdir -p "$out_dir"
+printf 'policy-engine-one\n' > "$out_dir/StyloMail.Policy.dll"
+printf 'host-one\n' > "$out_dir/StyloMail.Host.dll"
+CONSOLE_HOST_APP="$out_dir/StyloMail.Host"
+console_record_build_fingerprint >/dev/null 2>&1
+here_id="$(cat "$id_file" 2>/dev/null)"
+here_header="$(head -1 "$manifest")"
+
+if [[ "$twin_header" == *"twin-website" && "$here_header" == *"hostout" && "$twin_header" != "$here_header" ]]; then
+    pass "the header names the directory that was read, not the last one: '$twin_header' then '$here_header'"
+else
+    fail "the header did not follow the directory: '$twin_header' then '$here_header'"
+fi
+
+if is_digest "$twin_id" && is_digest "$here_id" && [[ "$twin_id" != "$here_id" ]]; then
+    pass "same file name, different directory, different content, different id"
+else
+    fail "the id did not move across directories: '$twin_id' then '$here_id'"
 fi
 
 rm -rf "$CONSOLE_RUN"

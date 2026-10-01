@@ -187,15 +187,35 @@ console_record_build_fingerprint() {
 
     : > "$manifest"
     local identity="" name digest
+    count=0
+
+    # The directory goes in a header, and it is not decoration. The same assembly
+    # NAME exists in several bin directories at once: measured 2026-10-01,
+    # src/StyloMail.Policy/bin/Debug/net10.0/StyloMail.Policy.dll and the Host's own
+    # copy of that assembly are DIFFERENT FILES with different digests, so a manifest
+    # of bare names lets a lane hash the project output, get a number matching
+    # nobody's, and conclude it measured a different build. Naming the directory is
+    # what makes the digests below refer to one file each.
+    printf '# %s\n' "${out_dir#"$CONSOLE_REPO"/}" >> "$manifest"
+
+    # And the mtime is not the build time. MSBuild preserves an assembly's own
+    # timestamp when it copies a dependency in, so a copied DLL reads older than the
+    # build that placed it: the Host's copy of Policy.dll is stamped 04:49:52 while
+    # the Host binary beside it is stamped 04:54:18. Read that column as the
+    # assembly's own time, which is the right answer for "does this predate the
+    # change", and take the digest as the identity.
+    printf '# mtime is the assembly timestamp, not the build time: MSBuild preserves it when\n' >> "$manifest"
+    printf '# it copies a dependency in, so a copied DLL can read older than the build that ran.\n' >> "$manifest"
+
     for file in "$out_dir"/*.dll; do
         [[ -f "$file" ]] || continue
         name="$(basename "$file")"
         digest="$(console_sha256 "$file")"
         printf '%s  %s  %s\n' "$digest" "$(console_file_mtime "$file")" "$name" >> "$manifest"
         identity+="$digest  $name"$'\n'
+        count=$((count + 1))
     done
 
-    count="$(wc -l < "$manifest" | tr -d ' ')"
     if (( count == 0 )); then
         echo "Host build: NOT RECORDED, no assemblies under $out_dir"
         return 0
@@ -208,7 +228,7 @@ console_record_build_fingerprint() {
     # which is whether this binary predates the change being measured.
     fingerprint="$(printf '%s' "$identity" | shasum -a 256 | cut -d' ' -f1)"
     newest="$(console_newest_mtime "$out_dir")"
-    echo "Host build: ${fingerprint:0:12} over $count assemblies, newest $(date -r "$newest" '+%H:%M:%S' 2>/dev/null || echo "$newest")"
+    echo "Host build: ${fingerprint:0:12} over $count assemblies in ${out_dir#"$CONSOLE_REPO"/}, newest assembly $(date -r "$newest" '+%H:%M:%S' 2>/dev/null || echo "$newest")"
     echo "${fingerprint:0:12}" > "$CONSOLE_RUN/host-build.id"
     return 0
 }

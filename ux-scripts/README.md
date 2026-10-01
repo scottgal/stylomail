@@ -71,22 +71,40 @@ number taken after their save. `overview-` found a prebuilt Host carrying an unc
 and raised it fleet-wide; the rule that came out of it is that a number whose build cannot be named is
 not quoted as a number, and `corpus-` proposed the stamp.
 
-Two decisions in it are worth knowing before reading a digest. The identity covers assembly *contents*
-and names only, so a rebuild of unchanged source keeps the same id, while each assembly's mtime is
-recorded beside it in the manifest, because "was this build taken before the change being measured" is
-a question about time and not about content. And it is stamped on the build success path only: a
+Three things are worth knowing before reading a digest, and the second and third were added on
+`overview-`'s 05:13 correction after `policy-` measured their own file and found the value decayed.
+
+- The identity covers assembly *contents* and names only, so a rebuild of unchanged source keeps the
+  same id, and the assembly timestamps are kept out of it deliberately.
+- **The mtime is the assembly's own timestamp, not the build's.** MSBuild preserves a dependency's
+  timestamp when it copies it in, so a copied DLL reads older than the build that placed it: measured
+  2026-10-01, the Host's copy of `StyloMail.Policy.dll` is stamped 04:49:52 while `StyloMail.Host.dll`
+  beside it is stamped 04:54:18. Read that column as the file's own time, which is the right answer to
+  "does this assembly predate the change", and take the digest as the identity.
+- **The manifest names the output directory in its header.** The same assembly name exists in several
+  bin directories at once and those are different files: `src/StyloMail.Policy/bin/Debug/net10.0/StyloMail.Policy.dll`
+  and the Host's own copy of that assembly have different digests, so a manifest of bare names lets two
+  lanes hash "the same" assembly, get numbers that match nobody's, and conclude they measured different
+  builds. The header is what makes each digest refer to one file.
+
+It is stamped on the build success path only: a
 failed build leaves the previous binary in the output directory, and naming that here would attribute
 this run's numbers to a build this run did not produce. A run that cannot stamp prints
 `Host build: NOT RECORDED` and removes any earlier stamp, so a reader cannot find a previous run's id
 and cite it as this run's build.
 
 `./ux-scripts/check-build-fingerprint.sh` checks that without a Host or a build, in seconds, against a
-directory of stand-in assemblies. The case that matters is the falsifiable one: one file's bytes change
-with the file's size and mtime held fixed, and the id has to move. It also pins the other direction
-(a new mtime alone leaves the identity alone) and every absence path. What it does **not** establish is
-that the stamp is taken on a real run: it exercises the function directly, and the wiring into
-`console_build_all` is a reading of that file rather than a measurement of one, because no smoke has
-run since the stamp was added.
+directory of stand-in assemblies: seven cases, 0 failures. The case that matters is the falsifiable one:
+one file's bytes change with the file's size and mtime held fixed, and the id has to move. It also pins
+the other direction (a new mtime alone leaves the identity alone), every absence path, and the header
+that names the directory, which is checked by reading two directories in turn and requiring the header
+to follow. The falsification is kept at
+`.styloagent/scratch/desktop/test-build-fingerprint-is-load-bearing.sh` and mutates copies in scratch,
+never the shared tree.
+
+What it does **not** establish is that the stamp is taken on a real run: it exercises the function
+directly, and the wiring into `console_build_all` is a reading of that file rather than a measurement of
+one, because no smoke has run since the stamp was added.
 
 That log used to live in `/tmp`, and it moved on 2026-10-01 because four agents lost time reading
 stale console logs there: `/tmp` is shared, invisible to the fleet's `recent_files` view, and old
