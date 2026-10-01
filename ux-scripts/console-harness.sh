@@ -47,11 +47,21 @@ CONSOLE_BASE="http://127.0.0.1:${CONSOLE_PORT}"
 # agree with it or the check would pass while the Host failed.
 CONSOLE_NIMBLE_TAGS="${CONSOLE_NIMBLE_TAGS:-http://127.0.0.1:11435/api/tags}"
 
-# And where it is asked to generate, which is the same server's other route. Two
-# constants rather than one derived from the other, because they are two facts
-# about a deployment that a misconfiguration can hold apart, and the local-model
-# check below only means anything when they agree with the Host.
-CONSOLE_NIMBLE_GENERATE="${CONSOLE_NIMBLE_GENERATE:-http://127.0.0.1:11435/api/generate}"
+# And the route the Host's Nimble adapter POSTS to, which is the same server's
+# other route. Two constants rather than one derived from the other, because they
+# are two facts about a deployment that a misconfiguration can hold apart, and
+# the local-model check below only means anything when they agree with the Host.
+#
+# The variable keeps the name GENERATE from the Ollama route it used to hold, and
+# the name is kept on purpose: it is documented in README.md and read by
+# probe-submission-route.sh, so renaming it would break an operator-facing knob to
+# fix a word. The VALUE is what has to be true. It must be the endpoint
+# NimbleOptions.Endpoint ships, because this is exported as
+# StyloMail__Nimble__Endpoint below, and it last held /api/generate, which the
+# adapter stopped posting to when the request shape moved to nimble-request-shape/2
+# and the route became POST /v1/systemone. A run pinned to /api/generate drove a
+# route the current adapter does not use.
+CONSOLE_NIMBLE_GENERATE="${CONSOLE_NIMBLE_GENERATE:-http://127.0.0.1:11435/v1/systemone}"
 
 # How long to wait for the throwaway Host to stop after SIGTERM, in seconds.
 # A Host that is healthy stops in well under this. The number exists for the one
