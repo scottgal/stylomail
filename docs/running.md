@@ -205,7 +205,7 @@ Two consequences worth knowing:
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 | `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
-| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**, because below `NumCtx` the guard and the fit cannot be satisfied together: the fit bounds the request by **bytes** while the guard counts **tokens**, so a request that fits the byte budget can still be refused. See below for the guard's reachability condition, and for what none of this says about the server. |
+| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**: the fit bounds the request by **bytes** while the guard counts **tokens**, and the token count is a **sum across the questions** rather than the request's own size, so it exceeds the bytes several times over and a request that fits the byte budget can still be refused. See below for what none of this says about the server. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults.
@@ -237,23 +237,29 @@ and prefer surfacing that evaluation in your own logs over inferring it from a s
 **The number the Host logs as `applied` is the PROVIDER's own figure and not the server's, and it
 follows `EffectiveNumCtx` by construction.** `AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`
 (`NimbleOptions.cs:192`), and the boot line prints exactly that field under the name `applied`
-(`HostServices.cs:733-740`). Measured on one instrument at three configurations, from that line: unset
-reads `applied 4096`, `16384` reads `applied 16384`, `32768` reads `applied 32768`
+(`HostServices.cs:733-740`). Measured from three boot lines at three settings, each read out of its own
+file: unset reads `applied 4096`, `16384` reads `applied 16384`, `32768` reads `applied 32768`
 (`.styloagent/scratch/ingress/host-probe/run-20261001T220049Z/host.log:4`,
-`run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Raising
-the setting therefore DOES move the number the guard compares against, which is what the 503-to-202
-effect above measures, and the advice above is real advice for the guard.
+`run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Those are
+two lanes' runs rather than one instrument, so the series is three boots and not a controlled sweep, and
+the value in it is that the relation holds wherever it was read. Raising the setting therefore DOES move
+the number the guard compares against, which is what the 503-to-202 effect above measures, and the
+advice above is real advice for the guard.
 
-**And the guard has a reachability condition, which the boot line does not state and which the same
-line's own numbers falsify at a high setting.** The guard fires at `evaluated >= applied`, while the
-fit bounds the serialized request at `NumCtx` **bytes**, and a token is a non-empty byte sequence, so a
-request of at most `NumCtx` bytes cannot evaluate to more than about `NumCtx` tokens. At an `applied` of
-`NumCtx` or above (8192 on these defaults) the guard is therefore **unreachable**: it cannot fire, and
-the fit is the only bound left. The boot message's second sentence is true at `applied 4096` and
-`applied 16384` and false at `applied 32768`, printed unchanged under all three, so read the rule and
-let the numbers beside it decide. The practical form for a deployment: **the advice to raise the
-setting and the guard that advice exists for are in conflict at the limit**, and raising `applied` to
-`NumCtx` or above buys the green by disabling the check rather than by earning it.
+**And the number the guard compares against is an EVALUATION the server constructs, which is why the
+fit does not bound it.** The fit caps the whole serialized request at `NumCtx` **bytes**, and it is
+tempting to conclude that a request of at most `NumCtx` bytes cannot evaluate to more than about
+`NumCtx` tokens, so that an `applied` at or above `NumCtx` would leave the guard unreachable.
+**Measured, it does not hold**: on this endpoint the reported `input_tokens` exceeds the request's own
+byte count from six questions upward, because the figure counts a prompt the SERVER builds and it grows
+quadratically in the question count (`nimble-`, 2026-10-01T23:30, `127.0.0.1:11435/v1/systemone`, one
+fixed 3291-byte state, only the question count moving, artifacts
+`.styloagent/scratch/nimble/question-count-curve.json` and `question-count-sweep.json`: six questions,
+5404 request bytes, **7644** input tokens; twelve questions, 7246 bytes, **20642** tokens, identical on
+a repeat). A UTF-8 byte cannot hold more than one token, so that figure is not a tokenization of what
+the client sent. **The byte budget is therefore not a bound on the evaluation**, the guard is reachable
+at any setting a large enough request can outrun, and the honest ceiling is the largest evaluation the
+deployment produces rather than a number derived from its bytes.
 
 **It does not follow that the number the SERVER applies moved with it, and nothing in that log line
 says it did.** On this transport the request is not asking the server for a window at all: the
@@ -267,18 +273,26 @@ this endpoint was read at 2026-10-01T23:22 carrying `-c 8194` and `--context-shi
 line, reproduced by a second lane on the same pid, parent and model blob, and the provider's own
 remarks (`NimbleOptions.cs:107-113`) say the Modelfile parameter `num_ctx` of 8194 is neither
 `qwen35.context_length` (262144) nor the applied window. So treat `-c 8194` as a measured fact about how
-the server was launched, and NOT as the window it applies.
+the server was launched, and NOT as the window it applies. The window it does apply was measured the
+same night and is nowhere near that figure: see below.
 
-**And what an over-long prompt meets is a CUT rather than an error.** The measured cut is about HALF
-the requested value (a requested 4096 cut at 2050, 8192 at 4098, 16384 at 8194,
-`NimbleOptions.cs:159-163`), and the provider labels that relation as measured under the PREVIOUS
-request and carried over rather than re-derived (`NimbleOptions.cs:99-104`). That same read found
-`--context-shift` on this endpoint's command line, and that flag makes an over-long prompt **continue
-rather than error**, so a row answered over a cut prompt comes back `Available`: there is no refusal
-for the guard to fire on. INFERRED, and it is the reason to be careful with a green console: the rows
-can score while reading only part of the prompt, so a passing run is not evidence that the whole
-message was assessed. The figure that would settle it is the server's own token count for a real
-multi-question submission, read against the window it applied, and it has not been taken.
+**And the 4097-token cut does NOT carry to this endpoint: what an over-long prompt meets here is a
+LOUD REFUSAL rather than a cut.** The half-of-requested relation was measured where the request SET
+`options.num_ctx`, and the provider's own remark says it is carried rather than re-derived
+(`NimbleOptions.cs:99-104` and `:159-163`). Measured on THIS endpoint instead, 2026-10-01T23:33: a
+codeword placed at the START of the body and again at the END, both arms held to the same length, is
+answered at **0.999** confidence in BOTH twelve-question arms at 22584 input tokens, so the model read
+the whole prompt; and a bisect that moved only the state size accepted twelve answers at **48050**
+tokens while a 41198-byte body returned **HTTP 400** with no answers
+(`.styloagent/scratch/nimble/probe-shift.py`, `.styloagent/scratch/nimble/bisect-window.py`, `nimble-`,
+2026-10-01T23:33). So the window this server applies is **at least 48050 tokens**, far above anything an
+8192-byte fit can produce, and an over-long request is refused rather than shortened. INFERRED rather
+than measured: that this server never silently truncates, which rests on an accepted 48050-token request
+and a loud refusal above it rather than on a direct reading of the window. **The console consequence runs
+the opposite way to the one this section first implied:** on this transport the truncation backstop is
+not catching a server that shifts, it is the thing that refused a request the server would have
+answered, which is exactly the 503 above, and the number it should be set to is derived from the
+server's measured capacity rather than from a carried ratio.
 
 #### Measured performance
 
