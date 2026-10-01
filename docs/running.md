@@ -205,7 +205,7 @@ Two consequences worth knowing:
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 | `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
-| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest request the deployment sends**, because the guard refuses any answer evaluated at or above that number, so a request that fits the byte budget can still be refused (see below for what this does and does not say about the server). |
+| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**, because below `NumCtx` the guard and the fit cannot be satisfied together: the fit bounds the request by **bytes** while the guard counts **tokens**, so a request that fits the byte budget can still be refused. See below for the guard's reachability condition, and for what none of this says about the server. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults.
@@ -243,6 +243,17 @@ reads `applied 4096`, `16384` reads `applied 16384`, `32768` reads `applied 3276
 `run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Raising
 the setting therefore DOES move the number the guard compares against, which is what the 503-to-202
 effect above measures, and the advice above is real advice for the guard.
+
+**And the guard has a reachability condition, which the boot line does not state and which the same
+line's own numbers falsify at a high setting.** The guard fires at `evaluated >= applied`, while the
+fit bounds the serialized request at `NumCtx` **bytes**, and a token is a non-empty byte sequence, so a
+request of at most `NumCtx` bytes cannot evaluate to more than about `NumCtx` tokens. At an `applied` of
+`NumCtx` or above (8192 on these defaults) the guard is therefore **unreachable**: it cannot fire, and
+the fit is the only bound left. The boot message's second sentence is true at `applied 4096` and
+`applied 16384` and false at `applied 32768`, printed unchanged under all three, so read the rule and
+let the numbers beside it decide. The practical form for a deployment: **the advice to raise the
+setting and the guard that advice exists for are in conflict at the limit**, and raising `applied` to
+`NumCtx` or above buys the green by disabling the check rather than by earning it.
 
 **It does not follow that the number the SERVER applies moved with it, and nothing in that log line
 says it did.** On this transport the request is not asking the server for a window at all: the
