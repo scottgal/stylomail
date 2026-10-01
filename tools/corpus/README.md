@@ -177,11 +177,13 @@ changes no invocation that exists today. `all` is deterministic so that a six-me
 the whole table -- a random draw would sample the range, and a batch that claims to show six shapes has
 to contain six shapes for the claim to be checkable.
 
-**The body is 2500 characters: exactly the adapter's own budget.** `check` refuses
-`turnCharacters > TURN_LIMIT` and `turnCharacters` is `len(plan.text)`, so 2500 is the largest body this
-corpus may declare and it is `NimbleOptions.MaxBodyCharacters` itself (`NimbleOptions.cs:229`). The
-transform is applied to the **plan** rather than to the finished MIME because the recorded length must
-be the length that is sent.
+**The body is 2000 characters by default, and `--body-characters N` sets it.** 2000 is the largest
+length **MEASURED** to arrive un-cut, which is a different question from the adapter's budget. The
+adapter's `MaxBodyCharacters` is 2500 (`NimbleOptions.cs:229`) and `check` refuses anything ABOVE it,
+because a body over the adapter's budget is one the adapter must shorten for a reason this corpus
+cannot see; **but 2500 is ALSO above the fit's own cut, measured**, so the two numbers are kept apart
+and the gap between them is deliberate. The transform is applied to the **plan** rather than to the
+finished MIME because the recorded length must be the length that is sent.
 
 **AND THE BODY SIZE IS THE DIRECTION THAT MATTERS HERE, which is why it moved from 1999 to 2500.** The
 expansion **falls** with body size, so a shorter dense body is a **weaker** arm; `nimble-` measured a
@@ -189,13 +191,46 @@ expansion **falls** with body size, so a shorter dense body is a **weaker** arm;
 measured, and against the pinned `EffectiveNumCtx` 65536 that clears by about **1.52x**. So the family
 draws at the budget rather than under it.
 
-**THE RESIDUAL RISK, named because it is real and it is not silent:** 2500 is the fit's **character**
-budget, and the fit separately shortens to meet `NumCtx` **bytes**, so a body at this ceiling can still
-be shortened. `nimble-` measured a 12-question request at this size at **6910 bytes against 8192**, so
-at twelve questions there is headroom; at a different question count there may not be. **A shortened
-body is REPORTED** (the row carries the reason attribute and the digest is keyed on it), so a run can
-tell rather than being misled, and the check that would close this is a byte-side bound which this
-corpus does not yet assert.
+**THE RESIDUAL RISK IS NOT RESIDUAL, AND IT IS A SIZE RULE RATHER THAN A DENSITY ONE.** 2500 is the
+fit's **character** budget, and the fit separately shortens to fit `NumCtx` **bytes**. Two runs have
+now been taken through this instrument at the pinned `EffectiveNumCtx` **65536**:
+
+| arm | bodies | decisions | carrying `the client shortened the message body...` |
+|---|---|---|---|
+| control, `--body-shapes off` | ~281-450 chars | 6 | **0** |
+| treatment, `--body-shapes all` | 2500 chars | 6 | **6** |
+
+**AND THE TREATMENT BATCH SETTLES WHICH VARIABLE CUTS, because it holds a 2500-character body of EVERY
+shape including prose.** All six are shortened, `prose` exactly like `hexish`. **At constant size the
+shape changes nothing, so the driver is the byte budget and NOT density.** Two mechanisms were tangled
+here and are now apart: **SIZE drives the fit's cut; SHAPE drives the token expansion.** So the ceiling
+this corpus needs is a size rule that applies to every fixture at that length, not a rule about the
+dense family.
+
+**THE MECHANISM, VERIFIED AT SOURCE, WHICH IS WHY IT IS NOT A PIN FAILURE.**
+`NimbleSemanticMailClassifier.cs:358` starts `var budget = _options.MaxBodyCharacters` and the loop at
+**`:388` is `if (total <= _options.NumCtx)`**, where `total` is the **whole serialized request** -- the
+state, the questions, the braces and every escaped quote -- with `:405` stepping the character budget
+down by the excess. Separately, the backstop at `:211` compares against the **applied** window. **Two
+bounds, two comparisons: the pin moved the second and does not touch the first.** So a 2500-character
+message is cut at 65536 exactly as it was at 4096, and what the pin changed is that it is now answered
+rather than refused.
+
+**WHERE THE CUT BEGINS, measured at three messages per arm, `benign`, `--coverage full`, twelve
+questions, all at the pinned 65536:**
+
+| body | decisions | shortened |
+|---|---|---|
+| 1500 characters | 3 | **0** |
+| 2000 characters | 3 | **0** |
+| 2500 characters | 3 | **3** |
+
+**So the bracket is (2000, 2500) and the threshold inside it is NOT measured.** 2000 arrives un-cut, so
+it is the default; 2500 is cut, so it is not. **And the bracket is not a promise**: the overhead the fit
+budgets against depends on the whole state, so a message with more links, attachments or envelope than
+the benign full-coverage shape measured here carries more of it and can cut at a shorter body. **Treat
+2000 as a measured-safe default and not as a ceiling**, and select on the reason attribute rather than
+on `turnCharacters`, which is the length EMITTED and not the length EVALUATED.
 
 **A profile must opt in, and the default is the safe direction.** The axis rewrites the turn, so it may
 only run on a plan whose planted facts do **not** live in that text: `phishing` and its siblings carry

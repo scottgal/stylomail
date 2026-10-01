@@ -361,10 +361,24 @@ SHAPE_UNITS = {
     "mixed": "Re: invoice INV-2026-0917 (ref: a,b.c;d) <https://x.example/p?a=1&b=2> 12,345.67 USD ",
 }
 
-# AT THE CEILING rather than one character under it: `check` refuses `turnCharacters > TURN_LIMIT`, so
-# a body of exactly `TURN_LIMIT` is the largest this corpus may declare, and it is exactly the adapter's
-# own budget. Expressed as the limit rather than as a literal so a future change moves the body with it.
-SHAPE_BODY_CHARACTERS = TURN_LIMIT
+# THE DEFAULT BODY LENGTH IS *NOT* THE ADAPTER'S BUDGET, and the measurement is why. A run showed the
+# fit's cut is a SIZE rule: through the shipping path at the pinned 65536, a 2500-character body is
+# shortened (`the client shortened the message body to fit the context window`) and a ~450-character one
+# is not. Two further arms bracket where it begins, same instrument, same window, three messages each:
+#
+#     1500 characters   0 of 3 shortened
+#     2000 characters   0 of 3 shortened
+#     2500 characters   6 of 6 shortened
+#
+# So the default is 2000, the LARGEST length MEASURED to arrive un-cut, rather than 2500 which is measured
+# to be cut. **The bracket is (2000, 2500) and the threshold inside it is NOT measured**, so this is a
+# safe default and not a ceiling: a state with more links, attachments or envelope than the benign
+# full-coverage one measured here carries more overhead and can cut sooner.
+#
+# `TURN_LIMIT` stays at the adapter's budget and keeps its own job: `check` refuses anything ABOVE it,
+# because a body over the adapter's budget is one the adapter must shorten for a reason this corpus
+# cannot see. The two numbers answer different questions and the gap between them is deliberate.
+SHAPE_BODY_CHARACTERS = 2000
 
 
 def draw_body_shape(index: int, mix: str) -> str | None:
@@ -1503,6 +1517,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
     #      replacing the text alone would ship a message whose two parts DISAGREE. That disagreement is
     #      a real coverage flag (`html_text_disagreement`) and it is an uncontrolled extra variable in
     #      a family whose entire point is one variable.
+    if args.body_shapes != "off" and args.body_characters > TURN_LIMIT:
+        print(
+            f"refusing: --body-characters {args.body_characters} is above the adapter's own body "
+            f"budget of {TURN_LIMIT} (`NimbleOptions.MaxBodyCharacters`), so the fixture would be one "
+            "the adapter must shorten before the classifier sees it and would not be the fixture it "
+            "claims. Nothing has been written.",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.body_shapes != "off":
         for index, plan in enumerate(plans):
             shape = draw_body_shape(index, args.body_shapes)
@@ -1559,7 +1583,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         # turn no longer contains.
         shape = draw_body_shape(index, args.body_shapes)
         if shape is not None:
-            dense = shape_body(shape)
+            dense = shape_body(shape, args.body_characters)
             plan = replace(
                 plan,
                 text=dense,
@@ -1620,6 +1644,10 @@ def cmd_generate(args: argparse.Namespace) -> int:
         # existed. That identity is a claim the README makes and this lane re-measures, and writing
         # `"off"` here would silently break it for every existing invocation.
         **({"bodyShapeMix": args.body_shapes} if args.body_shapes != "off" else {}),
+        # The parameter that drove the length, beside the rule that chose the shape, for the same
+        # reason `encodingMix` sits beside the per-message `encoding`: a batch is reproducible only
+        # with both, and a length is now a knob rather than a constant.
+        **({"bodyShapeCharacters": args.body_characters} if args.body_shapes != "off" else {}),
         # Stated rather than omitted: nothing here lets a model write the corpus it is measured on,
         # and a batch that did would have to say so here so it could be reported apart.
         "authoredByModel": False,
@@ -2506,6 +2534,18 @@ def main() -> int:
             "declares no `bodyShape`, `all` gives one message per shape so a batch contains the whole "
             "table, and a named shape forces it. Refused on any profile whose plan has not declared "
             "itself dense_safe: " + ", ".join(SHAPE_UNITS)
+        ),
+    )
+    gen.add_argument(
+        "--body-characters",
+        type=int,
+        default=SHAPE_BODY_CHARACTERS,
+        help=(
+            "how long the dense body is, in characters. A PARAMETER rather than a constant because a "
+            "run showed the fit's cut is a SIZE rule. The default 2000 is the largest length MEASURED "
+            "to arrive un-cut (2000 clean, 2500 cut, threshold unmeasured between). Refused above "
+            + str(TURN_LIMIT)
+            + ", the adapter's own body budget, because a fixture over it is not the fixture it claims"
         ),
     )
     gen.add_argument(

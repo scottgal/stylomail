@@ -44,12 +44,13 @@ SHAPES = ("prose", "base64ish", "mixed", "randomcase", "punct", "hexish")
 HEXISH_ALPHABET = re.compile(r"\A[0-9a-f ]*\Z")
 BASE64_ALPHABET = re.compile(r"\A[A-Za-z0-9+/=]*\Z")
 
-# A shape is a 2500-character body: `check` refuses `turnCharacters > TURN_LIMIT` and `turnCharacters`
-# is `len(plan.text)`, so the body sits exactly AT the adapter's own budget (`MaxBodyCharacters` 2500,
-# `NimbleOptions.cs:229`). It was 1999 until `nimble-` measured that the 2,000 was this lane's own
-# margin and not an adapter limit, and that the expansion FALLS with body size, so a shorter body is a
-# WEAKER arm than this one.
-EXPECTED_BODY_CHARACTERS = 2500
+# A shape is a 2000-character body BY DEFAULT, and the number is a MEASUREMENT rather than the
+# adapter's budget. The adapter's budget is `MaxBodyCharacters` 2500 (`NimbleOptions.cs:229`) and
+# `check` still refuses anything above it, but a run through the shipping path at the pinned window
+# showed the FIT's cut is a size rule: 2000 characters arrives un-cut, 2500 is shortened. So the
+# default is the largest length MEASURED to arrive un-cut, and the two numbers answer different
+# questions. Measured at three messages per arm, `benign`, `--coverage full`, twelve questions.
+EXPECTED_BODY_CHARACTERS = 2000
 
 # The report marker `check` emits for a shape failure, and a URL nothing listens on so `check` gets
 # past the local shape pass and then fails on the ledger. No Host is started, so this is not a take.
@@ -194,6 +195,33 @@ def test_a_single_named_shape_can_be_forced(root: pathlib.Path) -> None:
     check("generate --body-shapes hexish succeeds", result.returncode == 0, result.stderr[:300])
     drawn = [m.get("bodyShape") for m in declared(batch / "manifest.json")]
     check("a named shape is drawn on every message", drawn == ["hexish"] * 6, str(drawn))
+
+
+def test_the_body_length_is_settable(root: pathlib.Path) -> None:
+    """The ceiling is a PARAMETER, because the fit's cut turned out to be a size rule.
+
+    A 2500-character body is shortened and a ~450-character one is not, so the threshold lies between
+    and no arm could sit there while the length was a constant. This is the arm that resolves it, and
+    it is also what a consumer wants when asking for "a dense body of N characters".
+    """
+    batch = root / "len800"
+    result = generate(batch, "benign", "--body-shapes", "hexish", "--body-characters", "800")
+    check("generate --body-characters succeeds", result.returncode == 0, result.stderr[:300])
+    messages = declared(batch / "manifest.json")
+    wrong = [m["file"] for m in messages if m["turnCharacters"] != 800]
+    check("every manifest turn is exactly 800 characters", not wrong, str(wrong))
+    body = body_of((batch / messages[0]["file"]).read_bytes())
+    check("and the BYTES agree with the manifest", len(body) == 800, f"{len(body)}")
+    check("the body is still the declared shape", bool(HEXISH_ALPHABET.match(body)),
+          body[:40])
+
+    # CONTROL: the default is untouched, or a settable length would have silently moved the family's
+    # existing fixtures while appearing to add a knob.
+    default_batch = root / "len-default"
+    generate(default_batch, "benign", "--body-shapes", "hexish")
+    got = declared(default_batch / "manifest.json")[0]["turnCharacters"]
+    check("CONTROL: the default length is unchanged", got == EXPECTED_BODY_CHARACTERS,
+          f"{got} != {EXPECTED_BODY_CHARACTERS}")
 
 
 def run_check(manifest: pathlib.Path, keyfile: pathlib.Path) -> subprocess.CompletedProcess:
