@@ -225,12 +225,29 @@ Two things follow from that, and they are why it is a name an operator writes do
   provider key left in the environment is not a reason to refuse: a deployment may carry a secret it
   does not use, so it is **announced in the log at startup** rather than rejected.
 
-**What selecting it buys today is bounded, and this is the measured limit rather than a
-reassurance.** A `NotApplicable` semantic row still counts as a question this message asks, so it
-stays in the coverage denominator, and a deployment running this tier with the allow floor at its
-default is still **held on coverage** rather than allowed. The hold names coverage, not the semantic
-blackout, so it is not being mistaken for an outage. Everything the deployment does measure is
-measured for real; what it does not measure is not silently treated as clean.
+**What selecting it buys, and what it costs, stated together because they arrive together.** A
+`NotApplicable` semantic row is a question that was never asked, so it leaves the coverage
+denominator rather than sitting in it as a permanent shortfall (decision 44). Two consequences
+follow, and only the first is the one the tier was asked for:
+
+- **One measured deterministic row is enough to clear the allow floor.** `MinimumCoverageForAllow` is
+  a fraction of the weight that was counted. Once the semantic rows leave, the counted weight is the
+  deterministic weight alone, so a deployment that declares never-asks and measures a single
+  deterministic finding sits at full coverage and can be allowed at the floor's default. Before
+  decision 44 the semantic backbone sat in the denominator, so the same deterministic weight was
+  measured against questions the deployment had never been asked, and the floor was clearable only
+  by a message carrying a large share of the deterministic weight. A single measured row was not.
+- **The same removal lifts the cap that sat above the allow floor.** Coverage can now rise past
+  `MinimumCoverageForIrreversibleAction`, so a deployment whose semantic rows never arrive can
+  quarantine on deterministic evidence alone. That path is measured on a real Host rather than
+  inferred, and how it should be bounded is open: the corroboration gate in policy bounds the
+  low-index allow path only, and says nothing about the irreversible one.
+
+**A declaration with nothing measured behind it still holds**, and that is a separate statement
+rather than what remains of the old one. Where no deterministic row is measured either, the counted
+set is empty and the hold names coverage rather than the semantic blackout, so it is not being
+mistaken for an outage. Everything the deployment does measure is measured for real; what it does not
+measure is not silently treated as clean.
 
 Three things follow from the choice, and they are the reason it is a named decision rather than a
 fallback:
