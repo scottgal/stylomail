@@ -939,9 +939,19 @@ public static class HostServices
         // BodyShortened)`), so a caller cannot report it. Measured on a real served document
         // (`run-benign-full-20261001T232851Z/decisions/004.eml.json`): `availabilityReasons` appears
         // 46 times and `body_text_characters_kept` and `body_text_shortened_for_prompt` appear ZERO
-        // times, so the state does not travel with the decision. **What a reader can see is the reason
-        // and not the size, which is why `nimble-` proposes putting the kept and original lengths into
-        // the reason string itself.**
+        // times, so the REQUEST PAYLOAD does not travel with the SERVED DECISION. **A reader of a
+        // decision can see the reason and not the size**, which is why `nimble-` proposes putting the
+        // kept and original lengths into the reason string itself. **And a lane sitting on the wire
+        // cannot read it off an existing artifact either**: `tools/conversation/measure`'s
+        // `RecordingHandler` DOES keep the outgoing payload, but only in a LOCAL for the duration of
+        // the call, and `Runner.cs:81` derives one boolean from it and persists THAT, so the sibling
+        // key costs one parse plus one new field plus a NEW RUN rather than being a reading of what a
+        // run already wrote. **The quantity was never lost, it was only UNSENT: unsent to the decision,
+        // sent to the model, and in hand only while the call is in flight.**
+        //
+        // AND THE NOUNS MATTER HERE, which is why this paragraph says REQUEST PAYLOAD and SERVED
+        // DECISION rather than "the state": that phrase meant the outgoing payload to one lane and the
+        // decision to another, and both were right about their own object.
         //
         // **THE CUT IS A SIZE RULE, NOT A DENSITY RULE:
         // measured at a CONSTANT 2500 characters, prose is shortened exactly like hex-ish.** SIZE
