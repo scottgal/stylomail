@@ -2,6 +2,8 @@
   "assessmentId": "asm_0f4d2a",
   "internalMessageId": "msg_9c1b7e",
   "action": "Quarantine",
+  "channel": { "kind": "Email", "workspaceId": null, "channelId": null, "threadId": null },
+  "deliveryTiming": "PreAcceptance",
   "proposedActionInShadow": null,
   "riskIndex": 0.82,
   "reasons": [

@@ -259,11 +259,33 @@ both were found by reading the instrument rather than the result.
    whichever failure the last attempt produced; the flag is already tracked and only `Dropped` uses
    it). **Not to build without a ruling**: any retry past P1's numbers, and an automatic retry past
    the budget in any form.
-9. **The decision fixture the harness ships no longer parses.** Every run that falls back to
-   `ux-scripts/decision-fixture.json` logs `Could not load the decision fixture: ... missing required
-   properties including: 'channel', 'deliveryTiming'`, and the pane then shows its empty state, which
-   a reader of the screenshot has no way to tell from a pane defect. The contract mirror grew both
-   properties as required (`src/StyloMail.Desktop/Api/Contracts/DecisionContracts.cs:31,42`) and the
-   fixture was not updated with them. It is invisible in the main smoke because that run seeds a real
-   decision and never reaches the fallback. Owed: the two properties in the fixture, and a test that
-   parses the shipped fixture into the mirror so it cannot rot again.
+9. ~~**The decision fixture the harness ships no longer parses.**~~ **Done** 2026-10-01. The mirror
+   had grown two required members (`src/StyloMail.Desktop/Api/Contracts/DecisionContracts.cs:31,42`)
+   and `ux-scripts/decision-fixture.json` did not carry them, so every run that fell back to it logged
+   `Could not load the decision fixture: ... missing required properties including: 'channel',
+   'deliveryTiming'` and drew an empty pane, which a reader of the screenshot has no way to tell from
+   a pane defect. **Why no test caught it, which is the part worth keeping:** the contract is mirrored
+   in `Api/`, and the fixtures that pin it (`Wire.Decision` and friends) live *inside the test
+   project*, so they were updated with the mirror and stayed green. The file the harness ships is
+   outside the test binary and nothing read it. A copy that a test does not read is a copy that can
+   rot.
+   Fixed in two places, and both were run:
+   - `tests/StyloMail.Desktop.Tests/DecisionFixtureTests.cs` binds the **shipped file** through the
+     client's own `JsonSerializerOptions` (the instance the fallback path passes explicitly at
+     `MainWindow.axaml.cs:396`), finding the repository by walking up to `StyloMail.slnx` the way
+     `JevCorpus` does rather than guessing output depth. Red first, against the unmodified fixture:
+     `JSON deserialization for type 'DecisionResponse' was missing required properties including:
+     'channel', 'deliveryTiming'`, the same exception the smoke's log carried. Then the two properties
+     (`"channel": { "kind": "Email" }`, `"deliveryTiming": "PreAcceptance"`) and 2 passed.
+   - `console-no-feed-smoke.yaml` asserts the pane over the fallback body: `name=RiskIndexText`
+     containing `risk index 0.82`, and the fixture's own first reason sentence as an exact
+     `text='...'`. It lives in that run because the runs that decline the fixture
+     (`CONSOLE_DECISION_FIXTURE=false`) are exactly the ones whose assertions are about that pane, and
+     the main smoke prefers a decision it seeded; so the file was loaded by several runs and asserted
+     by none. Nothing else on that Host holds a risk index or a reason at all (its ledger is empty),
+     so those two values can only have come from the file.
+   Re-measured after both changes: no-feed **11 actions, 0 failed, exit 0** (up from 9), log with no
+   `[Harness]` diagnostic where the broken fixture logged one, `01-no-feed.png` showing the pane
+   populated with `Quarantine` / `0.82` / `credential_request_high` beside "No live feed", and the
+   Desktop suite **259 passed / 0 failed / 20 skipped**.
+   Artifact: `.styloagent/scratch/desktop/fixture-e2e-no-feed-asserted.log`.

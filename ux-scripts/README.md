@@ -169,6 +169,12 @@ it are worth copying:
   evidence about rendering rather than about the join. For the same reason it sets
   `CONSOLE_DECISION_FIXTURE=false`: the file fixture fills this pane at window open, and a run that
   left it on could pass every assertion below with the join never having executed.
+  The file it declines is asserted where it is *not* declined. `run-console-no-feed-smoke.sh` pins the
+  fallback body's own risk index and its first reason sentence on screen, and `DecisionFixtureTests`
+  binds the same file from the suite, because a fixture the harness ships but no run asserts is a
+  fixture that stops parsing without anything going red: the mirror grew two `required` members, the
+  in-test fixtures were updated with it (which is why the suite stayed green), and the shipped file was
+  not. Both were added on 2026-10-01 for exactly that reason.
 - **It pins the risk index at 0.575 rather than matching loosely.** That is the model's own number
   for this message, and it is what makes the pane's contents about *this* message. A model change
   moves it and the run fails on the value, which is the right outcome for a script whose precondition
@@ -411,11 +417,6 @@ the fastest way to make a run meaningless.
   the console settles into the feed's `Unreachable` state, renders "No live feed", and makes no
   further attempt, losing the stale warning at the same time. That is `state-coverage.md` item 8,
   proposed to `overview-` rather than built, because a retry is a product decision here.
-- **The decision fixture the harness ships.** `ux-scripts/decision-fixture.json` is the fallback body
-  for a script that wants the detail pane populated without seeding a real decision, and it no longer
-  parses: the contract mirror requires `channel` and `deliveryTiming` and the fixture does not carry
-  them, so those runs log that they could not load it and show an empty pane. The main smoke never
-  notices, because it seeds a decision with `console_seed_decision` and prefers that.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.

@@ -20,7 +20,22 @@ description: >
     - the console is otherwise working, which is what "off is a complete
       deployment" means in practice;
     - the screen is NOT reported as possibly out of date, because nothing here
-      was ever following the Host and no screen can have fallen behind.
+      was ever following the Host and no screen can have fallen behind;
+    - the detail pane is filled by the file fixture, which is the one body here
+      the Host did not produce.
+
+  That last one is not this script's subject and is here because this is the
+  cheapest run that can assert it. ux-scripts/decision-fixture.json fills the
+  detail pane at window open in every run that does not decline it
+  (CONSOLE_DECISION_FIXTURE defaults to true), but the runs that do decline it
+  are exactly the ones whose assertions are about that pane, and the main smoke
+  prefers a decision it seeded over the file. So the file was loaded by several
+  runs and asserted by none, and it stopped parsing without any run noticing:
+  the mirror grew two required members and the fixture did not, every run that
+  fell back to it logged that it could not load it, and the panes it filled
+  went empty. Two assertions over the fixture's own number and its own sentence
+  are what make that a red run instead of a screenshot nobody reads, and
+  DecisionFixtureTests binds the same file from the test suite.
 
   Not covered here, and not by an accident of scope: the state after a feed
   that WAS live stops. That one needs a Host that is up and then is not, so it
@@ -59,6 +74,23 @@ actions:
     target: "name=LiveFeedText"
     matcher: HasText
     value: "No live feed"
+    timeout: 15000
+
+  # The file fixture, on screen. Both of these are the fixture's own content,
+  # and on this run nothing else holds either one: no decision is seeded here, so
+  # the ledger is empty and this pane is the only place a risk index or a reason
+  # sentence exists at all. A number of 0.82 and this sentence can therefore only
+  # have come from ux-scripts/decision-fixture.json, and they fail if it stops
+  # binding, which is how the fixture went unnoticed when it did.
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "risk index 0.82"
+    timeout: 15000
+
+  - type: Expect
+    target: "text='Message requests credentials and the sender has no trusted history.'"
+    matcher: IsVisible
     timeout: 15000
 
   - type: Screenshot
