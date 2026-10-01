@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using StyloMail.Desktop.Api;
+using StyloMail.Desktop.Models;
 using StyloMail.Desktop.Services;
 
 namespace StyloMail.Desktop.Views;
@@ -28,11 +30,27 @@ public partial class ApiKeyDialog : Window
     private readonly IApiKeyProvider _keys;
     private readonly IConsoleSettings _settings;
 
-    /// <summary>What the dialog did, so the caller knows whether to reconnect.</summary>
-    public bool KeyChanged { get; private set; }
+    /// <summary>
+    /// The address the console was pointing at when this dialog opened.
+    /// </summary>
+    /// <remarks>
+    /// Captured here rather than read from the settings on save, because
+    /// <c>TryAcceptAddress</c> has already written the new one by the time the
+    /// caller of that method decides anything: comparing against the settings
+    /// at that point would compare the address with itself and report that
+    /// nothing moved, every time.
+    /// </remarks>
+    private readonly string? _originalAddress;
 
-    /// <summary>The address the caller should reconnect at, when it changed.</summary>
-    public string? AcceptedHostAddress { get; private set; }
+    /// <summary>
+    /// What this dialog changed, and therefore what the caller owes.
+    /// </summary>
+    /// <remarks>
+    /// One value rather than separate flags, so that "the caller should
+    /// reconnect" is answered in one place. See <see cref="ConnectionEdit"/>
+    /// for why the address half of it exists at all.
+    /// </remarks>
+    public ConnectionEdit Edit { get; private set; } = ConnectionEdit.None;
 
     public ApiKeyDialog()
         : this(new InMemoryConsoleSettings(), new InMemoryKeychainProvider())
@@ -43,6 +61,7 @@ public partial class ApiKeyDialog : Window
     {
         _settings = settings;
         _keys = keys;
+        _originalAddress = settings.HostAddress;
 
         // The generated InitializeComponent, not AvaloniaXamlLoader.Load.
         // Both load the XAML; only the generated one also assigns the fields
@@ -79,9 +98,16 @@ public partial class ApiKeyDialog : Window
         if (string.IsNullOrWhiteSpace(entered))
         {
             // Saving with an empty field means "keep the stored one", which is
-            // the ordinary case of changing only the address.
+            // the ordinary case of changing only the address. It is still a
+            // connection change when the address moved, which the caller reads
+            // off Edit rather than off the wording below: the wording used to
+            // say "Address saved." for a save that reconnected nothing.
+            Edit = ConnectionEdit.KeptKey(_originalAddress, address);
+
             ResultText.Text = _keys is KeychainApiKeyProvider { } keychain && keychain.HasKey()
-                ? "Address saved. The stored key was kept."
+                ? Edit.AddressChanged
+                    ? "Address saved. The stored key was kept."
+                    : "Nothing changed. The stored key was kept."
                 : "Enter the key the Host issued.";
             return;
         }
@@ -92,8 +118,7 @@ public partial class ApiKeyDialog : Window
         // in a control when the dialog is photographed or screen-shared.
         ApiKeyBox.Text = string.Empty;
 
-        AcceptedHostAddress = address;
-        KeyChanged = true;
+        Edit = ConnectionEdit.SavedKey(_originalAddress, address);
 
         UpdateKeyState();
         ResultText.Text = "Saved to your keychain.";
@@ -108,7 +133,7 @@ public partial class ApiKeyDialog : Window
         }
 
         keychain.Clear();
-        KeyChanged = true;
+        Edit = ConnectionEdit.RemovedKey();
 
         UpdateKeyState();
         ResultText.Text = "Stored key removed.";
@@ -119,7 +144,12 @@ public partial class ApiKeyDialog : Window
     /// <summary>
     /// Validates and records the address, or explains why not.
     /// </summary>
-    private bool TryAcceptAddress(out string? address)
+    /// <remarks>
+    /// The non-null attribution is what lets the save path hand this straight to
+    /// <see cref="ConnectionEdit"/>: returning true is exactly the case where an
+    /// address was accepted, so an address is exactly what the caller has.
+    /// </remarks>
+    private bool TryAcceptAddress([NotNullWhen(true)] out string? address)
     {
         address = null;
 

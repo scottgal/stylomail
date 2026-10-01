@@ -1,0 +1,122 @@
+name: console-address-change-smoke
+description: >
+  Drives the connection screen through an address change and asserts the console
+  actually moved, rather than reporting that it had.
+
+  This is the second half of a defect `overview-` ruled on 2026-10-01. The
+  dialog's empty-key branch wrote the address and said "Address saved. The
+  stored key was kept.", while the only caller of MainWindow.ReconnectAsync
+  returned early unless the *key* had changed. So an operator who moved the
+  console to a different Host was told the move had happened and kept talking to
+  the old one - under a button labelled "Save and connect". State announced that
+  was not computed, decision 25's shape one level down.
+
+  The only way to assert on a screen that a connection was rebuilt is to make
+  the rebuilt connection behave differently, so this script points the console
+  at a loopback port where nothing is listening. A console that reconnected
+  reports "Cannot reach the Host" and loses its feed; a console that only wrote
+  the setting down goes on saying "Connected" and goes on being wrong about it,
+  which is exactly what it did before the fix.
+
+  The address is deliberately left where it is at the end. The run has proved
+  what it set out to prove, and putting it back would add an assertion whose
+  only subject is the harness. Run-console-address-change-smoke.sh owns the
+  port and checks that nothing answers on it before the run, because a script
+  whose whole claim is "this address refuses" must not be guessing.
+
+  The first run of this script was red, and the reason is worth keeping: the
+  save was correct and the rebuild happened, but ConsoleEnvironment resolved the
+  harness's STYLOMAIL_HOST ahead of the address the operator had just saved, so
+  the console reconnected to the Host it was already on and went on saying
+  "Connected". A run that asserted only on the headline would have reported "the
+  console did not move" and left the cause to be guessed at, so the effective
+  address is asserted directly as well.
+
+default_delay: 250
+
+actions:
+  # The precondition, and the reason the last assertion means anything: without
+  # it, "Cannot reach the Host" could be a console that never connected at all.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Connection)"
+    description: "Open the connection screen"
+
+  - type: Wait
+    value: "700"
+
+  - type: Expect
+    target: "text='Connect to a Host'"
+    window_id: ApiKeyDialog
+    matcher: IsVisible
+    timeout: 5000
+
+  # The key field is left empty, which is the ordinary case this script is
+  # about: changing where the console points, without touching the credential.
+  - type: TypeText
+    target: "name=HostAddressBox"
+    window_id: ApiKeyDialog
+    value: "http://127.0.0.1:5392"
+
+  - type: Click
+    target: "name=SaveKeyButton"
+    window_id: ApiKeyDialog
+
+  - type: Expect
+    target: "name=ResultText"
+    window_id: ApiKeyDialog
+    matcher: HasText
+    value: "Address saved. The stored key was kept."
+    timeout: 5000
+
+  - type: Screenshot
+    value: "01-address-saved"
+    composite: true
+    description: "The connection screen reporting a save with the stored key kept"
+
+  - type: Click
+    target: "name=CancelKeyButton"
+    window_id: ApiKeyDialog
+
+  # The address the rebuilt client actually holds, read off the status bar
+  # rather than inferred from the failure below. Before the resolution fix this
+  # read the harness's Host: the save landed, the rebuild happened, and the
+  # console pointed itself back at where it already was.
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: ContainsText
+    value: "5392"
+    timeout: 20000
+
+  # The assertion this script exists for. Before the fix the console went on
+  # saying "Connected": it had written the address down and rebuilt nothing.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Cannot reach the Host"
+    timeout: 20000
+
+  # And the feed moved with it. Asserted separately because it is a different
+  # surface with a different failure mode: a console that rebuilt its client but
+  # left its old Hub subscription open would be reporting on a deployment it no
+  # longer talks to.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "No live feed"
+    timeout: 20000
+
+  - type: Screenshot
+    value: "02-address-moved"
+    description: "The same window, now pointed at an address nothing answers on"

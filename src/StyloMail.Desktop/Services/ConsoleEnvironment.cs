@@ -60,12 +60,34 @@ public static class ConsoleEnvironment
             "console.json");
 
     /// <summary>
-    /// The address to use, in precedence order: a harness override, then what
-    /// the operator chose, then the default.
+    /// The address to use, in precedence order: what the operator chose, then a
+    /// harness override, then the default.
     /// </summary>
+    /// <remarks>
+    /// <b>The stored address comes first, and the harness override is a
+    /// start-of-run fallback rather than a pin.</b> The override used to be
+    /// consulted first, which made a Debug build ignore an address saved on the
+    /// connection screen: the dialog said "Address saved. The stored key was
+    /// kept.", the client was rebuilt to the harness's Host instead, and the
+    /// console went on reporting on the Host it had just been moved off. That is
+    /// the announce-a-move-that-did-not-happen shape the connection screen
+    /// exists to rule out, surviving one level down in the address resolution.
+    ///
+    /// <para>
+    /// Only a Debug harness run can set the variable, so this ordering changes
+    /// what a scripted run observes and nothing else - and what it makes a
+    /// scripted run observe is the same rule the released console uses.
+    /// </para>
+    /// </remarks>
     public static Uri HostAddress(IConsoleSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+
+        if (!string.IsNullOrWhiteSpace(settings.HostAddress)
+            && Uri.TryCreate(settings.HostAddress, UriKind.Absolute, out var stored))
+        {
+            return stored;
+        }
 
 #if DEBUG
         var overridden = Environment.GetEnvironmentVariable(HostVariable);
@@ -78,12 +100,6 @@ public static class ConsoleEnvironment
             return harness;
         }
 #endif
-
-        if (!string.IsNullOrWhiteSpace(settings.HostAddress)
-            && Uri.TryCreate(settings.HostAddress, UriKind.Absolute, out var stored))
-        {
-            return stored;
-        }
 
         return new Uri(DefaultHost);
     }

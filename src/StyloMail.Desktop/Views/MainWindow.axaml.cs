@@ -771,10 +771,19 @@ public partial class MainWindow : Window
     /// Opens the connection screen and, when something changed, reconnects.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The client is rebuilt rather than patched, because the address is its
     /// base address and the key is read through the provider it holds. A
     /// patched client would be one whose connection pool was opened against a
     /// different Host.
+    /// </para>
+    /// <para>
+    /// The gate is <see cref="ConnectionEdit.RequiresReconnect"/> and not "the
+    /// key changed", which is what it used to be. Gating on the key alone meant
+    /// an operator who changed only the address was told the address had been
+    /// saved and kept talking to the old Host, under a button labelled "Save and
+    /// connect". See <see cref="ConnectionEdit"/>.
+    /// </para>
     /// </remarks>
     public async Task OpenConnectionDialogAsync()
     {
@@ -786,8 +795,34 @@ public partial class MainWindow : Window
 
         await dialog.ShowDialog(this).ConfigureAwait(true);
 
-        if (!dialog.KeyChanged) return;
+        if (!dialog.Edit.RequiresReconnect) return;
 
+        await ReconnectAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Re-asserts the connection to this Host, reading the stored key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the way back from a feed this console has stopped
+    /// following.</b> After SignalR's retry budget is spent the console gives
+    /// up for good, and reconnecting is what rebuilds the feed with a fresh
+    /// budget. Until this existed the only path that called
+    /// <see cref="ReconnectAsync"/> was the connection dialog's own save, which
+    /// meant an operator had to re-enter a credential the console is built never
+    /// to display in order to re-assert a connection they had not changed.
+    /// </para>
+    /// <para>
+    /// Nothing here holds, reads or displays a key. <see cref="ReconnectAsync"/>
+    /// rebuilds the client from the settings and the keychain provider, so the
+    /// stored key is read again rather than carried through the UI. That is the
+    /// distinction the ruling turned on: this re-asserts a connection, it does
+    /// not re-prove identity.
+    /// </para>
+    /// </remarks>
+    private async void OnReconnectClick(object? sender, RoutedEventArgs e)
+    {
         await ReconnectAsync().ConfigureAwait(true);
     }
 
@@ -833,6 +868,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>
+    /// <remarks>
+    /// Two callers, and they are different acts. <c>OpenConnectionDialogAsync</c>
+    /// calls it because the operator changed something. <c>OnReconnectClick</c>
+    /// calls it because the operator wants the connection re-asserted, which is
+    /// the way back from an outage longer than the feed's retry budget; that one
+    /// changes nothing and reads the stored key.
+    /// </remarks>
     public async Task ReconnectAsync()
     {
         if (_services is null) return;

@@ -23,11 +23,16 @@ public sealed class App : Application
 
             // The settings are loaded once and handed to the services, so the
             // connection screen can rebuild against a new address without the
-            // window having to hold them separately.
+            // window having to hold them separately. One call, one object: two
+            // calls would hand the window a different settings instance from the
+            // one the starting address was resolved from, and a save would then
+            // land somewhere the resolution never reads.
+            var settings = ConsoleEnvironment.Settings();
+
             _services = AppServices.Create(
-                ConsoleEnvironment.HostAddress(ConsoleEnvironment.Settings()),
+                ConsoleEnvironment.HostAddress(settings),
                 ConsoleEnvironment.Keychain(),
-                settings: ConsoleEnvironment.Settings());
+                settings: settings);
 
             desktop.MainWindow = new MainWindow(_services);
 

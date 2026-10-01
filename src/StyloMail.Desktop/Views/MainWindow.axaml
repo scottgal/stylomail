@@ -21,7 +21,7 @@
 
         <!-- ============ status bar ============ -->
         <Border DockPanel.Dock="Bottom" Classes="statusbar">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <Ellipse Grid.Column="0"
                          Width="8" Height="8"
                          Margin="0,0,8,0"
@@ -56,9 +56,39 @@
                            ToolTip.Tip="{Binding LiveFeedDetail}" />
 
                 <TextBlock x:Name="HostAddressText"
-                           Grid.Column="3"
+                           Grid.Column="4"
                            Classes="status"
                            Text="{Binding HostAddress}" />
+
+                <!--
+                    The way back from a feed this console has stopped following.
+
+                    It sits next to the feed headline because that is where the
+                    operator is looking when they need it: after the retry budget
+                    is spent the console gives up for good, and until this button
+                    existed the only path that reconnected was the connection
+                    dialog's own save, so getting back cost a credential the
+                    console is built never to display.
+
+                    Always present rather than shown only when the feed is down.
+                    A control that appears and disappears cannot be asserted
+                    absent by the harness (a locator matching no control at all
+                    fails rather than reporting invisible), and re-reading the
+                    Host is never the wrong thing to do anyway.
+
+                    It reuses the stored key and never shows one: the reconnect
+                    rebuilds the client from the settings and the keychain, which
+                    is re-asserting a connection rather than re-proving identity.
+                -->
+                <Button x:Name="ReconnectButton"
+                        Grid.Column="3"
+                        Classes="rowButton"
+                        Margin="0,0,16,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="reconnect-console"
+                        Content="Reconnect"
+                        Click="OnReconnectClick"
+                        ToolTip.Tip="Reconnect to this Host and read every screen again. Uses the stored key, which is never shown." />
             </Grid>
         </Border>
 
