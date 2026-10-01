@@ -1074,6 +1074,31 @@ public sealed class MailPolicyEngineTests
     }
 
     [Fact]
+    public void A_semantic_blackout_is_not_relaxed_by_a_recipient_preference()
+    {
+        // Every hold the risk path takes arrives as `Hold`, so a tier-5 test on the action alone
+        // relaxes any of them, including this one. The blackout hold is not preference-shaped: it is
+        // taken because the semantic layer was asked and did not answer, and a preference for the
+        // traffic class is not an answer. It is the one hold the gate exists to keep, so it stands.
+        var options = new PolicyOptions { MinimumCoverageForAllow = 0.0 };
+        var evidence = SemanticBackbone(EvidenceAvailability.Unavailable)
+            .Concat(DeterministicFindings.Units.Keys.Select(id => Deterministic(id, 0.0)))
+            .ToArray();
+
+        var decision = Decide(
+            CompositeRiskScorer.Compute(evidence, options.DimensionWeights),
+            Context() with { RecipientPrefersThisTrafficClass = true },
+            options: options,
+            evidence: evidence);
+
+        // The arm that refused is named: a hold taken by the coverage floor would satisfy the first
+        // assertion while closing the wrong hole.
+        Assert.Equal("policy.allow_without_a_semantic_answer", decision.Reasons[0].Code);
+        Assert.Equal(MailAction.Hold, decision.Action);
+        Assert.NotEqual("recipient-preference", decision.DecidedBy);
+    }
+
+    [Fact]
     public void Masked_dimensions_are_recorded_rather_than_treated_as_zero()
     {
         var evidence = new[]

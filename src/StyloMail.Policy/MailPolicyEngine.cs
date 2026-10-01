@@ -187,8 +187,11 @@ public sealed class MailPolicyEngine
         var decision = DecideByRisk(input);
 
         // Tier 5, recipient preference. Lowest precedence. It can relax a preference-shaped hold
-        // and nothing else.
-        if (decision.Action == MailAction.Hold
+        // and nothing else. The condition reads the hold's SHAPE rather than its action, because
+        // every hold the risk path takes is `MailAction.Hold`, so an action-only test also relaxed
+        // the semantic-blackout hold, whose whole purpose is to refuse delivery while the semantic
+        // layer is silent. That was a fail-open in the only place an action is chosen.
+        if (decision.RelaxableByRecipientPreference
             && input.Context.RecipientPrefersThisTrafficClass
             && !HasElevatedSecuritySignal(input.Evidence))
         {
@@ -401,7 +404,11 @@ public sealed class MailPolicyEngine
                 EvidenceSignalIds = topSignals,
             });
 
-            return Hold(input, reasons);
+            // The one hold tier 5 may relax: it is taken because the traffic looks like a class the
+            // recipient opted into, which is exactly what a preference is an answer to. Every other
+            // hold in this method is taken for a reason a preference cannot address, so it is left
+            // unmarked and stands.
+            return Hold(input, reasons, relaxableByRecipientPreference: true);
         }
 
         // Low risk is only reassuring if we actually looked. An index of 0.0 computed over a
@@ -535,7 +542,11 @@ public sealed class MailPolicyEngine
     /// Bounded hold. The deadline is clamped to the absolute ceiling so a hold can never be
     /// extended indefinitely by configuration drift.
     /// </summary>
-    private PolicyDecision Hold(PolicyInput input, List<ReasonCode> reasons, string decidedBy = "risk")
+    private PolicyDecision Hold(
+        PolicyInput input,
+        List<ReasonCode> reasons,
+        string decidedBy = "risk",
+        bool relaxableByRecipientPreference = false)
     {
         var now = _time.GetUtcNow();
         var deadline = now + _options.HoldWindow;
@@ -547,7 +558,11 @@ public sealed class MailPolicyEngine
         }
 
         var decision = Decision(MailAction.Hold, input, reasons, decidedBy: decidedBy);
-        return decision with { ReEvaluateBy = deadline };
+        return decision with
+        {
+            ReEvaluateBy = deadline,
+            RelaxableByRecipientPreference = relaxableByRecipientPreference,
+        };
     }
 
     /// <summary>

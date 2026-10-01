@@ -49,6 +49,20 @@ public sealed record PolicyDecision
 
     /// <summary>Precedence tier that produced the decision, for audit and for explaining overrides.</summary>
     public required string DecidedBy { get; init; }
+
+    /// <summary>
+    /// True only for a hold that recipient preference is allowed to relax, and set where the hold is
+    /// taken, because that is the only place the hold's shape is known: "the action is Hold" is true
+    /// of every hold in the risk path, and only one of them is preference-shaped.
+    /// </summary>
+    /// <remarks>
+    /// Defaults false, so a hold added later is not relaxable unless it says so, and the cost of
+    /// forgetting to mark it is a hold that stands rather than an allow that should not have been
+    /// issued. The failure this pins: tier 5 tests this flag and not the action, because an
+    /// action-only test relaxed the semantic-blackout hold, which exists precisely to refuse
+    /// delivery while the semantic layer is silent.
+    /// </remarks>
+    public bool RelaxableByRecipientPreference { get; init; }
 }
 
 /// <summary>Inputs the policy engine evaluates, in precedence order.</summary>
