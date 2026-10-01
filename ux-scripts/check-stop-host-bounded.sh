@@ -259,6 +259,13 @@ fi
 # than a sentence. Comment lines are stripped first: every lsof mention left in
 # the harness is prose explaining why it is gone, and the guard is about
 # invocations.
+#
+# The detection is a function so that the guard and the control below run the
+# same code. Two copies of a grep is how a control stops controlling anything.
+count_lsof_calls() {
+    grep -v '^[[:space:]]*#' "$1" | grep -c 'lsof' || true
+}
+
 case_number=$((case_number + 1))
 echo "case $case_number: the harness contains no lsof invocation"
 
@@ -266,12 +273,31 @@ echo "case $case_number: the harness contains no lsof invocation"
 # is how the claim drifted the first time: an lsof reached through a variable or a
 # built command would pass. It catches the direct call, which is the form the
 # defect took.
-code_lsof="$(grep -v '^[[:space:]]*#' "$HERE/console-harness.sh" | grep -c 'lsof' || true)"
+code_lsof="$(count_lsof_calls "$HERE/console-harness.sh")"
 
 if (( code_lsof == 0 )); then
     pass "no lsof call in console-harness.sh outside a comment"
 else
     fail "console-harness.sh calls lsof on $code_lsof line(s) outside a comment"
+fi
+
+# The positive control, and without one the line above proves nothing. An absence
+# assertion passes just as happily when its pattern has stopped matching anything
+# as when the thing is genuinely absent, so the guard has to show its detector can
+# see an lsof call somewhere. `ingress-` broadcast this trap to the fleet on 1 Oct
+# and the shape is the same one: a literal that no longer matches the source makes
+# a DoesNotContain pass by matching nothing. DecisionViewTests'
+# Coverage_names_only_what_was_true is the same construction and pairs its
+# DoesNotContain with two Contains for this reason.
+control="$CONSOLE_RUN/lsof-control.sh"
+printf '#!/usr/bin/env bash\nlsof -nP -iTCP:"$PORT" -sTCP:LISTEN\n' > "$control"
+control_hits="$(count_lsof_calls "$control")"
+rm -f "$control"
+
+if (( control_hits >= 1 )); then
+    pass "the same detection finds an lsof call in a file that has one"
+else
+    fail "the detection found no lsof in a file containing one, so the guard above proves nothing"
 fi
 
 # Case 6: the caller, not just the probe. A taken port must stop the run before
