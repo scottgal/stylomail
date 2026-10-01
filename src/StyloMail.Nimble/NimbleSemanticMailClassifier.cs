@@ -306,15 +306,17 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </para>
     /// <para>
     /// <b>The byte ceiling is therefore a budget and not a guarantee, and the density that breaks it is
-    /// ordinary rather than pathological.</b> Measured on this endpoint at twelve questions, the
-    /// expansion from request bytes to input tokens runs from <b>2.874x</b> on a prose body to
-    /// <b>6.171x</b> on a hexadecimal one, so the largest evaluation an adapter-producible state has
-    /// been measured to reach is <b>42,026</b> tokens (a 2,400-character body, 6,810 request bytes,
-    /// both inside their budgets). This paragraph used to name dense text as the worst case and put it
-    /// at "nearer two characters per token than five"; the measured figure is about <b>six characters
-    /// per token</b> for a hex body, so the estimate understated it threefold. So this method is best
-    /// effort, and the guarantee that a partly-read message is never reported as an answer belongs to
-    /// the backstop in the caller, which compares the evaluated count against the applied window.
+    /// ordinary rather than pathological.</b> Measured on this endpoint at twelve questions and at the
+    /// FULL <see cref="NimbleOptions.MaxBodyCharacters"/> budget, so that the arm is the largest one this
+    /// class can produce, the expansion from request bytes to input tokens runs from <b>2.867x</b> on a
+    /// prose body to <b>6.252x</b> on a hexadecimal one, so the largest evaluation an adapter-producible
+    /// state has been measured to reach is <b>43,202</b> tokens (a 2,500-character body, 6,910 request
+    /// bytes, both inside their budgets). This paragraph used to name dense text as the worst case and
+    /// put it at "nearer two characters per token than five"; the measured figure is about <b>six
+    /// characters per token</b> for a hex body, so the estimate understated it threefold. So this method
+    /// is best effort, and the guarantee that a partly-read message is never reported as an answer
+    /// belongs to the backstop in the caller, which compares the evaluated count against the applied
+    /// window.
     /// </para>
     /// <para>
     /// <b>The budget is not simply the applied window, and that is deliberate.</b> The declared question
