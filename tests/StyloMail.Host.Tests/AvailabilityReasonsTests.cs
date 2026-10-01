@@ -12,7 +12,7 @@ namespace StyloMail.Host.Tests;
 /// <b>Why this is owed.</b> <c>AvailabilityReasons</c> was added to <c>EvidenceResponse</c> so that a
 /// reason a producer already records stops being visible only to whatever reads the ledger.
 /// <c>DecisionResponse.From</c> began copying it at <c>DecisionResponse.cs:141</c>, and until this
-/// file existed <b>no test drove a row carrying a reason into the mapping at all</b> — so the member
+/// file existed <b>no test drove a row carrying a reason into the mapping at all</b>, so the member
 /// was covered by nothing, and a served response containing a populated <c>AvailabilityReasons</c>
 /// had never been produced in a test.
 /// </para>
