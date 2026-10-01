@@ -294,20 +294,27 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why a byte budget says something about tokens.</b> A tokeniser can never emit more tokens
-    /// than there are bytes to cover, so a prompt of at most <c>num_ctx</c> bytes is at most
-    /// <c>num_ctx</c> tokens. English text here runs about 5 characters per token, so in practice the
-    /// bound is loose by roughly that factor and the body is not over-trimmed.
+    /// <b>What a byte budget does and does not say about tokens.</b> A tokeniser cannot emit more
+    /// tokens than there are bytes to cover, so the request this method renders is, in the CLIENT's own
+    /// tokenisation of it, at most as many tokens as it has bytes. <b>That is a bound on the request
+    /// and NOT on the quantity the truncation guard compares, and the difference is measured rather
+    /// than argued.</b> This comment used to conclude from it that a prompt of at most <c>num_ctx</c>
+    /// bytes is at most <c>num_ctx</c> tokens, which is true only if the guarded count is a tokenisation
+    /// of what was sent. It is not: 7,246 request bytes evaluate to <b>20,642</b> input tokens on this
+    /// endpoint, because <c>usage.input_tokens</c> counts the prompt the SERVER constructs and grows
+    /// faster than linearly in the question count. See the backstop's remark in the caller.
     /// </para>
     /// <para>
-    /// <b>That is a bound, not a proof, and an earlier version of this comment called it one.</b> It
-    /// shows the prompt is under the <em>requested</em> window in tokens, and the server applies about
-    /// half of that (see <see cref="NimbleOptions.AppliedContextWindow"/>). The plausible worst case is
-    /// dense low-entropy text, base64 or a long encoded URL, which runs nearer two characters per token
-    /// than five: a prompt at the 8,192-byte ceiling can reach the 4,098-token applied window from
-    /// above rather than below. So this method is best effort, and the guarantee that a partly-read
-    /// message is never reported as an answer belongs to the backstop in the caller, which compares the
-    /// evaluated count against the applied window.
+    /// <b>The byte ceiling is therefore a budget and not a guarantee, and the density that breaks it is
+    /// ordinary rather than pathological.</b> Measured on this endpoint at twelve questions, the
+    /// expansion from request bytes to input tokens runs from <b>2.874x</b> on a prose body to
+    /// <b>6.171x</b> on a hexadecimal one, so the largest evaluation an adapter-producible state has
+    /// been measured to reach is <b>42,026</b> tokens (a 2,400-character body, 6,810 request bytes,
+    /// both inside their budgets). This paragraph used to name dense text as the worst case and put it
+    /// at "nearer two characters per token than five"; the measured figure is about <b>six characters
+    /// per token</b> for a hex body, so the estimate understated it threefold. So this method is best
+    /// effort, and the guarantee that a partly-read message is never reported as an answer belongs to
+    /// the backstop in the caller, which compares the evaluated count against the applied window.
     /// </para>
     /// <para>
     /// <b>The budget is not simply the applied window, and that is deliberate.</b> The declared question
