@@ -21,7 +21,7 @@ directory you name.
 # 1. write a batch: NNN.eml files plus manifest.json
 python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out scratch/batch --profile mixed
 
-# a populated, varied ledger for the console: 24 messages, both shape axes drawn per message
+# a populated, varied ledger for the console: 24 messages, all three shape axes drawn per message
 python3 tools/corpus/corpus.py generate --seed 1234 --count 24 --out scratch/mailbox \
     --profile mailbox --coverage full --encoding-mix mixed --size-mix mixed
 
@@ -82,7 +82,7 @@ A third profile is the one a console harness actually runs:
 purpose. There is no third value: a batch whose coverage was an accident cannot be told from one
 whose coverage was planted, and only one of those is checkable, so `generate` refuses to default it.
 
-### The two shape axes: `--encoding-mix` and `--size-mix`
+### The three shape axes: `--encoding-mix`, `--size-mix` and `--body-shapes`
 
 Each axis is drawn **per message** from `(seed, index, purpose)`, and the drawn value is recorded in
 the manifest, so a harness can select a fixture by the shape it claims without re-deriving it from
@@ -92,6 +92,7 @@ the bytes. `mixed` is a rule for drawing rather than a value a message can carry
 |---|---|---|---|
 | `--encoding-mix` | `plain` (default), `quoted-printable`, `rfc2047`, `mixed` | which transfer encoding a leaf body uses, and whether the Subject is an encoded-word | the DECODED bytes. Every variant decodes back to the same text, so a planted fact is carried by every variant |
 | `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, which is the model's turn and is truncated by the adapter at 2,000 characters |
+| `--body-shapes` | `off` (default), `all`, or one of the six names | the **density of the author's text**, which is the one thing content-driven expansion turns on | the message's size, its encoding, and every planted fact |
 
 Two constraints on the size axis are load-bearing rather than stylistic:
 
@@ -113,6 +114,72 @@ many tokens the text and html representations share.
 **`size` is a band, not a floor.** A message declaring `small` is also asserted to be *under* the
 medium target. A one-sided bound would let a batch that secretly grew keep declaring `small` and pass,
 so the claim could only ever fail upward.
+
+### The density axis: `--body-shapes`
+
+**Why a corpus needs one.** `nimble-` measured six body shapes with everything else held and found the
+prompt expansion running from **2.808x to 7.017x**, with the message's *content* as the only variable:
+a twelve-question prompt that fits the 8192-byte cap can still evaluate well above the applied window if
+the text is dense. So the safe value of the window is **a property of the corpus**, not of the setting
+alone, and a fixture set that is all prose cannot assess the setting at all. This axis makes that
+property declarable, so a batch says which shapes it drew instead of leaving a reader to infer density
+from the bytes.
+
+**Density that survives decoding, which is the only kind that counts.** Two source reads fix where the
+density can be:
+
+- an **attachment** enters the classifier's state as five *metadata* fields and never as bytes, so an
+  attachment's content cannot raise the evaluation at any size;
+- a **transfer encoding** is decoded before the state is built, so a quoted-printable or base64 part is
+  prose again by the time anything is counted.
+
+So this axis is the **author's text** in `BodyText`, and it is orthogonal to *both* other axes:
+`--size-mix` rides the html part and the attachment, and `--encoding-mix` is gone before the classifier
+sees anything. That orthogonality is why no shape here is redundant with either, and it is why the
+themed class is the one that matters in real mail: long hexadecimal, pasted base64 or JWT blobs, PGP
+armour, tracking URLs, code, logs, JSON, diff output -- ordinary in security alerts, newsletters and CI
+notifications, which are exactly the messages worth assessing.
+
+**The vocabulary is closed: `prose`, `base64ish`, `mixed`, `randomcase`, `punct`, `hexish`.** The unit
+strings are `nimble-`'s, taken verbatim from their probe rather than re-authored here, so a fixture
+reproduces their measured table rather than a second table of my own. `prose` is **in** the family
+rather than beside it, because a family without its least-dense member cannot show the spread. The
+vocabulary is closed because `bodyShape` is a claim about which transform produced the bytes, and
+`check` can assert membership in a finite set and can assert nothing at all about an open generator.
+
+**`off` is the default, and `all` draws each shape in turn rather than sampling at random.** `off`
+changes no invocation that exists today. `all` is deterministic so that a six-message batch *contains*
+the whole table -- a random draw would sample the range, and a batch that claims to show six shapes has
+to contain six shapes for the claim to be checkable.
+
+**The body is 1999 characters: one character under the turn limit.** `check` refuses
+`turnCharacters >= 2000` and `turnCharacters` is `len(plan.text)`, so 1999 is the largest body this
+corpus may declare. The limit applies to the **body as sent**, which is why the transform is applied to
+the plan rather than to the finished MIME.
+
+**A profile must opt in, and the default is the safe direction.** The axis rewrites the turn, so it may
+only run on a plan whose planted facts do **not** live in that text: `phishing` and its siblings carry
+their needles in the body, and replacing the body would leave the manifest describing a message the
+extractor never saw. A plan declares `dense_safe`, and the axis **refuses every plan that has not
+declared it**, naming the profile and writing nothing. A new plan builder added later is refused until
+it opts in. A plan with html must contain its text in that html, so the two parts can be moved together;
+a text-only replacement would ship a message whose parts disagree at `html_text_disagreement`.
+
+**What this family does NOT claim, and the limit is a real one:**
+
+- **It is not a bound on content.** `hexish` is the densest *of six chosen shapes*, not the densest that
+  exists. **A dense arm is not denser than hexish until it is measured.**
+- **It does not predict any token count, expansion, or refusal.** Those are the Host's evaluation on a
+  run's own model and are read back through a run.
+- **`BodyText` only, so the quoted tail is uncovered.** The adapter's budget applies to `BodyText` *or*
+  `QuotedText`, and this axis draws only the body. A long quoted tail is a **different arm**, reachable
+  without a body over the ceiling, and it is deliberately a later increment rather than a second new
+  thing behind one verification.
+- **The pin is what it bounds.** `src/StyloMail.Host/appsettings.json` pins `EffectiveNumCtx` at 65536,
+  chosen above the largest evaluation measured anywhere at the time (56210). Measured against that:
+  a 2000-character `hexish` body evaluates **37298** and a 2400-byte one **42026**, both below the pin.
+  So at the landed pin this family is **admissible** and is not by itself a refused message; its value
+  is that it **bounds the pin from inside the corpus**, which a scratch probe cannot do.
 
 ## Tests
 
@@ -179,7 +246,7 @@ did before the field existed.
 ### Version 4: the drawn shape, and why this one is a bump
 
 Version 4 adds **`encoding` and `size` to every message**, plus `encodingMix` and `sizeMix` at the top
-level beside `profile` and `coverage`. See "The two shape axes" above for what each value means.
+level beside `profile` and `coverage`. See "The three shape axes" above for what each value means.
 
 This is a version bump and not an additive field, and the difference is worth stating because the
 section above just argued the opposite for two other changes. `notPlanted` is **absent** from a
@@ -195,6 +262,14 @@ absence test:
   check that demanded the new fields of an old batch would call a correct batch broken;
 - a **version 4** manifest makes them mandatory, so a message **missing** `encoding` or `size` is
   reported as a defect. Skipping it would let a truncated manifest pass by omission.
+
+**`bodyShape` is additive, so it did NOT bump the version.** It is present only on a message the
+density axis actually transformed, and `bodyShapeMix` is at the top level beside `encodingMix` and
+`sizeMix`. This is the *opposite* choice to `encoding` and it is the same argument `notPlanted` makes:
+absent means "this batch drew no shapes", which is true information rather than a missing value. The
+choice that would force a version bump is writing `bodyShape: "prose"` on every message, because then
+absence would stop meaning "nothing drawn" and start meaning "drawn as prose". `check` treats it as it
+treats `notPlanted`: a value is validated when present, and its absence is not a defect.
 
 The shape pass runs **before any network call** and reports **every** mismatch rather than the first,
 so a batch whose manifest does not describe its own bytes is reported as that rather than as a
@@ -672,7 +747,9 @@ Built 30 Sep 2026 against the manifest shape confirmed by `overview-`; **corpusV
 measurements on 1 Oct 2026, superseded the same day by **corpusVersion 3** (window content and the
 two character counts; see the changelog above), and then by **corpusVersion 4** the same evening (the
 two shape axes and the `mailbox` profile, from the desktop-harness design the operator approved at
-18:53). The `corpusVersion` here versions this tool's manifest and what a conversation window
+18:53). **The density axis (`--body-shapes`) landed after that and did NOT move the version number**,
+because its field is additive -- see "Version 4" above for why that is the opposite choice to
+`encoding` and `size`. The `corpusVersion` here versions this tool's manifest and what a conversation window
 contains. It is not the decision-ledger schema version, which moves independently and is owned by the
 Host.
 

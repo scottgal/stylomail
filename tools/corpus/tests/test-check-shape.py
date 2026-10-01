@@ -217,6 +217,35 @@ def test_an_escaping_entry_is_a_failure_not_a_read(root: pathlib.Path) -> None:
           control_out.strip()[:250])
 
 
+def test_a_turn_over_the_adapter_limit_is_reported(root: pathlib.Path) -> None:
+    """The committed README says `check` asserts the turn limit. It did not.
+
+    Verbatim from `tools/corpus/README.md` at the version this test was written against:
+    "`check` asserts this directly: no message in a batch may have `turnCharacters >= 2000`."
+    A grep of the committed `corpus.py` found `turnCharacters` only as a manifest FIELD and no
+    comparison against 2000 at all, so the doc asserted an assertion that did not exist. This test
+    is the claim made true.
+    """
+    batch, manifest, keyfile = make_batch(root, "turn-over")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["messages"][0]["turnCharacters"] = 2000      # exactly at the limit: the README says >=
+    manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    result = run_check(manifest, keyfile)
+    combined = result.stdout + result.stderr
+    check("a turn at the adapter limit is reported", MARKER in combined)
+    check("the report names the file", "000.eml" in combined)
+    check("the report names the turn count", "2000" in combined, combined.strip()[:200])
+
+    # CONTROL: one character under must be clean, or a check that fires on everything passes above.
+    under, manifest2, keyfile2 = make_batch(root, "turn-under")
+    d2 = json.loads(manifest2.read_text(encoding="utf-8"))
+    d2["messages"][0]["turnCharacters"] = 1999
+    manifest2.write_text(json.dumps(d2, indent=2) + "\n", encoding="utf-8")
+    r2 = run_check(manifest2, keyfile2)
+    c2 = r2.stdout + r2.stderr
+    check("CONTROL: a turn one character under is NOT reported", MARKER not in c2,
+          c2.strip().splitlines()[-1][:200] if c2.strip() else "(no output)")
+
 def main() -> int:
     if not CORPUS.exists():
         print(f"missing {CORPUS}", file=sys.stderr)
@@ -242,3 +271,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

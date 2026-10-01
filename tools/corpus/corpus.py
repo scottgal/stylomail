@@ -55,7 +55,7 @@ import sys
 import urllib.error
 import urllib.request
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -293,6 +293,81 @@ def draw_encoding(seed: int, index: int, mix: str) -> str:
 SIZE_MIXES = ("small", "medium", "large")
 SIZE_MIX_CHOICES = SIZE_MIXES + ("mixed",)
 SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
+
+# The adapter truncates a turn at 2,000 characters and refuses an over-long rendered prompt outright,
+# so a body at or over this limit surfaces as a provider refusal rather than as the size a fixture
+# claims. The README has said since the size axis landed that "`check` asserts this directly: no
+# message in a batch may have `turnCharacters >= 2000`", and it did not: `turnCharacters` appeared in
+# this file only as a manifest FIELD, with no comparison against 2000 anywhere. The claim is a good
+# one and it is now true rather than removed, which is the repair this lane prefers for a doc that
+# over-states its own guarantee.
+TURN_LIMIT = 2000
+
+# -------------------------------------------------------------------------------------------------
+# The dense body-shape axis: density that SURVIVES DECODING, which is the author's density
+# -------------------------------------------------------------------------------------------------
+#
+# WHY THIS EXISTS. `nimble-` measured six body shapes with everything else held and found the prompt
+# expansion running from 2.808x to 7.017x, with the message's CONTENT as the only variable. Two
+# consequences the fleet took from that measurement: a corpus's safety is a property of the CORPUS and
+# not of the window setting alone, and a fixture set that is all prose cannot assess the setting at
+# all. This axis makes the property declarable, so a batch says which shapes it drew rather than
+# leaving a consumer to guess density from the bytes.
+#
+# WHERE THE DENSITY IS, AND WHERE IT IS NOT. `conversation-` read the state at source: an attachment
+# enters it as five METADATA fields and never as bytes, and a transfer encoding is DECODED before the
+# state is built. So this axis can only be the author's text in `BodyText`, and it is orthogonal both
+# to `--size-mix` (which rides the html part and the attachment) and to `--encoding-mix` (which is
+# gone before the classifier sees anything). That orthogonality is the reason the two other axes
+# cannot make any shape here redundant, and it is why the transform is applied to the plan's own text.
+BODY_SHAPES = ("prose", "base64ish", "mixed", "randomcase", "punct", "hexish")
+
+# `off` is the default and it changes NO existing invocation: this is a new axis rather than a new
+# profile because it composes with a profile instead of replacing one, and `off` is what makes that
+# safe for every command line that already exists. `all` draws each shape in turn rather than sampling
+# at random, so a six-message batch contains the whole table and the spread is visible in one artefact;
+# a named shape forces it, which is what makes a single-shape run possible without a second flag.
+BODY_SHAPE_MIX_CHOICES = ("off", "all") + BODY_SHAPES
+
+# The unit strings are `nimble-`'s, taken verbatim from `.styloagent/scratch/nimble/probe-expansion.py`
+# and NOT re-authored here. A fixture that rebuilt their table with units of my own would be a second
+# table rather than a reproduction of theirs, and the fleet's only interest in this family is that the
+# measured spread transfers to a corpus that ships. The tiling is theirs too; the budget is mine and
+# it is characters rather than bytes, because `turnCharacters` is `len(plan.text)`.
+SHAPE_UNITS = {
+    "prose": "The quarterly figures are attached and the invoice is due at the end of the month. ",
+    "punct": "a,b.c;d:e!f?g-h_i+j=k/l\\m(n)o[p]q{r}s<t>u=v&w%x$y#z@1,2.3;4:5!6?7-8_9+0/ ",
+    "randomcase": "Qm7xK2pLv9Bn4Rtz8Ws3Yd6Fg1Hj5Mc0Ue2AoTi7Ol9Pk3Vb6Nw8Xs4Zr2Td5Yf1Gh7Jk3Lm9 ",
+    "hexish": "9f2ab7c4e10d38a6b5c9e2f7a4d1b8c3e6f0a9d2b7c4e1f8a5d3b9c6e0f2a7d4b1 ",
+    "base64ish": "TWFuIGlzIGRpc3Rpbmd1aXNoZWQgbm90IG9ubHkgYnkgYWR2YW50YWdlcyBidXQgYnkgdGhlaXIgYWJzZW5jZQ==",
+    "mixed": "Re: invoice INV-2026-0917 (ref: a,b.c;d) <https://x.example/p?a=1&b=2> 12,345.67 USD ",
+}
+
+# ONE CHARACTER UNDER THE CEILING, not at it: `check` refuses `turnCharacters >= TURN_LIMIT`, so the
+# largest body this corpus may declare is 1999. Written as an expression rather than as a literal so
+# that a future change to the limit moves the body with it instead of silently going over.
+SHAPE_BODY_CHARACTERS = TURN_LIMIT - 1
+
+
+def draw_body_shape(index: int, mix: str) -> str | None:
+    """The shape one message draws. `off` is None, `all` cycles the six, anything else is literal.
+
+    DELIBERATELY NOT SEEDED. `all` cycling by index rather than drawing is the whole point: a random
+    draw would sample the range, and a batch that claims to show six shapes has to CONTAIN six shapes
+    for the claim to be checkable. Nothing here is hidden from the manifest, so there is no
+    reproducibility to preserve by drawing.
+    """
+    if mix == "off":
+        return None
+    if mix == "all":
+        return BODY_SHAPES[index % len(BODY_SHAPES)]
+    return mix
+
+
+def shape_body(shape: str, characters: int = SHAPE_BODY_CHARACTERS) -> str:
+    """Tile the shape's unit to exactly `characters`, which is nimble-'s tiling at a char budget."""
+    unit = SHAPE_UNITS[shape]
+    return (unit * (characters // len(unit) + 2))[:characters]
 
 
 def size_carriers_from(html: str | None, facts: list[str]) -> tuple[bool, bool]:
@@ -555,6 +630,13 @@ class MessagePlan:
     # Described but not declared: a change this corpus plants for a lane whose signal id does not
     # exist yet. Recorded honestly as unverifiable rather than given an invented id.
     undescribed_change: dict | None = None
+    # Whether `--body-shapes` may replace this plan's text. DEFAULT FALSE, and the default is the
+    # guard rather than a formality: the axis rewrites the turn, so it may only run on a plan whose
+    # planted facts do NOT live in that text. `phishing` and its siblings carry their needles in the
+    # body, so replacing the body would leave the manifest describing a message the extractor never
+    # saw. A plan says it is safe, and the axis refuses every plan that has not said so, which is the
+    # fail-closed direction: a new plan builder added later is refused until it opts in.
+    dense_safe: bool = False
 
     @property
     def has_window(self) -> bool:
@@ -632,6 +714,11 @@ def plan_benign(seed: int, index: int) -> MessagePlan:
         direction="Inbound",
         mail_from=f"colleague@{SENDER_DOMAIN}",
         note="benign control: agreeing anchor, passing authentication, no request for anything",
+        # This plan's facts are the BENIGN_FACTS expected-zeros, which are claims about rows rather
+        # than needles in the body, so replacing the body cannot falsify one. Its html interpolates
+        # the text, and the axis re-derives the html by substitution rather than dropping it, so the
+        # agreeing anchor survives as a real link at the same href.
+        dense_safe=True,
     )
 
 
@@ -1222,7 +1309,12 @@ def expected_predicate(fact_id: str, plan: MessagePlan) -> dict:
 
 
 def manifest_entry(
-    plan: MessagePlan, raw: bytes, coverage: str, encoding: str = "plain", size: str = "small"
+    plan: MessagePlan,
+    raw: bytes,
+    coverage: str,
+    encoding: str = "plain",
+    size: str = "small",
+    shape: str | None = None,
 ) -> dict:
     # The envelope is recorded in the manifest, not re-derived by `seed`. It has to be, because a
     # manifest that declared `envelope.no_recipients` while `seed` rebuilt a body with one recipient
@@ -1337,6 +1429,11 @@ def manifest_entry(
         # message makes such a claim, so absence of the field means "nothing asserted absent" rather
         # than "asserted empty".
         **({"notPlanted": sorted(plan.not_planted)} if plan.not_planted else {}),
+        # The drawn dense shape, present only on a message this axis actually transformed. The
+        # additive form is deliberate and it is the same argument `notPlanted` makes: an absent field
+        # means "this batch drew no shapes", and writing `bodyShape: "prose"` on every message is the
+        # choice that would destroy that reading and so would force a corpusVersion bump instead.
+        **({"bodyShape": shape} if shape else {}),
         # A change that is real in the bytes but that no pipeline signal can yet be asked about.
         # Recorded rather than declared: `planted` is a list of claims `check` will hold the pipeline
         # to, and putting an unassertable one there would make a correct pipeline fail. Field present
@@ -1375,6 +1472,42 @@ def cmd_generate(args: argparse.Namespace) -> int:
     # filled from the bytes of the message before it.
     plans = [builders[index % len(builders)](args.seed, index) for index in range(args.count)]
 
+    # The dense-shape refusal, pre-flighted for the same reason the size one is: a refusal discovered
+    # part-way through the loop would leave messages on disk with no manifest, and a directory holding
+    # some of a batch is not a batch. Two ways a plan can be unable to carry a shape, and both are
+    # checked here rather than discovered in the transform:
+    #
+    #   1. it has not declared itself dense_safe, which is the default and means its planted facts may
+    #      live in the text this axis would replace;
+    #   2. its html does not contain its text, so re-deriving the html from the text is impossible and
+    #      replacing the text alone would ship a message whose two parts DISAGREE. That disagreement is
+    #      a real coverage flag (`html_text_disagreement`) and it is an uncontrolled extra variable in
+    #      a family whose entire point is one variable.
+    if args.body_shapes != "off":
+        for index, plan in enumerate(plans):
+            shape = draw_body_shape(index, args.body_shapes)
+            if shape is None:
+                continue
+            if not plan.dense_safe:
+                print(
+                    f"refusing: --body-shapes {args.body_shapes} at index {index} ({args.profile}). "
+                    "This profile's plan has not declared itself dense_safe, so its planted facts may "
+                    "be needles in the text body that this axis would replace. A manifest describing a "
+                    "message the extractor never saw is the one outcome this lane must never produce. "
+                    "Nothing has been written.",
+                    file=sys.stderr,
+                )
+                return 2
+            if plan.html is not None and plan.text not in plan.html:
+                print(
+                    f"refusing: --body-shapes {args.body_shapes} at index {index} ({args.profile}). "
+                    "This plan has an html part that does not contain its text, so the shape cannot be "
+                    "re-derived into the html and the two parts would disagree at an html/text flag. "
+                    "Nothing has been written.",
+                    file=sys.stderr,
+                )
+                return 2
+
     # The size refusal, pre-flighted and keyed on the same predicate that does the growing. A message
     # whose only writable part is the turn cannot be made large without breaking section 3.2's
     # constraint, and reporting it as large while emitting a small one is the one outcome this lane
@@ -1400,6 +1533,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
     previous_raw: bytes | None = None
     for index in range(args.count):
         plan = plans[index]
+        # The dense-shape transform, applied to the PLAN rather than to the built MIME, so that the
+        # body the manifest counts is the body that is written. Both parts move together when the
+        # plan has html, because a text-only replacement would leave the html asserting the prose the
+        # turn no longer contains.
+        shape = draw_body_shape(index, args.body_shapes)
+        if shape is not None:
+            dense = shape_body(shape)
+            plan = replace(
+                plan,
+                text=dense,
+                html=plan.html.replace(plan.text, dense) if plan.html is not None else None,
+            )
         encoding = draw_encoding(args.seed, index, args.encoding_mix)
         has_html, has_attachment = size_carriers(plan)
         size = draw_size(args.seed, index, args.size_mix, has_html or has_attachment)
@@ -1430,7 +1575,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 return 2
             plan.window = [previous_raw.decode("utf-8")]
         (out / f"{index:03d}.eml").write_bytes(raw)
-        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size))
+        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size, shape))
         previous_raw = raw
 
     manifest = {
@@ -1444,6 +1589,17 @@ def cmd_generate(args: argparse.Namespace) -> int:
         # rule drew it, and `mixed` and `plain` are different rules that can agree on one message.
         "encodingMix": args.encoding_mix,
         "sizeMix": args.size_mix,
+        # The REQUESTED shape axis, beside the per-message drawn shape, for the same reason the two
+        # lines above are here: `off` and `all` are different rules that can agree on a message, and
+        # a consumer reproducing a batch needs to know which rule drew it.
+        #
+        # ABSENT when the axis is off, which is the one place this key differs from `encodingMix` and
+        # `sizeMix` above. Those two are mandatory at version 4 because a consumer must be able to tell
+        # "plain" from "the field is missing"; this one is additive on the `notPlanted` argument, so
+        # that a batch drawn with no shapes is BYTE-IDENTICAL to the same batch before this axis
+        # existed. That identity is a claim the README makes and this lane re-measures, and writing
+        # `"off"` here would silently break it for every existing invocation.
+        **({"bodyShapeMix": args.body_shapes} if args.body_shapes != "off" else {}),
         # Stated rather than omitted: nothing here lets a model write the corpus it is measured on,
         # and a batch that did would have to say so here so it could be reported apart.
         "authoredByModel": False,
@@ -1471,6 +1627,12 @@ def cmd_generate(args: argparse.Namespace) -> int:
     print(f"wrote {len(messages)} message(s) to {out}  profile={args.profile} coverage={counts}")
     print(f"encoding mix={args.encoding_mix}  drawn={encodings}")
     print(f"size     mix={args.size_mix}  drawn={sizes}")
+    if args.body_shapes != "off":
+        shapes: dict[str, int] = {}
+        for message in messages:
+            if "bodyShape" in message:
+                shapes[message["bodyShape"]] = shapes.get(message["bodyShape"], 0) + 1
+        print(f"shape    mix={args.body_shapes}  drawn={shapes}")
     print(f"manifest: {out / 'manifest.json'}  corpusVersion={CORPUS_VERSION}")
     return 0
 
@@ -1774,6 +1936,18 @@ def shape_failures(batch_dir: Path, manifest: dict) -> list[str]:
             continue
         shapes = shapes_of(path.read_bytes())
 
+        # The turn limit, which the README has claimed since the size axis landed and which nothing
+        # checked until now. It is a manifest field rather than a property of the bytes, so it is
+        # read off the entry; a body at or over the limit is a fixture defect the adapter turns into
+        # a provider refusal, which is exactly the failure the size axis is built to avoid.
+        turn = entry.get("turnCharacters")
+        if isinstance(turn, int) and turn >= TURN_LIMIT:
+            failures.append(
+                f"{entry['file']}: the turn is {turn} characters, at or over the adapter's limit of "
+                f"{TURN_LIMIT}, so this message would be truncated or refused by the provider rather "
+                "than measured as the fixture it claims to be"
+            )
+
         claimed = entry.get("encoding")
         if claimed is None:
             failures.append(
@@ -1825,6 +1999,18 @@ def shape_failures(batch_dir: Path, manifest: dict) -> list[str]:
                     f"{entry['file']}: claims `{size}` (under {upper} bytes in its html or "
                     f"attachment) and the larger of the two is {biggest}"
                 )
+
+        # The dense shape, when the axis drew one. The vocabulary is CLOSED on purpose: `bodyShape`
+        # is a claim about which transform produced the bytes, and `check` can assert membership in a
+        # finite set and can assert nothing at all about an open generator. The turn-limit assertion
+        # above is what bounds the body; this one is what names it.
+        claimed_shape = entry.get("bodyShape")
+        if claimed_shape is not None and claimed_shape not in BODY_SHAPES:
+            failures.append(
+                f"{entry['file']}: `bodyShape` is {claimed_shape!r}, which is not one of the declared "
+                f"shapes ({', '.join(BODY_SHAPES)}), so the density it claims is one this corpus "
+                "cannot produce and cannot reproduce from a seed"
+            )
     return failures
 
 
@@ -2288,6 +2474,18 @@ def main() -> int:
         help=(
             "how large each message is, carried by its html part and its attachment and never by the "
             "text body; `mixed` draws one of " + ", ".join(SIZE_MIXES) + " per message from the seed"
+        ),
+    )
+    gen.add_argument(
+        "--body-shapes",
+        default="off",
+        choices=list(BODY_SHAPE_MIX_CHOICES),
+        help=(
+            "the DENSITY of the author's text, which is the one thing content-varied expansion turns "
+            "on and the one thing no other axis moves; `off` (the default) transforms nothing and "
+            "declares no `bodyShape`, `all` gives one message per shape so a batch contains the whole "
+            "table, and a named shape forces it. Refused on any profile whose plan has not declared "
+            "itself dense_safe: " + ", ".join(SHAPE_UNITS)
         ),
     )
     gen.add_argument(
