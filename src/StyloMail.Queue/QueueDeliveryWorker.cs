@@ -234,23 +234,48 @@ public sealed class QueueDeliveryWorker
     public async Task RunAsync(CancellationToken shutdownToken = default)
     {
         using var inFlight = new CancellationTokenSource();
-        ITimer? drainTimer = null;
 
-        await using var registration = shutdownToken.Register(() =>
-        {
-            // Not cancelling immediately: the delivery gets its window. That window is the whole
-            // point of a bounded drain.
-            //
-            // Scheduled through the injected TimeProvider, like every other deadline in this
-            // component. `CancelAfter(TimeSpan)` has no TimeProvider overload, so it reads the wall
-            // clock directly, which would make this the one timing decision a deployment cannot
-            // control and a test cannot drive.
-            drainTimer = _queueOptions.TimeProvider.CreateTimer(
-                static state => ((CancellationTokenSource)state!).Cancel(),
-                inFlight,
-                _workerOptions.DrainTimeout,
-                Timeout.InfiniteTimeSpan);
-        }).ConfigureAwait(false);
+        // The drain timer is created here, once, unarmed, and the shutdown registration below only
+        // arms it. It must not be created BY that callback: a cancellation callback can still be
+        // running when this method returns (Cancel sets the cancelled flag before it runs any
+        // callback, so the loop can observe the shutdown, finish its delivery, read its own state and
+        // return while the cancelling thread is still inside the callback), and a timer created there
+        // is armed for the full drain window against a source this method has already disposed. Its
+        // callback then throws ObjectDisposedException from Cancel() on a thread-pool thread, where
+        // nothing catches it, and the process dies. The field the callback would assign is captured
+        // in a closure, so an assignment that lands after the `finally` has read it null is a timer
+        // nobody will ever dispose.
+        //
+        // Created through the injected TimeProvider, like every other deadline in this component.
+        // `CancelAfter(TimeSpan)` has no TimeProvider overload, so it reads the wall clock directly,
+        // which would make this the one timing decision a deployment cannot control and a test cannot
+        // drive.
+        using var drainTimer = _queueOptions.TimeProvider.CreateTimer(
+            static state => BeginDraining((CancellationTokenSource)state!),
+            inFlight,
+            Timeout.InfiniteTimeSpan,
+            Timeout.InfiniteTimeSpan);
+
+        await using var registration = shutdownToken.Register(
+            static state =>
+            {
+                var (timer, drainTimeout) = ((ITimer Timer, TimeSpan DrainTimeout))state!;
+
+                // Not cancelling immediately: the delivery gets its window, and that window is the
+                // whole point of a bounded drain. Arming a timer that already exists is what keeps the
+                // timer's lifetime inside this method's.
+                try
+                {
+                    timer.Change(drainTimeout, Timeout.InfiniteTimeSpan);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // This method has already returned and disposed the timer. It returns only after
+                    // the delivery it was protecting has finished, so there is nothing left to drain
+                    // and nothing to report.
+                }
+            },
+            (drainTimer, _workerOptions.DrainTimeout)).ConfigureAwait(false);
 
         var nextRecovery = _queueOptions.TimeProvider.GetUtcNow();
 
@@ -280,8 +305,34 @@ public sealed class QueueDeliveryWorker
         }
         finally
         {
-            drainTimer?.Dispose();
+            // The timer first, then the source it cancels: disposal cannot wait for a callback that
+            // is already running, so this ordering is not a guarantee, but it removes the window in
+            // which a timer that is still able to fire points at a source that is being torn down.
+            drainTimer.Dispose();
             inFlight.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Cancels the in-flight work when the drain window closes, from the timer's thread.
+    /// </summary>
+    /// <remarks>
+    /// <b>A thread-pool timer callback must not throw:</b> an unhandled exception there takes the
+    /// process down, which is how a rare teardown race became a test host that aborted instead of
+    /// reporting. The one failure possible here is cancelling a source this worker has already
+    /// returned and disposed, and that is a no-op by intent: there is nothing left in flight to
+    /// drain, so there is nothing to report either.
+    /// </remarks>
+    private static void BeginDraining(CancellationTokenSource inFlight)
+    {
+        try
+        {
+            inFlight.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The worker has returned and disposed the source; the drain window closed after the
+            // delivery it was guarding was already finished.
         }
     }
 

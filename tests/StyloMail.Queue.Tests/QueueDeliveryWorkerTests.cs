@@ -185,8 +185,17 @@ public class QueueDeliveryWorkerTests
 
         var port = new FakeDeliveryPort(async (_, ct) =>
         {
+            // Register the cancellable wait BEFORE declaring the delivery in flight. `WaitAsync(ct)`
+            // binds the token at the CALL, not at the await, so this ordering is what makes "shutdown
+            // arrives mid-flight" mean what it says. Signalling first left a window in which the test
+            // could cancel and release the gate before the wait existed, and `gate.Task.WaitAsync(ct)`
+            // then returned the already-completed gate, ignoring the cancellation entirely: the
+            // mutation that cancels the in-flight source at shutdown passed 2 of 5 full-suite runs
+            // against this test. Registering first makes that same mutation red 6 of 6, and the
+            // correct implementation still green 6 of 6.
+            var waiting = gate.Task.WaitAsync(ct);
             entered.TrySetResult();
-            await gate.Task.WaitAsync(ct);
+            await waiting;
             return FakeDeliveryPort.Delivered("rcpt@example.test");
         });
 
