@@ -7,7 +7,8 @@ checkout); the constraint this file depends on is restated below so the file sta
 
 Section 3.2's hard constraint, which is the assertion that carries this file: **large must be carried
 by the attachment and the HTML part, never by the text body**, because the text body is what the model
-is asked about and the adapter truncates a turn at 2,000 characters. A fixture grown through the body
+is asked about and this corpus caps a turn at 2,000 characters by its own rule (the adapter's body
+budget is `NimbleOptions.MaxBodyCharacters` 2500; see the README correction). A fixture grown through the body
 is a corpus defect that surfaces as a provider refusal.
 
 Section 3.2 also forbids the tempting shortcut of adding a part that does not already exist: a size

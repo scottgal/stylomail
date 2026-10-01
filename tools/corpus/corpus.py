@@ -294,13 +294,21 @@ SIZE_MIXES = ("small", "medium", "large")
 SIZE_MIX_CHOICES = SIZE_MIXES + ("mixed",)
 SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
 
-# The adapter truncates a turn at 2,000 characters and refuses an over-long rendered prompt outright,
-# so a body at or over this limit surfaces as a provider refusal rather than as the size a fixture
-# claims. The README has said since the size axis landed that "`check` asserts this directly: no
-# message in a batch may have `turnCharacters >= 2000`", and it did not: `turnCharacters` appeared in
-# this file only as a manifest FIELD, with no comparison against 2000 anywhere. The claim is a good
-# one and it is now true rather than removed, which is the repair this lane prefers for a doc that
-# over-states its own guarantee.
+# THIS CORPUS'S OWN MARGIN, AND NOT THE ADAPTER'S BOUND. An earlier version of this comment said the
+# adapter truncates a turn at 2,000 characters. MEASURED, it does not: the classifier's body budget is
+# `NimbleOptions.MaxBodyCharacters` 2500 (NimbleOptions.cs:229), the parser's per-body limit is
+# `MimeParseLimits.MaxBodyChars` 2 MiB (MimeParseLimits.cs:46), and the ONLY 2,000 in the measurement
+# path is `Truncate(m, 2_000)` over `message.ConversationContext` (NimbleMessageState.cs:155), which
+# bounds a WINDOW entry and not the body. The value stays 2000 as a margin that keeps no fixture near a
+# shortening boundary; the attribution was the part that was wrong.
+#
+# The README has said since the size axis landed that "`check` asserts this directly: no message in a
+# batch may have `turnCharacters >= 2000`", and it did not: `turnCharacters` appeared in this file only
+# as a manifest FIELD, with no comparison against 2000 anywhere. The claim is a good one and it is now
+# true rather than removed.
+#
+# STILL OWED, and named here so it is not lost: the bound that is REAL is per window entry and
+# `windowCharacters` is a SUM, so no assertion about it is possible from the manifest as it stands.
 TURN_LIMIT = 2000
 
 # -------------------------------------------------------------------------------------------------
@@ -1414,10 +1422,12 @@ def manifest_entry(
         "thresholdTargeted": plan.threshold_targeted,
         "turn": plan.turn,
         # Character counts, so that a provider refusal is attributable to the FIXTURE rather than to
-        # the pipeline. The adapter truncates each turn at 2,000 characters and the whole rendered
-        # prompt is checked against NumCtx as UTF-8 bytes before the provider refuses outright rather
-        # than truncating, so a window that is too long is a defect in the corpus and has to be
-        # visible in the manifest. Counts are of the raw strings sent, not of the rendered prompt.
+        # the pipeline. A window entry over 2,000 characters IS cut by the adapter
+        # (NimbleMessageState.cs:155, over ConversationContext -- the body is not bounded there), and
+        # the whole rendered prompt is checked against NumCtx as UTF-8 bytes before the provider
+        # refuses outright rather than truncating, so a window that is too long is a defect in the
+        # corpus and has to be visible in the manifest. Counts are of the raw strings sent, not of the
+        # rendered prompt.
         "turnCharacters": len(plan.text),
         "windowCharacters": sum(len(entry) for entry in plan.window),
         "intent": {"label": plan.intent, "note": plan.note},
@@ -1518,7 +1528,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 print(
                     f"refusing: --size-mix {args.size_mix} at index {index} ({args.profile}). This "
                     "message has no html part and no attachment, so the only part left to grow is the "
-                    "text body, and the adapter truncates a turn at 2,000 characters. Growing the body "
+                    "text body, and this corpus caps a turn at 2,000 characters. Growing the body "
                     "would surface as a provider refusal rather than as the size it claims, and adding "
                     "a part that was not there would move a coverage flag as a side effect of length. "
                     "Nothing has been written.",

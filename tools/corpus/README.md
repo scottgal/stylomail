@@ -91,15 +91,15 @@ the bytes. `mixed` is a rule for drawing rather than a value a message can carry
 | axis | values | what it changes | what it must never change |
 |---|---|---|---|
 | `--encoding-mix` | `plain` (default), `quoted-printable`, `rfc2047`, `mixed` | which transfer encoding a leaf body uses, and whether the Subject is an encoded-word | the DECODED bytes. Every variant decodes back to the same text, so a planted fact is carried by every variant |
-| `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, which is the model's turn and is truncated by the adapter at 2,000 characters |
+| `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, the model's turn. **The 2,000-character cap on it is THIS CORPUS's rule, not the adapter's** -- see the correction below the constraints |
 | `--body-shapes` | `off` (default), `all`, or one of the six names | the **density of the author's text**, which is the one thing content-driven expansion turns on | the message's size, its encoding, and every planted fact |
 
 Two constraints on the size axis are load-bearing rather than stylistic:
 
-- **Bulk rides the html part and the attachment, never the body.** The adapter truncates a turn at
-  2,000 characters and refuses an over-long rendered prompt outright, so a fixture grown through the
-  body surfaces as a *provider refusal* rather than as the size it claims. `check` asserts this
-  directly: no message in a batch may have `turnCharacters >= 2000`.
+- **Bulk rides the html part and the attachment, never the body.** `check` asserts this directly: no
+  message in a batch may have `turnCharacters >= 2000`. **But the 2,000 is THIS CORPUS's rule and not
+  the adapter's bound** -- an earlier version of this bullet said otherwise and was wrong. See the
+  correction below the size-axis constraints.
 - **A message with no html and no attachment is REFUSED, not faked.** `pair`, `template-variant` and
   the envelope-violation messages are text-only, so there is no part to grow that is not the turn, and
   silently attaching a file would move `has_attachments` as a side effect of *length*, which is what
@@ -110,6 +110,30 @@ Two constraints on the size axis are load-bearing rather than stylistic:
 The html padding is an HTML comment filled with `=`. That is deliberate: padding with prose, or with a
 long run of letters, would move `deterministic.html_text_disagreement`, whose whole question is how
 many tokens the text and html representations share.
+
+**A CORRECTION, measured at HEAD and owed because this file made the claim.** An earlier version of
+this section, of the `TURN_LIMIT` comment and of two refusal messages all said *the adapter truncates a
+turn at 2,000 characters*. **It does not, and I measured the path rather than trusting the sentence:**
+
+| where | the bound | on what |
+|---|---|---|
+| `NimbleOptions.cs:229` | **2500** | `MaxBodyCharacters`, the classifier's own body budget |
+| `MimeParseLimits.cs:46` | **2 MiB chars** | `MaxBodyChars`, the parser's per-body limit |
+| `MailAssessorOptions.cs:55` | **1,000,000** | the assessor's body limit |
+| `NimbleMessageState.cs:155` | **2000** | `Truncate(m, 2_000)` over `message.ConversationContext` -- **conversation-context entries, NOT the body** |
+
+So **the only 2,000 in the measurement path is on the WINDOW**, and `turnCharacters` is not the field
+it bounds. Two consequences, stated rather than buried:
+
+- **`TURN_LIMIT` is this corpus's own rule and not the adapter's bound.** The value is left at 2000 and
+  is now described as a margin rather than as a truncation point: it keeps a turn well under the
+  adapter's 2500 so that no fixture sits near a shortening boundary. The rule is defensible; the
+  attribution was not.
+- **`check` therefore asserts the right thing for the wrong reason, and asserts nothing about the field
+  that genuinely truncates.** A window entry over 2,000 characters IS cut by the adapter, and
+  `windowCharacters` is recorded as a SUM rather than per entry, so no assertion about it is currently
+  possible from the manifest. **Asserting the real bound needs a manifest change** (a per-entry or
+  maximum window length), which is why this correction is a correction and not a fix. Filed as owed.
 
 **`size` is a band, not a floor.** A message declaring `small` is also asserted to be *under* the
 medium target. A one-sided bound would let a batch that secretly grew keep declaring `small` and pass,
@@ -152,10 +176,17 @@ changes no invocation that exists today. `all` is deterministic so that a six-me
 the whole table -- a random draw would sample the range, and a batch that claims to show six shapes has
 to contain six shapes for the claim to be checkable.
 
-**The body is 1999 characters: one character under the turn limit.** `check` refuses
+**The body is 1999 characters: one character under this corpus's own turn limit.** `check` refuses
 `turnCharacters >= 2000` and `turnCharacters` is `len(plan.text)`, so 1999 is the largest body this
-corpus may declare. The limit applies to the **body as sent**, which is why the transform is applied to
-the plan rather than to the finished MIME.
+corpus may declare. The transform is applied to the **plan** rather than to the finished MIME because
+the recorded length must be the length that is sent.
+
+**AND THIS IS DELIBERATELY CONSERVATIVE, by 500 characters.** The adapter's own body budget is
+`MaxBodyCharacters` **2500** (`NimbleOptions.cs:229`), not 2000; the 2000 is this corpus's margin. So
+the family draws 500 characters shorter than the adapter would accept, and since the expansion FALLS
+with body size that makes every arm here **weaker** than it could be. Raising the ceiling to the
+adapter's own bound is a decision about `TURN_LIMIT` and is deliberately **not** taken in the same
+change that introduced the axis.
 
 **A profile must opt in, and the default is the safe direction.** The axis rewrites the turn, so it may
 only run on a plan whose planted facts do **not** live in that text: `phishing` and its siblings carry
@@ -454,10 +485,13 @@ the window's own bank details, and now advances (approval, payment run, remittan
 touching the payment destination not at all.
 
 `turnCharacters` and `windowCharacters` are the sizes of the strings actually sent. They exist so a
-provider refusal is attributable to the **fixture** rather than to the pipeline: the adapter truncates
-a turn at 2,000 characters, and the rendered prompt is checked against `NumCtx` as UTF-8 bytes and
-refused outright rather than truncated, so an over-long fixture is a corpus defect and has to be
-visible in the manifest.
+provider refusal is attributable to the **fixture** rather than to the pipeline. Three lengths matter
+and they have three different bounds: a **window entry** over 2,000 characters is cut by the adapter
+(`NimbleMessageState.cs:155`, over `ConversationContext`); a **body** is bounded by the classifier's own
+`MaxBodyCharacters` 2500 (`NimbleOptions.cs:229`) and further shortened by the fit to meet the byte
+budget; and this corpus additionally caps a turn at 2,000 by its own rule. The rendered prompt is
+checked against `NumCtx` as UTF-8 bytes and refused outright rather than truncated, so an over-long
+fixture is a corpus defect and has to be visible in the manifest.
 
 The pair declares `semantic.conversational_continuity` as **availability only**. Supplying a window
 is something this tool does, so its availability is the corpus's to claim. The value is the model's
