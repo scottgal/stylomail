@@ -793,7 +793,8 @@ public static class HostServices
         //   WITNESSED TRUE at an applied window of 16384. The guard FIRED there on an admissible
         //   request evaluating 20498 tokens, recorded in the adapter's own refusal reason.
         //   MEASURED REACHABLE at 32768. Five of six admissible BODY CONTENTS evaluate above 32768
-        //   at a body size the adapter produces, so `EffectiveNumCtx 32768` refuses dense text today.
+        //   at a body size the adapter produces, which is WHY THE PIN BELOW IS 65536. At that landed
+        //   value no measured body is refused, and the cap that still binds is the BODY BUDGET.
         //
         // The arithmetic that PREDICTED it, kept because the reasoning and the result belong on the
         // record together: at a FIXED byte cap a SMALLER bytes-per-token ratio means MORE tokens, so
@@ -875,9 +876,20 @@ public static class HostServices
         // long query strings, code, logs, JSON, diff output. Those are ordinary in security alerts,
         // newsletters and CI notifications, which are exactly the messages worth assessing.
         //
-        // What the table supports without either over-reach: FIVE OF SIX body contents are refused,
-        // and PLAIN PROSE IS THE EXCEPTION rather than the rule, so a reader must not take a
-        // naturally dense body for a corner.
+        // AND THE PIN MOVES THIS EXPOSURE RATHER THAN REMOVING IT, which is the sentence to carry out
+        // of tonight. At the landed `EffectiveNumCtx 65536` the largest evaluation any MEASURED
+        // admissible body reaches is 42026, so dense content is NO LONGER REFUSED and the refusal is
+        // not the live case. What still binds is the BODY BUDGET, which the pin does not touch:
+        // `NimbleOptions.MaxBodyCharacters` (2500 -- note the OTHER `MaxBodyCharacters`, on
+        // `MailAssessorOptions`, defaults to 1_000_000 and is a different cap) shortens any body or
+        // quoted tail over it, and because the row stays `Available` that cut reaches a reader ONLY
+        // through the reason attribute. So the live failure is the SHORTENED READ rather than the
+        // refusal, which is `policy-`'s ruling and not a second mechanism.
+        //
+        // What the table supports without either over-reach: FIVE OF SIX body contents evaluate above
+        // 32768 and PLAIN PROSE IS THE EXCEPTION rather than the rule, so a reader must not take a
+        // naturally dense body for a corner. That finding is what the PIN acts on; at the landed
+        // 65536 none of the six is refused, and the exposure that remains is the one below.
         //
         // Split from the line above as well: one line carrying its own explanation is exactly the line
         // a reader quotes in half, and three lanes quoted only the first sentence of it within the
