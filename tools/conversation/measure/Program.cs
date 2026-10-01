@@ -149,6 +149,23 @@ internal static class Program
             Endpoint = Environment.GetEnvironmentVariable("NIMBLE_LIVE_ENDPOINT") is { Length: > 0 } e
                 ? e
                 : new NimbleOptions().Endpoint,
+
+            // The applied window, for a caller whose request is known not to fit the derived one.
+            // THIS IS LANE-LOCAL ON PURPOSE, and the reason is a fail-open direction rather than taste.
+            // `EffectiveNumCtx` is what the fit and the truncation backstop reason about, so raising it
+            // widens the window the guard tolerates. As a DEFAULT in `NimbleOptions` that widening would
+            // be inherited by every deployment, including the ones that never send a large ask, and it
+            // would land while the fit's byte-versus-token mismatch is still present: the symptom would
+            // disappear by disarming the check for callers who were never affected by it. Scoped here it
+            // widens exactly one tool's construction. The Host's own equivalent is the configuration key
+            // `StyloMail__Nimble__EffectiveNumCtx`; the two names are separate deliberately, because a
+            // take through this tool and a run through the Host are different configurations and a
+            // take is only a measurement of the one it ran under.
+            EffectiveNumCtx = int.TryParse(
+                Environment.GetEnvironmentVariable("NIMBLE_LIVE_EFFECTIVE_NUM_CTX"),
+                out var effectiveNumCtx)
+                ? effectiveNumCtx
+                : (int?)null,
         };
 
         using var recorder = new RecordingHandler { InnerHandler = new HttpClientHandler() };
