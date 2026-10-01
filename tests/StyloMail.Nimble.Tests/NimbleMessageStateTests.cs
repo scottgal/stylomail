@@ -78,9 +78,13 @@ public sealed class NimbleMessageStateTests
             NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
         await NimbleTestDoubles.Create(localHandler).ClassifyAsync(input, CancellationToken.None);
 
+        // `state` on this adapter's body since the SystemOne migration; it was `prompt` under
+        // nimble-request-shape/1. Same document, same JSON text, a different member name on a
+        // different transport, and the comparison below is unaffected because it reads the text
+        // rather than the member that carried it.
         var hostedState = Property(hostedHandler.LastBody, "state");
         var localState = JsonDocument.Parse(
-            Property(localHandler.LastBody, "prompt").GetString()!).RootElement;
+            Property(localHandler.LastBody, "state").GetString()!).RootElement;
 
         Assert.Equal(Canonical(hostedState), Canonical(localState));
     }

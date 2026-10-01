@@ -326,7 +326,17 @@ def main() -> int:
         "ASPNETCORE_URLS": BASE,
         "STYLOMAIL_PROFILE_KEY": profile_key,
         "StyloMail__Assessment__Provider": "Nimble",
-        "StyloMail__Nimble__Endpoint": f"{OLLAMA}/api/generate",
+        # The route the adapter actually posts to, and not a preference. `/2` made the decision route
+        # `POST /v1/systemone`, and this line used to name the superseded `/api/generate`. A body shaped
+        # `{model, state, questions}` sent to the generate route is not the experiment this probe claims
+        # to run: it would degrade to an Unavailable assessment and read as a host defect.
+        #
+        # What the other end serves was READ rather than assumed. At `127.0.0.1:11435`, `GET /api/version`
+        # returns 200 and `POST /v1/systemone` returns 200, while `POST /api/systemone` returns 404
+        # (`.styloagent/scratch/overview/probe-systemone.out`, 1 Oct). The shipping default in
+        # `NimbleOptions.cs:56` ends in `/v1/systemone` as well, so this override names the same route the
+        # adapter would use unaided rather than a second one it would not.
+        "StyloMail__Nimble__Endpoint": f"{OLLAMA}/v1/systemone",
         "StyloMail__Nimble__Model": MODEL,
         "StyloMail__Storage__SpoolRoot": str(ROOT / "spool"),
         "StyloMail__Storage__DatabasePath": str(ROOT / "host.db"),

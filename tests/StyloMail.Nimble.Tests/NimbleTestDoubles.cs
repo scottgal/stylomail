@@ -35,58 +35,88 @@ internal sealed class RecordingHandler(Func<HttpRequestMessage, int, HttpRespons
 
 internal static class NimbleTestDoubles
 {
-    /// <summary>An Ollama success body, with the answer codes spelled out per dimension.</summary>
+    /// <summary>
+    /// A SystemOne success body: one Noul answer per askable dimension, keyed positionally, plus usage.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The wire names are written out literally rather than taken from the adapter's constants.</b>
+    /// <c>answers</c>, <c>type</c>, <c>noul</c>, <c>usage</c>, <c>input_tokens</c> and the <c>q0</c>
+    /// key form are all spelled here as the server spells them. That is what makes this a double: if
+    /// the adapter's serialisation or its key derivation is renamed, these bodies stop matching and the
+    /// tests go red, which a double built from the adapter's own constants could not do.
+    /// </para>
+    /// <para>
+    /// <b>The probability is supplied by the caller, including values in the middle of the range.</b>
+    /// The shape this replaced could only answer 1.0 or 0.0, so a double could not express 0.5 at all.
+    /// A test passing 0.5 here is asserting what the ADAPTER does with a mid-range answer, which is not
+    /// evidence about what the model returns: see <see cref="NimbleQuestionSet.MapNoul"/> for what is
+    /// and is not claimed about the real distribution.
+    /// </para>
+    /// </remarks>
     internal static HttpResponseMessage Ok(
         IReadOnlyList<SemanticDimension> askable,
-        Func<SemanticDimension, string> code,
-        int promptEvalCount = 900,
-        int evalCount = 24,
+        Func<SemanticDimension, double> probability,
+        int? inputTokens = 900,
+        int? outputTokens = 24,
         string model = "nimble:latest")
     {
-        var answers = new Dictionary<string, string>(StringComparer.Ordinal);
+        var answers = new Dictionary<string, object>(StringComparer.Ordinal);
         for (var index = 0; index < askable.Count; index++)
         {
-            answers["q" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)] = code(askable[index]);
+            answers["q" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)] =
+                Noul(probability(askable[index]));
         }
 
-        return new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(
-                JsonSerializer.Serialize(new
-                {
-                    model,
-                    response = JsonSerializer.Serialize(answers),
-                    done = true,
-                    done_reason = "stop",
-                    prompt_eval_count = promptEvalCount,
-                    prompt_eval_cached_count = 0,
-                    eval_count = evalCount,
-                    total_duration = 8_100_000_000L,
-                    load_duration = 0L,
-                    prompt_eval_duration = 2_000_000_000L,
-                    eval_duration = 6_000_000_000L,
-                }),
-                Encoding.UTF8,
-                "application/json"),
-        };
+        return OkWithAnswers(answers, inputTokens, outputTokens, model);
     }
 
-    /// <summary>A success body whose <c>response</c> is arbitrary text rather than the schema's object.</summary>
-    internal static HttpResponseMessage OkWithRawAnswer(string rawAnswer)
+    /// <summary>One Noul answer object, as the server types it.</summary>
+    internal static object Noul(double probability) => new { type = "noul", noul = probability };
+
+    /// <summary>
+    /// A success body carrying exactly the answers given, and nothing for any other key.
+    /// </summary>
+    /// <remarks>
+    /// The escape hatch for the answer-shape tests: a server that omitted a key, or answered one with a
+    /// type the question did not ask for, or answered with a bare string. Passing
+    /// <c>inputTokens: null, outputTokens: null</c> omits the <c>usage</c> block entirely, which is how
+    /// the "an absent count is reported as absent" path is reached.
+    /// </remarks>
+    internal static HttpResponseMessage OkWithAnswers(
+        IReadOnlyDictionary<string, object> answers,
+        int? inputTokens = 900,
+        int? outputTokens = 24,
+        string model = "nimble:latest")
         => new(HttpStatusCode.OK)
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new
                 {
-                    model = "nimble:latest",
-                    response = rawAnswer,
-                    done = true,
-                    done_reason = "stop",
-                    prompt_eval_count = 900,
-                    eval_count = 10,
+                    model,
+                    answers,
+                    usage = inputTokens is null && outputTokens is null
+                        ? null
+                        : new { input_tokens = inputTokens, output_tokens = outputTokens },
                 }),
                 Encoding.UTF8,
                 "application/json"),
+        };
+
+    /// <summary>
+    /// A success body carrying raw JSON text, for the cases where the promised object is what is wrong.
+    /// </summary>
+    /// <remarks>
+    /// The companion to <see cref="OkWithAnswers"/>: that one builds a well-typed body out of typed
+    /// answers, and this one is the only way to reach a body that is malformed as JSON, or whose
+    /// <c>answers</c> member is a number, a string or an array where an object was promised. Those are
+    /// real things a server can return and the adapter has a stated behaviour for each, so the tests
+    /// that pin that behaviour need a seam that can produce them.
+    /// </remarks>
+    internal static HttpResponseMessage OkWithRawBody(string body)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
 
     internal static HttpResponseMessage Status(HttpStatusCode status, string body = "")
@@ -95,8 +125,8 @@ internal static class NimbleTestDoubles
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
 
-    /// <summary>Answers every dimension affirmatively, which is not a claim about the message.</summary>
-    internal static Func<SemanticDimension, string> AllAffirmative => _ => NimbleQuestionSet.AffirmativeCode;
+    /// <summary>Answers every dimension 1.0, which is not a claim about the message.</summary>
+    internal static Func<SemanticDimension, double> AllAffirmative => _ => 1.0;
 
     internal static NimbleSemanticMailClassifier Create(
         RecordingHandler handler,

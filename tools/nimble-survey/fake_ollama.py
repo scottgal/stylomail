@@ -8,18 +8,22 @@ local model. That is fine for a measurement and wrong for a check: a defect in t
 after a forty-call monopoly of a contended resource, and it would surface as a missing artifact rather
 than as an error.
 
-So this answers `/api/version` and `/api/generate` locally and the harness runs against it in under a
+So this answers `/api/version` and `/v1/systemone` locally and the harness runs against it in under a
 second. It is a stub, not a model: it does not read the prompt. What it does reproduce is the wire
 contract, taken from the request the adapter actually sends rather than from documentation. The answer
-object is built from the schema's own `properties`, so a change to the question set shows up here as a
-different number of answered keys rather than as a silently smaller answer.
+object is built from the request's own `questions` keys, so a change to the question set shows up here
+as a different number of answered keys rather than as a silently smaller answer.
 
     python3 tools/nimble-survey/fake_ollama.py --port 11599
-    NIMBLE_LIVE_ENDPOINT=http://127.0.0.1:11599/api/generate \
+    NIMBLE_LIVE_ENDPOINT=http://127.0.0.1:11599/v1/systemone \
     NIMBLE_CONTINUITY_RUNS=2 NIMBLE_CONTINUITY_OUT=/tmp/continuity-stub.json \
       dotnet test tests/StyloMail.Nimble.Tests --filter Records_whether_the_continuity
 
-`--fail-at N` makes the Nth generate call return 500, which the adapter turns into an Unavailable row
+Two routes, because the adapter uses two: the liveness probe on the server root, and the decision
+route. `/api/version` is the probe and is deliberately NOT under `/v1/`; it is what the live fact's
+skip gate asks for, and a stub that moved it would make the gate the thing under test.
+
+`--fail-at N` makes the Nth decision call return 500, which the adapter turns into an Unavailable row
 without retrying (503 is the only retried status). That exercises the failure path deliberately rather
 than waiting for it: the measurement must still write its artifact, and must still fail the test.
 
@@ -34,6 +38,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CALLS = {"n": 0}
+
+DECISION_PATH = "/v1/systemone"
 
 
 def build_handler(args):
@@ -84,6 +90,10 @@ def build_handler(args):
                 self._send(404, {"error": f"no route {self.path}"})
 
         def do_POST(self):  # noqa: N802 - name fixed by BaseHTTPRequestHandler
+            if self.path.split("?")[0] != DECISION_PATH:
+                self._send(404, {"error": f"no route {self.path}"})
+                return
+
             raw = self._read_body()
             try:
                 request = json.loads(raw)
@@ -93,11 +103,14 @@ def build_handler(args):
 
             CALLS["n"] += 1
             call = CALLS["n"]
-            properties = list((request.get("format") or {}).get("properties") or {})
-            prompt = request.get("prompt") or ""
+            questions = list((request.get("questions") or {}))
+            state = request.get("state") or ""
+            # The member names rather than a count of the ones this stub happens to know: the old
+            # shape's log line printed `options.num_ctx`, which no longer travels at all, and a line
+            # that keeps printing a value the request does not carry is worse than no line.
             sys.stderr.write(
-                f"  call {call}: {len(properties)} question(s), prompt {len(prompt.encode('utf-8'))} "
-                f"bytes, num_ctx={(request.get('options') or {}).get('num_ctx')}\n"
+                f"  call {call}: {len(questions)} question(s), state {len(state.encode('utf-8'))} "
+                f"bytes, members={sorted(request)}\n"
             )
 
             if args.fail_at and call == args.fail_at:
@@ -105,20 +118,19 @@ def build_handler(args):
                 self._send(500, {"error": "stub refused this call"})
                 return
 
-            if not properties:
+            if not questions:
                 # A silent empty answer is exactly what this stub exists to make loud.
-                self._send(400, {"error": "the request carried no format properties to answer"})
+                self._send(400, {"error": "the request carried no questions to answer"})
                 return
 
             self._send(
                 200,
                 {
                     "model": request.get("model") or "unknown",
-                    "response": json.dumps({name: args.answer for name in properties}),
-                    "done": True,
-                    "done_reason": "stop",
-                    "prompt_eval_count": args.prompt_tokens,
-                    "eval_count": len(properties),
+                    "answers": {
+                        name: {"type": "noul", "noul": args.noul} for name in questions
+                    },
+                    "usage": {"input_tokens": args.prompt_tokens, "output_tokens": len(questions)},
                 },
             )
 
@@ -129,8 +141,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=11599)
     parser.add_argument(
-        "--answer", default="A", choices=["A", "B"],
-        help="the code every question is answered with; the point is the count, not the letter",
+        "--noul", type=float, default=1.0,
+        help="the probability every question is answered with; the point is the count, not the value",
     )
     parser.add_argument(
         "--fail-at", type=int, default=0,
@@ -140,14 +152,14 @@ def main() -> int:
     args = parser.parse_args()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), build_handler(args))
-    print(f"fake ollama on http://127.0.0.1:{args.port}  answer={args.answer} "
+    print(f"fake ollama on http://127.0.0.1:{args.port}{DECISION_PATH}  noul={args.noul} "
           f"fail_at={args.fail_at or 'never'}", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        print(f"total generate calls: {CALLS['n']}", file=sys.stderr)
+        print(f"total decision calls: {CALLS['n']}", file=sys.stderr)
     return 0
 
 

@@ -22,6 +22,12 @@ Run it as a file, from the repository root:
 
     python3 tools/nimble-survey/probe_shape_flip.py --out /tmp/nimble-shape-flip.json
 
+**Which shape this prices.** Every variant below is a variant of `nimble-request-shape/1`: an A/B
+question block and a system prompt. `/2` replaced both, so a run of this probe answers a question
+about a rendering that no longer ships. That is not a reason to delete it, and it is a reason to say
+so: the /1-era answer it isolates is still the answer it was, and the numbers it produces must not be
+carried forward as if `/2` had been measured.
+
 Nothing here reads, prints or stores a credential: the whole probe is local.
 """
 
@@ -40,9 +46,15 @@ FLAGSHIP_CASE = "credential-request"
 TARGET_DIMENSION = "semantic.credential_request"
 RUNS = 3
 
-# The two paragraphs the shipping adapter adds to its system prompt, transcribed from
-# NimbleQuestionSet.RenderSystem so the probe varies the thing that actually ships. If this drifts
-# from the C# the probe measures a shape nobody ships, so the C# is the authority.
+# The two guard paragraphs the shipping adapter used to add to its system prompt, transcribed from
+# NimbleQuestionSet.RenderSystem as `nimble-request-shape/1` rendered it.
+#
+# That renderer no longer exists. `/2` declares the questions as data on POST /v1/systemone and sends
+# no system prompt at all, so there is nothing left in the C# for this constant to have drifted FROM,
+# and its authority is now the /1 source rather than the shipping adapter. The transcription is
+# therefore accurate for the shape it names and for nothing else: every number this probe produces is
+# a measurement of the RETIRED shape. Re-deriving it for /2 is a separate change, and a fresh run of
+# this probe must not be read as a statement about what ships today.
 SHIPPED_PREAMBLE = (
     "You are a decision component inside a mail security pipeline. You are given independent "
     "questions about one message, and a JSON description of that message in the user turn.\n"

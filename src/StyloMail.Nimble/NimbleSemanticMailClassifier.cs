@@ -26,23 +26,37 @@ namespace StyloMail.Nimble;
 /// default score, and nothing here returns an empty success.
 /// </para>
 /// <para>
-/// <b>What this provider can say is narrower than what the port can express.</b> It answers with a
-/// decision, so a dimension's value is 1.0 or 0.0 and a genuinely balanced result near 0.5 cannot be
-/// expressed at all. That is a real limitation of the model, measured rather than assumed, and it is
-/// recorded here rather than smoothed over by a mapping that would invent a gradation. See
-/// <see cref="NimbleQuestionSet.MapCode"/>.
+/// <b>The narrowness this paragraph used to describe went with the letter shape, and what replaces it
+/// is unmeasured rather than better.</b> It read: "It answers with a decision, so a dimension's value
+/// is 1.0 or 0.0 and a genuinely balanced result near 0.5 cannot be expressed at all." That was true of
+/// the A/B rendering and it was a property of the two-letter alphabet rather than of the model. The
+/// SystemOne endpoint answers a Noul question with a probability, so a value is now graded and the
+/// port's own notion of near-0.5 meaning genuinely balanced is expressible. What the distribution of
+/// those probabilities actually is, and whether it is stable across runs, has NOT been measured: the
+/// probe produced one answer at 0.9995, which is one point and says nothing about the middle. See
+/// <see cref="NimbleQuestionSet.MapNoul"/>, which carries the full correction rather than a summary.
 /// </para>
 /// <para>
-/// <b>Structural containment is not immunity, and nothing here claims it is.</b> The message travels
-/// as data inside a single JSON <c>state</c> field, the system message says the description is data
-/// and never an instruction, and the answer schema makes every property required with both values
-/// drawn from the same two letters, so a hostile message cannot break the wire structure, cannot add
-/// a question, and cannot make the decoder emit prose or an out-of-range answer. What none of that
-/// can do is stop a model from being persuaded to answer the wrong letter. An attacker writes text
-/// this model reads, and a small model can be talked into a false negative. So the guarantee is about
-/// the *shape* of the answer, never about its truth, and a false negative arrives here
+/// <b>Structural containment is not immunity, and nothing here claims it is. Two of the mechanisms
+/// this paragraph used to lean on are gone with the transport, and they are recorded rather than
+/// quietly reworded.</b> The message still travels as data inside a single JSON <c>state</c> member and
+/// the question list is still built in code from <see cref="Core.SemanticDimensions"/>, so a hostile
+/// message cannot break the wire structure and cannot add a question. What the old shape also had, and
+/// this one does not, is a <c>system</c> message that told the model the description is data and never
+/// an instruction, and an answer schema pinning every property to one of two letters. Whether an
+/// <c>system</c> member would be accepted is UNMEASURED, so nothing here can claim the guard is
+/// unnecessary; it is absent because the measured request is absent of it. The shaped-answer property
+/// survives by a different route: the server types its answer, and <see cref="NimbleQuestionSet.MapNoul"/>
+/// refuses anything that is not a Noul probability in [0, 1] rather than repairing it.
+/// </para>
+/// <para>
+/// What none of it can do is stop a model from being persuaded to answer wrongly. An attacker writes
+/// text this model reads, and a small model can be talked into a false negative. So the guarantee is
+/// about the *shape* of the answer, never about its truth, and a false negative arrives here
 /// indistinguishable from a true one. That consequence is recorded at the policy tier as architecture
-/// decision 23; this file's part in it is to produce an honest row and to claim nothing more.
+/// decision 23; this file's part in it is to produce an honest row and to claim nothing more. The
+/// injection question is measurable rather than a matter of argument, and the live measurement that
+/// asks it already exists.
 /// </para>
 /// <para>
 /// <b>No request or response body is ever logged.</b> Message content leaves this process only to the
@@ -123,10 +137,10 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             return Unavailable(askable, notApplicableEvidence, now, "provider circuit open");
         }
 
-        var system = NimbleQuestionSet.RenderSystem(askable);
-        var prompt = FitPrompt(input, system);
+        var questions = NimbleQuestionSet.BuildQuestions(askable);
+        var state = FitState(input, questions);
 
-        if (prompt is null)
+        if (state is null)
         {
             // The questions plus a state holding no body at all still exceed the window. Answering
             // would mean describing a message the model did not read, so nothing is asked.
@@ -137,22 +151,14 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 "question set and message state exceed the configured context window");
         }
 
-        var request = new NimbleGenerateRequest
+        var request = new NimbleSystemOneRequest
         {
             Model = _options.Model,
-            System = system,
-            Prompt = prompt,
-            Stream = false,
-            Think = false,
-            Format = NimbleQuestionSet.BuildSchema(askable),
-            Options = new NimbleGenerationOptions
-            {
-                Temperature = 0,
-                NumCtx = _options.NumCtx,
-            },
+            State = state,
+            Questions = questions,
         };
 
-        NimbleGenerateResponse? response;
+        NimbleSystemOneResponse? response;
         try
         {
             response = await SendWithRetryAsync(request, cancellationToken).ConfigureAwait(false);
@@ -185,7 +191,19 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         // 4098 tokens reported 4098, the check asked whether that was >= 8192, and a completely
         // truncated prompt came back as a clean and complete answer. That is decision 26, and it was
         // measured rather than reasoned about.
-        if (response.PromptEvalCount is { } evaluated && evaluated >= _options.AppliedContextWindow)
+        // The count now comes from `usage.input_tokens`, because the SystemOne answer carries no
+        // `prompt_eval_count` and no `done_reason`. The old shape reported both and this one reports
+        // only the pair of counts, so a check written against the old field would read null forever
+        // and the backstop would stop firing without anything failing. That is why the field moved
+        // with the transport rather than after it.
+        //
+        // UNMEASURED, and it is the load-bearing assumption of this whole block: whether
+        // `usage.input_tokens` is the prompt as SENT or as the server APPLIED it. On /api/generate the
+        // equivalent figure was the post-shortening count, which is what made the comparison below
+        // meaningful. Nothing in the probe's artifact settles it. So this is still a backstop resting
+        // on an assumption rather than a proven property, and it stays marked as one until a run
+        // saturates the window through this shape and reads the number back.
+        if (response.Usage?.InputTokens is { } evaluated && evaluated >= _options.AppliedContextWindow)
         {
             _breaker.RecordSuccess();
             return Unavailable(
@@ -210,8 +228,12 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             // "unknown provider".
             ResolvedModelVersion = response.Model,
             Cache = BuildCacheProvenance(input, askable.Count, response.Model),
-            InputTokens = response.PromptEvalCount,
-            OutputTokens = response.EvalCount,
+
+            // From the usage block, which is where this shape reports them. Null when the server
+            // omitted it: an absent count is reported as absent rather than as zero, because a zero
+            // here would read as a measurement of an empty prompt.
+            InputTokens = response.Usage?.InputTokens,
+            OutputTokens = response.Usage?.OutputTokens,
         };
     }
 
@@ -246,8 +268,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     }
 
     /// <summary>
-    /// Renders the state into the prompt, shortening the body until the whole request fits the
-    /// context window.
+    /// Renders the state and shortens the body until the whole request fits the context window.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -267,10 +288,22 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// evaluated count against the applied window.
     /// </para>
     /// <para>
-    /// <b>The budget is not simply the applied window, and that is deliberate.</b> The rendered question
-    /// set is 4,264 bytes on its own, so 'total bytes at most the applied window in tokens' would leave
-    /// no room for a state at all and would refuse every message. The byte ceiling keeps the request
-    /// small; the backstop keeps the answer honest when it is not small enough.
+    /// <b>The budget is not simply the applied window, and that is deliberate.</b> The declared question
+    /// set is thousands of bytes on its own, so 'total bytes at most the applied window in tokens'
+    /// would leave no room for a state at all and would refuse every message. The byte ceiling keeps
+    /// the request small; the backstop keeps the answer honest when it is not small enough.
+    /// </para>
+    /// <para>
+    /// <b>UNMEASURED, and new with this shape: <see cref="NimbleOptions.NumCtx"/> no longer goes on the
+    /// wire.</b> The SystemOne request has no <c>options</c> member, so the window is now a client-side
+    /// assumption about what the server will accept rather than a figure the server was asked for. The
+    /// probe established neither what window the endpoint applies, nor whether it can be configured,
+    /// nor whether an <c>options</c> member would be honoured if sent. Both this fit and the backstop
+    /// in the caller are expressed against that assumption, so both rest on it until a run measures the
+    /// endpoint's own window through this shape. The byte figure itself is deliberately not quoted
+    /// here: the old remark quoted 4,264 for the letter rendering, and this shape serialises the
+    /// questions differently, so carrying that number over would be a stale figure reading as a
+    /// measured one.
     /// </para>
     /// <para>
     /// The loop shortens by at least the measured excess each pass and stops at zero, so it terminates.
@@ -287,14 +320,15 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// complete message.
     /// </para>
     /// </remarks>
-    private string? FitPrompt(SemanticMailInput input, string system)
+    private string? FitState(
+        SemanticMailInput input,
+        IReadOnlyDictionary<string, NimbleQuestion> questions)
     {
-        var questionBytes = Encoding.UTF8.GetByteCount(system);
         var budget = _options.MaxBodyCharacters;
 
         while (true)
         {
-            var prompt = JsonSerializer.Serialize(
+            var state = JsonSerializer.Serialize(
                 NimbleMessageState.Build(
                     input.Message,
                     input.TaggedContext,
@@ -304,11 +338,25 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                     _options.MaxAttachments).State,
                 StateJson);
 
-            var total = questionBytes + Encoding.UTF8.GetByteCount(prompt);
+            // The WHOLE request is measured, not the two halves added together. Under the old shape
+            // the questions and the state travelled in two fields, so their byte counts could simply
+            // be summed. Here they are members of one JSON document, and the braces, the question
+            // keys, the type names and the escaping of every quote inside the state are all part of
+            // what the server receives. Summing two halves would understate the request by exactly
+            // the amount the envelope costs, which is the direction that lets a message be sent that
+            // the window cannot hold.
+            var request = new NimbleSystemOneRequest
+            {
+                Model = _options.Model,
+                State = state,
+                Questions = questions,
+            };
+
+            var total = Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(request, WireJson));
 
             if (total <= _options.NumCtx)
             {
-                return prompt;
+                return state;
             }
 
             if (budget == 0)
@@ -316,7 +364,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 return null;
             }
 
-            // Remove the measured excess plus the margin, and never less than a step, so a prompt
+            // Remove the measured excess plus the margin, and never less than a step, so a request
             // that is barely over the line still converges.
             var excess = total - _options.NumCtx;
             var step = Math.Max(excess + PromptByteMargin, 64);
@@ -324,8 +372,8 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         }
     }
 
-    private async Task<NimbleGenerateResponse?> SendWithRetryAsync(
-        NimbleGenerateRequest request,
+    private async Task<NimbleSystemOneResponse?> SendWithRetryAsync(
+        NimbleSystemOneRequest request,
         CancellationToken cancellationToken)
     {
         var delay = _options.RetryBaseDelay;
@@ -364,7 +412,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 if (response.IsSuccessStatusCode)
                 {
                     return await response.Content
-                        .ReadFromJsonAsync<NimbleGenerateResponse>(WireJson, cancellationToken)
+                        .ReadFromJsonAsync<NimbleSystemOneResponse>(WireJson, cancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -387,13 +435,23 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
                 {
                     var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    // A 404 now has two causes and the status cannot tell them apart, which is new with
+                    // this path. The old endpoint answered 404 only for an unknown model. This one also
+                    // answers 404 for an unknown ROUTE, measured: the probe posted the same body to the
+                    // native path /api/systemone on the server that serves /v1/systemone and got
+                    // "404 page not found". So on this transport a 404 is at least as likely to mean
+                    // "this build has no SystemOne route" as "this build lacks the model", and a message
+                    // naming only the model would send a reader to the wrong configuration value.
                     throw new NimbleContractException(
                         response.StatusCode == HttpStatusCode.NotFound
-                            ? $"The local provider has no model '{request.Model}'. Check the configured "
-                              + "model reference and that the endpoint is the server holding it; a "
-                              + "second Ollama on another port answers here and serves different models."
+                            ? $"The local provider answered 404 for POST /v1/systemone and model "
+                              + $"'{request.Model}'. That status covers two causes here and does not say "
+                              + "which: the server is a build without the SystemOne route, or the model "
+                              + "reference is not one it holds. Check the endpoint path first, then the "
+                              + "model. A second Ollama on another port serves both a different route "
+                              + "set and different models."
                             : "The local provider rejected the request body. This indicates a bug in the "
-                              + "question, schema or state shape, not a transient fault.",
+                              + "question or state shape, not a transient fault.",
                         response.StatusCode,
                         body);
                 }
@@ -410,35 +468,56 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>A 0.0 here is a decision, and it is not clearance.</b> This provider answers with a letter, so
-    /// a dimension that was not detected and a dimension the model agreed to suppress both arrive as
-    /// <c>Available</c> with <c>Value</c> 0.0, and nothing in this row or in this file can tell them
-    /// apart. Downstream policy that reads 0.0 as "looked at and found absent" is reading something
-    /// this provider cannot say. The port has no state for "answered, but wrongly", so the honest
-    /// handling is to say so here rather than to leave the number looking like a finding.
+    /// <b>A 0.0 here is a decision, and it is not clearance.</b> A dimension that was not detected and a
+    /// dimension the model agreed to suppress both arrive as <c>Available</c> with <c>Value</c> 0.0, and
+    /// nothing in this row or in this file can tell them apart. Downstream policy that reads 0.0 as
+    /// "looked at and found absent" is reading something this provider cannot say. The port has no state
+    /// for "answered, but wrongly", so the honest handling is to say so here rather than to leave the
+    /// number looking like a finding.
+    /// </para>
+    /// <para>
+    /// <b>That paragraph used to derive the 0.0 case from the alphabet, and the derivation is retired
+    /// with the alphabet rather than the conclusion.</b> It read "This provider answers with a letter,
+    /// so ..." — under <c>nimble-request-shape/1</c> every value was 1.0 or 0.0 by construction, which
+    /// made the collision above unavoidable rather than merely possible. A SystemOne Noul answer is a
+    /// probability in [0, 1], so a 0.0 is now one point on a scale the model chose. The consequence a
+    /// reader acts on is unchanged and is why the paragraph stays: 0.0 still does not distinguish
+    /// "absent" from "suppressed". What is NOT claimed, and is not implied by anything above, is where
+    /// the values in between actually fall. The probe produced one answer at 0.9995, which is one point
+    /// near an end of the range and says nothing about the middle; see
+    /// <see cref="NimbleQuestionSet.MapNoul"/>, which carries the full correction.
     /// </para>
     /// <para>
     /// That is the whole reason <c>Confidence</c> stays null and <c>SourceVersion</c> names the shape:
     /// the row carries every fact there is about how much it is worth, and fabricating a confidence
-    /// would be inventing exactly the distinction this limitation is about.
+    /// would be inventing exactly the distinction this limitation is about. The SystemOne answer
+    /// carries no <c>confidence</c> member for a Noul question, so there is not even a field to read.
     /// </para>
     /// </remarks>
     private static List<Evidence> MapAnswers(
         IReadOnlyList<SemanticDimension> askable,
-        NimbleGenerateResponse response,
+        NimbleSystemOneResponse response,
         DateTimeOffset observedAt)
     {
         var evidence = new List<Evidence>(askable.Count);
         var modelVersion = response.Model ?? "unknown";
-        var codes = TryReadCodes(response.Response);
 
         for (var index = 0; index < askable.Count; index++)
         {
             var dimension = askable[index];
 
-            if (codes is null
-                || !codes.TryGetValue(NimbleQuestionSet.KeyFor(index), out var code)
-                || NimbleQuestionSet.MapCode(code) is not { } value)
+            // The answer to this question, or nothing usable. A missing entry, an entry whose type is
+            // not the type that was asked for, and a value outside [0, 1] all arrive here as a null
+            // map and are reported as unavailable rather than repaired. There is no scavenging step
+            // any more, and that is a property of the shape: the server keys each answer by the
+            // question it was asked and types it, so the answer is either the object for this key or
+            // evidence that the request and the answer are not about the same question.
+            var answer = response.Answers is { } answers
+                && answers.TryGetValue(NimbleQuestionSet.KeyFor(index), out var found)
+                    ? found
+                    : null;
+
+            if (NimbleQuestionSet.MapNoul(answer) is not { } value)
             {
                 evidence.Add(UnavailableEvidence(dimension, EvidenceAvailability.Unavailable, observedAt, modelVersion));
                 continue;
@@ -466,52 +545,6 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         }
 
         return evidence;
-    }
-
-    /// <summary>
-    /// Reads the constrained answer object, or null if the body is not one.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Strict, and deliberately not tolerant.</b> The request carries a JSON schema that constrains
-    /// every answer to one of two letters, so the body is either that object or evidence that the
-    /// server did not honour the contract. A parser flexible enough to find codes inside prose would
-    /// also be flexible enough to find one inside an explanation of why no answer was given, and that
-    /// is a fabricated answer with a plausible shape. A body that does not parse means the schema was
-    /// not applied, most likely because the endpoint is a different server than the one that was
-    /// measured, and the honest result is that nothing is available.
-    /// </para>
-    /// </remarks>
-    private static Dictionary<string, string>? TryReadCodes(string? body)
-    {
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(body);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var codes = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.String)
-                {
-                    codes[property.Name] = property.Value.GetString()!;
-                }
-            }
-
-            return codes;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -591,10 +624,13 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </summary>
     /// <remarks>
     /// <b>The shape version and the window belong here, not just the two model-and-question terms the
-    /// hosted adapter keys on.</b> Both were measured to move an answer on this provider, the window
-    /// because changing it reloads the model, the shape because batching changed three of twelve
+    /// hosted adapter keys on.</b> Both were measured to move an answer on this provider: the window
+    /// because changing it reloads the model, and the shape because batching changed three of twelve
     /// answers. A key that omitted either would serve an assessment taken under one shape to a caller
-    /// asking under another.
+    /// asking under another. <b>The batching figure is a measurement of <c>nimble-request-shape/1</c>
+    /// and has not been re-taken under <c>/2</c>.</b> It is the reason the shape term is in the key at
+    /// all, and it is a fact about the A/B letter rendering rather than about the shape that ships; see
+    /// <see cref="NimbleQuestionSet"/> for the full status.
     /// <para>
     /// <b>Both windows are keyed, not only the requested one.</b> <see cref="NimbleOptions.NumCtx"/> is
     /// what is sent, but <see cref="NimbleOptions.AppliedContextWindow"/> is what truncation actually

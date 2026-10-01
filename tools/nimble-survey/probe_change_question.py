@@ -19,6 +19,12 @@ Run it as a file, from the repository root:
 Conditions are the survey's: 127.0.0.1:11435, nimble:latest, temperature 0, num_ctx 8192, think
 false. Nothing here reads, prints or stores a credential.
 
+**Which shape this prices.** The question block below is the A/B rendering of
+`nimble-request-shape/1`, which `/2` retired: a SystemOne question is declared data, its answer is a
+probability, and there is no system prompt. So a run of this probe prices a shape that no longer
+ships. The /1-era comparison it produces is still the comparison it was; it just must not be carried
+forward as though `/2` had been measured. Re-deriving the probe for `/2` is a separate change.
+
 **Record what was rendered, not only what was measured.** `--show-rendering <path>` writes the exact
 system prompt and the exact user turn this probe sends, without calling the model. A priced shape
 whose rendering is not written down cannot be compared against another shape later, and comparing
@@ -50,8 +56,12 @@ CHANGE_QUESTION = {
     "criteria_false": "No change between the earlier turns and the latest message, or no earlier turns to compare with.",
 }
 
-# Transcribed from NimbleQuestionSet.RenderSystem. If this drifts from the C# the probe prices a
-# shape nobody ships, so the C# is the authority.
+# Transcribed from NimbleQuestionSet.RenderSystem as `nimble-request-shape/1` rendered it.
+#
+# That renderer no longer exists: `/2` declares the questions as data on POST /v1/systemone and sends
+# no system prompt at all. So there is nothing left in the C# for this constant to drift from, and a
+# number this probe prices is a price for the RETIRED shape. Re-deriving it for /2 is a separate
+# change, and a fresh run must not be read as a statement about what ships today.
 SHIPPED_PREAMBLE = (
     "You are a decision component inside a mail security pipeline. You are given independent "
     "questions about one message, and a JSON description of that message in the user turn.\n"
@@ -191,7 +201,9 @@ def show_rendering(path: Path) -> int:
             "truncates each to 2,000 characters)."
         ),
         "question_count": 1,
-        "question_block_source": "transcribed from NimbleQuestionSet.RenderSystem",
+        "question_block_source": "transcribed from NimbleQuestionSet.RenderSystem as "
+            "nimble-request-shape/1 rendered it; that renderer was retired by /2, so this prices "
+            "the retired shape",
         "delimiters": "none beyond the JSON structure; each turn string carries its own header lines",
         "system_prompt": system_prompt(),
         "turn_template": TURN_TEMPLATE,

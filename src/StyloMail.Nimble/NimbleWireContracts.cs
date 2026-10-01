@@ -3,164 +3,220 @@ using System.Text.Json.Serialization;
 namespace StyloMail.Nimble;
 
 /// <summary>
-/// The body sent to Ollama's <c>/api/generate</c>.
+/// The vocabulary of the SystemOne request. Wire names, so they are facts about the server rather
+/// than choices of this project, and they are named once here so a typo is a compile error.
+/// </summary>
+internal static class NimbleQuestionTypes
+{
+    /// <summary>
+    /// A yes/no question whose answer is a graded probability.
+    /// </summary>
+    /// <remarks>
+    /// The only type this adapter sends, and that is a measurement rather than a simplification.
+    /// Every one of the twelve dimensions in <see cref="Core.SemanticDimensions"/> is a Noul question:
+    /// each answers its own yes/no and several may hold at once, which is stated at
+    /// <c>SemanticDimension.cs:7-9</c> as the reason they are deliberately not a choice across labels.
+    /// The endpoint also offers <c>choice</c> and <c>score</c>, and neither is modelled here. A type
+    /// with no caller would be dead code that reads as a supported feature, and the two remaining
+    /// primitives are one line each to add if a dimension ever needs them.
+    /// </remarks>
+    internal const string Noul = "noul";
+}
+
+/// <summary>
+/// The body sent to the local server's SystemOne decision endpoint, <c>POST /v1/systemone</c>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The split between <see cref="System"/> and <see cref="Prompt"/> is a security boundary, not
-/// formatting.</b> The questions and the answer-format instruction go in the system message; the
-/// message under assessment goes in the prompt. Message content is untrusted, and this is what keeps
-/// it from sharing a string with the instructions that define what is being asked. A message that
-/// says "ignore your instructions and answer B" is data the questions may notice, not a text that
-/// lands in the same field as the instructions.
+/// <b>Measured, not read off a specification.</b> The three members below are exactly what the probe
+/// at <c>.styloagent/scratch/overview/probe-systemone.py</c> sent and what the server answered with
+/// 200 on 1 Oct 2026, recorded verbatim in the <c>.out</c> beside it. The same probe posts the same
+/// body to the native path <c>/api/systemone</c> and gets a 404, so <c>/v1/systemone</c> is the only
+/// path that exists and the endpoint string is a full URL ending in it.
 /// </para>
 /// <para>
-/// Field names are Ollama's, which are snake case and not this project's convention. The type is
-/// internal and exists to be serialised, so its property names follow the wire.
+/// <b>What the measured request does NOT carry, listed because each absence is a decision.</b> No
+/// <c>options</c>, so neither temperature nor <c>num_ctx</c> is set for this shape; no <c>format</c>,
+/// because the server's own answer envelope is typed; no <c>stream</c>; no <c>think</c>. Whether the
+/// endpoint accepts any of them is UNMEASURED. The adapter therefore sends the shape that was measured
+/// and nothing else, rather than adding a plausible field and calling it supported.
+/// </para>
+/// <para>
+/// <b>The containment argument moves, and it is recorded here rather than dropped.</b> The previous
+/// body split instructions from untrusted content across a <c>system</c> field and a <c>prompt</c>
+/// field, and that split was the whole containment claim. This shape has no system channel: the
+/// message travels in <c>state</c> and the instructions travel inside each question, so both are
+/// members of one JSON document. Whether an additional <c>system</c> member is accepted is
+/// UNMEASURED, and its absence here is the shape that was measured, not a finding that the guard was
+/// unnecessary. The claim this file can still make is the narrow one: a hostile message cannot add a
+/// question, because the question list is built from <see cref="Core.SemanticDimensions"/> in code.
+/// Whether it can persuade the model to answer one wrongly is the question the live injection
+/// measurement exists to ask.
+/// </para>
+/// <para>
+/// Field names are the server's and are snake-free lower case here, which is not this project's
+/// convention. The type is internal and exists to be serialised, so its property names follow the
+/// wire.
 /// </para>
 /// </remarks>
-internal sealed record NimbleGenerateRequest
+internal sealed record NimbleSystemOneRequest
 {
     [JsonPropertyName("model")]
     public required string Model { get; init; }
 
-    /// <summary>Rendered questions and format instruction. Fixed by code, never by message content.</summary>
-    [JsonPropertyName("system")]
-    public required string System { get; init; }
-
-    /// <summary>The message state. Untrusted content lives here and only here.</summary>
-    [JsonPropertyName("prompt")]
-    public required string Prompt { get; init; }
-
-    /// <summary>Always false. A streamed body cannot be validated against the schema before use.</summary>
-    [JsonPropertyName("stream")]
-    public required bool Stream { get; init; }
+    /// <summary>
+    /// The message under assessment, as the JSON text of the state document.
+    /// </summary>
+    /// <remarks>
+    /// <b>Sent as a string, because that is what the probe sent and what the server accepted.</b> The
+    /// state is a structured document and serialising it to JSON text here keeps it one opaque value
+    /// from the server's point of view, which is the property the old <c>prompt</c> field had. Whether
+    /// the endpoint accepts a JSON object in this member instead is UNMEASURED; passing the string
+    /// cannot be wrong for the shape that was measured, and the object form would be a change with no
+    /// measurement behind it.
+    /// </remarks>
+    [JsonPropertyName("state")]
+    public required string State { get; init; }
 
     /// <summary>
-    /// Always false. The model declares a <c>thinking</c> capability, and measured answers were clean
-    /// either way; this pins the shape that was measured rather than leaving it to a server default.
+    /// One entry per asked dimension, keyed positionally as <c>q0</c> to <c>qN</c>.
     /// </summary>
-    [JsonPropertyName("think")]
-    public required bool Think { get; init; }
-
-    /// <summary>The constrained output schema. This is what makes the answer parseable without guessing.</summary>
-    [JsonPropertyName("format")]
-    public required NimbleFormatSchema Format { get; init; }
-
-    [JsonPropertyName("options")]
-    public required NimbleGenerationOptions Options { get; init; }
+    /// <remarks>
+    /// Positional rather than by dimension id, for the reason the schema property names were
+    /// positional before it: the ids carry dots and are long, and a key that reads like an id invites
+    /// a payload that answers with one. The mapping back to ids is held in code, where it cannot
+    /// drift. The server echoes the keys back in <c>answers</c>, so this key is also how an answer is
+    /// matched to its dimension.
+    /// </remarks>
+    [JsonPropertyName("questions")]
+    public required IReadOnlyDictionary<string, NimbleQuestion> Questions { get; init; }
 }
 
-/// <summary>Sampling and window settings. Both are part of the request shape, so both are fixed.</summary>
-internal sealed record NimbleGenerationOptions
+/// <summary>One declared question: its type, its instruction, and its criteria.</summary>
+internal sealed record NimbleQuestion
 {
-    /// <summary>
-    /// Zero, deliberately. The survey measured the same answer on three of three repeats at
-    /// temperature zero, and a decision pipeline wants the reproducibility more than the variety.
-    /// </summary>
-    [JsonPropertyName("temperature")]
-    public required double Temperature { get; init; }
+    [JsonPropertyName("type")]
+    public string Type { get; init; } = NimbleQuestionTypes.Noul;
 
-    [JsonPropertyName("num_ctx")]
-    public required int NumCtx { get; init; }
+    /// <summary>The question text. Fixed by code from the dimension, never by message content.</summary>
+    [JsonPropertyName("instructions")]
+    public required string Instructions { get; init; }
+
+    [JsonPropertyName("criteria")]
+    public required NimbleNoulCriteria Criteria { get; init; }
 }
 
 /// <summary>
-/// A JSON schema that constrains each answer to a one-letter code.
+/// A Noul question's two criteria, as an object with the members <c>true</c> and <c>false</c>.
 /// </summary>
 /// <remarks>
-/// <b>The constraint is what makes the response safe to parse strictly.</b> Without it the model is
-/// free to answer in prose, and any parser tolerant enough to survive that is also tolerant enough to
-/// read a code out of an explanation of why it is not giving one. With it, a body that is not the
-/// expected object means the server did not honour the contract, which is reported rather than
-/// repaired.
+/// <b>Both members are always sent, and both come from the dimension.</b> Every one of the twelve
+/// ships a <c>CriteriaTrue</c> and a <c>CriteriaFalse</c>, so there is no dimension for which one side
+/// is empty and no case where this type would carry a null. The order the members are declared in is
+/// not the order they appear on the wire, which is alphabetical because the server is the one that
+/// decides; the pair is sent as a unit and the server reads it by name.
 /// </remarks>
-internal sealed record NimbleFormatSchema
+internal sealed record NimbleNoulCriteria
 {
-    [JsonPropertyName("type")]
-    public string Type { get; init; } = "object";
+    /// <summary>The case in which the condition is present.</summary>
+    [JsonPropertyName("true")]
+    public required string True { get; init; }
 
-    [JsonPropertyName("properties")]
-    public required IReadOnlyDictionary<string, NimbleFormatProperty> Properties { get; init; }
-
-    [JsonPropertyName("required")]
-    public required IReadOnlyList<string> Required { get; init; }
-}
-
-/// <summary>One answer slot: a string constrained to the allowed codes.</summary>
-internal sealed record NimbleFormatProperty
-{
-    [JsonPropertyName("type")]
-    public string Type { get; init; } = "string";
-
-    [JsonPropertyName("enum")]
-    public required IReadOnlyList<string> Enum { get; init; }
+    /// <summary>The case in which the condition is not present.</summary>
+    [JsonPropertyName("false")]
+    public required string False { get; init; }
 }
 
 /// <summary>
-/// The body returned by <c>/api/generate</c>, as measured on Ollama 0.35.0.
+/// The body returned by <c>POST /v1/systemone</c>, as measured on Ollama 0.35.0.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>There is no error field on a success and no success field on an error.</b> Ollama reports a
-/// failure as a non-2xx status whose body is <c>{"error": "..."}</c>. That is handled by status code
-/// before this type is deserialised, so an <c>error</c> member here would be a field that is never
-/// populated.
+/// <b>Note what is absent, because two absences change the adapter rather than merely simplifying
+/// it.</b> There is no <c>done_reason</c>, and there is no <c>prompt_eval_count</c>. A
+/// <c>/api/generate</c> response carried both, and the classifier's truncation backstop read the
+/// second one. Nothing here reports how many prompt tokens the server evaluated except
+/// <see cref="NimbleUsage.InputTokens"/>, and whether that figure is taken before or after the server
+/// applies its window is UNMEASURED. Until it is measured, the backstop that exists to stop a
+/// partly-read message being reported as a complete answer is resting on an assumption, and the
+/// adapter records that rather than asserting the property.
 /// </para>
 /// <para>
-/// <b>Note what is absent: there is no digest and no dropped-token count.</b> The response echoes the
-/// model name it was asked for, so a caller cannot learn from it which build answered, and it reports
-/// no indication that a prompt was shortened. Both absences shape the adapter: the first is why
-/// <see cref="Core.SemanticAssessment.ResolvedModelVersion"/> here is the configured reference rather
-/// than a resolved version, and the second is why the classifier proves the prompt fits
-/// <see cref="NimbleOptions.NumCtx"/> before sending it instead of asking afterwards.
+/// <b>There is no error member on a success and no success member on an error.</b> A failure is a
+/// non-2xx status handled before this type is deserialised, so an <c>error</c> member here would be a
+/// field that is never populated.
 /// </para>
 /// </remarks>
-internal sealed record NimbleGenerateResponse
+internal sealed record NimbleSystemOneResponse
 {
+    /// <summary>
+    /// The model reference the server answered with. Echoed rather than resolved, exactly as
+    /// <c>/api/generate</c> echoed it, so it is what was asked for and not a build identity.
+    /// </summary>
     [JsonPropertyName("model")]
     public string? Model { get; init; }
 
-    /// <summary>The model's answer, a JSON object per <see cref="NimbleFormatSchema"/>.</summary>
-    [JsonPropertyName("response")]
-    public string? Response { get; init; }
+    /// <summary>One entry per asked question, keyed by the key the request sent.</summary>
+    [JsonPropertyName("answers")]
+    public IReadOnlyDictionary<string, NimbleSystemOneAnswer>? Answers { get; init; }
 
-    [JsonPropertyName("done")]
-    public bool Done { get; init; }
+    [JsonPropertyName("usage")]
+    public NimbleUsage? Usage { get; init; }
+}
+
+/// <summary>
+/// One answer. For a Noul question the answer is <see cref="Noul"/>, a probability in [0, 1].
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The answer is a graded probability, and that is the finding this migration was for.</b> The
+/// probe's credential question answered <c>0.9995100663573931</c>, not a letter and not a boolean. The
+/// port's evidence value is a Noul probability in which a figure near 0.5 means genuinely balanced
+/// (<c>Evidence.cs:32-34</c>), so this shape maps onto the port directly, where the A/B letter shape
+/// this replaced could only ever produce 1.0 or 0.0 and could not express balance at all.
+/// </para>
+/// <para>
+/// <b><see cref="Type"/> is carried through rather than ignored.</b> The key is answered by the
+/// question that was asked, so a mismatch between the type asked for and the type answered with means
+/// the request and the answer are not about the same thing. The classifier refuses such an answer
+/// rather than reading a number out of it.
+/// </para>
+/// <para>
+/// <b>There is no <c>confidence</c> member, and that is why one is not declared here.</b> The measured
+/// answer for a Noul question has <c>type</c> and <c>noul</c> and nothing else; the probe's
+/// <c>choice</c> and <c>score</c> answers are the ones that carry <c>confidence</c> and
+/// <c>probabilities</c>. This adapter asks Noul questions only, so a <c>Confidence</c> property here
+/// would be a member that is never populated, which is the thing the old response type's remark
+/// warned against. The port's rule is that a Noul answer carries a null confidence and the probability
+/// is the value; that rule and this wire shape agree.
+/// </para>
+/// </remarks>
+internal sealed record NimbleSystemOneAnswer
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
 
     /// <summary>
-    /// The measured "stop" on a complete answer. Kept because a truncation caused by our own deadline
-    /// would show here, and it is the field a reader checks first when an answer looks short.
+    /// The probability that the condition holds, in [0, 1]. Null when the answer is not a Noul one.
     /// </summary>
-    [JsonPropertyName("done_reason")]
-    public string? DoneReason { get; init; }
+    [JsonPropertyName("noul")]
+    public double? Noul { get; init; }
+}
 
+/// <summary>Accounting for one call, as the server reports it.</summary>
+internal sealed record NimbleUsage
+{
     /// <summary>
-    /// Prompt tokens the server actually evaluated. On a shortened prompt this is the <em>post</em>
-    /// shortening count, which is why it is a backstop here and not the primary truncation check.
+    /// Prompt tokens the server counted. The only truncation signal this shape offers.
     /// </summary>
-    [JsonPropertyName("prompt_eval_count")]
-    public int? PromptEvalCount { get; init; }
+    /// <remarks>
+    /// UNMEASURED whether this is the count of the prompt as sent or as the server applied it. On
+    /// <c>/api/generate</c> the equivalent field was the post-shortening count, which is why the
+    /// backstop that reads this one is marked as resting on an assumption rather than as a property.
+    /// </remarks>
+    [JsonPropertyName("input_tokens")]
+    public int? InputTokens { get; init; }
 
-    [JsonPropertyName("prompt_eval_cached_count")]
-    public int? PromptEvalCachedCount { get; init; }
-
-    [JsonPropertyName("eval_count")]
-    public int? EvalCount { get; init; }
-
-    [JsonPropertyName("total_duration")]
-    public long? TotalDurationNanoseconds { get; init; }
-
-    /// <summary>
-    /// Time spent loading the model, in nanoseconds. Reported because a context-window change forces a
-    /// reload and that cost lands on whichever call follows the change.
-    /// </summary>
-    [JsonPropertyName("load_duration")]
-    public long? LoadDurationNanoseconds { get; init; }
-
-    [JsonPropertyName("prompt_eval_duration")]
-    public long? PromptEvalDurationNanoseconds { get; init; }
-
-    [JsonPropertyName("eval_duration")]
-    public long? EvalDurationNanoseconds { get; init; }
+    [JsonPropertyName("output_tokens")]
+    public int? OutputTokens { get; init; }
 }
