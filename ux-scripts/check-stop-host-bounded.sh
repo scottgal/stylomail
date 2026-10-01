@@ -270,6 +270,44 @@ case $? in
     *) fail "the probe could not run, so the free direction was never checked" ;;
 esac
 
+# The port is an argument now, because run-console-address-change-smoke.sh has to
+# ask about the address it SAVES rather than the port this run binds. Three
+# assertions, each falsifiable in a different direction, and the state above is
+# what makes them measurable: the port is free here, so a call that wrongly fell
+# through to it would answer free and be caught rather than agreeing by accident.
+#
+#   - the same free port asked explicitly must answer what the default answered,
+#     or a runner's precondition would be a different question from the harness's;
+#   - a port that is not a number must be 2, not 1, because a connect to it fails
+#     for a reason that is not "nothing is listening", and reading that as free is
+#     the fail-open this file refuses everywhere else;
+#   - an EXPLICIT EMPTY argument must also be 2. That is the reason the default is
+#     not spelled `${1:-$CONSOLE_PORT}`: with the colon an empty argument falls
+#     through to CONSOLE_PORT and probes the run's own port, which is free here.
+console_port_is_taken "$CONSOLE_PORT"
+explicit_status=$?
+if (( explicit_status == 1 )); then
+    pass "asking about $CONSOLE_PORT explicitly gives the answer the default gave"
+else
+    fail "the explicit-argument call answered $explicit_status where the default answered free"
+fi
+
+console_port_is_taken "notaport"
+notaport_status=$?
+if (( notaport_status == 2 )); then
+    pass "a port that is not a number answers cannot-tell rather than free"
+else
+    fail "a port that is not a number answered $notaport_status, and 1 would start a run on it"
+fi
+
+console_port_is_taken ""
+empty_status=$?
+if (( empty_status == 2 )); then
+    pass "an explicit empty argument answers cannot-tell rather than falling through to CONSOLE_PORT"
+else
+    fail "an empty argument answered $empty_status, so it fell through to the run's own port"
+fi
+
 # Case 5: the guard. The README says the harness uses no lsof, and it said that
 # while console_start_host called lsof twice, so the claim needs a test rather
 # than a sentence. Comment lines are stripped first: every lsof mention left in
@@ -283,7 +321,7 @@ count_lsof_calls() {
 }
 
 case_number=$((case_number + 1))
-echo "case $case_number: the harness contains no lsof invocation"
+echo "case $case_number: neither the harness nor a runner invokes lsof"
 
 # What this does not catch, said plainly because a guard read as wider than it is
 # is how the claim drifted the first time: an lsof reached through a variable or a
@@ -295,6 +333,37 @@ if (( code_lsof == 0 )); then
     pass "no lsof call in console-harness.sh outside a comment"
 else
     fail "console-harness.sh calls lsof on $code_lsof line(s) outside a comment"
+fi
+
+# THE POPULATION WAS ONE FILE, AND THE DEFECT WAS IN ANOTHER ONE. This case used
+# to read console-harness.sh and nothing else, while `run-console-address-change-
+# smoke.sh` sat one directory away with a live lsof preflight on the same run
+# path: measured on 2026-10-01, the harness at 0 and that runner at 1. The claim
+# being tested is about the run path, so the sweep covers the population the claim
+# is made over: every `run-console-*.sh` and the probe script beside them, the
+# same eleven files `check-run-dir-refusal.sh` counts.
+#
+# The synthetic control below shows the DETECTOR can fire; this sweep is the one
+# that has to show the population is the population. A glob that stops matching,
+# or a rename that walks the offending file out of it, would leave the control
+# green and the claim unchecked, so the loop records whether it reached the file
+# this paragraph names and fails if it did not.
+saw_address_change=0
+for f in "$HERE"/run-console-*.sh "$HERE"/probe-submission-route.sh; do
+    [[ -f "$f" ]] || continue
+    [[ "$(basename "$f")" == "run-console-address-change-smoke.sh" ]] && saw_address_change=1
+    runner_lsof="$(count_lsof_calls "$f")"
+    if (( runner_lsof == 0 )); then
+        pass "no lsof call in $(basename "$f") outside a comment"
+    else
+        fail "$(basename "$f") calls lsof on $runner_lsof line(s) outside a comment"
+    fi
+done
+
+if (( saw_address_change )); then
+    pass "the sweep reached run-console-address-change-smoke.sh, the file whose lsof call it was written for"
+else
+    fail "the sweep never reached run-console-address-change-smoke.sh, so a green above would not cover it"
 fi
 
 # The positive control, and without one the line above proves nothing. An absence

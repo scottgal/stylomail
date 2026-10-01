@@ -557,11 +557,39 @@ console_require_local_model() {
 # the very listener it had just refused to run against.
 #
 # To name the holder without lsof: `netstat -an | grep LISTEN | grep $CONSOLE_PORT`.
+#
+# The port is an argument so the same question can be asked about a port other than
+# the one this run binds: run-console-address-change-smoke.sh has to ask about the
+# address it saves, which is deliberately NOT its CONSOLE_PORT, and asks it with
+# this function rather than a second probe of its own. No argument keeps the
+# original meaning, so the existing callers are untouched. `${1:-...}` would have
+# been the wrong way to spell the default: an EXPLICIT empty argument would have
+# fallen through to CONSOLE_PORT and silently probed a port the caller never named,
+# so unset and empty are handled separately and both end in the refusal below.
+#
+# A port that is not a number is answered 2, not 1. The connect would fail for a
+# reason that is not "nothing is listening", and reading that as free is the same
+# fail-open console_start_host refuses for CONSOLE_PORT, in the same direction. It
+# is folded in here rather than duplicated, because this function now takes ports
+# from callers that have not validated them. console_start_host keeps its own check
+# anyway: its message names the port and says where to move the assignment, which a
+# generic "cannot tell" cannot.
 console_port_is_taken() {
+    local port
+    if (( $# > 0 )); then
+        port="$1"
+    else
+        port="$CONSOLE_PORT"
+    fi
+
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        return 2
+    fi
+
     if ! : < /dev/null 2>/dev/null; then
         return 2
     fi
-    ( exec 3<>"/dev/tcp/127.0.0.1/$CONSOLE_PORT" ) >/dev/null 2>&1
+    ( exec 3<>"/dev/tcp/127.0.0.1/$port" ) >/dev/null 2>&1
 }
 
 console_start_host() {
@@ -580,9 +608,11 @@ console_start_host() {
     # this file is sourced, which is the order the header already tells runners to
     # use.
     #
-    # Refused here rather than inside the probe, because the probe's contract is a
-    # three-valued answer about a port and folding "I have no port" into "taken"
-    # would make the caller print "already in use" about a port it never had.
+    # Kept here although the probe now answers 2 for a port that is not a number:
+    # the probe's answer is "cannot tell", and this caller can say more, naming the
+    # port and telling the operator to set it BEFORE sourcing this file. What this
+    # block must not do is fold "I have no port" into "taken", which would print
+    # "already in use" about a port it never had.
     if [[ ! "$CONSOLE_PORT" =~ ^[0-9]+$ ]]; then
         echo "CONSOLE_PORT is '$CONSOLE_PORT', which is not a port number, so no probe can" >&2
         echo "say whether it is in use. Set it to a number, or leave it unset to take the" >&2

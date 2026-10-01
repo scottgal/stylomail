@@ -56,13 +56,32 @@ trap 'console_stop_host' EXIT INT TERM
 # Anything listening on the silent port makes every assertion in this run
 # meaningless in the direction that matters: the console would reach it, and
 # "Cannot reach the Host" would fail for a reason that is not the console's.
-listening="$(lsof -nP -iTCP:"$SILENT_PORT" -sTCP:LISTEN 2>/dev/null | tail -n +2)"
+#
+# The probe is the harness's own, asked about SILENT_PORT rather than the port this
+# run binds, because the saved address is http://127.0.0.1:5392 and the question
+# that matters is whether a connect to THAT address succeeds. The lsof form this
+# replaces asked something wider and cost more: it matched a listener on any
+# address, and lsof is a process that sat in uninterruptible kernel sleep on this
+# machine on 2026-10-01, where a signal is never delivered and a `wait` on it never
+# returns. A /dev/tcp connect has no process in it to wedge. This preflight runs
+# before the build, so an lsof wedged here would hold the run open before it had
+# started anything to blame. See "Teardown" in ux-scripts/README.md.
+#
+# Three-valued, because a probe that cannot run must not read as free: the port is
+# this script's precondition, and a run started against an unchecked address
+# produces a green that means the console reconnected to something.
+console_port_is_taken "$SILENT_PORT"
+silent_status=$?
 
-if [[ -n "$listening" ]]; then
-    echo "Something is already listening on 127.0.0.1:$SILENT_PORT:" >&2
-    echo "$listening" >&2
+if (( silent_status == 0 )); then
+    echo "Something is already listening on 127.0.0.1:$SILENT_PORT." >&2
     echo "This run saves that address because nothing answers there. Free the port," >&2
     echo "or change SILENT_PORT here and the address in the script's YAML together." >&2
+    exit 1
+elif (( silent_status == 2 )); then
+    echo "The probe for 127.0.0.1:$SILENT_PORT could not run, so that address was never" >&2
+    echo "asked about. That is not the same as it being free, so this run is refused" >&2
+    echo "rather than started against an address nothing here has checked." >&2
     exit 1
 fi
 

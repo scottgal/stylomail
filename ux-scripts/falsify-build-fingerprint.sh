@@ -199,6 +199,8 @@ mutation_L() { perl -pi -e 's/^    if \[\[ -n "\$CONSOLE_RUN_INHERITED" && "\$CO
 mutation_M() { perl -pi -e 's/^(console_runner_run_dir "\$CONSOLE_RUN_DEFAULT" \|\| exit 2)$/$1\nrm -rf "\$CONSOLE_RUN"/' run-console-no-feed-smoke.sh; }
 mutation_N() { perl -0777 -pi -e 's/^console_runner_run_dir "\$CONSOLE_RUN_DEFAULT" \|\| exit 2\n//m; s/\z/\nconsole_runner_run_dir "\$CONSOLE_RUN_DEFAULT" || exit 2\n/' run-console-no-feed-smoke.sh; }
 mutation_O() { perl -pi -e 's{^CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-no-feed-ux"$}{CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-ux"}' run-console-no-feed-smoke.sh; }
+mutation_P() { perl -pi -e 's/^    if \[\[ ! "\$port" =~ \^\[0-9\]\+\$ \]\]; then$/    if false; then/' console-harness.sh; }
+mutation_Q() { perl -pi -e 's/^    if \(\( \$# > 0 \)\); then$/    if [[ -n "\${1:-}" ]]; then/' console-harness.sh; }
 
 # K. The opt-in is MOVED: the test becomes "is it set to anything other than 1",
 #    so an unset variable takes the branch that the opt-in was there to gate. Cases
@@ -230,6 +232,17 @@ mutation_O() { perl -pi -e 's{^CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-no-fe
 #    path: a wrong-but-well-formed default is invisible until something checks that
 #    each runner names its own.
 #
+# P. The probe's numeric arm is removed, so a port that is not a number falls
+#    through to the connect and reads as free. Case 4 must go red, on its two
+#    non-numeric assertions. Case 8 must STAY green: it asserts console_start_host's
+#    own refusal by the phrase only that caller emits ("not a port number"), and
+#    that check still fires first, which is what keeps the two arms separable.
+# Q. The explicit-empty case is folded back into the default, by spelling the branch
+#    the way the function must not. Case 4 must go red, on the empty-argument
+#    assertion alone. P and Q therefore report the same case number while killing
+#    different assertions, so the case-level set is the coarser reading of the two
+#    and the assertions are what separate them.
+#
 # A guard against the mutations themselves going stale: if a perl pattern stops
 # matching, the "mutation" is a no-op and the pass reports <none>, which is a
 # failure here rather than a quiet success.
@@ -255,6 +268,8 @@ mutation_K_applied() { grep -q 'CONSOLE_REUSE_RUN:-}" != "1"' console-harness.sh
 mutation_L_applied() { ! grep -qF '"$CONSOLE_RUN_INHERITED" != "$default"' console-harness.sh; }
 mutation_M_applied() { grep -qF 'rm -rf "$CONSOLE_RUN"' run-console-no-feed-smoke.sh; }
 mutation_O_applied() { grep -q '^CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-ux"$' run-console-no-feed-smoke.sh; }
+mutation_P_applied() { ! grep -qF 'if [[ ! "$port" =~ ^[0-9]+$ ]]; then' console-harness.sh; }
+mutation_Q_applied() { grep -qF 'if [[ -n "${1:-}" ]]; then' console-harness.sh; }
 
 fingerprint=check-build-fingerprint.sh
 stop=check-stop-host-bounded.sh
@@ -277,6 +292,8 @@ pass "L refusal removed" "1 3 4 "      "$rundir"      mutation_L || failures=$((
 pass "M a runner clears its own run" "5 " "$rundir"   mutation_M || failures=$((failures + 1))
 pass "N call moved after the build" "1 5 " "$rundir"  mutation_N || failures=$((failures + 1))
 pass "O wrong own default" "5 "        "$rundir"      mutation_O || failures=$((failures + 1))
+pass "P numeric arm removed" "4 "      "$stop"        mutation_P || failures=$((failures + 1))
+pass "Q empty argument falls th" "4 "  "$stop"        mutation_Q || failures=$((failures + 1))
 
 # The preconditions, checked last so the reports above are printed either way.
 did_it_apply() {

@@ -156,7 +156,7 @@ is a stub exported to that child alone, so the check cannot start a solution bui
 exists to catch: a check that can build is a check nobody runs while the gate is shut.
 
 The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
-never the shared tree. Fifteen mutations, one per pass, each with the exact set of
+never the shared tree. Seventeen mutations, one per pass, each with the exact set of
 cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
 dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
 sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8), H the port
@@ -164,8 +164,12 @@ validation disabled (the sibling's 8), I the probe's allocation test removed (th
 probe stuck on "cannot tell" (the sibling's 4, 6 and 9), K the run-directory opt-in moved to
 `!= "1"` (1, 3, 4), L the refusal removed so the function always takes the default (1, 3, 4), M one
 runner clearing its own `$CONSOLE_RUN` again (5), N one runner's call moved after its build (1, 5), O one
-runner declaring the main smoke's directory as its own (5). K and L share a red set and are still two
-mutations: they edit different lines, each with its own precondition. K's set was measured before it was
+runner declaring the main smoke's directory as its own (5), P the probe's numeric arm removed (the
+sibling's 4), Q the explicit empty argument folded back into the default (the sibling's 4). K and L
+share a red set and are still two
+mutations: they edit different lines, each with its own precondition. P and Q share the sibling's case 4
+the same way, and the falsifier reports at case granularity, so the assertions they kill are what
+separate them: P takes the two non-numeric ones, Q the empty-argument one alone. K's set was measured before it was
 written down, and the first run reddened 3 as well, because a moved opt-in stops working in both
 directions: it no longer gates the adoption and it no longer permits it. One per pass
 because several of them target case 8, and a red that two
@@ -573,9 +577,16 @@ instead of being retried. Two further consequences of the same wedge:
   `ASPNETCORE_URLS` binds. The cost is that it can no longer print the holder, so the message points
   at `netstat -an | grep LISTEN | grep <port>` instead, and that it answers in three values: a listener
   accepts a connect, so "connected" is "taken" and "refused" is "free", while a probe that could not
-  run at all is neither and says so. Diagnostics that name a
-  pid work with `ps`. `./ux-scripts/check-stop-host-bounded.sh` asserts the harness contains no
-  `lsof` call, so the sentence and the code cannot drift apart again.
+  run at all is neither and says so. It takes an optional port argument, defaulting to
+  `CONSOLE_PORT`, because a runner has to ask about an address other than the one it binds.
+  Diagnostics that name a
+  pid work with `ps`. `./ux-scripts/check-stop-host-bounded.sh` asserts that neither the harness nor any
+  of the eleven runners invokes `lsof`, so the sentence and the code cannot drift apart again. That
+  guard read the harness alone until 2026-10-01, while `run-console-address-change-smoke.sh` called
+  `lsof` on the same run path the whole time, so the claim was tested over a population of one file.
+  The runner's preflight now asks this same probe about its `SILENT_PORT` instead of the port it binds,
+  which is also the narrower question: the address it saves is `http://127.0.0.1:5392`, and the `lsof`
+  form it replaces matched a listener on any address.
 - **A probe that cannot run must not answer "free".** This is the hole `nimble-` broadcast against
   their netstat gate on 2026-10-01: a probe that never executed is byte-identical to a quiet endpoint,
   so the dangerous failure is a dead probe read as a count of zero. The two-valued answer described
@@ -589,12 +600,18 @@ instead of being retried. Two further consequences of the same wedge:
   catches an empty value that
   arrived through the *environment*, so the reachable route is narrower than it first looked: an
   assignment made after this file is sourced, which is the order the header already tells runners to
-  use. `console_start_host` therefore refuses a `CONSOLE_PORT` that is not a run of digits, before the
-  probe, naming the value as the problem rather than claiming a holder: the sibling's case 8 asserts
+  use. The probe now answers 2 for a port that is not a run of digits, so that route cannot read as
+  free at all, and `console_start_host` keeps its own refusal in front of it because that one can say
+  more: it names the value as the problem and says where to move the assignment, which a generic
+  "cannot tell" cannot. The sibling's case 8 asserts
   the refusal, that the message says "not a port number", and that it does **not** say "already in
   use". Mutation H keeps that case load-bearing, and mutations I and J keep the third value itself
   load-bearing: I deletes the allocation test and J sticks the probe on "cannot tell", the arm that
-  would otherwise satisfy case 9's refusal assertion while answering nothing about any port.
+  would otherwise satisfy case 9's refusal assertion while answering nothing about any port. P and Q
+  keep the argument path load-bearing: P removes the numeric arm, so a port that is not a number falls
+  through to the connect and reads as free, and Q spells the default so that an explicit empty argument
+  falls back to `CONSOLE_PORT`, which is the bug that separating the unset and empty cases exists to
+  prevent.
 
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
 nine cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
