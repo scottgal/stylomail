@@ -149,6 +149,72 @@ public sealed class MailPolicyEngineTests
     }
 
     [Fact]
+    public void An_allow_says_when_a_refusal_check_was_not_evaluated_rather_than_reading_as_clean()
+    {
+        // The one thing carried over from the deleted caller-supplied field, re-keyed to the evidence:
+        // a delivery must not read as checked-and-clean when the check never ran. Re-keying it also
+        // narrows it, which is the point. Under the field every allow carried the note because nothing
+        // populated it; here it appears only where a refusal check really was in question and
+        // unattempted.
+        Evidence RefusingRow(string id, EvidenceAvailability availability, double? value) =>
+            Deterministic(id) with { Availability = availability, Value = value };
+
+        var calm = Deterministic(DeterministicFindings.ThreadHeaderConsistency, 0.0);
+
+        // Every refusing check was measured and answered, so nothing is unevaluated.
+        var measured = DeterministicFindings.Refusing
+            .Select(id => RefusingRow(id, EvidenceAvailability.Available, 0.0))
+            .Append(calm)
+            .ToArray();
+
+        var clean = Decide(Risk(0.0, 1.0), Context(), evidence: measured);
+
+        Assert.Equal(MailAction.Allow, clean.Action);
+        Assert.DoesNotContain(
+            clean.Reasons,
+            r => r.Code == "policy.refusing_findings_not_evaluated");
+
+        // Never in question is not the same as not evaluated. A message that raises none of the three
+        // questions allows WITHOUT the note, because a deployment's shape is not an outage.
+        var inapplicable = DeterministicFindings.Refusing
+            .Select(id => RefusingRow(id, EvidenceAvailability.NotApplicable, null))
+            .Append(calm)
+            .ToArray();
+
+        var neverAsked = Decide(Risk(0.0, 1.0), Context(), evidence: inapplicable);
+
+        Assert.Equal(MailAction.Allow, neverAsked.Action);
+        Assert.DoesNotContain(
+            neverAsked.Reasons,
+            r => r.Code == "policy.refusing_findings_not_evaluated");
+
+        // Asked and unanswered, and absent entirely, both leave a check that did not run.
+        var unanswered = DeterministicFindings.Refusing
+            .Select(id => RefusingRow(id, EvidenceAvailability.Unavailable, null))
+            .Append(calm)
+            .ToArray();
+
+        foreach (var evidence in new[] { unanswered, new[] { calm } })
+        {
+            var decision = Decide(Risk(0.0, 1.0), Context(), evidence: evidence);
+
+            Assert.Equal(MailAction.Allow, decision.Action);
+
+            var note = Assert.Single(
+                decision.Reasons,
+                r => r.Code == "policy.refusing_findings_not_evaluated");
+
+            foreach (var id in DeterministicFindings.Refusing)
+            {
+                Assert.Contains(id, note.EvidenceSignalIds);
+            }
+
+            // Appended, never prepended: the reason that produced the decision is still read first.
+            Assert.Equal("policy.risk_below_threshold", decision.Reasons[0].Code);
+        }
+    }
+
+    [Fact]
     public void A_refusing_finding_is_not_relaxed_by_a_recipient_preference()
     {
         // Tier 5 can relax a preference-shaped hold, and it must never relax this one. That is the
@@ -346,6 +412,54 @@ public sealed class MailPolicyEngineTests
             evidence: evidence);
 
         Assert.Equal(MailAction.Hold, decision.Action);
+    }
+
+    /// <summary>
+    /// Deterministic origin is a producer's stamp, not a claim that the row came from the message.
+    /// The two are close enough in practice to be confused, and the row that proves they differ is
+    /// <c>assessment.behavioural_context</c>: deterministic origin, source is the sender's profile
+    /// store, and <c>Unavailable</c>. So this pins the property the gate actually reads, the
+    /// availability, on a row whose origin label alone would have admitted it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is a Hold and not an Allow.</b> Nothing about this message was measured by the
+    /// pipeline, so a calm index has nothing checkable standing behind it, which is the exact shape
+    /// the gate exists to refuse. A gate that keyed on the origin label would find the row and
+    /// allow, so the availability is not a detail of the implementation, it is the property.
+    /// <para>
+    /// The label is still sound today only because of facts that live outside Policy: every
+    /// <c>Available</c> row with deterministic origin that is not derived from the bytes
+    /// (<c>assessment.hard_limit_violation</c>) is emitted only on a path that also populates
+    /// <c>VerifiedSecurityRuleViolations</c>, so policy rejects before it reaches this gate. That is
+    /// a coincidence of the current emission set, not a guarantee this gate holds, and it is
+    /// recorded here so a later reader does not take the label for the property.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_deterministic_row_that_is_unavailable_does_not_corroborate()
+    {
+        var evidence = new[]
+        {
+            Signal("semantic.credential_request", 0.0),
+            Signal("semantic.unsolicited_solicitation", 0.0),
+            new Evidence
+            {
+                SignalId = "assessment.behavioural_context",
+                Origin = EvidenceOrigin.Deterministic,
+                Availability = EvidenceAvailability.Unavailable,
+                Value = null,
+                Confidence = null,
+                SourceVersion = "assessment-1.0.0",
+                ObservedAt = Now,
+            },
+        };
+
+        var decision = Decide(Risk(0.0, 1.0, evidence), Context(), evidence: evidence);
+
+        Assert.Equal(MailAction.Hold, decision.Action);
+        Assert.Equal(
+            "policy.allow_uncorroborated_by_deterministic_evidence",
+            decision.Reasons[0].Code);
     }
 
     /// <summary>
@@ -1319,9 +1433,15 @@ public sealed class MailPolicyEngineTests
     };
 
     /// <summary>
-    /// A signal the pipeline can check against the message itself, and therefore the only kind
-    /// that can corroborate a model's calm.
+    /// A measured signal from a non-probabilistic producer, and the only kind that can corroborate a
+    /// model's calm.
     /// </summary>
+    /// <remarks>
+    /// The two clauses are not the same claim and the distinction is load-bearing: deterministic
+    /// origin is a producer's stamp ("a fact, not a model opinion"), while corroboration needs a
+    /// measurement. Where the two come apart the availability decides, which is what the gate reads,
+    /// and <see cref="A_deterministic_row_that_is_unavailable_does_not_corroborate"/> pins it.
+    /// </remarks>
     private static Evidence Deterministic(string id = "headers.authentication_summary", double value = 0.0) => new()
     {
         SignalId = id,

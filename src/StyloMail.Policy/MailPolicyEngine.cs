@@ -192,16 +192,93 @@ public sealed class MailPolicyEngine
             && input.Context.RecipientPrefersThisTrafficClass
             && !HasElevatedSecuritySignal(input.Evidence))
         {
-            return Decision(
-                MailAction.Allow,
+            return NoteUnappliedRefusalChecks(
                 input,
-                "policy.recipient_preference",
-                "Held traffic matched a traffic class this recipient has explicitly opted into, and no security signal is elevated.",
-                decision.Reasons.SelectMany(r => r.EvidenceSignalIds).Distinct().ToList(),
-                decidedBy: "recipient-preference");
+                Decision(
+                    MailAction.Allow,
+                    input,
+                    "policy.recipient_preference",
+                    "Held traffic matched a traffic class this recipient has explicitly opted into, and no security signal is elevated.",
+                    decision.Reasons.SelectMany(r => r.EvidenceSignalIds).Distinct().ToList(),
+                    decidedBy: "recipient-preference"));
         }
 
-        return decision;
+        // Every allow leaves through here or the tier-5 branch above, so the not-evaluated note is
+        // attached in one place rather than remembered at each allow site.
+        return decision.Action == MailAction.Allow
+            ? NoteUnappliedRefusalChecks(input, decision)
+            : decision;
+    }
+
+    /// <summary>
+    /// A delivery whose refusal check did not run says so, rather than reading as checked and clean.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The trigger is the evidence, not a caller-supplied list: it fires when a refusing id has no
+    /// <c>Available</c> row and the question was actually put, which is the absent case and the
+    /// <c>Unavailable</c> case. A <c>NotApplicable</c> row is not a trigger, because a question the
+    /// message never raised is not a check that failed to run, and reading a deployment's shape as an
+    /// outage is the mistake this deliberately avoids.
+    /// </para>
+    /// <para>
+    /// <b>Why the NotApplicable carve-out is stated rather than inferred from "no Available row".</b>
+    /// The requirement that produced this note carried both phrasings and they disagree at the edge: "a
+    /// refusal-shaped id has no Available row" read literally would include a <c>NotApplicable</c> row,
+    /// while "in question and unanswered" excludes it. The intent clause governs, and it is corroborated
+    /// twice: a <c>NotApplicable</c>-only list is defined elsewhere as "not an outage, nothing was asked
+    /// of the provider, so nothing was lost", and treating it as an outage would make an
+    /// inapplicable-only deployment defer rather than deliver. Recorded here because the literal clause
+    /// is the one a later reader is likely to re-derive from.
+    /// </para>
+    /// <para>
+    /// Appended, never prepended, so the reason that produced the decision is still read first. This is
+    /// the one thing carried over from the deleted <c>PolicyContext.RefusingFindings</c> field, and
+    /// re-keyed to evidence: under the field every allow carried the note because nothing populated it,
+    /// whereas here it appears only where a refusal check really was in question and unattempted.
+    /// </para>
+    /// </remarks>
+    private static PolicyDecision NoteUnappliedRefusalChecks(PolicyInput input, PolicyDecision decision)
+    {
+        var unevaluated = DeterministicFindings.Refusing
+            .Where(id => HasNoMeasuredRow(input.Evidence, id))
+            .ToList();
+
+        if (unevaluated.Count == 0)
+        {
+            return decision;
+        }
+
+        var reasons = decision.Reasons.ToList();
+        reasons.Add(new ReasonCode
+        {
+            Code = "policy.refusing_findings_not_evaluated",
+            Message =
+                "A fact that must refuse delivery was not evaluated: "
+                + $"{string.Join(", ", unevaluated)}. "
+                + "A delivery is not a clean bill of health for a check that did not run.",
+            EvidenceSignalIds = unevaluated,
+        });
+
+        return decision with { Reasons = reasons };
+    }
+
+    /// <summary>
+    /// True when the refusing id was put to the message and no row answered it: either no row exists at
+    /// all, or one exists and reports <c>Unavailable</c>. A measured row answers it whichever way it
+    /// went, and a <c>NotApplicable</c> row was never asked.
+    /// </summary>
+    private static bool HasNoMeasuredRow(IReadOnlyList<Evidence> evidence, string signalId)
+    {
+        var rows = evidence.Where(e => e.SignalId == signalId).ToList();
+
+        if (rows.Any(r => r.Availability == EvidenceAvailability.Available))
+        {
+            return false;
+        }
+
+        return rows.Count == 0
+            || rows.Any(r => r.Availability == EvidenceAvailability.Unavailable);
     }
 
     private PolicyDecision DecideByRisk(PolicyInput input)
