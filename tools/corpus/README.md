@@ -10,6 +10,7 @@ pipeline against traffic whose properties are known rather than guessed.
 |---|---|
 | `corpus.py` | the generator, seeder and checker. Python 3, standard library only, run as a file. |
 | `measure_reachability.py` | the first deliverable, before the generator existed: fixed-literal messages posted to measure which states a Host can actually reach. Not needed to use the corpus. It is the origin of the reachability facts below, but not of all of them: see the provenance note under that section. |
+| `tests/` | the harnesses that guard the committed behaviour of `corpus.py`. Python 3, standard library only, one command to run. See "Tests" below. |
 
 Run `corpus.py` from the repository root. It has no dependencies and writes nothing outside the
 directory you name.
@@ -112,6 +113,35 @@ many tokens the text and html representations share.
 **`size` is a band, not a floor.** A message declaring `small` is also asserted to be *under* the
 medium target. A one-sided bound would let a batch that secretly grew keep declaring `small` and pass,
 so the claim could only ever fail upward.
+
+## Tests
+
+```sh
+python3 tools/corpus/tests/run.py
+```
+
+One command, no arguments. `run.py` discovers every `test-*.py` in this directory, runs each in its own
+process, prints one line per harness, and returns a single verdict. Each harness is started with `-B`
+so no `__pycache__` lands beside the code it guards.
+
+**Exit codes, because a runner that cannot fail is not a runner:** `0` every harness passed; `1` at
+least one failed, and its name and full output are printed; `2` at least one **skipped**. A skip is not
+a pass and is reported separately: one harness needs the operator dataset on disk, and it refuses to
+measure rather than reporting a verification it did not perform.
+
+The harnesses are standalone scripts and each can also be run directly, which is the right way to work
+on one of them.
+
+**What belongs here, and what does not.** The membership test is whether the harness would have to fail
+for one of us to be wrong about something **currently on `main`**. These five do: they guard the shape
+axes, the version-4 fields, the refusal behaviour, the `check` shape pass, the traversal guard and the
+reconstituted path, all of which are committed. A harness that guards committed behaviour lives here,
+tracked and beside the code. One-off measurement, censuses and probes stay in the lane's scratch
+directory, which is gitignored: they answer a question about a moment, and a reader of this repository
+has no way to run them.
+
+They run from a **plain checkout**, with no lane scratch present. One harness (`test-ingest-shape.py`)
+needs the operator dataset and says so plainly when it is absent rather than passing quietly.
 
 ## The manifest schema, version 4
 
