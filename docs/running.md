@@ -205,7 +205,7 @@ Two consequences worth knowing:
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 | `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
-| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**: the fit bounds the request by **bytes** while the guard counts **tokens**, and that token count is not bounded by the request's own size: it exceeds the bytes, and both the question count and the body's CONTENT scale it, by up to 7x on measured shapes, so a request that fits the byte budget can still be refused. See below for what none of this says about the server. |
+| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**: the fit bounds the request by **bytes** while the guard counts **tokens**, and that token count is not bounded by the request's own size: it exceeds the bytes, and both the question count and the body's CONTENT scale it, by up to about 6x on measured shapes, so a request that fits the byte budget can still be refused. See below for what none of this says about the server. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults.
@@ -293,9 +293,10 @@ bound on yours.
 
 **And the server is not the thing at risk either way.** Its refusal boundary was measured above at
 **56210 tokens or more** (a 56210-token twelve-question request returned **HTTP 200 with all twelve
-answers**, raising the 48050 the state bisect gave), and a request above its limit returns HTTP 400
-rather than being shortened, so the failure a deployment would meet is a refused request and not a
-quiet under-read. That is a statement about the **WINDOW** only: the provider shortens message bodies for
+answers**, raising the 48050 the state bisect gave; that request was not a state the adapter produces,
+which does not matter for a claim about what the SERVER answered), and a request above its limit is
+refused with HTTP 400 rather than shortened, so the failure a deployment would meet is a refused request
+and not a quiet under-read. That is a statement about the **WINDOW** only: the provider shortens message bodies for
 a second and unrelated reason, `MaxBodyCharacters` defaulting to **2500** (`NimbleOptions.cs:229`), so a
 body or a quoted tail over that is shortened before the window is considered at all, and a message can be
 shortened while the window has nothing to do with it.
