@@ -625,7 +625,9 @@ def delimited_body_shape_probe(args, dimensions: list[dict], bodies: dict[str, s
     """Measure a delimited-body request shape over every corpus case. Exploratory, not shipping.
 
     **This is not the shape the adapter sends, and the docstring used to say that it was.** The
-    adapter's user turn is the serialized message *state* (`NimbleSemanticMailClassifier.FitPrompt`),
+    adapter sends the serialized message *state* as one member of its request
+    (`NimbleSemanticMailClassifier.FitState` in the `/2` shape; `/1` built the same state into a
+    user turn in `NimbleSemanticMailClassifier.FitPrompt`),
     while this sends `--- MESSAGE ---\\n{body}`. The two are not interchangeable: replaying one
     captured adapter request and substituting only the user turn, the delimited body differs from
     the adapter's own request in **3 of 11 dimensions** on the flagship case
@@ -962,7 +964,7 @@ def main() -> int:
     parser.add_argument("--body-shape", action="store_true",
                         help="Run ONLY the delimited-body shape over every corpus case and exit. This "
                              "is NOT the shipping shape: the adapter sends the serialized message "
-                             "state as the user turn (NimbleSemanticMailClassifier.FitPrompt), while "
+                             "state (NimbleSemanticMailClassifier.FitState), while "
                              "this sends a delimited bare body, and on the flagship case the two "
                              "differ in 3 of 11 dimensions. Numbers from it describe the model, never "
                              "the deployment. Renamed from --shipping-shape, which claimed otherwise.")
