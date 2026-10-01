@@ -79,13 +79,13 @@ question stays open rather than decided in either direction.
 ## Reproducing the credential half
 
 The hosted side is captured by the Jev corpus recorder in `tests/StyloMail.Jev.Tests`, which writes
-`tests/fixtures/jev/<case>.response.json` and a provenance sidecar. It is driven by a wrapper script
-that is a working tool outside this repository, so a clone does not have it. Run it with the key
-exported from a file outside the repository so the value never reaches a command line or any output:
+`tests/fixtures/jev/<case>.response.json` and a provenance sidecar. It is driven by
+`tools/laya-bridge/record-jev-corpus.sh`, which passes `TYPESAFE_API_KEY_FILE` through to the test so
+the test process opens the key file itself, and no value reaches a command line or any output:
 
 ```bash
-export TYPESAFE_API_KEY="$(cat /path/to/key)"
-/path/to/record-jev-corpus.sh
+# from the repository root
+TYPESAFE_API_KEY_FILE=/path/to/key tools/laya-bridge/record-jev-corpus.sh
 ```
 
 With both halves present the comparison is a join on case name and dimension id.

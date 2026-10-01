@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measure which states a throwaway Host can actually reach, before any corpus is built.
 
-This is the FIRST DELIVERABLE of the corpus lane (`.styloagent/missions/corpus-.md`): four
-questions answered against a real Host rather than argued from the source. It builds nothing and
+This is the corpus lane's first deliverable: four questions answered against a real Host rather
+than argued from the source. It builds nothing and
 it writes no message the operator could mistake for mail. It plants deterministic facts in a
 handful of messages, posts them through the authenticated routes on loopback, and records what
 the pipeline actually decided and what the console's own listings then show.
