@@ -700,8 +700,13 @@ public static class HostServices
         //
         // WHY `appsettings.json` CARRIES A PIN, since this is the first appsettings file in this
         // project and the number is not self-explaining. 65536 is a floor above the largest evaluation
-        // an ADAPTER-PRODUCIBLE state has been measured to reach: 42026 tokens (hex-ish body, 2400
-        // bytes, twelve questions, inside both the body budget and the byte cap). The derived default
+        // measured at a body SIZE the adapter produces (2400 bytes, inside the 2500 budget) -- but
+        // that figure is NOT SETTLED and the pin clears BOTH candidates. The expansion run gives
+        // 42026 tokens (hex-ish, twelve questions); `nimble-`'s codeword probe gives 46556 for the
+        // same nominal shape at the same body size, 10.8 per cent apart with no explanation yet. Both
+        // are ENDPOINT-DIRECT -- inside the cap but OUTSIDE the pipeline -- so NEITHER is a
+        // shipping-path measurement, and that arm is `conversation-`'s and remains queued. What is
+        // unsettled is which number to CITE, since 65536 clears both. The derived default
         // was `NumCtx / 2` = 4096, which refuses real mail -- a live run reported "unavailable: server
         // evaluated 14895 prompt tokens at an applied window of 4096". The cheap error is on the LOW
         // side, where a valid message loses its decision and the row looks the same either way; that
@@ -716,8 +721,8 @@ public static class HostServices
         //
         // So the claim this pin supports is the narrow one, that 65536 clears every
         // evaluation this repository has measured, and not the broad one that too-high is safe.
-        // 42026 is the densest shape anyone has TRIED, so this is a floor and not a law, and an
-        // environment variable still overrides it.
+        // The densest shape anyone has TRIED reaches 42026, or 46556 on the sibling probe, so this is
+        // a floor and not a law, and an environment variable still overrides it.
         //
         // Unparseable or absent means the default, which is the same shape the two keys above use.
         var numCtx = configuration["StyloMail:Nimble:NumCtx"];
@@ -842,7 +847,8 @@ public static class HostServices
         //
         // LIMITS, STATED RATHER THAN LEFT FOR A READER, and two of them are corrections to stronger
         // sentences that briefly stood here. The six shapes were CHOSEN and not sampled, so a denser
-        // shape than hexish is unmeasured and the ceiling is open above 42026; non-ASCII is untested,
+        // shape than hexish is unmeasured and the ceiling is open above BOTH candidate figures (42026
+        // and the sibling probe's 46556); non-ASCII is untested,
         // because the adapter escapes it as \uXXXX and that would change the wire bytes. AND THE ARMS
         // RAN AGAINST THE ENDPOINT DIRECTLY, not through the shipping adapter and assessor, so a
         // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
@@ -878,7 +884,8 @@ public static class HostServices
         //
         // AND THE PIN MOVES THIS EXPOSURE RATHER THAN REMOVING IT, which is the sentence to carry out
         // of tonight. At the landed `EffectiveNumCtx 65536` the largest evaluation any MEASURED
-        // admissible body reaches is 42026, so dense content is NO LONGER REFUSED and the refusal is
+        // admissible body reaches is 42026 (or 46556 on the sibling probe), so dense content is NO
+        // LONGER REFUSED and the refusal is
         // not the live case. What still binds is the BODY BUDGET, which the pin does not touch:
         // `NimbleOptions.MaxBodyCharacters` (2500 -- note the OTHER `MaxBodyCharacters`, on
         // `MailAssessorOptions`, defaults to 1_000_000 and is a different cap) shortens any body or
