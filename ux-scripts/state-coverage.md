@@ -224,16 +224,46 @@ both were found by reading the instrument rather than the result.
 6. The traffic hub's absent consumer, which `overview-` placed on this lane: the console must work with
    the Hub absent and say so rather than look quiet, and must not read "the Hub is not there" as
    "nothing is happening". Behind the conversation graph.
-7. **The outage that outlasts the reconnect budget** (state 8's far edge). The decision behind it is
-   made and the two changes are built (`1ce74d7`): the connection screen's save reconnects when the
-   address moved or the key changed, and **Reconnect** in the status bar re-asserts the connection
-   from the stored key without displaying or re-entering one. What is owed is the measurement, not
-   the behaviour. The run has to keep the Host away past SignalR's ~42 second budget, bring it back,
-   and then require the operator's Reconnect to restore the feed *and* the re-read. Item 4's recovery
-   run is the short-outage proof (self-recovery, and the 41.8s re-assertion is what proves the Host
-   was down across the first three attempts); this one is its pair, and it has to show that recovery
-   does **not** happen on its own by T+55, or the two runs are the same run twice. The machinery is
-   `run-console-feed-recovery-smoke.sh`'s: the same Host twice, `CONSOLE_REUSE_KEYS`, and a change
-   made while the console is blind. **Not to build: an automatic retry past the budget.** That is a
-   product choice, and a bounded one may only be proposed back with a number (attempts, backoff, and
-   what stops it).
+7. ~~**The outage that outlasts the reconnect budget** (state 8's far edge)~~ **Done** 2026-10-01:
+   `run-console-long-outage-smoke.sh` and `console-long-outage-smoke.yaml`, 18 actions, 0 failed, exit
+   0, 175s. The Host is killed, the console is asserted to still be saying the feed stopped past
+   SignalR's ~42 second budget (attempts at 0, 2, 10 and 30 seconds and then `Closed`), the Host is
+   brought back on the same address, key and database, and the console is asserted to **still** not be
+   following it, with the row still offering Pause where the Host would now say Resume. Then the
+   operator's **Reconnect** is clicked and the run requires `Live`, the row flipping to Resume, and
+   `Connected`. The Resume is the proof of the re-read and not a coincidence: the pause was applied
+   over the Host's own control route while the console was blind, so a change that reached the screen
+   had to arrive through a read. That negative half is what makes this item 4's pair rather than the
+   same run twice; item 4 is the short-outage proof, where the console heals itself.
+   The run's one number that is not about the console is the cover wait for the restart, and it is
+   sized from the machine: a quiet restart costs ~11s (measured), the first run of this file measured
+   80s under the load the fleet puts on one box, and the wait is 120s with the runner failing the run
+   outright if the restart overruns it, rather than letting the click land blind and the console be
+   blamed for the schedule. That first run was red for exactly that reason, and what it found is item
+   8 below.
+8. **Reconnect pressed while the Host is still away** (found by item 7's first, red run). The console
+   settles into the feed's `Unreachable` state, renders "No live feed", and makes no further attempt:
+   `TrafficFeed.StartAsync` disposes the connection when the start fails and classifies it
+   (`src/StyloMail.Desktop/Api/TrafficFeed.cs:255-265`), and `WithAutomaticReconnect` only applies to
+   a connection that started successfully, so a start that fails gets no attempt at all. A second
+   press, once the Host is up, does work. Two consequences, and the second is the operator's: the
+   stale warning disappears from the status bar, because only the `Dropped` rendering of
+   `LiveFeedStatus.From` carries "screen may be out of date" and `Unreachable` and `NoFeed` both
+   render the headline "No live feed", so a console that had a live feed a minute ago now makes a
+   claim about the deployment instead; and pressing Reconnect during the outage leaves the console
+   worse off than not pressing it, until it is pressed again. Proposed to `overview-` 2026-10-01 and
+   awaiting a ruling, as P1 (give an operator-initiated connect the bounded policy the client already
+   applies to a connection that started successfully: 4 attempts at 0, 2, 10 and 30 seconds, stopped
+   by the same ~42 second budget, and nothing at all without an explicit operator action) and P2 (a
+   feed that is not `Live` while `SurfaceMayBeStale` is set keeps rendering the stale warning,
+   whichever failure the last attempt produced; the flag is already tracked and only `Dropped` uses
+   it). **Not to build without a ruling**: any retry past P1's numbers, and an automatic retry past
+   the budget in any form.
+9. **The decision fixture the harness ships no longer parses.** Every run that falls back to
+   `ux-scripts/decision-fixture.json` logs `Could not load the decision fixture: ... missing required
+   properties including: 'channel', 'deliveryTiming'`, and the pane then shows its empty state, which
+   a reader of the screenshot has no way to tell from a pane defect. The contract mirror grew both
+   properties as required (`src/StyloMail.Desktop/Api/Contracts/DecisionContracts.cs:31,42`) and the
+   fixture was not updated with them. It is invisible in the main smoke because that run seeds a real
+   decision and never reaches the fallback. Owed: the two properties in the fixture, and a test that
+   parses the shipped fixture into the mirror so it cannot rot again.

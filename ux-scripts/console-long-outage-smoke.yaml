@@ -1,0 +1,184 @@
+name: console-long-outage-smoke
+description: >
+  Drives the console through an outage that outlasts its retry budget, brings the
+  Host back, and then requires the operator's own Reconnect to restore the feed
+  and the read.
+
+  This is item 4's counterpart and it exists because item 4 cannot answer this
+  question. That run, console-feed-recovery-smoke.yaml, proves the console comes
+  back on its own when the Host returns inside SignalR's ~42 second budget. Past
+  that budget the console gives up for good (0, 2, 10 and 30 second attempts and
+  then Closed), and until 1ce74d7 the only path that reconnected was the
+  connection dialog's own save, gated on the key having changed: an operator
+  whose Host went away for a minute had no way back that did not cost a
+  credential the console is built never to display.
+
+  The claim has two halves and this script asserts both.
+
+  The first is negative and is the reason the wait is long: after the budget is
+  spent the console does NOT come back by itself, not even once the Host is
+  there again. That is asserted twice, once with the Host still away and once
+  after the runner has restarted it, because the second is the stronger claim
+  and the two would be one if the Host happened to return between them.
+
+  The second is the operator's affordance. Reconnect in the status bar rebuilds
+  the client and the feed from the settings and the stored key, so it is a
+  re-assertion of a connection rather than a re-proof of identity, and it must
+  read the surface again rather than only reconnect. That half is asserted the
+  way item 4 asserts it, because a screen cannot be asked whether it re-read:
+  the runner pauses the harness sender over the Host's own control route while
+  the console is blind, so a change was made that reached this console by
+  nothing but a read. The row offers Resume afterwards only if the console read
+  the senders, since a change published to a Hub nobody is connected to is
+  delivered to nobody.
+
+  What this run does not prove is anything about automatic retries: none were
+  built, by ruling, and the console is expected to keep saying it has stopped
+  until a person does something about it.
+
+default_delay: 250
+
+actions:
+  # The precondition, asserted rather than assumed: without it the negative half
+  # below could be satisfied by a console that had never been live at all.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 20000
+
+  # The row whose change is the evidence of a re-read at the end. The principal
+  # is itself a sender, so it exists on a fresh Host without seeding anything,
+  # and it offers a Pause because nothing has paused it yet.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The synchronisation point. run-console-long-outage-smoke.sh waits for this
+  # file and only then stops the Host, so the outage can be timed from a moment
+  # the console is provably following it.
+  - type: Screenshot
+    value: "01-feed-live"
+    description: "The console following a Host that is up, with the sender running"
+
+  # The connection is lost here, and the console says so rather than looking
+  # quiet. This is where the clock the rest of the script is built on starts.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 90000
+
+  - type: Screenshot
+    value: "02-feed-dropped"
+    description: "The same window after the Host it was following went away"
+
+  # Past the budget. SignalR attempts at 0, 2, 10 and 30 seconds after the drop
+  # and then closes the connection for good, so 52 seconds of waiting puts every
+  # attempt behind this script and leaves the console with no retry left to make.
+  # The wait is deliberately not generous: it is the thing being measured.
+  - type: Wait
+    value: "52000"
+
+  # The negative half, at ~T+53 with the budget spent and the Host still away.
+  # A short timeout on purpose: this is a read of what is on the screen, not a
+  # wait for something to appear. If the console had recovered, the headline
+  # would be "Live" and this fails rather than silently agreeing.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 5000
+
+  - type: Screenshot
+    value: "03-still-down-after-budget"
+    description: "Past the retry budget, still saying the feed stopped"
+
+  # The runner restarts the Host here, on the same address, key and database,
+  # and pauses the harness sender while the console is unable to hear anything.
+  # The wait covers that restart; nothing on the screen can change during it,
+  # because a console that has stopped retrying does not read the Host again on
+  # its own. That is what makes the wait inert rather than a race.
+  #
+  # It is also the only number in this file that is not a measurement of the
+  # console, and it is sized from the machine instead. A restart costs about 11
+  # seconds on this box when it is quiet (measured directly); the first run of
+  # this file measured 80 seconds, under the load several agents put on one
+  # machine while they build and test at once. 120 seconds is that worst case
+  # with room to spare, and it is deliberately generous while the 52 seconds
+  # above is deliberately not: that one is the thing being measured.
+  #
+  # The margin is not cosmetic either. A Reconnect that lands while the Host is
+  # still away leaves the console holding the feed's Unreachable state, which
+  # has no retry of its own, so the run below would fail on an assertion about
+  # the feed and read as a console defect. run-console-long-outage-smoke.sh
+  # measures the restart and fails the run outright, naming the schedule, if it
+  # overran this wait.
+  - type: Wait
+    value: "120000"
+
+  # The stronger negative, and the reason the Host is brought back before the
+  # Reconnect rather than after it: the Host is there, the console is not
+  # following it, and nothing happens until a person acts.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 5000
+
+  # And the console is still showing the world as it was: the row still offers
+  # Pause, although the Host would say Resume. That difference is the re-read
+  # this run is about, seen from the side where it has not happened yet.
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 5000
+
+  - type: Screenshot
+    value: "04-host-back-console-not-following"
+    description: "The Host is back and running, and the console has not noticed"
+
+  # The affordance this run exists for, and the whole of what was missing before
+  # 1ce74d7: a way back that reuses the stored key and never shows or asks for
+  # one. Clicked by its automation id rather than by its label, so the button's
+  # wording can change without this run silently stopping to test it.
+  - type: Click
+    target: "testid=reconnect-console"
+    description: "Reconnect, using the stored key"
+
+  # Live again. The timeout covers a fresh Hub connection plus the re-read that
+  # follows it, and is long only because the console's own attempts are not
+  # instant; the Host is up before the click by construction.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 90000
+
+  # The re-read itself. Nothing was pushed to this console about the pause: the
+  # socket was closed when it was applied, so this control can exist only
+  # because the console read the senders again.
+  - type: Expect
+    target: "testid=resume-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  # And the whole console is working, not only its feed: the Reconnect rebuilds
+  # the client, so the reads that follow it are the proof that the rebuilt one
+  # is the one in use.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Screenshot
+    value: "05-reconnected"
+    description: "Live again over a surface it has read again, after the operator reconnected"

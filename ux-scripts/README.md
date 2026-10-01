@@ -17,6 +17,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-quarantine-smoke.sh # ... and a message policy quarantined, then released
 ./ux-scripts/run-console-feed-recovery-smoke.sh # ... and that Host taken away and brought back
 ./ux-scripts/run-console-address-change-smoke.sh # ... and pointed at an address nothing answers on
+./ux-scripts/run-console-long-outage-smoke.sh # ... and taken away for longer than the console retries
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
@@ -76,6 +77,7 @@ rather than an assumption.
 | No feed | Hub absent, which is a real deployment's default | `run-console-no-feed-smoke.sh` | `No live feed`, and **not** stale |
 | Dropped | a feed that was Live stops | `run-console-feed-drop-smoke.sh` | `Live updates stopped, screen may be out of date`, in amber |
 | Recovered | the same Host, back on the same address, key and database | `run-console-feed-recovery-smoke.sh` | `Live` again, over a surface it has read again |
+| Past the budget | the same Host, back after the console has stopped retrying | `run-console-long-outage-smoke.sh` | the stopped feed and the stale row still on screen, and `Live` only after the operator's Reconnect |
 
 `console-harness.sh` reads `CONSOLE_TRAFFIC` when it starts the Host: `true` (the default) maps the
 Hub, `false` starts a Host without it. The last two states cannot be reached from a YAML at all,
@@ -92,9 +94,15 @@ over the Host's own control route while the feed is down, and the script require
 `Resume` afterwards. A change published to the Hub while nothing is connected reaches nothing, so that
 button can appear only by the console reading the senders again. The runner's restart is timed to land
 between SignalR's third and fourth reconnect attempts for the same reason: a change applied after the
-socket came back would arrive as a notice, and the assertion would pass without the re-read. Both
-runners' notes are in `state-coverage.md`, and the `Resume`-after-a-gap assertion is what row 8 there
-used to say was out of reach.
+socket came back would arrive as a notice, and the assertion would pass without the re-read. That
+assertion is shared with the long-outage run, which waits past the budget instead of inside it and
+then presses the operator's **Reconnect**: the same `Resume` on the same row, reached by a person
+rather than by the client's own retry. It is also the one run in this directory whose schedule
+depends on the machine as well as on the console, since its restart has to finish before the click
+lands, so its runner times that restart, fails the run outright if it overran, and says so in one
+line rather than failing an assertion about the feed ninety seconds later. Both runners' notes are in
+`state-coverage.md`, and the `Resume`-after-a-gap assertion is what row 8 there used to say was out
+of reach.
 
 ## A Host that is up and refusing
 
@@ -394,16 +402,20 @@ the fastest way to make a run meaningless.
   What the smoke asserts today is the other half of the same contract, that the qualifier is *absent*
   on the unwindowed rows that make up most of a real response. The windowed rendering is covered by
   `DecisionViewTests`; no run reaches it.
-- **Recovery after a long outage.** `run-console-feed-recovery-smoke.sh` proves the console announces
-  the drop, keeps what it had read, and then goes back to `Live` over a surface it has read again,
-  when the Host returns on the same address with the same key and database. What it does not reach is
-  the other ending: a Host away for longer than SignalR's retry budget, which is roughly 42 seconds.
-  The console stops retrying there and says so, and nothing in this directory reaches that state yet.
-  What the operator can do about it does exist as of `1ce74d7`: **Reconnect** in the status bar
-  rebuilds the client and the feed from the settings and the stored key, and the connection screen
-  now reconnects for an address change as well as a key change. The run that proves the far ending is
-  still owed, and it has to show that recovery does *not* happen on its own by T+55, or it is the
-  short-outage run twice.
+- **Recovery after a long outage.** Closed for the console as of `run-console-long-outage-smoke.sh`:
+  `run-console-feed-recovery-smoke.sh` proves the console announces the drop, keeps what it had read,
+  and goes back to `Live` on its own when the Host returns inside SignalR's retry budget, and the
+  long-outage run proves the other ending, where the budget is spent, the console stops retrying and
+  stays stopped even after the Host is back, and only the operator's **Reconnect** restores the feed
+  and the re-read. What neither run reaches is a Reconnect pressed while the Host is *still* away:
+  the console settles into the feed's `Unreachable` state, renders "No live feed", and makes no
+  further attempt, losing the stale warning at the same time. That is `state-coverage.md` item 8,
+  proposed to `overview-` rather than built, because a retry is a product decision here.
+- **The decision fixture the harness ships.** `ux-scripts/decision-fixture.json` is the fallback body
+  for a script that wants the detail pane populated without seeding a real decision, and it no longer
+  parses: the contract mirror requires `channel` and `deliveryTiming` and the fixture does not carry
+  them, so those runs log that they could not load it and show an empty pane. The main smoke never
+  notices, because it seeds a decision with `console_seed_decision` and prefers that.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.
