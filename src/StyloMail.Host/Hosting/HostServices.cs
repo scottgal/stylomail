@@ -925,14 +925,24 @@ public static class HostServices
         // not the live case. What still binds is the FIT, which the pin does not touch: the fit loops
         // on `total <= NumCtx` where `total` is the WHOLE SERIALIZED REQUEST in BYTES
         // (`NimbleSemanticMailClassifier.cs:388`), so it shortens the body until the request fits, and
-        // the pin moved only the BACKSTOP at `:228`. **AND THE CUT OVERSHOOTS: it is the measured
-        // excess PLUS a margin, not the excess.** `:86` `PromptByteMargin = 512`; `:405`
+        // the pin moved only the BACKSTOP at `:228`. **AND THE STEP IS THE EXCESS PLUS A DELIBERATE
+        // MARGIN, whose cost is body and whose benefit is CONVERGENCE** -- not an overshoot, which is
+        // the word I used first and which `queue-` corrected. The loop's own comment gives the purpose:
+        // "Remove the measured excess plus the margin, and never less than a step, so a request that is
+        // barely over the line still converges." `:86` `PromptByteMargin = 512`; `:405`
         // `var excess = total - _options.NumCtx;`; `:406` `var step = Math.Max(excess + 512, 64);`;
         // `:407` `budget = budget > step ? budget - step : 0;`. So a body a hundred bytes over the line
-        // loses 612 characters, the floor is 64, and the loop can run more than once. **A body that
-        // barely oversteps is therefore cut well below the largest one that would have fitted**, and
-        // any estimate of `how much was cut` that assumes minimality is wrong by at least 512 per
-        // iteration. **AND THE SIZE IS NOT READABLE FROM A SERVED DECISION, which I measured rather than
+        // loses 612 characters, the floor is 64, and the loop can run more than once, **which means a
+        // body that barely oversteps lands well below the largest one that would have fitted** -- a
+        // property to know about the CUT rather than a defect in the guard.
+        //
+        // **AND THE COMMENT ABOVE THAT CONSTANT JUSTIFIES 512 WITH A REASON THAT IS NOT TRUE**: it cites
+        // "the state's own punctuation" and "any small field added later", and BOTH are already handled
+        // -- `:385` measures the WHOLE serialized request (`GetByteCount(JsonSerializer.Serialize(
+        // request, ...))`), so the punctuation is counted, and `:186` `SendWithRetryAsync(request, ...)`
+        // sends the same instance, so no field is added after the measurement. **A real cost with a
+        // wrong explanation attached**: the margin is doing its job and the sentence defending it does
+        // not describe why. **AND THE SIZE IS NOT READABLE FROM A SERVED DECISION, which I measured rather than
         // assumed.** `body_text_characters_kept` is written into the state that goes to the MODEL
         // (`NimbleMessageState.cs:96-97`) and `Built` carries only the BOOLEAN across the method
         // boundary (`:38`, `internal sealed record Built(Dictionary<string, object?> State, bool
