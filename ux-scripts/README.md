@@ -399,6 +399,40 @@ that started all this), non-zero on a missing file, zero on a passing result. It
 build, and it refuses to report ok if it could not check all three shapes, because a check that
 silently skips a shape is the same defect in a smaller place.
 
+## A run that has finished must not look like a run still working
+
+The same class as the exit code above, found on 2026-10-01 during a machine-wide memory condition that
+had about twenty `lsof` processes, and then one Host, sitting in uninterruptible kernel sleep (state
+`U`). A process in that state takes no signal at all: SIGTERM is queued and never delivered, the pid
+stays in the table, and a `wait` on it never returns.
+
+`console_stop_host` used `kill` and then an unbounded `wait`, and every runner reaches it through its
+`EXIT` trap. So a Host that wedged there held the runner open forever. What it looked like from
+outside: the no-feed runner had already printed the harness's own `The harness Host did not become
+live within 90s.` and reached its verdict, then sat in teardown for another eight minutes while its
+child stayed alive. A run that has decided and a run still driving the console were indistinguishable
+in `ps`, which is exactly the problem the verdict-reading gate exists to solve, one layer down.
+
+So the wait is bounded (`CONSOLE_HOST_STOP_WAIT`, 30s by default), the message names the pid and says
+the condition is the machine's rather than the run's, and the process is left to expire on its own
+instead of being retried. Two further consequences of the same wedge:
+
+- **The key file is now removed before the kill rather than after the wait.** It used to be the last
+  statement in that function, so a wedge meant this run's principal key stayed on disk for the whole
+  life of the wedge, in the one path that is supposed to be the guarantee that a key does not outlive
+  its run. The key is a credential and the process is not, so the file goes first.
+- **Nothing here uses `lsof`.** The harness's preflight asks whether a port is taken, and a TCP
+  connect answers that without a tool that can itself wedge. Diagnostics that name a pid work with
+  `ps`.
+
+Both behaviours are checked without a Host or a build: `.styloagent/scratch/desktop/test-stop-host-bounded.sh`
+runs three cases against a child that ignores SIGTERM, and `test-stop-host-bounded-is-load-bearing.py`
+runs the old body beside the new one to show the old one still blocks where the new one returns. The
+stand-in waits for a flag file before anything signals it, and that handshake is the whole difference
+between a test and a coin toss: `trap "" TERM` takes effect only once the child has run it, so a signal
+in the first milliseconds kills a child that was supposed to be unstoppable. Two drafts of that probe
+reported a false failure for exactly that reason.
+
 ## Nothing works without a Host
 
 The console is an API client, so a script with no Host behind it asserts on a first-run state. The

@@ -38,6 +38,13 @@ CONSOLE_NIMBLE_TAGS="${CONSOLE_NIMBLE_TAGS:-http://127.0.0.1:11435/api/tags}"
 # check below only means anything when they agree with the Host.
 CONSOLE_NIMBLE_GENERATE="${CONSOLE_NIMBLE_GENERATE:-http://127.0.0.1:11435/api/generate}"
 
+# How long to wait for the throwaway Host to stop after SIGTERM, in seconds.
+# A Host that is healthy stops in well under this. The number exists for the one
+# that does not, because a process in uninterruptible sleep cannot be signalled
+# and waiting on it forever makes a finished run look like a running one. See
+# console_stop_host.
+CONSOLE_HOST_STOP_WAIT="${CONSOLE_HOST_STOP_WAIT:-30}"
+
 export DOTNET_ROOT="${DOTNET_ROOT:-/usr/local/share/dotnet}"
 export PATH="/usr/local/share/dotnet:$PATH"
 
@@ -799,17 +806,52 @@ console_seed_corpus() {
 # every Host on the machine, including one another agent is running on a
 # different port, and this repository has several agents that start one. A
 # cleanup step that reaches outside what it started is worse than no cleanup.
+#
+# The wait is bounded, and that is not defensive padding. A process can be in
+# uninterruptible kernel sleep (state U), and then it takes no signal at all:
+# SIGTERM is queued and never delivered, the pid stays in the table, and an
+# unbounded `wait` sits on it for as long as the kernel takes. Observed on this
+# machine on 2026-10-01, during a memory condition that had twenty `lsof`
+# processes and one Host in that state for tens of minutes. What it looks like
+# from outside is the reason to bound it: a run that had already printed its
+# verdict and given up on its Host stayed in the process table for another eight
+# minutes, which is indistinguishable from a run still driving the console. A
+# smoke whose failure is indistinguishable from work in progress is the same
+# class of problem as a runner whose failing verdict exits 0.
 console_stop_host() {
-    if [[ -n "${CONSOLE_HOST_PID:-}" ]]; then
-        kill "$CONSOLE_HOST_PID" 2>/dev/null || true
-        wait "$CONSOLE_HOST_PID" 2>/dev/null || true
-    fi
-
     # The header file holds the principal key, so it goes with the Host. Every
     # runner already traps its way here on success, failure and interrupt, which
     # is why the removal lives here rather than in each runner's cleanup: one
     # place that cannot be forgotten when a fourth script is added.
+    #
+    # Removed first, before the kill and the bounded wait below, because the key
+    # is a credential and the process is not. It used to be removed last, which
+    # meant a Host that could not be signalled kept this run's principal key on
+    # disk for the whole life of the wedge, in the one path that is meant to be
+    # the guarantee that the key does not outlive the run.
     rm -f "${CONSOLE_RUN:-}/auth.headers" 2>/dev/null || true
+
+    if [[ -z "${CONSOLE_HOST_PID:-}" ]]; then
+        return 0
+    fi
+
+    kill "$CONSOLE_HOST_PID" 2>/dev/null || true
+
+    local waited=0
+    while kill -0 "$CONSOLE_HOST_PID" 2>/dev/null; do
+        if (( waited >= CONSOLE_HOST_STOP_WAIT )); then
+            echo "The harness Host $CONSOLE_HOST_PID is still alive ${CONSOLE_HOST_STOP_WAIT}s after SIGTERM and has been left alone." >&2
+            echo "A process in uninterruptible sleep cannot take a signal. That is a condition of this machine rather than a failure of the run, and the pid is named here so it can be checked without lsof." >&2
+            return 0
+        fi
+
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    # Only once it is gone, so this returns at once. A `wait` on a live process
+    # is exactly the unbounded block the loop above exists to avoid.
+    wait "$CONSOLE_HOST_PID" 2>/dev/null || true
 }
 
 # Points the console at the harness Host. STYLOMAIL_HOST and
