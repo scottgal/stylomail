@@ -21,6 +21,47 @@ public sealed class HostStatusTests
         HttpStatusCode? status = null,
         string? code = null) => new(kind, "test", status, code);
 
+    /// <summary>
+    /// One status per kind, for the coverage below.
+    /// </summary>
+    /// <remarks>
+    /// The discard arm throws rather than returning something plausible. A
+    /// representative that quietly fell back to <see cref="HostStatus.Unknown"/>
+    /// would make the coverage pass while checking the same object eight times,
+    /// and a kind added to the enum without a line here would be skipped in
+    /// silence rather than failing the build.
+    ///
+    /// Three of the kinds cannot come from <c>FromFailure</c> at all, which is
+    /// why this is a function of the kind rather than a single factory call.
+    /// </remarks>
+    private static HostStatus Representative(HostStatusKind kind) => kind switch
+    {
+        HostStatusKind.Unknown => HostStatus.Unknown,
+        HostStatusKind.Ready => HostStatus.From(new ReadinessResponse { Status = "ready" }),
+        HostStatusKind.NotReady => HostStatus.From(new ReadinessResponse { Status = "not_ready" }),
+
+        HostStatusKind.NeedsApiKey =>
+            HostStatus.FromFailure(Failure(StyloMailApiFailure.ApiKeyNotConfigured)),
+
+        HostStatusKind.ApiKeyRejected => HostStatus.FromFailure(
+            Failure(StyloMailApiFailure.HostRefused, HttpStatusCode.Unauthorized)),
+
+        HostStatusKind.Unreachable =>
+            HostStatus.FromFailure(Failure(StyloMailApiFailure.Unreachable)),
+
+        HostStatusKind.VersionSkew =>
+            HostStatus.FromFailure(Failure(StyloMailApiFailure.UnreadableResponse)),
+
+        // The code is carried so this lands on the branch that keeps the Host's
+        // own words, rather than the one for a refusal with neither code nor
+        // sentence, which is the AirPlay case and has its own test.
+        HostStatusKind.Refused => HostStatus.FromFailure(
+            Failure(StyloMailApiFailure.HostRefused, HttpStatusCode.Forbidden, "forbidden")),
+
+        _ => throw new InvalidOperationException(
+            $"HostStatusKind.{kind} has no representative, so the coverage below would skip it."),
+    };
+
     [Fact]
     public void A_ready_host_is_ready()
     {
@@ -59,6 +100,20 @@ public sealed class HostStatusTests
         var status = HostStatus.FromFailure(Failure(StyloMailApiFailure.ApiKeyNotConfigured));
 
         Assert.Equal(HostStatusKind.NeedsApiKey, status.Kind);
+
+        // This exclusion is only worth anything while the headline is populated,
+        // and for a long time nothing in this file said it was: a Headline
+        // regressing to empty would have left this line passing over a blank
+        // string while the claim around it went false. The control is
+        // Every_status_kind_is_phrased below, which asserts every kind has a
+        // headline and a detail and checks each representative really is of the
+        // kind it stands for.
+        //
+        // The second control the broadcast asks for, a filter shown to still
+        // fire on something it must match, does not have a subject here. "error"
+        // is not a literal mirrored from the source that could drift out of
+        // match: it is a word this type deliberately never emits, so there is no
+        // status carrying it to point the same predicate at.
         Assert.DoesNotContain("error", status.Headline, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -149,5 +204,41 @@ public sealed class HostStatusTests
 
         Assert.Equal(HostStatusKind.Unknown, status.Kind);
         Assert.Empty(status.FailedChecks);
+    }
+
+    /// <summary>
+    /// Every kind is phrased, and the representative used to say so is of the
+    /// kind it stands for.
+    /// </summary>
+    /// <remarks>
+    /// This is the control the rest of the file was missing. Several assertions
+    /// here are exclusions over <see cref="HostStatus.Headline"/> and
+    /// <see cref="HostStatus.Detail"/>, and an exclusion over an empty string is
+    /// green for a reason that has nothing to do with the claim it makes. The
+    /// sibling type has had this from the start, in
+    /// <c>TrafficFeedTests.Every_state_is_phrased_with_a_headline_and_a_detail</c>,
+    /// and there was no equivalent here.
+    ///
+    /// The <c>Assert.Equal</c> is not decoration. Without it a representative
+    /// could be wrong about its own kind and the loop would check the same
+    /// status eight times rather than eight statuses once each, which is the
+    /// failure mode a coverage test is supposed to prevent.
+    ///
+    /// What this does not claim: that the eight headlines differ from one
+    /// another. Telling the states apart is the mapping in
+    /// <c>HostStatus.FromFailure</c>, and that is covered by the named cases
+    /// above rather than by a count.
+    /// </remarks>
+    [Fact]
+    public void Every_status_kind_is_phrased()
+    {
+        foreach (var kind in Enum.GetValues<HostStatusKind>())
+        {
+            var status = Representative(kind);
+
+            Assert.Equal(kind, status.Kind);
+            Assert.False(string.IsNullOrWhiteSpace(status.Headline), $"{kind} has no headline");
+            Assert.False(string.IsNullOrWhiteSpace(status.Detail), $"{kind} has no detail");
+        }
     }
 }
