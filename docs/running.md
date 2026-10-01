@@ -331,10 +331,16 @@ not measured; and 2000 is measured-safe for THAT state shape rather than a ceili
 carrying more links, attachments or envelope gives the fit less room and can be cut at a shorter body.
 At the expansion arms' own minimal state the room is larger still (6910-byte requests against a
 2500-byte body, so 4410 bytes of overhead under the 8192-byte cap), which is why nothing was cut there.
-Both cuts land on `BodyText` and `QuotedText`, and the row they produce stays **`Available`**
-while carrying a `reason` attribute saying the body was shortened
+Both cuts land on `BodyText` and `QuotedText`. **While something of the body survives, the row stays
+`Available`** and carries a `reason` attribute saying the body was shortened
 (`NimbleSemanticMailClassifier.cs:591`), so **availability alone does not tell a reader whether the
 read was whole** and anything consuming these rows has to look at the reason rather than the state.
+**An emptied body still takes that path when the request fits**: the fit returns the zero-body state
+at `:388-395`, before its own `budget == 0` check at `:397-400`, so a message whose body was cut to
+nothing is sent whenever the rest of the state fits the window. What comes back `Unavailable` is the
+other terminal case, where nothing fits at all and the state alone exceeds `NumCtx`: the fit returns
+nothing, and every askable row is answered with "question set and message state exceed the configured
+context window" (`:165-174`).
 
 **It does not follow that the number the SERVER applies moved with it, and nothing in that log line
 says it did.** On this transport the request is not asking the server for a window at all: the
