@@ -205,7 +205,7 @@ Two consequences worth knowing:
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 | `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
-| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**: the fit bounds the request by **bytes** while the guard counts **tokens**, and the token count is a **sum across the questions** rather than the request's own size, so it exceeds the bytes several times over and a request that fits the byte budget can still be refused. See below for what none of this says about the server. |
+| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its truncation guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest evaluation the deployment produces**: the fit bounds the request by **bytes** while the guard counts **tokens**, and that token count is not bounded by the request's own size: it exceeds the bytes, and both the question count and the body's CONTENT scale it, by up to 7x on measured shapes, so a request that fits the byte budget can still be refused. See below for what none of this says about the server. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults.
@@ -221,10 +221,10 @@ answered **503** and no message could be accepted. With `EffectiveNumCtx=16384` 
 accepted, the submission answers **202**, and the semantic rows score.
 
 Setting that ceiling unblocks a deployment; it does not repair the comparison. The fit still budgets
-bytes against a token window, and the guard still compares a **sum across the questions** against a
-**per-request** window, so the honest ceiling is a function of the request rather than a number to
-guess. A deployment that asks fewer questions, or sends smaller messages, may need none of this: the
-number to set is the largest evaluation the deployment actually produces.
+bytes against a token window, and the guard still compares a **token count the request's size does not
+bound** against a **fixed number**, so the honest ceiling is a function of the request rather than a
+number to guess. A deployment that asks fewer questions, or sends smaller messages, may need none of
+this: the number to set is the largest evaluation the deployment actually produces.
 
 **And `16384` is a worked example rather than a recommendation, because a real message overran it.**
 Measured on the reference machine against a three-turn conversation fixture: four calls at an applied
@@ -246,20 +246,59 @@ the value in it is that the relation holds wherever it was read. Raising the set
 the number the guard compares against, which is what the 503-to-202 effect above measures, and the
 advice above is real advice for the guard.
 
-**And the number the guard compares against is an EVALUATION the server constructs, which is why the
-fit does not bound it.** The fit caps the whole serialized request at `NumCtx` **bytes**, and it is
-tempting to conclude that a request of at most `NumCtx` bytes cannot evaluate to more than about
-`NumCtx` tokens, so that an `applied` at or above `NumCtx` would leave the guard unreachable.
-**Measured, it does not hold**: on this endpoint the reported `input_tokens` exceeds the request's own
-byte count from six questions upward, because the figure counts a prompt the SERVER builds and it grows
-quadratically in the question count (`nimble-`, 2026-10-01T23:30, `127.0.0.1:11435/v1/systemone`, one
-fixed 3291-byte state, only the question count moving, artifacts
+**The number the guard compares against is the server's own token count, and the request's byte budget
+does not bound it.** The fit caps the whole serialized request at `NumCtx` **bytes**, and from that cap
+the natural conclusion is that the evaluation cannot exceed `NumCtx` tokens. **Measured, it does not
+hold**: `input_tokens` EXCEEDS the request's own byte count from six questions upward, and it grows
+faster than linearly in the question count (`nimble-`, 2026-10-01T23:30,
+`127.0.0.1:11435/v1/systemone`, one fixed 3291-byte state, only the question count moving, artifacts
 `.styloagent/scratch/nimble/question-count-curve.json` and `question-count-sweep.json`: six questions,
 5404 request bytes, **7644** input tokens; twelve questions, 7246 bytes, **20642** tokens, identical on
-a repeat). A UTF-8 byte cannot hold more than one token, so that figure is not a tokenization of what
-the client sent. **The byte budget is therefore not a bound on the evaluation**, the guard is reachable
-at any setting a large enough request can outrun, and the honest ceiling is the largest evaluation the
-deployment produces rather than a number derived from its bytes.
+a repeat; eight points in all). A UTF-8 byte cannot hold more than one token, so that figure is not a
+tokenization of what the client sent. **Those two rows give both measured ends of this section without
+any further mechanism**: the request refused at `applied 16384` evaluated at 20498, and the same request
+was answered at `applied 32768` because 20498 is below it. So the guard is reachable and it has fired.
+**The firing is witnessed at `applied 16384`, and the guard is MEASURED to be reachable at `32768` as
+well**, which turns on the largest evaluation an admissible request can produce; that is measured below.
+What `applied` changes is which requests reach the guard, so size the setting against the largest
+evaluation the deployment produces.
+
+**And that measurement is a warning, because content moves the evaluation far more than prose does.**
+Holding twelve questions and one state shape and varying only the body's content, with every request
+inside the fit's 8192-byte cap AND below the 2500-character body budget described below, the evaluation
+ran from **19574** tokens on prose to **42026** on a hexadecimal-looking body, an expansion of 2.87x to
+6.17x (`nimble-`, 2026-10-01T23:53, `.styloagent/scratch/nimble/expansion-shapes.json`, script
+`probe-expansion.py`; six shapes, all measured, all at 6810 request bytes except one at 6909: prose 19574,
+base64-ish 33278, mixed 34262, random-case 38570, punctuation-heavy 40094, hex-ish 42026). Reaching
+`32768` needs an expansion above **4.00x**, and **five of the six shapes exceed it**: only prose is safe,
+and the hex-ish arm clears the guard by 1.28x. So `EffectiveNumCtx` at `32768` **refuses a
+twelve-question message whose body is dense, and does not refuse one whose body is prose**. The shape
+that matters most is the one real mail takes, since a base64 attachment or a quoted-printable body is
+dense by construction, and such a message comes back `Unavailable` today. That is the failure the 503
+above records, still present for a content class nobody had varied. Prose runs are unaffected and their
+results stand.
+
+**And the defect is now a measured range rather than an argument.** The fit budgets **bytes** against
+`NumCtx`, while the number the guard compares is the SERVER's token count, which content scales by
+between 2.9x and 6.2x on these shapes. **A budget in bytes cannot bound a quantity that content scales
+several-fold**, and the ratio moves with the REQUEST size too, so the fit's cap is a bound on the wrong
+quantity twice over. Three limits, stated rather than left for a reader: the six shapes were **chosen
+rather than sampled**, so a shape that fails bounds that shape and not all content; these arms were
+re-taken at a body size below the provider's own 2500-character budget, because an earlier run at 3600
+bytes was reachable as an HTTP request but **not as a state the adapter produces**, so its figures
+over-state what a message can reach; and whether content denser than the hex-ish arm exists, or whether
+non-ASCII behaves differently, has not been measured. Size the setting against the largest evaluation
+YOUR mail produces, and treat any figure here as a measurement of this lane's fixtures rather than a
+bound on yours.
+
+**And the server is not the thing at risk either way.** Its refusal boundary was measured above at
+**56210 tokens or more** (a 56210-token twelve-question request returned **HTTP 200 with all twelve
+answers**, raising the 48050 the state bisect gave), and a request above its limit returns HTTP 400
+rather than being shortened, so the failure a deployment would meet is a refused request and not a
+quiet under-read. That is a statement about the **WINDOW** only: the provider shortens message bodies for
+a second and unrelated reason, `MaxBodyCharacters` defaulting to **2500** (`NimbleOptions.cs:229`), so a
+body or a quoted tail over that is shortened before the window is considered at all, and a message can be
+shortened while the window has nothing to do with it.
 
 **It does not follow that the number the SERVER applies moved with it, and nothing in that log line
 says it did.** On this transport the request is not asking the server for a window at all: the
@@ -281,14 +320,17 @@ LOUD REFUSAL rather than a cut.** The half-of-requested relation was measured wh
 `options.num_ctx`, and the provider's own remark says it is carried rather than re-derived
 (`NimbleOptions.cs:99-104` and `:159-163`). Measured on THIS endpoint instead, 2026-10-01T23:33: a
 codeword placed at the START of the body and again at the END, both arms held to the same length, is
-answered at **0.999** confidence in BOTH twelve-question arms at 22584 input tokens, so the model read
-the whole prompt; and a bisect that moved only the state size accepted twelve answers at **48050**
-tokens while a 41198-byte body returned **HTTP 400** with no answers
+answered at **0.999** confidence in BOTH twelve-question arms at 22584 input tokens, from a **7156-byte**
+request that is inside the fit's 8192-byte cap and therefore a request the adapter can actually send; and
+a bisect that moved only the state size accepted twelve answers at **48050** tokens while a 41198-byte
+body returned **HTTP 400** with no answers, that last arm being well outside the cap and so evidence
+about the SERVER rather than about anything a deployment meets
 (`.styloagent/scratch/nimble/probe-shift.py`, `.styloagent/scratch/nimble/bisect-window.py`, `nimble-`,
-2026-10-01T23:33). So the window this server applies is **at least 48050 tokens**, far above anything an
-8192-byte fit can produce, and an over-long request is refused rather than shortened. INFERRED rather
-than measured: that this server never silently truncates, which rests on an accepted 48050-token request
-and a loud refusal above it rather than on a direct reading of the window. **The console consequence runs
+2026-10-01T23:33). So the window this server applies is **at least 56210 tokens**, the larger of the two
+measurements in this section, and a request above its limit is refused rather than shortened. INFERRED
+rather than measured: that this server never
+silently truncates, which rests on an admissible request being read whole at 22584 tokens and on a loud
+refusal above the limit, rather than on a direct reading of the window. **The console consequence runs
 the opposite way to the one this section first implied:** on this transport the truncation backstop is
 not catching a server that shifts, it is the thing that refused a request the server would have
 answered, which is exactly the 503 above, and the number it should be set to is derived from the
