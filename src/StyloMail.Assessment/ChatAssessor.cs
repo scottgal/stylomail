@@ -134,6 +134,9 @@ public sealed class ChatAssessor : IChatAssessor
             RiskDimensions = BuildRiskDimensions(risk, evidence, _options.Policy.DimensionWeights),
             RiskIndex = risk.Index,
             RiskIndexDenominator = risk.CoveredWeight,
+            // Same member and same reason as the email path: the floors read this, so a
+            // served decision has to carry it.
+            CoveredWeightFraction = risk.CoveredWeightFraction,
 
             // No action was taken. The proposal is kept beside it so the audit trail can support a
             // decision about interventions later, without this path having performed one.

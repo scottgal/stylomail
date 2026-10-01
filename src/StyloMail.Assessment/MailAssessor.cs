@@ -528,6 +528,10 @@ public sealed class MailAssessor : IMailAssessor
             RiskDimensions = BuildRiskDimensions(risk, evidence, _options.Policy.DimensionWeights),
             RiskIndex = risk.Index,
             RiskIndexDenominator = risk.CoveredWeight,
+            // The arithmetic the coverage floors are compared against, published rather
+            // than left to be reconstructed from the rows (see the remarks on
+            // MailAssessment.CoveredWeightFraction).
+            CoveredWeightFraction = risk.CoveredWeightFraction,
             Action = action,
             ProposedActionInShadow = proposedInShadow,
             DeliveryTiming = DeliveryTiming.PreAcceptance,
@@ -1297,10 +1301,21 @@ public sealed class MailAssessor : IMailAssessor
                 Availability = masked.Availability,
                 EvidenceSignalIds = [],
 
-                // The weight the row would have carried, so the published denominator is
-                // reconstructible from the rows. Counted false is what separates this row from a
-                // measured zero, and the reason is carried only where the availability does not
-                // already say it (decision 31's one-sided exclusion).
+                // The weight the row would have carried. NOT, though, a way to reconstruct the
+                // published denominator: rows from both sides of that boundary are published here
+                // with Counted false and no exclusion reason. A deterministic row that was never
+                // asked left the denominator before its weight was added; an absent row, and one
+                // whose match came back Unavailable, entered it after. Those three arrive as
+                // Unavailable, so the served row does not say which side it was on, and even a
+                // reader who can call DeterministicFindings.IsDeterministic for the signal cannot
+                // separate a deterministic row that was never asked from one reported explicitly
+                // Unavailable. The denominator is bracketed, not reconstructible.
+                // (NotApplicable is the one shape placeable by eye: the scorer never publishes it
+                // from the counted side.) The fraction the floors actually used is served on
+                // MailAssessment.CoveredWeightFraction, which is what makes a floor checkable.
+                // Counted false is what separates this row from a measured zero, and the reason is
+                // carried only where the availability does not already say it (decision 31's
+                // one-sided exclusion).
                 Weight = weights[masked.SignalId],
                 Counted = false,
                 ExclusionReason = masked.Reason,

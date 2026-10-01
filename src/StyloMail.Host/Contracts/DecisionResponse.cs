@@ -75,6 +75,19 @@ public sealed record DecisionResponse
     /// </remarks>
     public required double? RiskIndexDenominator { get; init; }
 
+    /// <summary>
+    /// The fraction of configured dimension weight the coverage floors were compared against, and the
+    /// number the refusal text quotes as a percentage. Null when the decision's build did not record it.
+    /// </summary>
+    /// <remarks>
+    /// Served for the same reason as the denominator above: a coverage floor produces the served reason
+    /// text, so without this a caller can read the quoted percentage and check nothing against it.
+    /// <b>It is not the fraction a caller sums from the served rows.</b> A never-asked dimension is
+    /// served carrying its weight and is excluded from this fraction's denominator, so summing every
+    /// served row's weight over-counts that denominator and yields a smaller percentage.
+    /// </remarks>
+    public required double? CoveredWeightFraction { get; init; }
+
     public required IReadOnlyList<ReasonResponse> Reasons { get; init; }
 
     public required IReadOnlyList<RiskDimensionResponse> RiskDimensions { get; init; }
@@ -101,6 +114,7 @@ public sealed record DecisionResponse
         DeliveryTiming = assessment.DeliveryTiming,
         RiskIndex = assessment.RiskIndex,
         RiskIndexDenominator = assessment.RiskIndexDenominator,
+        CoveredWeightFraction = assessment.CoveredWeightFraction,
         Reasons = [.. assessment.Reasons.Select(ReasonResponse.From)],
         RiskDimensions = [.. assessment.RiskDimensions.Select(d => new RiskDimensionResponse
         {

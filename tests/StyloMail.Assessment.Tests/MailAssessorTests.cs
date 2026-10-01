@@ -684,6 +684,77 @@ public sealed class MailAssessorTests
     }
 
     [Fact]
+    public async Task TheCoveredFractionIsPublishedBecauseTheRowsCannotGiveItBack()
+    {
+        // The engine half of the covered fraction. The assessment above this is produced by the real
+        // scorer on a never-asking deployment whose semantic backbone was never asked and whose one
+        // deterministic question was answered, so the denominator is the deterministic question's
+        // weight alone while the served rows still carry the never-asked backbone's weight.
+        //
+        // That gap is the entire case for publishing the member, so it is asserted as a difference
+        // computed from the response rather than stated twice from the fixture's comments: a reader
+        // summing every published row over-counts the denominator by the backbone and derives a
+        // SMALLER percentage than the one the refusal text quotes.
+        var harness = Build(neverAsks: true);
+        harness.Mime.EvidenceSignalId = DeterministicFindings.LinkDisplayMismatch;
+        harness.Mime.EvidenceValue = 0.0;
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            Submittable(),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        // Null would mean this build published a decision without the arithmetic the floor consulted,
+        // which is this test's own defect rather than the legacy-row case the nullable exists for.
+        Assert.NotNull(assessment.CoveredWeightFraction);
+
+        var everyPublishedRow = assessment.RiskDimensions.Sum(d => d.Weight ?? 0.0);
+        var countedWeight = assessment.RiskDimensions
+            .Where(d => d.Counted == true)
+            .Sum(d => d.Weight ?? 0.0);
+        var maskedRows = assessment.RiskDimensions.Count(d => d.Counted == false);
+        var rowDerived = countedWeight / everyPublishedRow;
+
+        // Population controls first, because the two comparisons below can BOTH be satisfied by a
+        // fixture with an empty numerator: counted rows publish their weight (MailAssessor's result
+        // assembly writes weights[signalId] on the contributing branch), but if that ever changed,
+        // rowDerived would be 0.0, and 0.0 is smaller than any positive fraction. These say this
+        // fixture is the shape the claim needs before the claim is made on it.
+        Assert.True(
+            countedWeight > 0,
+            "No counted row published a weight, so the row-derived fraction below is 0.0 whatever "
+                + "the scorer did, and the comparison would pass without exercising anything.");
+        Assert.True(
+            maskedRows > 0,
+            "No masked row, so this fixture has nothing a row-summing reader could over-count.");
+        Assert.True(
+            everyPublishedRow > countedWeight,
+            $"Every published row's weight ({everyPublishedRow}) is counted weight "
+                + $"({countedWeight}), so nothing is excluded from the reader's denominator and the "
+                + "two fractions would have to agree.");
+
+        // The rows themselves cannot produce the published value: the denominator a row-summing
+        // reader builds includes the never-asked semantic backbone, which the scorer excludes on
+        // purpose, so the reader derives a SMALLER percentage than the one the refusal text quotes.
+        //
+        // Deliberately NOT asserted equal to 1.0 or to any other constant. This value belongs to the
+        // scorer, this test cannot be run while the tree is held, and a stated number would be a
+        // fixture asserting a state the mechanism may not produce, which is the defect the seam
+        // fixture was corrected for. The comparison is the claim; the controls above are the floor
+        // under it.
+        Assert.True(
+            Math.Abs(assessment.CoveredWeightFraction.Value - rowDerived) > 1e-12,
+            $"The published fraction and the row-derived fraction both read {rowDerived}, so this "
+                + "fixture does not exercise the gap the member exists to close.");
+        Assert.True(
+            rowDerived < assessment.CoveredWeightFraction.Value,
+            $"A row-summing reader derived {rowDerived} against a published fraction of "
+                + $"{assessment.CoveredWeightFraction.Value}. The member exists because the reader's "
+                + "value is the smaller one; if that has changed, the remark on the member is wrong.");
+    }
+
+    [Fact]
     public async Task ANeverAskingDeploymentClearsTheAllowFloorOnAMeasuredDeterministicRowAlone()
     {
         // What the declaration buys, and the movement ruling (i) makes. This is the boundary test

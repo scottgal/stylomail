@@ -333,6 +333,70 @@ public sealed class LedgerLegacyRowTests
     }
 
     [Fact]
+    public async Task A_decision_written_before_the_covered_fraction_existed_still_reads_its_index()
+    {
+        // The sibling above proves the pre-37 shape is readable. THIS is the shape that only exists
+        // because of it: a row written after decision 37 and before this member, so it carries the
+        // index arithmetic and does not carry the fraction. It is the only class that exercises the
+        // fraction's own StateUnrecorded line, and it is the class every build since decision 37
+        // writes, so a landing that got that line wrong would leave every such row unreadable while
+        // the sibling above stayed green: required members are enforced on presence, and the sibling's
+        // fixture removes riskIndexDenominator, so it never reaches a row with one of the two
+        // nullables present and the other absent.
+        using var host = new TestHost().WithRealAssessor();
+        var assessmentId = await AssessAsync(host);
+
+        var stored = ReadStoredPayload(host, assessmentId);
+
+        // The population control, before the removal rather than after: if the fraction the real
+        // assessor just recorded were already null, removing it and reading null back would prove
+        // nothing about the back-fill. Measured as a NUMBER so the removal below is known to have
+        // removed a measured value.
+        using (var document = JsonDocument.Parse(stored))
+        {
+            Assert.Equal(
+                JsonValueKind.Number,
+                document.RootElement.GetProperty("coveredWeightFraction").ValueKind);
+        }
+
+        var legacy = RemoveMembers(stored, "coveredWeightFraction");
+
+        // And the removal landed, which is the same guard the sibling keeps: a renamed member would
+        // otherwise leave this test passing while editing nothing.
+        Assert.NotEqual(stored, legacy);
+        RewritePayload(host, assessmentId, legacy);
+
+        var ledger = host.Services.GetRequiredService<IDecisionLedger>();
+        var read = await ledger.FindAsync(
+            TestPrincipals.AcmeTenant, assessmentId, CancellationToken.None);
+
+        Assert.NotNull(read);
+
+        // Null, and not the zero that would serve as a plausible measurement on a row that did carry
+        // covered weight: the fraction is arithmetic over weights that were never stored beside the
+        // decision, so the row is told the build did not record it rather than handed a number.
+        Assert.Null(read.CoveredWeightFraction);
+
+        // The sibling SURVIVES, which is what makes this the new class rather than a repeat of the
+        // test above: this row recorded its index arithmetic and lacked only the fraction on top of it.
+        Assert.NotNull(read.RiskIndexDenominator);
+
+        // And the same on the wire, through the whole read path rather than the ledger alone: the
+        // member is PRESENT and null, which is a different document from one that omits it, and the
+        // number beside it is what shows the row is otherwise intact.
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        using var served = JsonDocument.Parse(
+            await reviewer.GetStringAsync($"/v1/decisions/{assessmentId}"));
+
+        Assert.Equal(
+            JsonValueKind.Null,
+            served.RootElement.GetProperty("coveredWeightFraction").ValueKind);
+        Assert.Equal(
+            JsonValueKind.Number,
+            served.RootElement.GetProperty("riskIndexDenominator").ValueKind);
+    }
+
+    [Fact]
     public async Task A_row_that_never_recorded_its_arithmetic_serves_null_while_a_chat_row_serves_zero()
     {
         // The distinction the nullable shape exists to preserve, made from two rows that are otherwise

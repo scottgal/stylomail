@@ -70,8 +70,9 @@ public sealed class PersistedAssessmentConverter : JsonConverter<MailAssessment>
 
         // The index arithmetic (decision 37) is a different kind of member from the two above, and it
         // is handled differently on purpose. A back-fill restores a value that the row's own contents
-        // determine; these three cannot be recovered at all, because the weights are policy
-        // configuration that was never persisted alongside the decision. So the row is not given a
+        // determine; these four cannot be recovered at all, because the weights are policy
+        // configuration that was never persisted alongside the decision, and the covered
+        // fraction is arithmetic over those same weights. So the row is not given a
         // value, it is given the answer "the build that made this decision did not record it": null.
         //
         // Stated rather than left absent because `required` is enforced on *presence*, so a merely
@@ -79,6 +80,10 @@ public sealed class PersistedAssessmentConverter : JsonConverter<MailAssessment>
         // things to System.Text.Json. This is why the members are nullable: the alternative, a
         // zero, would serve a plausible number on a row that actually carried weight.
         StateUnrecorded(assessment, nameof(MailAssessment.RiskIndexDenominator), options);
+        // Same rule as the sibling above, for the same reason: the fraction the floor was
+        // compared against was never persisted alongside the decision, so an older row is
+        // told the build did not record it rather than handed a zero it never measured.
+        StateUnrecorded(assessment, nameof(MailAssessment.CoveredWeightFraction), options);
         StateUnrecordedInDimensions(
             assessment,
             [nameof(RiskDimension.Weight), nameof(RiskDimension.Counted)],

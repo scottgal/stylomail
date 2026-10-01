@@ -69,6 +69,11 @@ public sealed class ChatIntakeDrainTests
                 // every dimension was unavailable), and the denominator has to agree with the rows
                 // rather than being stated for the shape to look right (decision 37).
                 RiskIndexDenominator = 0.0,
+
+                // And the fraction agrees with the rows rather than being stated for the shape
+                // to look right: nothing was counted, so 0.0 of the asked weight was covered.
+                // A measurement, not the null that means this build recorded no arithmetic.
+                CoveredWeightFraction = 0.0,
                 Action = MailAction.Allow,
                 DeliveryTiming = DeliveryTiming.PostDelivery,
                 Reasons = [],

@@ -176,6 +176,35 @@ public sealed record MailAssessment
     /// </remarks>
     public required double? RiskIndexDenominator { get; init; }
 
+    /// <summary>
+    /// The fraction of the configured dimension weight that was counted: the arithmetic the coverage
+    /// floors are compared against, and the number the refusal text already quotes. Null when the
+    /// build that made the decision did not record it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A floor is only checkable against the quantity it was written for. <see cref="RiskIndexDenominator"/>
+    /// is the covered weight, which is this fraction's numerator and never its denominator, so it does
+    /// not give a reader the fraction on its own.
+    /// </para>
+    /// <para>
+    /// <b>Nor is it the fraction a reader would sum from the published rows.</b> A dimension that was
+    /// never asked (not applicable, or a deterministic signal that produced no evidence) is published
+    /// as a masked row carrying its weight, and is deliberately excluded from this denominator. Summing
+    /// every published row's weight therefore over-counts the denominator by exactly the never-asked
+    /// weight, and yields a percentage smaller than the one the refusal quoted, which reads as a floor
+    /// misapplied when the arithmetic was right. That gap is why the fraction is published.
+    /// </para>
+    /// <para>
+    /// <b>Null is not a value, and it is not equal to either end of the range.</b> 1.0 is a measurement
+    /// (everything asked was counted) and 0.0 is a measurement (nothing that was asked carried weight);
+    /// null means the decision predates the member. A reader that merged null with 0.0 would read an
+    /// unrecorded arithmetic as a measured empty one, which is the failure <see cref="RiskIndexDenominator"/>'s
+    /// remarks were written to prevent.
+    /// </para>
+    /// </remarks>
+    public required double? CoveredWeightFraction { get; init; }
+
     public required MailAction Action { get; init; }
 
     /// <summary>In shadow mode, the action policy would have taken. Forwarding still occurs.</summary>

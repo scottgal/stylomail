@@ -961,6 +961,11 @@ internal sealed class RecordingAssessor : IMailAssessor
         // The counted row's own weight, so this is the sum the response explains rather than a number
         // chosen to look plausible: sum(weight * score) / denominator above is the index above.
         RiskIndexDenominator = SyntheticWeight,
+
+        // One synthetic row and it is counted, so every weight that was asked about was
+        // covered. Stated rather than left to a default: omitting it would not compile, and
+        // 0.0 would serve a fraction the row that IS published contradicts.
+        CoveredWeightFraction = 1.0,
         Action = action,
         ProposedActionInShadow = context.ShadowMode ? action : null,
         DeliveryTiming = DeliveryTiming.PreAcceptance,

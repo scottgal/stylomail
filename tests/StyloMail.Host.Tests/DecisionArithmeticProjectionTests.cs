@@ -244,15 +244,113 @@ public sealed class DecisionArithmeticProjectionTests
         }
     }
 
+    [Fact]
+    public async Task The_covered_fraction_a_floor_used_survives_storage_and_is_not_the_row_sum()
+    {
+        // The same round trip as the test above, for the member the floors are compared against. It is
+        // written through the ledger rather than posted for the reason stated there: storage is where a
+        // required member can be dropped without any compile error.
+        //
+        // The fraction is a STATED fixture and not a scorer reproduction, which is what this file's
+        // class remark allows: the rows are chosen so the two candidate values are far apart, and the
+        // test is about which one survives, not about the scorer's arithmetic (that is the Policy and
+        // Assessment suites' to prove).
+        using var host = new TestHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeSenderKey);
+
+        var posted = await client.PostAsJsonAsync("/v1/assessments", TestMessages.Request());
+        posted.EnsureSuccessStatusCode();
+
+        string assessmentId;
+        using (var postedBody = JsonDocument.Parse(await posted.Content.ReadAsStringAsync()))
+        {
+            assessmentId = postedBody.RootElement.GetProperty("assessmentId").GetString()!;
+        }
+
+        var ledger = host.Services.GetRequiredService<IDecisionLedger>();
+        var recorded = await ledger.FindAsync(
+            TestPrincipals.AcmeTenant, assessmentId, CancellationToken.None);
+        Assert.NotNull(recorded);
+
+        // One counted row of weight 1.0, and three masked rows of weight 1.0 that no member the
+        // response serves distinguishes from rows that DO count. Their availability is Unavailable,
+        // which is what the scorer publishes both for a row that was asked and not answered (it stays
+        // in the denominator and counts against coverage) and for a deterministic row that was never
+        // asked (it leaves the denominator entirely). Nothing on the row decides between those two
+        // classes, which is the gap: the covered weight the floor used is 1.0, while a caller summing
+        // every served row's weight builds a denominator of 4.0 and reads 0.25.
+        //
+        // Unavailable rather than NotApplicable deliberately: a NotApplicable row is the one never-asked
+        // shape a reader CAN exclude by eye, so it would be the weaker demonstration of the same point.
+        var counted = Dimension("behavioural.risk", score: 1.0, counted: true);
+        var masked = Dimension(
+            "semantic.one_sided",
+            score: 0.0,
+            counted: false,
+            availability: EvidenceAvailability.Unavailable);
+
+        await ledger.RecordAsync(
+            recorded with
+            {
+                RiskDimensions = [counted, masked, masked, masked],
+                RiskIndexDenominator = 1.0,
+                RiskIndex = 1.0,
+                CoveredWeightFraction = 1.0,
+            },
+            CancellationToken.None);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await reviewer.GetAsync($"/v1/decisions/{assessmentId}");
+        var served = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var document = JsonDocument.Parse(served);
+        var root = document.RootElement;
+
+        Assert.True(
+            root.TryGetProperty("coveredWeightFraction", out var fraction),
+            $"The served decision carries no coveredWeightFraction at all. Body was: {served}");
+
+        // The value that survives storage is the one the floor was given, not null and not a zero
+        // standing in for it.
+        Assert.Equal(1.0, fraction.GetDouble(), precision: 12);
+
+        // And it is NOT what the served rows give back. Asserted as a difference rather than compared
+        // by eye, because the whole case for the member is that these two values disagree here.
+        var rows = root.GetProperty("riskDimensions").EnumerateArray().ToList();
+        var servedWeight = rows.Sum(row => row.GetProperty("weight").GetDouble());
+        var countedWeight = rows
+            .Where(row => row.GetProperty("counted").GetBoolean())
+            .Sum(row => row.GetProperty("weight").GetDouble());
+
+        Assert.Equal(4.0, servedWeight, precision: 12);
+        Assert.Equal(1.0, countedWeight, precision: 12);
+
+        // Written as an explicit tolerance rather than through a NotEqual precision overload, which no
+        // test in this repo currently uses and which this patch cannot compile against before it is
+        // applied. A wrong overload would be a build break at exactly the moment the tree is moving.
+        Assert.True(
+            Math.Abs(fraction.GetDouble() - (countedWeight / servedWeight)) > 1e-12,
+            $"The served fraction and the row-derived fraction both read {fraction.GetDouble()}, so "
+                + "this body does not show the member carrying anything the rows do not. "
+                + $"Body was: {served}");
+    }
+
     private static RiskDimension Dimension(
         string name,
         double score,
         bool counted,
-        string? reason = null) => new()
+        string? reason = null,
+        // Stated per row rather than fixed, because the availability is what decides whether
+        // the scorer's never-asked branch takes the row out of the coverage denominator, and
+        // a test that needs that class has to be able to say so. Defaulted, so every call
+        // site that predates this keeps the value it was written against.
+        EvidenceAvailability availability = EvidenceAvailability.Available) => new()
     {
         Name = name,
         Score = score,
-        Availability = EvidenceAvailability.Available,
+        Availability = availability,
         Weight = 1.0,
         Counted = counted,
         ExclusionReason = reason,
