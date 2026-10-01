@@ -462,6 +462,17 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 output);
         }
 
+        // Population control ahead of the negative. `runs` takes exactly one entry per executed loop
+        // iteration, so a zero here means the measurement never ran and the assertion below would
+        // pass on a list that was never populated. As the code stands that cannot happen: `windows`
+        // is a static four-entry literal and `ContinuityRuns` refuses a configured 0 by falling back
+        // to 10, so this line defends the negative against a future edit to either rather than
+        // against the present code. The message prints both numbers, so a red here names its cause.
+        Assert.True(
+            runs.Count > 0,
+            $"no run was attempted, so the availability assertion below is vacuous "
+            + $"(runs={runs.Count}, windows={windows.Count}, ContinuityRuns={ContinuityRuns})");
+
         Assert.True(
             unavailable.Count == 0,
             $"continuity was not Available on {unavailable.Count} run(s): {string.Join("; ", unavailable)}");
@@ -749,6 +760,15 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 output);
         }
 
+        // Population control ahead of the negative, the same one as in the continuity window probe.
+        // `prepared` is a static three-arm literal and `ContinuityRuns` refuses a configured 0, so this
+        // cannot fire as the code stands; it is here so that neither the arm list nor the repeat count
+        // can be edited into a configuration where the negative below passes without measuring.
+        Assert.True(
+            runs.Count > 0,
+            $"no run was attempted, so the availability assertion below is vacuous "
+            + $"(runs={runs.Count}, arms={prepared.Count}, ContinuityRuns={ContinuityRuns})");
+
         Assert.True(
             unavailable.Count == 0,
             $"continuity was not Available on {unavailable.Count} run(s): {string.Join("; ", unavailable)}");
@@ -996,6 +1016,16 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 $"continuity alone: {string.Join(" ", distribution)} of {answers.Count} "
                 + $"(warmup {warmClock.ElapsedMilliseconds} ms, prompt_tokens={promptTokens})");
         }
+
+        // Population control ahead of the negative. This probe has no outer collection: its only
+        // bound is `ContinuityRuns`, which refuses a configured 0 by falling back to 10, so the loop
+        // body always executes and this cannot fire as the code stands. Without it, removing that
+        // `runs > 0` guard would turn the assertion below into a green that measured nothing, which is
+        // the failure mode it exists to make loud.
+        Assert.True(
+            runs.Count > 0,
+            $"no run was attempted, so the availability assertion below is vacuous "
+            + $"(runs={runs.Count}, ContinuityRuns={ContinuityRuns})");
 
         Assert.True(
             unavailable.Count == 0,
