@@ -698,6 +698,22 @@ public static class HostServices
         // (`AppliedContextWindow => EffectiveNumCtx ?? NumCtx / 2`), so binding the override alone
         // would leave the number it overrides unreachable and the pair impossible to reason about.
         //
+        // WHY `appsettings.json` CARRIES A PIN, since this is the first appsettings file in this
+        // project and the number is not self-explaining. 65536 is a floor above the largest evaluation
+        // an ADAPTER-PRODUCIBLE state has been measured to reach: 42026 tokens (hex-ish body, 2400
+        // bytes, twelve questions, inside both the body budget and the byte cap). The derived default
+        // was `NumCtx / 2` = 4096, which refuses real mail -- a live run reported "unavailable: server
+        // evaluated 14895 prompt tokens at an applied window of 4096". The cheap error is on the LOW
+        // side, where a valid message loses its decision and the row looks the same either way; that
+        // is why the pin clears the measurement rather than meeting it. It does NOT follow that a high
+        // pin is free: above the server's true ceiling the server's behaviour is not established here.
+        // `--context-shift` is on, so an over-long prompt may be continued over a shifted window and
+        // ANSWERED rather than refused, and that comes back Available -- a silent failure rather than
+        // a loud one. So the claim this pin supports is the narrow one, that 65536 clears every
+        // evaluation this repository has measured, and not the broad one that too-high is safe.
+        // 42026 is the densest shape anyone has TRIED, so this is a floor and not a law, and an
+        // environment variable still overrides it.
+        //
         // Unparseable or absent means the default, which is the same shape the two keys above use.
         var numCtx = configuration["StyloMail:Nimble:NumCtx"];
         var effectiveNumCtx = configuration["StyloMail:Nimble:EffectiveNumCtx"];
@@ -732,12 +748,144 @@ public static class HostServices
         // where every run can read it.
         logger.LogInformation(
             "StyloMail nimble window: NumCtx {NumCtx}, EffectiveNumCtx {EffectiveNumCtx}, "
-            + "applied {AppliedContextWindow}. The truncation guard refuses any answer the server "
-            + "evaluated at or above the applied window, and the fit truncates against NumCtx, so a "
-            + "request can satisfy the fit and still be refused.",
+            + "applied {AppliedContextWindow}.",
             options.NumCtx,
             options.EffectiveNumCtx?.ToString() ?? "(unset, derived)",
             options.AppliedContextWindow);
+
+        // THE RULE AND THE MEASURED RELATION. THE LOG LINE STATES NO CONSEQUENCE; THE COMMENT DOES.
+        //
+        // This message has been rewritten FOUR times in one hour, and the sequence is the reason it
+        // now says so little. Version one asserted a consequence unconditionally. Version two removed
+        // that consequence, on the step that the fit's byte bound caps the server's count -- invalid,
+        // because the evaluated count EXCEEDS the request's byte count (7246 bytes to 20642 tokens at
+        // twelve questions, 2.85x, measured at eight points). Version three restored the consequence
+        // and named a SUM, and the sum is not a measured mechanism: a sum of equal per-question blocks
+        // is linear and the curve is not, since a line through n=1 and n=12 needs a NEGATIVE constant.
+        //
+        // Version four dropped the consequence as well, and that is the correction that took longest
+        // to see. The fit SHORTENS THE REQUEST until it is at most NumCtx BYTES, so the sentence's own
+        // subject is a fit-satisfying request; every arm anyone cited for the consequence -- the
+        // 41198-byte refusal, the boundary sweep -- is OVER that cap and therefore not about the
+        // subject at all. The one admissible witness is the adapter's own refusal, "server evaluated
+        // 20498 prompt tokens at an applied window of 16384", which makes the consequence TRUE AT 16384
+        // and said nothing about 32768, where a fit-satisfying request would need roughly four tokens
+        // per byte. THAT GAP IS NOW CLOSED BY MEASUREMENT, and the section below under MEASURED is the
+        // settlement rather than a bound -- cited by content rather than by position, because this
+        // block has been rewritten six times tonight and a positional reference outlives its own
+        // paragraph.
+        //
+        // So what is left is what is measured and witnessed: the fit counts BYTES of the request, the
+        // guard compares a TOKEN count against the applied window, and the byte budget does not bound
+        // the evaluation. Whether the guard reaches a fit-satisfying request is that comparison; the
+        // boot line does not answer it, for a setting it cannot see, and the measurement below does.
+        //
+        // WHERE THE ANSWER LIVES, and the answer arrived while this comment was being written. What
+        // follows is the SETTLEMENT rather than a caveat. The form that stood here for the previous
+        // hour -- "UNRESOLVED at 32768, not excluded, not established" -- is WITHDRAWN, because a
+        // measurement replaced it, and the paragraph below states both:
+        //
+        //   WITNESSED TRUE at an applied window of 16384. The guard FIRED there on an admissible
+        //   request evaluating 20498 tokens, recorded in the adapter's own refusal reason.
+        //   MEASURED REACHABLE at 32768. Five of six admissible BODY CONTENTS evaluate above 32768
+        //   at a body size the adapter produces, so `EffectiveNumCtx 32768` refuses dense text today.
+        //
+        // The arithmetic that PREDICTED it, kept because the reasoning and the result belong on the
+        // record together: at a FIXED byte cap a SMALLER bytes-per-token ratio means MORE tokens, so
+        // content that lowers the ratio raises the cap's evaluation TOWARD 32768 rather than away
+        // from it. Reaching 32768 needs 8192 / 32768 = 0.25 bytes per token. The densest arm then
+        // measured was 0.317, which sits ABOVE that threshold, so the reachable region was not
+        // discounted so much as unvisited -- and the table below crosses it at 0.1620.
+        //
+        // MEASURED, and it turned on the one variable nobody had moved: the body's CONTENT, with
+        // request size, state shape and question count all held fixed and every arm inside the
+        // 8192-byte cap. Six arms at twelve questions with bodies at 2400 bytes, so that each arm is
+        // a state the adapter actually produces -- `nimble-`, second run, 23:53 (artifact
+        // `.styloagent/scratch/nimble/expansion-shapes.json`):
+        //
+        //     shape        request B   input_tokens   expansion   B/token
+        //     prose            6810         19574      2.874x     0.3479
+        //     base64ish        6810         33278      4.887x     0.2046
+        //     mixed            6810         34262      5.031x     0.1988
+        //     randomcase       6810         38570      5.664x     0.1766
+        //     punct            6909         40094      5.803x     0.1723
+        //     hexish           6810         42026      6.171x     0.1620
+        //
+        // The guard compares a TOKEN count against the applied window, so the direct test is that
+        // one: FIVE of the six evaluate above 32768 and only `prose` is below it. So the guard IS
+        // reachable at applied 32768, and the 25800 and 23100 pair were both PROSE figures -- prose
+        // being the LEAST dense of the six -- which is why they read as a bound when they were a
+        // single sample. The server is not the limit: the first run's densest request, evaluating
+        // 56210 tokens, returned HTTP 200 with all twelve answers, which measures the SERVER (a valid
+        // request, though not an adapter state), so the refusal is this client's.
+        //
+        // THE FIRST RUN HAD TO BE CORRECTED, AND THE REASON IS THE FIXTURE RATHER THAN THE
+        // ARITHMETIC. Its bodies were 3600 bytes, which `NimbleOptions.MaxBodyCharacters` (default
+        // 2500) would have shortened before the wire, so those arms were reachable as HTTP requests
+        // but NOT as adapter states -- a stated fixture that the mechanism does not produce. The
+        // corrected run is the table above, and the conclusion is STRONGER at the reachable size
+        // rather than weaker.
+        //
+        // WHY FIVE LANES MISSED IT, which is the transferable part: the size series everyone quoted
+        // (0.345 at 6410 bytes up to 0.383 at 18410) varied SIZE with the shape held fixed, and was
+        // read as a fact about the ratio in general. It was a fact about size. Content moves the same
+        // ratio from 0.3479 to 0.1620, a factor of 2.1, and no amount of care about polarity would
+        // have surfaced that, because the variable the claim was about had never been moved. The
+        // correction is not "the ratio is unstable"; it is "the ratio is stable in the variable we
+        // varied".
+        //
+        // LIMITS, STATED RATHER THAN LEFT FOR A READER, and two of them are corrections to stronger
+        // sentences that briefly stood here. The six shapes were CHOSEN and not sampled, so a denser
+        // shape than hexish is unmeasured and the ceiling is open above 42026; non-ASCII is untested,
+        // because the adapter escapes it as \uXXXX and that would change the wire bytes. AND THE ARMS
+        // RAN AGAINST THE ENDPOINT DIRECTLY, not through the shipping adapter and assessor, so a
+        // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
+        // refutable form of the claim is that a 2400-character hexish body through the real pipeline
+        // evaluates about 42026 and is refused at 32768; that run is QUEUED behind the build hold and
+        // has not been taken, so the table describes arms, not the deployment.
+        //
+        // On the POPULATION, AND BOTH OF THE TEMPTING SENTENCES ARE FALSE. Each is refuted at source,
+        // read at HEAD `3c6b08a`, and the second is the one that looked safe:
+        //
+        //   NOT "messages carrying attachments". An attachment enters the state as FIVE METADATA
+        //   FIELDS and nothing else: `NimbleMessageState.cs:82-88` writes `file_name`,
+        //   `declared_content_type`, `extension_implied_content_type`, `size_bytes` and
+        //   `content_available`, fed by `BoundedMimeMessageAnalyzer.cs:388`
+        //   (`Attachments = [.. collected.Attachments.Select(a => a.Metadata)]`). A ten-megabyte
+        //   base64 attachment contributes five fields and not its bytes, so it CANNOT raise the
+        //   evaluation at any budget.
+        //
+        //   NOT "quoted-printable bodies" either, which is the half that looked safe because the
+        //   2500-character budget DOES cover `BodyText`. It does, and the transfer encoding is gone
+        //   before the classifier sees anything: `BoundedMimeMessageAnalyzer.cs:379` reads
+        //   `quoted.NewText.Length > 0 ? quoted.NewText : effectivePlain`, and `:148-152` shows
+        //   `effectivePlain` is DECODED plain text (`collected.PlainBodies`, falling back to the
+        //   visible HTML) with the quoted history split out. A quoted-printable body is PROSE by the
+        //   time it arrives. The budget was the right object and the wrong question: it says how much
+        //   `BodyText` survives, not what `BodyText` contains.
+        //
+        // SO THE CLASS IS `nimble-`'s, and it is density that SURVIVES DECODING -- the AUTHOR's
+        // density rather than the encoding's. Long hexadecimal (hashes, message-ids, certificate
+        // fingerprints), base64 or JWT blobs pasted into the body, PGP armour, tracking URLs with
+        // long query strings, code, logs, JSON, diff output. Those are ordinary in security alerts,
+        // newsletters and CI notifications, which are exactly the messages worth assessing.
+        //
+        // What the table supports without either over-reach: FIVE OF SIX body contents are refused,
+        // and PLAIN PROSE IS THE EXCEPTION rather than the rule, so a reader must not take a
+        // naturally dense body for a corner.
+        //
+        // Split from the line above as well: one line carrying its own explanation is exactly the line
+        // a reader quotes in half, and three lanes quoted only the first sentence of it within the
+        // hour. It carries the two placeholders rather than being a bare string because a no-argument
+        // log call exists nowhere else in `src/` and this file builds under `-warnaserror`.
+        logger.LogInformation(
+            "StyloMail nimble bounds: the truncation guard compares the server's evaluated TOKEN "
+            + "count against the applied window ({AppliedWindow}); the fit bounds the REQUEST by its "
+            + "UTF-8 BYTE count against NumCtx ({NumCtx}). The byte budget does not bound the "
+            + "evaluation of a fit-satisfying request, so whether the guard reaches one is that "
+            + "comparison, and this line does not settle it for a setting it cannot see.",
+            options.AppliedContextWindow,
+            options.NumCtx);
 
         if (!IsLoopback(options.Endpoint))
         {
