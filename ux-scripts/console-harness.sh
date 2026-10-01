@@ -418,12 +418,57 @@ console_require_local_model() {
 # http://127.0.0.1:$CONSOLE_PORT. This is therefore a more precise question than
 # the lsof query it replaces, which matched a listener on any address.
 #
-# Two outcomes, not three, and that is deliberate rather than a simplification.
-# A port conflict means something is listening, and a listener accepts a connect,
-# so "connected" is exactly "taken" and "not connected" is exactly "free". The
-# one case this cannot see is a listener on a different address that would still
-# stop the Host binding, and there the Host's own bind fails loudly, so the cost
-# of guessing "free" is a clear message rather than a wrong result.
+# THREE outcomes, and the third is the one this file got wrong for a night. A port
+# conflict means something is listening and a listener accepts a connect, so
+# "connected" is "taken" and "refused" is "free". The third case is a probe that
+# never asked: when the process cannot allocate a descriptor, the connect fails for
+# a reason that is not "nothing is listening", and the two-valued form reported that
+# as FREE. `nimble-` broadcast the same shape against their netstat gate on
+# 2026-10-01 and `corpus-` routed it here; what follows is the measured
+# confirmation, not a suspicion.
+#
+# 0 is taken, 1 is free, 2 is cannot tell. A probe that cannot run must not answer
+# "free", because "cannot read" and "read as clear" are different observations, and
+# a caller that cannot tell them apart starts a run against a port it never asked
+# about.
+#
+# The allocation test is a PROXY for the connect's own failure mode, and it is valid
+# only because nothing between the two statements opens or closes a descriptor: they
+# are adjacent lines in one function, with no command between them. It does not
+# cover a connect that fails for some other reason while allocation works; that
+# stays the two-valued answer it always was.
+#
+# A proxy is exactly the kind of claim that holds everywhere except where it
+# matters, so it is swept rather than argued. `ulimit -n 64`, a listener bound to
+# the port, one call per subshell, and the result written to a descriptor opened
+# BEFORE the squeeze, because a wrapper that redirects the call takes the last slot
+# and measures itself:
+#
+#   free slots   retired body            this body
+#   0            1 (free)                2 (refused)
+#   1            0 (taken)               0 (taken)
+#   2, 3, 4      0 (taken)               0 (taken)
+#
+# with a listener present, where 0 is the correct answer, and with nothing
+# listening the same sweep gives 2 at zero free slots against the retired body's 1,
+# an answer that was right by accident because it never connected. So there is no
+# number of free descriptors at which this body says "free" over a live listener.
+#
+# The test's stderr is NOT the answer, and reading it as one is wrong in both
+# directions. Measured: at zero free slots it writes two lines, attributed to two
+# different files (bash names the sourced file on the "line NNN:" line and the
+# caller on the "redirection error:" one), and `2>/dev/null` does not suppress
+# them, two lines with the suppression and two without. At one free slot it writes
+# two lines and still SUCCEEDS. The status carries the refusal; the noise does not.
+#
+# The limit is the PROCESS's own descriptor table, measured in a reachable state
+# rather than inferred from production: a subshell holding 122877 descriptors
+# answered free with a listener present under the RETIRED body, whose connect
+# failed on allocation and was read as "nothing is listening"; this body answers 2
+# in the same state. The system-wide condition is NOT measured
+# and cannot be measured from here, because filling the machine's file table would
+# take every lane down. That is the whole reason this returns a value rather than
+# trusting the connect.
 #
 # The subshell is load bearing. `exec 3<>` in the caller would leave that
 # descriptor open for the whole run, so the harness would hold a connection to
@@ -431,24 +476,31 @@ console_require_local_model() {
 #
 # To name the holder without lsof: `netstat -an | grep LISTEN | grep $CONSOLE_PORT`.
 console_port_is_taken() {
+    if ! : < /dev/null 2>/dev/null; then
+        return 2
+    fi
     ( exec 3<>"/dev/tcp/127.0.0.1/$CONSOLE_PORT" ) >/dev/null 2>&1
 }
 
 console_start_host() {
     # A port that cannot be probed must not read as a free one. `nimble-` broadcast
     # this exact shape against their netstat gate on 2026-10-01: a probe that dies
-    # yields the same bytes as a quiet endpoint, so the gate says clear. This file's
-    # probe is a direct connect rather than a netstat grep, and it does not have
-    # their bug, but an empty or non-numeric CONSOLE_PORT makes the connect fail for
-    # a reason that is not "nothing is listening", and `console_port_is_taken` would
-    # report free for a port that was never asked about. Line 27's `:-` catches an
-    # empty value that came through the environment, so the reachable route is an
-    # assignment made AFTER this file is sourced, which is the order the header
-    # already tells runners to use.
+    # yields the same bytes as a quiet endpoint, so the gate says clear. This
+    # paragraph used to continue "this file's probe is a direct connect and does not
+    # have their bug", and that half was false: a process with no descriptor left
+    # fails the connect for the same reason, which is the third value
+    # `console_port_is_taken` returns and the branch below handles.
+    #
+    # What follows is the OTHER unprobeable port, one with no number to probe: an
+    # empty or non-numeric CONSOLE_PORT makes the connect fail for a reason that is
+    # not "nothing is listening". Line 27's `:-` catches an empty value that came
+    # through the environment, so the reachable route is an assignment made AFTER
+    # this file is sourced, which is the order the header already tells runners to
+    # use.
     #
     # Refused here rather than inside the probe, because the probe's contract is a
-    # yes/no about a port and folding "I have no port" into "taken" would make the
-    # caller print "already in use" about a port it never had.
+    # three-valued answer about a port and folding "I have no port" into "taken"
+    # would make the caller print "already in use" about a port it never had.
     if [[ ! "$CONSOLE_PORT" =~ ^[0-9]+$ ]]; then
         echo "CONSOLE_PORT is '$CONSOLE_PORT', which is not a port number, so no probe can" >&2
         echo "say whether it is in use. Set it to a number, or leave it unset to take the" >&2
@@ -456,11 +508,18 @@ console_start_host() {
         return 1
     fi
 
-    if console_port_is_taken; then
+    console_port_is_taken
+    local probe_status=$?
+    if (( probe_status == 0 )); then
         echo "Port $CONSOLE_PORT is already in use, so this run would talk to" >&2
         echo "whatever is listening there rather than to its own Host." >&2
         echo "Name it with: netstat -an | grep LISTEN | grep $CONSOLE_PORT" >&2
         echo "Stop it, or set CONSOLE_PORT to a free port." >&2
+        return 1
+    elif (( probe_status == 2 )); then
+        echo "The port probe could not run, so $CONSOLE_PORT was never asked about." >&2
+        echo "That is not the same as the port being free, so this run is refused" >&2
+        echo "rather than started against a port nothing here has checked." >&2
         return 1
     fi
 

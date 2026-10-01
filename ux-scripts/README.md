@@ -132,15 +132,20 @@ correction back: its suggested `realpath -m` is not available here, because macO
 It fails closed, so a machine that can resolve nothing refuses everything rather than allowing everything.
 
 The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
-never the shared tree. Eight mutations, one per pass, each with the exact set of
+never the shared tree. Ten mutations, one per pass, each with the exact set of
 cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
 dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
 sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8), H the port
-validation disabled (the sibling's 8). One per pass
+validation disabled (the sibling's 8), I the probe's allocation test removed (the sibling's 9), J the
+probe stuck on "cannot tell" (the sibling's 4, 6 and 9). One per pass
 because several of them target case 8, and a red that two
 mutations could have caused names neither property. Each line names the file its case number belongs to,
 because three of these redden a case 8 in the fingerprint check and one reddens a case 8 in the sibling,
-and a bare "8" cannot be attributed to either. Each pass also asserts its own pattern still matched:
+and a bare "8" cannot be attributed to either. A case header inside a nested run's captured output is not
+a case header: the guard case embeds a whole child run in its failure message, and once a mutation let
+the child run, this parser attributed the outer case's later failure to the CHILD's case number, which
+moved when a case was added here. Both checks now indent embedded child output from its second line, so
+the parser cannot see it, and the failure that exposed it is mutation F's. Each pass also asserts its own pattern still matched:
 a mutation whose perl stops matching is a no-op, and in this session that no-op first read as a clean
 pass, then was reported as "applied" by a precondition that had copied the same stale pattern. H was
 written with one `]` where the source has two (`$ ]]; then`), and the precondition caught it as
@@ -520,24 +525,33 @@ instead of being retried. Two further consequences of the same wedge:
   preflight is now `console_port_is_taken`, a `/dev/tcp` connect to `127.0.0.1:$CONSOLE_PORT` with no
   process in it to wedge, which is both what this section claimed and what the Host's own
   `ASPNETCORE_URLS` binds. The cost is that it can no longer print the holder, so the message points
-  at `netstat -an | grep LISTEN | grep <port>` instead, and that it answers only two ways: a listener
-  accepts a connect, so "connected" is "taken" and "not connected" is "free". Diagnostics that name a
+  at `netstat -an | grep LISTEN | grep <port>` instead, and that it answers in three values: a listener
+  accepts a connect, so "connected" is "taken" and "refused" is "free", while a probe that could not
+  run at all is neither and says so. Diagnostics that name a
   pid work with `ps`. `./ux-scripts/check-stop-host-bounded.sh` asserts the harness contains no
   `lsof` call, so the sentence and the code cannot drift apart again.
-- **A probe that cannot run must not answer "free".** The two-way answer above has a hole, and
-  `nimble-` broadcast it against their netstat gate on 2026-10-01: a probe that never executed is
-  byte-identical to a quiet endpoint, so the dangerous failure is a dead probe read as a count of
-  zero. Measured here, `CONSOLE_PORT=""` makes the `/dev/tcp` connect to `127.0.0.1:` fail, which
-  reads as FREE and the run would start. Line 27's `${CONSOLE_PORT:-5271}` catches an empty value that
+- **A probe that cannot run must not answer "free".** This is the hole `nimble-` broadcast against
+  their netstat gate on 2026-10-01: a probe that never executed is byte-identical to a quiet endpoint,
+  so the dangerous failure is a dead probe read as a count of zero. The two-valued answer described
+  above had the same hole at the other end of the pipe: a process with no descriptor left fails the
+  connect for a reason that is not "nothing is listening", and the connect's failure read as FREE. The
+  probe now returns 2 in that state, both callers refuse on 2 rather than starting a run, and the
+  boundary is swept in the harness's own comment: at zero free descriptors over a live listener the
+  retired body answered free and this one refuses, while at one or more free descriptors the two agree.
+  Measured here, and still surviving, `CONSOLE_PORT=""` makes the `/dev/tcp` connect to `127.0.0.1:`
+  fail while allocation is fine, which is still a read of FREE. Line 27's `${CONSOLE_PORT:-5271}`
+  catches an empty value that
   arrived through the *environment*, so the reachable route is narrower than it first looked: an
   assignment made after this file is sourced, which is the order the header already tells runners to
   use. `console_start_host` therefore refuses a `CONSOLE_PORT` that is not a run of digits, before the
   probe, naming the value as the problem rather than claiming a holder: the sibling's case 8 asserts
   the refusal, that the message says "not a port number", and that it does **not** say "already in
-  use". Mutation H keeps that case load-bearing.
+  use". Mutation H keeps that case load-bearing, and mutations I and J keep the third value itself
+  load-bearing: I deletes the allocation test and J sticks the probe on "cannot tell", the arm that
+  would otherwise satisfy case 9's refusal assertion while answering nothing about any port.
 
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
-eight cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
+nine cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
 the new one to show that it still blocks where the new one returns
 (`.styloagent/scratch/desktop/test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
 comparison rather than as a check to run). The stand-in waits for a flag file before anything signals

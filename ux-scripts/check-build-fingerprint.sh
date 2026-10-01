@@ -402,7 +402,7 @@ fi
 if [[ "$output" == *"refusing to run"* ]]; then
     pass "the refusal says so on stderr rather than failing an assertion"
 else
-    fail "refused without saying why: $output"
+    fail "refused without saying why: $(printf '%s\n' "$output" | sed -e '2,$s/^/    /')"
 fi
 
 if [[ "$output" == *"env -u CONSOLE_RUN"* ]]; then

@@ -237,11 +237,16 @@ fi
 
 CONSOLE_PORT="$(cat "$port_file")"
 
-if console_port_is_taken; then
-    pass "a live listener on $CONSOLE_PORT reads as taken"
-else
-    fail "a live listener on $CONSOLE_PORT read as free, so a run would start against it"
-fi
+# Three-valued, because the probe can also answer "I never asked". An `if` here
+# would fold that third answer into whichever branch its else happens to be, and
+# on the free direction below that branch is a PASS, which is how the defect this
+# case exists to catch would have satisfied its own test.
+console_port_is_taken
+case $? in
+    0) pass "a live listener on $CONSOLE_PORT reads as taken" ;;
+    1) fail "a live listener on $CONSOLE_PORT read as free, so a run would start against it" ;;
+    *) fail "the probe could not run, so $CONSOLE_PORT was never asked about" ;;
+esac
 
 # The descriptor must not survive the probe. If it did, the harness would hold a
 # connection to the listener it had just refused to run against, which is a real
@@ -258,11 +263,12 @@ wait "$listener_pid" 2>/dev/null
 
 # The port is free now, and the probe has to say so rather than caching the
 # previous answer.
-if console_port_is_taken; then
-    fail "the port read as taken after the listener was killed"
-else
-    pass "the same port reads as free once the listener is gone"
-fi
+console_port_is_taken
+case $? in
+    0) fail "the port read as taken after the listener was killed" ;;
+    1) pass "the same port reads as free once the listener is gone" ;;
+    *) fail "the probe could not run, so the free direction was never checked" ;;
+esac
 
 # Case 5: the guard. The README says the harness uses no lsof, and it said that
 # while console_start_host called lsof twice, so the claim needs a test rather
@@ -404,7 +410,14 @@ fi
 if [[ "$output" == *"refusing to run"* ]]; then
     pass "the refusal says so on stderr rather than failing an assertion"
 else
-    fail "refused without saying why: $output"
+    # The nested run's output is a whole check's output, and it carries its own
+    # "case N:" headers. Embedded raw at column 0 they are indistinguishable from
+    # THIS file's headers to anything parsing this file's output: the falsifier reads
+    # "case N:" to attribute a later FAIL, and when a mutation let the child run it
+    # attributed this case's third failure to the child's case number, which moved
+    # when a case was added here. Indenting from the second line keeps the message
+    # readable and the child's headers out of the parser's reach.
+    fail "refused without saying why: $(printf '%s\n' "$output" | sed -e '2,$s/^/    /')"
 fi
 
 # The value, not just the file's existence: this file's destructive move is an
@@ -467,6 +480,111 @@ if [[ "$output" != *"already in use"* ]]; then
     pass "it does not claim a holder it never found"
 else
     fail "it reports a holder for a port it could not probe: $output"
+fi
+
+# Case 9: the third value is REFUSED, not read either way. Cases above check the two
+# answers a working probe gives; this one checks the answer of a probe that cannot
+# run at all, which is the state this harness spent a night reading as "free".
+#
+# The state is a process with no descriptor left, which is reachable, was measured
+# while the defect was being confirmed (122877 held descriptors, see the probe's own
+# comment), and which this case can create locally. Only THIS SUBSHELL's table is
+# filled: the machine's is not touched, so the case is safe to run beside other
+# lanes, and the system-wide condition stays unmeasured because filling the real
+# table would take every lane down.
+#
+# The third assertion is what makes the first two mean anything: a CONTROL in the
+# unsqueezed parent must get an ordinary answer for the SAME port, or the case is
+# asserting something about the machine rather than about the code.
+case_number=$((case_number + 1))
+echo "case $case_number: a probe that cannot run is refused, not read either way"
+
+scratch_dir="$REPO/.styloagent/scratch/desktop"
+mkdir -p "$scratch_dir"
+capture="$scratch_dir/port-probe-refusal.out"
+
+# Numeric and free: the listener the earlier cases killed is what left this port in
+# CONSOLE_PORT. Without a real number the third value would never be reached, so the
+# case fails rather than reporting on a state it did not create.
+if [[ ! "$CONSOLE_PORT" =~ ^[0-9]+$ ]]; then
+    fail "the case could not set up: CONSOLE_PORT is '$CONSOLE_PORT', not a number"
+else
+    (
+        # Opened before the squeeze. After it no new descriptor can be had, so a
+        # `$( )` capture would need a pipe and would be measuring this script.
+        exec 9>"$capture"
+
+        # A small table, filled completely. Descriptors 0, 1, 2 and 9 are open, so
+        # the count is computed rather than probed for the edge: a failed `exec`
+        # redirection takes a non-interactive shell down with it, which would kill
+        # this subshell silently instead of leaving a red case behind.
+        ulimit -n 64
+        lim="$(ulimit -n)"
+        echo "limit=$lim" >&9
+        i=3
+        opened=0
+        while (( opened < lim - 4 )); do
+            if (( i != 9 )); then
+                eval "exec $i<>/dev/null" || break
+                opened=$((opened + 1))
+            fi
+            i=$((i + 1))
+        done
+
+        # The squeeze is asserted, not assumed: if the table still has room, the
+        # probe below is answering about a working machine and the case is vacuous.
+        if ! : < /dev/null 2>/dev/null; then
+            echo "squeezed=yes" >&9
+        else
+            echo "squeezed=no" >&9
+        fi
+
+        console_port_is_taken
+        echo "probe=$?" >&9
+
+        # A path that cannot exist, so that a probe which wrongly says "free" stops
+        # at the binary check rather than starting a Host inside this squeeze. It is
+        # set in the subshell only, and it does not change what is under test: the
+        # state is the probe's answer, and everything after it is not this case.
+        CONSOLE_HOST_APP="$scratch_dir/no-binary-under-test"
+        console_start_host >&9 2>&9
+        echo "start=$?" >&9
+    )
+
+    squeezed="$(sed -n 's/^squeezed=//p' "$capture")"
+    probe_status="$(sed -n 's/^probe=//p' "$capture")"
+    start_status="$(sed -n 's/^start=//p' "$capture")"
+    captured="$(cat "$capture")"
+
+    if [[ "$squeezed" != yes ]]; then
+        fail "the descriptor squeeze did not take, so the third value was never exercised: $captured"
+    elif [[ "$probe_status" != 2 ]]; then
+        fail "a probe with no descriptor left answered '$probe_status' rather than the third value"
+    else
+        pass "a probe that cannot run reports the third value, not free"
+    fi
+
+    if [[ -n "$start_status" && "$start_status" != 0 ]]; then
+        pass "console_start_host refuses when the port cannot be probed"
+    else
+        fail "console_start_host did not refuse a port it never asked about (exit '$start_status')"
+    fi
+
+    if [[ "$captured" != *"already in use"* ]]; then
+        pass "the refusal does not claim a holder it never found"
+    else
+        fail "it reports a holder for a port it could not probe"
+    fi
+
+    console_port_is_taken
+    control=$?
+    if (( control != 2 )); then
+        pass "the same port answers normally when descriptors are available (exit $control)"
+    else
+        fail "the port answers cannot-tell with descriptors free, so the squeeze proves nothing"
+    fi
+
+    rm -f "$capture"
 fi
 
 rm -rf "$CONSOLE_RUN"

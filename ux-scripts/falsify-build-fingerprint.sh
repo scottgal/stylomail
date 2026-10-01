@@ -35,6 +35,19 @@
 #
 #   H. The port-value validation is disabled. The sibling's case 8 must go red.
 #
+#   I. The probe's allocation test is removed, leaving the two-valued connect that
+#      reads an unallocatable descriptor as "nothing is listening". The sibling's
+#      case 9 must go red, and ONLY case 9: on an unsqueezed table the connect still
+#      answers, so nothing else about the probe changes.
+#   J. The probe is stuck on the third value, always returning 2. This is the other
+#      half of I and it is not optional: a probe that always refuses would satisfy
+#      case 9's central assertion (the refusal) while quietly satisfying the
+#      free-direction case too, so without J a probe that answers nothing but
+#      "cannot tell" would look defended. Case 4 must go red, and it holds BOTH port
+#      directions rather than one case each; case 6 must go red, because its refusal
+#      message names the holder only on the taken path; and case 9 on its own
+#      control, which asserts the probe is not stuck before the squeeze.
+#
 # Measured 2026-10-01: each mutation reddens exactly the cases named above.
 
 set -uo pipefail
@@ -85,10 +98,10 @@ pass() {
     # not the same case 8: D, E and G redden case 8 of the fingerprint check and H
     # reddens case 8 of the sibling. A bare "8" cannot be attributed to a file, so
     # the line names the file the number belongs to.
-    printf '%-24s red: %-6s %s\n' "$name" "${red:-<none>}" "$subject"
+    printf '%-30s red: %-6s %s\n' "$name" "${red:-<none>}" "$subject"
 
     if [[ "$red" != "$expect" ]]; then
-        printf '%-24s EXPECTED red: %s\n' "" "$expect"
+        printf '%-30s EXPECTED red: %s\n' "" "$expect"
         printf '%s\n' "$out" | grep -E '^  FAIL' | sed 's/^/    /'
         return 1
     fi
@@ -115,6 +128,15 @@ mutation_G() { perl -pi -e 's/^    local path="\$1"$/    local path="\$1"; print
 #    go red: nimble- broadcast this shape against their netstat gate on 2026-10-01.
 mutation_H() { perl -pi -e 's/^    if \[\[ ! "\$CONSOLE_PORT" =~ \^\[0-9\]\+\$ \]\]; then$/    if false; then/' console-harness.sh; }
 
+# I. The third value is removed at its source: the function becomes the retired
+#    two-valued one, where a connect that cannot allocate a descriptor is
+#    indistinguishable from a quiet port. The sibling's case 9 must go red.
+mutation_I() { perl -0777 -pi -e 's/    if ! : < \/dev\/null 2>\/dev\/null; then\n        return 2\n    fi\n//' console-harness.sh; }
+
+# J. The probe is stuck on the third value, so it never answers about the port at
+#    all. Cases 1 and 2 of the sibling must go red, and case 9 on its control.
+mutation_J() { perl -pi -e 's/^    if ! : < \/dev\/null 2>\/dev\/null; then$/    if true; then/' console-harness.sh; }
+
 # A guard against the mutations themselves going stale: if a perl pattern stops
 # matching, the "mutation" is a no-op and the pass reports <none>, which is a
 # failure here rather than a quiet success.
@@ -124,6 +146,8 @@ mutation_E_applied() { grep -q '"\$allowed_canon"\*' console-harness.sh; }
 mutation_H_applied() { grep -q '^    if false; then$' console-harness.sh; }
 mutation_G_applied() { grep -q 'printf "%s\\n" "\$path"; return 0' console-harness.sh; }
 mutation_F_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-stop-host-bounded.sh; }
+mutation_I_applied() { ! grep -qF ': < /dev/null 2>/dev/null' console-harness.sh; }
+mutation_J_applied() { grep -q '^    if true; then$' console-harness.sh; }
 
 fingerprint=check-build-fingerprint.sh
 stop=check-stop-host-bounded.sh
@@ -138,6 +162,8 @@ pass "E slash dropped" "8 "            "$fingerprint" mutation_E || failures=$((
 pass "F sibling guard dropped" "7 "    "$stop"        mutation_F || failures=$((failures + 1))
 pass "G canonicaliser neutered" "8 "   "$fingerprint" mutation_G || failures=$((failures + 1))
 pass "H port validation dropped" "8 "  "$stop"        mutation_H || failures=$((failures + 1))
+pass "I allocation test removed" "9 "  "$stop"        mutation_I || failures=$((failures + 1))
+pass "J probe stuck on cannot tell" "4 6 9 " "$stop"   mutation_J || failures=$((failures + 1))
 
 # The preconditions, checked last so the reports above are printed either way.
 did_it_apply() {
@@ -154,6 +180,8 @@ did_it_apply "E slash dropped" mutation_E_applied
 did_it_apply "F sibling guard dropped" mutation_F_applied
 did_it_apply "G canonicaliser neutered" mutation_G_applied
 did_it_apply "H port validation dropped" mutation_H_applied
+did_it_apply "I allocation test removed" mutation_I_applied
+did_it_apply "J probe stuck on cannot tell" mutation_J_applied
 
 rm -rf "$scratch"
 
