@@ -121,20 +121,65 @@ public sealed class TrafficFeedTests
     // ===================== what the operator is told =====================
 
     /// <summary>
-    /// A deployment with no feed is not a deployment whose screen is stale.
+    /// <b>A console that was live and settled in NoFeed still warns that its
+    /// screen may be out of date.</b>
     /// </summary>
     /// <remarks>
-    /// The single most important claim this type makes. Nothing in such a
-    /// console was ever following the Host, so every screen was read when it
-    /// was opened and none of it is behind. A console that cried stale here
-    /// would be crying wolf on the state most deployments are in.
+    /// The reachable path that made the old NoFeed exemption wrong. The console
+    /// is live. The deployment's answer changes underneath it: the Host restarts
+    /// without the hub route mapped, the console is pointed at another Host, or a
+    /// proxy starts 404ing the route. The connection drops and auto-reconnect
+    /// gives up, with the flag set and the warning rendered correctly. The
+    /// operator presses Reconnect, that attempt answers 404, and the sequence ends
+    /// in <c>NoFeed</c> with nothing re-read, because the loop makes no further
+    /// attempt on a state it read as a finished answer. Gating the warning on the
+    /// state dropped it exactly there, on the operator's own attempt to fix the
+    /// outage, while every open pane still held the read from before the change.
     /// </remarks>
     [Fact]
-    public void A_deployment_with_no_feed_is_not_reported_as_stale()
+    public void A_console_that_was_live_and_settled_in_no_feed_still_warns_its_screen_may_be_stale()
     {
         var status = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: true);
 
+        Assert.True(status.ScreenMayBeStale);
+        Assert.Contains("may be out of date", status.Headline, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A console that has never followed anything still does not warn.
+    /// </summary>
+    /// <remarks>
+    /// The state most deployments are in, and the one the exemption was written
+    /// for. The flag is false for it by construction: it is set only in the
+    /// handlers of a connection that started, which a console with no feed never
+    /// does. So dropping the state clause costs this case nothing, which is the
+    /// whole reason the clause was removable.
+    /// </remarks>
+    [Fact]
+    public void A_console_that_has_never_followed_anything_does_not_warn()
+    {
+        var status = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: false);
+
         Assert.False(status.ScreenMayBeStale);
+        Assert.DoesNotContain("may be out of date", status.Headline, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The NoFeed detail does not rule on staleness.
+    /// </summary>
+    /// <remarks>
+    /// This detail is the tooltip under the headline, and on the console above the
+    /// headline carries the warning. A detail saying nothing here is out of date
+    /// would contradict the line directly above it, on the one console that needs
+    /// the warning kept.
+    /// </remarks>
+    [Fact]
+    public void The_no_feed_detail_does_not_claim_the_screen_is_current()
+    {
+        var status = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: true);
+
+        Assert.DoesNotContain("out of date", status.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("never a feed", status.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -160,7 +205,8 @@ public sealed class TrafficFeedTests
     }
 
     /// <summary>
-    /// Once a console has been live, every state it falls into still carries the warning.
+    /// Once a console has been live, <b>every</b> state it falls into carries the
+    /// warning, with nothing exempt.
     /// </summary>
     /// <remarks>
     /// <b>The flag decides, not the state.</b> Which failure the last attempt
@@ -169,20 +215,15 @@ public sealed class TrafficFeedTests
     /// <see cref="TrafficFeedState.Dropped"/> looked right and was wrong in the
     /// one case that matters: an operator's own Reconnect during an outage
     /// settles in <see cref="TrafficFeedState.Unreachable"/>, and the sentence
-    /// vanished at the moment the console most needed to keep saying it.
+    /// vanished at the moment the console most needed to keep saying it. The
+    /// exemption for <see cref="TrafficFeedState.NoFeed"/> was that same mistake
+    /// one state over.
     /// </remarks>
     [Fact]
-    public void Every_state_other_than_no_feed_carries_the_stale_warning()
+    public void Every_state_a_live_console_falls_into_carries_the_stale_warning()
     {
         foreach (var state in Enum.GetValues<TrafficFeedState>())
         {
-            if (state is TrafficFeedState.NoFeed)
-            {
-                // The one exemption, and it is a rule: see
-                // A_deployment_with_no_feed_is_not_reported_as_stale.
-                continue;
-            }
-
             var status = LiveFeedStatus.From(state, screenMayBeStale: true);
 
             Assert.True(status.ScreenMayBeStale, $"{state} after a live feed is a screen that may be behind");
@@ -402,6 +443,46 @@ public sealed class TrafficFeedTests
         // Giving up is the same as not trying any more, which is what the
         // status bar renders as nothing at all.
         Assert.Null(feed.Retrying);
+    }
+
+    /// <summary>
+    /// <b>A reconnect that ends in NoFeed leaves the screen marked stale, and
+    /// says so.</b>
+    /// </summary>
+    /// <remarks>
+    /// The last leg of the sequence ruled reachable on 2026-10-01, run against a
+    /// Host that answers 404 rather than against an address that refuses. The
+    /// console was live, the deployment's answer changed underneath it, and the
+    /// operator pressed Reconnect; that attempt is a fresh one, so what it
+    /// settles in is what the Host answered with, and a Host that no longer maps
+    /// the Hub route answers 404. It is a finished answer, so the loop makes no
+    /// further attempt, and nothing has re-read the surface: the flag this feed
+    /// was constructed with is the console's own history and stays true.
+    /// </remarks>
+    [Fact]
+    public async Task A_reconnect_that_ends_in_no_feed_leaves_the_screen_marked_stale()
+    {
+        await using var host = NotFoundHost.Start();
+
+        await using var feed = new TrafficFeed(
+            host.Address, new TestApiKeyProvider(), FastPolicy, surfaceMayBeStale: true);
+
+        var state = await feed.StartWithRetryAsync(CancellationToken.None);
+
+        Assert.Equal(TrafficFeedState.NoFeed, state);
+
+        // The attempt loop stopped on a finished answer, as it must.
+        Assert.Null(feed.Retrying);
+
+        // And the gap the live phase opened is still open, because a 404 is not
+        // a read of what is on screen.
+        Assert.True(feed.SurfaceMayBeStale);
+
+        // Which the operator is told, in the words the status bar renders.
+        var status = LiveFeedStatus.From(state, feed.SurfaceMayBeStale, feed.Retrying);
+
+        Assert.True(status.ScreenMayBeStale);
+        Assert.Contains("may be out of date", status.Headline, StringComparison.Ordinal);
     }
 
     /// <summary>

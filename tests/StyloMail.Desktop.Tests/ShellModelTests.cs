@@ -1143,20 +1143,41 @@ public sealed class ShellModelTests
     }
 
     /// <summary>
-    /// A deployment with no feed never claims the screen is stale.
+    /// The stale claim survives the trip through the model in NoFeed too.
     /// </summary>
     /// <remarks>
-    /// The claim has to survive the trip through the model, not only through
-    /// <see cref="LiveFeedStatus"/>: this is the state most deployments are in,
-    /// and a console that warned here would have taught its operator to ignore
-    /// the warning before it ever mattered.
+    /// The claim has to hold at the model, not only in
+    /// <see cref="LiveFeedStatus"/>: this is the state a console that was live
+    /// reaches when a Reconnect answers 404, and the status bar is what an
+    /// operator reads. A model that dropped it would leave every open pane
+    /// showing a read from before the change with nothing saying so.
+    /// </remarks>
+    [Fact]
+    public void A_console_that_settled_in_no_feed_after_being_live_claims_the_screen_is_stale()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: true);
+
+        Assert.True(model.ScreenMayBeStale);
+        Assert.Contains("may be out of date", model.LiveFeedHeadline, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A deployment that never offered a feed never claims the screen is stale.
+    /// </summary>
+    /// <remarks>
+    /// The state most deployments are in, and the one the exemption was written
+    /// for. The feed reports the flag false for it because a console that never
+    /// started a connection never set it, which is what keeps this quiet without
+    /// any state clause in the rule.
     /// </remarks>
     [Fact]
     public void A_deployment_with_no_feed_does_not_claim_the_screen_is_stale()
     {
         var model = ShellModel.CreateDefault();
 
-        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: true);
+        model.LiveFeed = LiveFeedStatus.From(TrafficFeedState.NoFeed, screenMayBeStale: false);
 
         Assert.False(model.ScreenMayBeStale);
     }
