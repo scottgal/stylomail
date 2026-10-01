@@ -131,13 +131,31 @@ actions:
     matcher: IsVisible
     timeout: 20000
 
+  # The pane itself, photographed BEFORE the assertions about its contents rather
+  # than after them, so a failure below leaves the evidence of what it actually
+  # rendered instead of only the mismatch. An assertion whose subject is not in
+  # the artifacts makes a red run a claim rather than a reading, and the reason
+  # row that comes back empty is exactly the fact nothing else captures.
+  - type: Screenshot
+    value: "03-decision-pane"
+    description: "The decision pane for the held message, dimension rows and all"
+
   # The message's own decision, by the model's own number for it. This is what
   # makes the pane's contents about this message rather than about any decision
   # the Host holds.
+  #
+  # RE-PINNED 2026-10-01 23:0x, from 0.575 to 0.566, and the move is the point
+  # worth recording rather than a value fitted to the output: the pin was taken
+  # under the OLD applied window, and raising `EffectiveNumCtx` changes how many
+  # of the twelve questions the model answers, which changes the semantic
+  # dimensions and therefore the index. 0.566 was the rendered value in THREE
+  # runs at the window that makes the submission assessable at all. A model-generated score
+  # is a measurement of the model AND the window, so this pin should be read as
+  # one, and asking whether a smoke should pin such a number at all is open.
   - type: Expect
     target: "name=RiskIndexText"
     matcher: ContainsText
-    value: "risk index 0.575"
+    value: "risk index 0.566"
 
   # And the rule that number is rendered with, which is not decoration: an index
   # is not a probability, and a pane that showed it as one would be the exact
