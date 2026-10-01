@@ -273,10 +273,15 @@ inside the fit's 8192-byte cap and every body AT its 2500-character budget, the 
 (`nimble-`, taking the full budget rather than a shorter body, `.styloagent/scratch/nimble/expansion-shapes-2500.json`,
 script `probe-expansion.py`; six shapes, all measured and all admissible, at 6910 request bytes except one
 at 7012: prose 19814, base64-ish 34106, mixed 35114, random-case 39602, punctuation-heavy 41138, hex-ish
-43202). Reaching `32768` needs an expansion above **4.00x**, and **five of the six shapes exceed it**:
-only prose is safe, and the hex-ish arm clears the guard by 1.32x. So `EffectiveNumCtx` at `32768` **refuses a
+43202). Reaching `32768` needs an expansion above **4.00x**, and **how many shapes cross it depends on the
+encoder**: **five of six under the probe's**, and **four under the adapter's**, because the adapter's
+default JSON encoder escapes `<`, `>`, `&`, `'`, `+` and the backtick as `\uXXXX`, the state is a JSON
+string inside a JSON document so each escape is escaped again, and the same text therefore makes a larger
+request. **`hex-ish`, `base64-ish` and `random-case` are exact under either encoder**; `mixed` and
+`punctuation-heavy` are the two whose margin depends on which language measured them. Only prose is safe
+either way, and the hex-ish arm clears the guard by **1.32x**. So `EffectiveNumCtx` at `32768` **refuses a
 twelve-question message whose body is dense, and does not refuse one whose body is prose**. What is
-measured is the body's content, and five of six bodies whose text is naturally dense come back
+measured is the body's content, and bodies whose text is naturally dense come back
 `Unavailable` today: long hexadecimal, pasted base64 or JSON, log and diff output, heavy punctuation.
 That is the **author's** density rather than a transfer encoding's, because the analyser decodes
 quoted-printable and base64 parts before the classifier sees any text
