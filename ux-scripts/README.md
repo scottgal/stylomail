@@ -421,9 +421,16 @@ instead of being retried. Two further consequences of the same wedge:
   statement in that function, so a wedge meant this run's principal key stayed on disk for the whole
   life of the wedge, in the one path that is supposed to be the guarantee that a key does not outlive
   its run. The key is a credential and the process is not, so the file goes first.
-- **Nothing here uses `lsof`.** The harness's preflight asks whether a port is taken, and a TCP
-  connect answers that without a tool that can itself wedge. Diagnostics that name a pid work with
-  `ps`.
+- **The harness no longer uses `lsof` anywhere, and this bullet is a correction.** The first version
+  of this section claimed "nothing here uses `lsof`" while `console_start_host` called it twice, on
+  the start path of every runner: the sentence described a design the code did not have. The
+  preflight is now `console_port_is_taken`, a `/dev/tcp` connect to `127.0.0.1:$CONSOLE_PORT` with no
+  process in it to wedge, which is both what this section claimed and what the Host's own
+  `ASPNETCORE_URLS` binds. The cost is that it can no longer print the holder, so the message points
+  at `netstat -an | grep LISTEN | grep <port>` instead, and that it answers only two ways: a listener
+  accepts a connect, so "connected" is "taken" and "not connected" is "free". Diagnostics that name a
+  pid work with `ps`. `./ux-scripts/check-stop-host-bounded.sh` asserts the harness contains no
+  `lsof` call, so the sentence and the code cannot drift apart again.
 
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
 three cases against a child that ignores SIGTERM and takes seconds, and the old body was run beside

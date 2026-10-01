@@ -202,11 +202,41 @@ console_require_local_model() {
     return 0
 }
 
+# Whether anything is listening on the port this run is about to bind.
+#
+# A connect, answered by bash itself, rather than `lsof`. The reason is the one
+# in the teardown section of ux-scripts/README.md: lsof is a process, and on
+# 2026-10-01 about twenty of them were sitting in uninterruptible kernel sleep
+# (state U) on this machine, where a signal is never delivered and a `wait` on
+# them never returns. This preflight runs before the Host in every runner, so an
+# lsof that wedged here would hold the run open before it had started anything to
+# blame. A /dev/tcp connect has no process in it to wedge.
+#
+# 127.0.0.1 because that is what the Host binds: ASPNETCORE_URLS below is
+# http://127.0.0.1:$CONSOLE_PORT. This is therefore a more precise question than
+# the lsof query it replaces, which matched a listener on any address.
+#
+# Two outcomes, not three, and that is deliberate rather than a simplification.
+# A port conflict means something is listening, and a listener accepts a connect,
+# so "connected" is exactly "taken" and "not connected" is exactly "free". The
+# one case this cannot see is a listener on a different address that would still
+# stop the Host binding, and there the Host's own bind fails loudly, so the cost
+# of guessing "free" is a clear message rather than a wrong result.
+#
+# The subshell is load bearing. `exec 3<>` in the caller would leave that
+# descriptor open for the whole run, so the harness would hold a connection to
+# the very listener it had just refused to run against.
+#
+# To name the holder without lsof: `netstat -an | grep LISTEN | grep $CONSOLE_PORT`.
+console_port_is_taken() {
+    ( exec 3<>"/dev/tcp/127.0.0.1/$CONSOLE_PORT" ) >/dev/null 2>&1
+}
+
 console_start_host() {
-    if lsof -nP -iTCP:"$CONSOLE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    if console_port_is_taken; then
         echo "Port $CONSOLE_PORT is already in use, so this run would talk to" >&2
-        echo "whatever is listening there rather than to its own Host:" >&2
-        lsof -nP -iTCP:"$CONSOLE_PORT" -sTCP:LISTEN >&2
+        echo "whatever is listening there rather than to its own Host." >&2
+        echo "Name it with: netstat -an | grep LISTEN | grep $CONSOLE_PORT" >&2
         echo "Stop it, or set CONSOLE_PORT to a free port." >&2
         return 1
     fi
@@ -841,7 +871,7 @@ console_stop_host() {
     while kill -0 "$CONSOLE_HOST_PID" 2>/dev/null; do
         if (( waited >= CONSOLE_HOST_STOP_WAIT )); then
             echo "The harness Host $CONSOLE_HOST_PID is still alive ${CONSOLE_HOST_STOP_WAIT}s after SIGTERM and has been left alone." >&2
-            echo "A process in uninterruptible sleep cannot take a signal. That is a condition of this machine rather than a failure of the run, and the pid is named here so it can be checked without lsof." >&2
+            echo "A process in uninterruptible sleep cannot take a signal. That is a condition of this machine rather than a failure of the run, and the pid is named here so it can be checked with ps." >&2
             return 0
         fi
 

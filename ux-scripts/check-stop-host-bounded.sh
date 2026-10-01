@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Checks that console_stop_host cannot block, and that the key file goes first.
+# Checks the parts of the harness that must not be able to block a run: the stop
+# path, the principal key's lifetime, and now the port preflight.
 #
 # A check rather than a smoke, and it lives here beside check-runner-gate.sh for
-# the same reason: it needs no Host, no build, no console and no port, so there
-# is no excuse for it not being run. It runs in seconds.
+# the same reason: it needs no Host, no build, no console and no deployment, so
+# there is no excuse for it not being run. It runs in seconds. It does bind one
+# port of its own, an OS-assigned one, for the preflight case below.
+#
+# The file keeps its name although the subject has widened, because the README
+# and a commit message both point at this path and a rename would break the one
+# thing a reader follows.
 #
 # The shape being reproduced is "a child that survives SIGTERM", which is what a
 # process in uninterruptible kernel sleep looks like from the outside: the signal
@@ -173,6 +179,164 @@ if [[ -f "$CONSOLE_RUN/auth.headers" ]]; then
     fail "the key file survived with no Host recorded"
 else
     pass "the key file is gone"
+fi
+
+# Case 4: the port preflight answers "taken" for a listener, and "free" for the
+# same port once the listener is gone. Both directions matter: a probe that
+# always says free would let a run start against somebody else's Host, and one
+# that always says taken would refuse every run.
+case_number=$((case_number + 1))
+echo "case $case_number: the port preflight, both directions"
+
+port_file="$CONSOLE_RUN/probe-port"
+rm -f "$port_file"
+
+# An OS-assigned port rather than a fixed one, so this cannot collide with a real
+# runner on 5290 or with another lane. The child holds it for the length of the
+# case, and its output goes to /dev/null for the same reason as case 1's: a
+# background child that inherits this script's stdout holds the caller's pipe
+# open after the script has exited.
+python3 - "$port_file" >/dev/null 2>&1 <<'PY' &
+import socket, sys, time
+
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", 0))
+listener.listen(1)
+
+with open(sys.argv[1], "w") as handle:
+    handle.write(str(listener.getsockname()[1]))
+    handle.flush()
+
+time.sleep(60)
+PY
+listener_pid=$!
+
+for _ in {1..100}; do
+    [[ -s "$port_file" ]] && break
+    sleep 0.1
+done
+
+if [[ ! -s "$port_file" ]]; then
+    # Refused rather than skipped, which is the rule this repo already applies to
+    # the runner gate: a shape that could not be checked must not read as ok.
+    fail "the listener never reported a port, so neither direction could be checked"
+    kill -9 "$listener_pid" 2>/dev/null
+    exit 1
+fi
+
+CONSOLE_PORT="$(cat "$port_file")"
+
+if console_port_is_taken; then
+    pass "a live listener on $CONSOLE_PORT reads as taken"
+else
+    fail "a live listener on $CONSOLE_PORT read as free, so a run would start against it"
+fi
+
+# The descriptor must not survive the probe. If it did, the harness would hold a
+# connection to the listener it had just refused to run against, which is a real
+# bug rather than a tidiness point: the subshell in console_port_is_taken is what
+# prevents it, and this is what would catch its removal.
+if { true >&3; } 2>/dev/null; then
+    fail "the probe left fd 3 open in the caller"
+else
+    pass "the probe left no descriptor behind"
+fi
+
+kill -9 "$listener_pid" 2>/dev/null
+wait "$listener_pid" 2>/dev/null
+
+# The port is free now, and the probe has to say so rather than caching the
+# previous answer.
+if console_port_is_taken; then
+    fail "the port read as taken after the listener was killed"
+else
+    pass "the same port reads as free once the listener is gone"
+fi
+
+# Case 5: the guard. The README says the harness uses no lsof, and it said that
+# while console_start_host called lsof twice, so the claim needs a test rather
+# than a sentence. Comment lines are stripped first: every lsof mention left in
+# the harness is prose explaining why it is gone, and the guard is about
+# invocations.
+case_number=$((case_number + 1))
+echo "case $case_number: the harness contains no lsof invocation"
+
+# What this does not catch, said plainly because a guard read as wider than it is
+# is how the claim drifted the first time: an lsof reached through a variable or a
+# built command would pass. It catches the direct call, which is the form the
+# defect took.
+code_lsof="$(grep -v '^[[:space:]]*#' "$HERE/console-harness.sh" | grep -c 'lsof' || true)"
+
+if (( code_lsof == 0 )); then
+    pass "no lsof call in console-harness.sh outside a comment"
+else
+    fail "console-harness.sh calls lsof on $code_lsof line(s) outside a comment"
+fi
+
+# Case 6: the caller, not just the probe. A taken port must stop the run before
+# anything is started, with a message that names the port and says how to find
+# what holds it. This returns before the binary check inside console_start_host,
+# so it needs no build, and that ordering is itself part of what is asserted:
+# reaching for the binary first would mean a run with no Host built failed for
+# the wrong reason.
+case_number=$((case_number + 1))
+echo "case $case_number: a taken port stops the run before anything starts"
+
+port_file="$CONSOLE_RUN/probe-port-2"
+rm -f "$port_file"
+
+python3 - "$port_file" >/dev/null 2>&1 <<'PY' &
+import socket, sys, time
+
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", 0))
+listener.listen(1)
+
+with open(sys.argv[1], "w") as handle:
+    handle.write(str(listener.getsockname()[1]))
+    handle.flush()
+
+time.sleep(60)
+PY
+listener_pid=$!
+
+for _ in {1..100}; do
+    [[ -s "$port_file" ]] && break
+    sleep 0.1
+done
+
+if [[ ! -s "$port_file" ]]; then
+    fail "the listener never reported a port, so the refusal could not be checked"
+    kill -9 "$listener_pid" 2>/dev/null
+    exit 1
+fi
+
+CONSOLE_PORT="$(cat "$port_file")"
+start=$(date +%s)
+output="$(console_start_host 2>&1)"
+took=$(elapsed "$start")
+
+kill -9 "$listener_pid" 2>/dev/null
+wait "$listener_pid" 2>/dev/null
+
+if (( took < 3 )); then
+    pass "refused in ${took}s rather than probing indefinitely"
+else
+    fail "took ${took}s to refuse a port that was already listening"
+fi
+
+if [[ "$output" == *"$CONSOLE_PORT"* ]]; then
+    pass "the message names the port"
+else
+    fail "the message does not name port $CONSOLE_PORT: $output"
+fi
+
+if [[ "$output" == *"netstat"* ]]; then
+    pass "the message says how to find what holds it, without lsof"
+else
+    fail "the message does not say how to find the holder: $output"
 fi
 
 rm -rf "$CONSOLE_RUN"
