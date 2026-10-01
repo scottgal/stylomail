@@ -86,10 +86,10 @@ public class QueueDeliveryWorkerTests
         //
         // NOT ESTABLISHED YET, and deliberately not claimed: that no test ANYWHERE went red with Z
         // applied and this control absent. That is the GAP half of the same measurement. It is
-        // authorised and gated on host swap. The measurement is `.styloagent/scratch/queue/
-        // gap-half-run.sh`, and the stronger sentence ("runs to a GAP, no test went red") belongs
+        // authorised and gated on host swap. The measurement is `gap-half-run.sh`, and the stronger
+        // sentence ("runs to a GAP, no test went red") belongs
         // back here the moment its artifact exists. The CLAIMED half IS measured: with this control
-        // present, Z is claimed by this test (artifact `.styloagent/scratch/queue/z-artifact.log`).
+        // present, Z is claimed by this test (artifact `z-artifact.log`).
         Assert.Equal(h.Clock.GetUtcNow(), recipient.DeliveredAt);
     }
 

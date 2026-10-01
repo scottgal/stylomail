@@ -7,10 +7,11 @@ This script does the local half, plus the token accounting that decides whether 
 can be asked at all. The hosted half needs TYPESAFE_API_KEY and is captured by the Jev corpus
 recorder in tests/StyloMail.Jev.Tests, which writes tests/fixtures/jev/<case>.response.json.
 
-Run with the spike venv, from the repository root:
+Run with the spike venv, from the repository root, with LAYA_SPIKES set to the directory that holds
+the venv and the converted model:
 
-    .styloagent/spikes/laya/venv/bin/python tools/laya-bridge/measure_corpus.py \
-        --model .styloagent/spikes/laya/laya-ov-int8 \
+    "$LAYA_SPIKES/venv/bin/python" tools/laya-bridge/measure_corpus.py \
+        --model "$LAYA_SPIKES/laya-ov-int8" \
         --out /tmp/laya-measurement.json
 
 The venv and the model are deliberately outside the repository. Nothing here reads, prints or

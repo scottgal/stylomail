@@ -1,8 +1,8 @@
 # The mutation harness: what it measures, and the five ways it used to lie
 
-**Why this record exists.** The mutation harness lives at `.styloagent/tools/mutate.py` with its lane
-definitions beside it, and `.styloagent/` is ignored (`.gitignore:147`) with zero tracked files. So the
-harness, the coverage numbers every lane quotes from it, and the reasoning behind its verdict rules are
+**Why this record exists.** The mutation harness runs from a working directory outside version control,
+with its lane definitions beside it. So the harness, the coverage numbers every lane quotes from it,
+and the reasoning behind its verdict rules are
 all invisible to a reader who clones this repository. A repair to a load-bearing instrument with no
 versioned home is the same class of gap the instrument exists to find. This file is that home: the
 rules, why each one is there, and the evidence that each guard works. The script itself stays
@@ -132,15 +132,15 @@ that the preflight calls it rather than inlining its own.
 
 | Evidence | What it shows |
 | --- | --- |
-| `.styloagent/scratch/queue/zero-test-probe.sh` | Two real zero-test shapes staged on this toolchain. A filter matching nothing, and a project that genuinely contains no test classes. Both write a TRX with zero results and print no `Failed: N, Passed: M` summary. |
-| `.styloagent/scratch/queue/falsify-no-population.py` | 12 checks, 0 failures. Pre-fix and fixed arms on the real readings; a constructed reading where they differ; a control showing a real coverage gap is still GAP; and the real `run_suite` at all three call sites, so the arity is proven end to end. |
-| `.styloagent/scratch/queue/falsify-missing-target.py` | 10 checks, 0 failures. The pre-fix arm really does raise out of `run_lane`. The fixed arm reports the verdict and is driven dead-entry-then-live-entry, with the live one still going CLAIMED, so the guard cannot degenerate into silently skipping mutations. |
-| `.styloagent/scratch/queue/validate-guards.py` | The pre-existing guard validator, updated for the new reading, with the population asserted per case rather than merely carried. |
-| `.styloagent/scratch/queue/check-claim-names.py` | Resolves every lane entry's claiming test name against the tree. Reading at first run: 49 of 49 resolve in their lane's own project, 0 only elsewhere, 0 stale. |
-| `.styloagent/scratch/queue/falsify-claim-names.py` | 17 checks, 0 failures. One fabricated lane carrying a claim that exists and one that does not, both required to land as expected; a no-claim entry required to stay OUT of the population, so the denominator cannot be inflated by entries that never had a claim; the real lanes re-scanned in the same process, so the fabricated stale is the name and not the scan's default answer; the substring limit asserted as a limit; and the preflight asserted to call this rule rather than inline a copy. |
-| `.styloagent/scratch/queue/preflight-anchors.py` | Every lane's anchors AND claiming test names checked against the working tree with no build, no copy, no lock and no mutation, before a gated sweep window is spent on a lane with dead entries or a stale claim. Two summary lines, nonzero exit on either an INVALID anchor or a STALE name. |
-| `.styloagent/scratch/queue/check-harness-source.py` | The harness SOURCE, which is the one part no load-free check reaches: the preflight imports the module and the missing-target falsifier drives `run_lane`, but `main()` still runs first in the window, and a typo there costs it. It reports a name that is bound nowhere in the file and is not a builtin, plus every `global` naming something absent at module level. Reading at 2026-10-01: 6 files, 0 unbound names, exit 0. Its first version was structurally dead and is preserved beside it as `check-harness-source-v1-ALWAYS-FALSE.py`. |
-| `.styloagent/scratch/queue/falsify-harness-source.py` | 18 of 18 checks, 0 failed. Proves that checker can go RED: a name renamed on the LOAD side only is reported, and a `global` naming something absent is reported. Two controls make the reds attributable rather than incidental: renaming the SAME name on both sides is NOT reported, and the real files still read zero in the same process, with the real `mutate.py` asserted unmodified. It also pins the checker's known limit as a limit, and measures the preserved v1's always-false predicate as TRUE 0 times over 1077 `Name` nodes with the population asserted non-zero, so the dead version's deadness is a reading rather than a description. |
+| `zero-test-probe.sh` | Two real zero-test shapes staged on this toolchain. A filter matching nothing, and a project that genuinely contains no test classes. Both write a TRX with zero results and print no `Failed: N, Passed: M` summary. |
+| `falsify-no-population.py` | 12 checks, 0 failures. Pre-fix and fixed arms on the real readings; a constructed reading where they differ; a control showing a real coverage gap is still GAP; and the real `run_suite` at all three call sites, so the arity is proven end to end. |
+| `falsify-missing-target.py` | 10 checks, 0 failures. The pre-fix arm really does raise out of `run_lane`. The fixed arm reports the verdict and is driven dead-entry-then-live-entry, with the live one still going CLAIMED, so the guard cannot degenerate into silently skipping mutations. |
+| `validate-guards.py` | The pre-existing guard validator, updated for the new reading, with the population asserted per case rather than merely carried. |
+| `check-claim-names.py` | Resolves every lane entry's claiming test name against the tree. Reading at first run: 49 of 49 resolve in their lane's own project, 0 only elsewhere, 0 stale. |
+| `falsify-claim-names.py` | 17 checks, 0 failures. One fabricated lane carrying a claim that exists and one that does not, both required to land as expected; a no-claim entry required to stay OUT of the population, so the denominator cannot be inflated by entries that never had a claim; the real lanes re-scanned in the same process, so the fabricated stale is the name and not the scan's default answer; the substring limit asserted as a limit; and the preflight asserted to call this rule rather than inline a copy. |
+| `preflight-anchors.py` | Every lane's anchors AND claiming test names checked against the working tree with no build, no copy, no lock and no mutation, before a gated sweep window is spent on a lane with dead entries or a stale claim. Two summary lines, nonzero exit on either an INVALID anchor or a STALE name. |
+| `check-harness-source.py` | The harness SOURCE, which is the one part no load-free check reaches: the preflight imports the module and the missing-target falsifier drives `run_lane`, but `main()` still runs first in the window, and a typo there costs it. It reports a name that is bound nowhere in the file and is not a builtin, plus every `global` naming something absent at module level. Reading at 2026-10-01: 6 files, 0 unbound names, exit 0. Its first version was structurally dead and is preserved beside it as `check-harness-source-v1-ALWAYS-FALSE.py`. |
+| `falsify-harness-source.py` | 18 of 18 checks, 0 failed. Proves that checker can go RED: a name renamed on the LOAD side only is reported, and a `global` naming something absent is reported. Two controls make the reds attributable rather than incidental: renaming the SAME name on both sides is NOT reported, and the real files still read zero in the same process, with the real `mutate.py` asserted unmodified. It also pins the checker's known limit as a limit, and measures the preserved v1's always-false predicate as TRUE 0 times over 1077 `Name` nodes with the population asserted non-zero, so the dead version's deadness is a reading rather than a description. |
 
 **Honest limit on defect 2.** On this toolchain the false GAP is not reachable: both staged zero-test
 shapes are refused earlier by the pre-existing `incomplete` guard, because a run that discovers nothing
@@ -157,7 +157,7 @@ leaves the second.
   `shutil.ignore_patterns` matches the entry NAME, so a rule spelled `logs` prunes any directory of
   that name anywhere in the tree, silently: the copy simply lacks it and nothing is raised. Pruning
   agent-local state by path took a copy from 1.59 GB to 10.70 MB.
-- **The lock names its holder.** `.styloagent/tools/.mutation-sweep.lock` carries a header with the
+- **The lock names its holder.** The sweep lock file carries a header with the
   holder prefix, pid, start time and invocation. Its PRESENCE means a sweep is running now OR was
   killed: a SIGKILL cannot run the unlink. The leftover `stylomail-sweep-*` directory under `${TMPDIR}`
   tells the two apart. A `.bak` beside a source file under `src/` is a legacy or hand-applied leftover,
@@ -167,7 +167,7 @@ leaves the second.
 - **A lane's claiming test name is a REFERENCE, not a comment.** It is compared against the reported
   failing tests at run time, so it goes stale the moment a test is renamed, and the failure is silent
   and one-sided: the verdict becomes ELSEWHERE and a false gap is filed. Run
-  `.styloagent/scratch/queue/check-claim-names.py` before a window, with the anchors.
+  `check-claim-names.py` before a window, with the anchors.
 - **The `only` filter matches the FIRST CHARACTER of a mutation name**, so `only=R` selects every
   mutation whose name starts with R. It can run more than intended, never fewer.
 - **A lane may need more than one root when code moves between layers.** When a refactor moves a

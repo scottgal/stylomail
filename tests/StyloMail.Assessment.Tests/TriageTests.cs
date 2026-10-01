@@ -10,8 +10,8 @@ namespace StyloMail.Assessment.Tests;
 /// The algorithmic layer: what decides a message is not worth the pipeline, and what it admits.
 /// </summary>
 /// <remarks>
-/// Written from `docs/chat-channels-plan-03-triage.md` rather than from the implementation, so a test
-/// and the record can disagree. The record's rule is that every check is specified by which way it
+/// Written from the design rather than from the implementation, so a test
+/// and the record can disagree. The design's rule is that every check is specified by which way it
 /// fails, and these pin the two properties overview- said he would audit first: that a dismissal is
 /// visible, and that nothing is silently unrecorded.
 /// </remarks>

@@ -316,7 +316,7 @@ And there is no `Block` or `Allow` in that result. This code records what the mo
 
 ### What the live experiment returned
 
-There is also a separate [recorded live run on a synthetic phishing message](https://github.com/scottgal/stylomail/blob/916aaa936eab706b4623d97efc63af8c898a3bde/.styloagent/spec.md#L253). The project notes record these Jev values; this table reports those observations, rather than presenting the mock response above as a provider capture:
+There is also a separate recorded live run on a synthetic phishing message. The project notes record these Jev values; this table reports those observations, rather than presenting the mock response above as a provider capture:
 
 | Question | Recorded Noul value |
 |---|---:|

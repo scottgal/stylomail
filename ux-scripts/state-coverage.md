@@ -102,7 +102,7 @@ So **the two shapes this lane could measure were one shape and the third was nev
 cannot assess refuses with `503` and leaves the queue empty, whichever provider is composed. The
 detour was not wasted, because it produced the `CONSOLE_NIMBLE_ENDPOINT` switch, which is how the
 refusal is startable rather than asserted, and a measured refusal is worth more than two lanes agreeing.
-Artifact: `.styloagent/scratch/desktop/probe-nimble-selected-endpoint-unreachable.log`.
+Artifact: `probe-nimble-selected-endpoint-unreachable.log`.
 
 **The assessment route cannot carry a planted deterministic fact.** `POST /v1/assessments` hands the
 pipeline `PayloadReferences.Ephemeral` (`AssessmentsEndpoints.cs:64`, `PayloadReferences.cs:51`), so the
@@ -182,7 +182,7 @@ submissions path, so the row is **NotApplicable** and the new rule (which fires 
 non-confirming row) cannot reach this score at all. So the 0.8219 in row 3 and the 0.822 pinned in
 `console-quarantine-smoke.yaml` stand on both measurements, and this lane has no index measured with a
 window supplied. Artifacts, cited from the repository rather than from `/tmp`:
-`.styloagent/scratch/desktop/quarantine-fixture-decision-post-decision-31.json` and the submission,
+`quarantine-fixture-decision-post-decision-31.json` and the submission,
 listing and probe log beside it.
 
 **The runners reported a failing run as a pass, and that is the same defect one level up.** Found
@@ -323,4 +323,4 @@ both were found by reading the instrument rather than the result.
    `[Harness]` diagnostic where the broken fixture logged one, `01-no-feed.png` showing the pane
    populated with `Quarantine` / `0.82` / `credential_request_high` beside "No live feed", and the
    Desktop suite **259 passed / 0 failed / 20 skipped**.
-   Artifact: `.styloagent/scratch/desktop/fixture-e2e-no-feed-asserted.log`.
+   Artifact: `fixture-e2e-no-feed-asserted.log`.

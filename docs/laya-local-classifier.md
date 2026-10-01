@@ -145,8 +145,8 @@ deployment would actually choose.
 
 ## Where it lives
 
-`.styloagent/spikes/laya/`, untracked, about 1.5 GB with the venv and the model. Nothing in the
-repository depends on it and no source was changed.
+A working directory outside this repository, untracked, about 1.5 GB with the venv and the model.
+Nothing in the repository depends on it and no source was changed.
 
 ## What I would do next, in order
 

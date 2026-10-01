@@ -12,8 +12,9 @@ bridge, because the measurement has not yet earned one. See "Where this stands" 
 - `measure_corpus.py`: runs Laya over the six Jev corpus messages with StyloMail's own dimension
   definitions, and reports latency, token accounting and raw answers.
 
-The venv and the converted model live under `.styloagent/spikes/laya/` and are **deliberately outside
-the repository**: about 1.5 GB, and `.styloagent/` is gitignored. Nothing here commits them.
+The venv and the converted model live in a working directory **deliberately outside the repository**:
+about 1.5 GB. Nothing here commits them. Set `LAYA_SPIKES` to that directory before running anything
+below.
 
 ## Running it
 
@@ -22,8 +23,8 @@ Apple Silicon**: the GPU plugins are Intel-only, so there is no acceleration to 
 
 ```bash
 # from the repository root
-.styloagent/spikes/laya/venv/bin/python tools/laya-bridge/measure_corpus.py \
-    --model .styloagent/spikes/laya/laya-ov-int8 \
+"$LAYA_SPIKES/venv/bin/python" tools/laya-bridge/measure_corpus.py \
+    --model "$LAYA_SPIKES/laya-ov-int8" \
     --out /tmp/laya-measurement.json
 ```
 
@@ -78,12 +79,13 @@ question stays open rather than decided in either direction.
 ## Reproducing the credential half
 
 The hosted side is captured by the Jev corpus recorder in `tests/StyloMail.Jev.Tests`, which writes
-`tests/fixtures/jev/<case>.response.json` and a provenance sidecar. Run it with the key exported from
-a file outside the repository so the value never reaches a command line or any output:
+`tests/fixtures/jev/<case>.response.json` and a provenance sidecar. It is driven by a wrapper script
+that is a working tool outside this repository, so a clone does not have it. Run it with the key
+exported from a file outside the repository so the value never reaches a command line or any output:
 
 ```bash
 export TYPESAFE_API_KEY="$(cat /path/to/key)"
-.styloagent/tools/record-jev-corpus.sh
+/path/to/record-jev-corpus.sh
 ```
 
 With both halves present the comparison is a join on case name and dimension id.

@@ -593,7 +593,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// <b>Status: RUN ONCE (2026-10-01), and the reading is the first of the two above.</b> Artifact
-    /// <c>.styloagent/scratch/nimble/axis-shape-one-lane.json</c>, <c>measured_at</c>
+    /// <c>axis-shape-one-lane.json</c>, <c>measured_at</c>
     /// 2026-10-01T02:27:10Z, driver exit 0, 1 m 21 s, nine rows all Available, <c>unavailable_runs</c>
     /// empty: <b>restating at one question B=3 of 3</b> (prompt_tokens 672), <b>restating at twelve
     /// questions A=3 of 3</b> (1318), <b>advancing at one question B=3 of 3</b> (669). The third arm is
@@ -609,7 +609,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// <b>What it does not make it.</b> Not a fleet-level law, and not a claim that batching moves
-    /// continuity: the survey cell (<c>.styloagent/scratch/nimble/continuity-shape-cell.json</c>) has
+    /// continuity: the survey cell (<c>continuity-shape-cell.json</c>) has
     /// this same dimension B under <i>both</i> shapes on the flagship body, so the flip is a property of
     /// the instrument and the input together. The token counts here carry the window and the request
     /// scaffolding and are not comparable with that cell's 216 and 858, which are delimited bodies.
@@ -807,7 +807,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// <remarks>
     /// <para>
     /// <b>Why this probe exists.</b> The four cells
-    /// (<c>.styloagent/scratch/nimble/continuity-cells.json</c>) took the committed
+    /// (<c>continuity-cells.json</c>) took the committed
     /// <c>reply-in-thread</c> body, varied only the window, and asked the twelve-question shape ten
     /// times per cell: forty calls, every one of them B, including the two in-thread cells whose
     /// window is this message's own conversation and the two unrelated ones. A constant across every
@@ -815,7 +815,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// keeps this question at B for this fixture", and this lane has since measured a shape effect:
     /// the pair above answered B for the restating body at one question and A for the same body over
     /// the same window at twelve
-    /// (<c>.styloagent/scratch/nimble/axis-shape-one-lane.json</c>). So the shape explanation is live
+    /// (<c>axis-shape-one-lane.json</c>). So the shape explanation is live
     /// for the four cells rather than hypothetical, and this is the four-call probe that closes it.
     /// </para>
     /// <para>
@@ -857,7 +857,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// <b>Status: RUN ONCE (2026-10-01), and the reading is ALONE B.</b> Artifact
-    /// <c>.styloagent/scratch/nimble/continuity-alone-in-thread.json</c>, <c>measured_at</c>
+    /// <c>continuity-alone-in-thread.json</c>, <c>measured_at</c>
     /// 2026-10-01T02:44:04Z, driver exit 0, four calls in eleven seconds, <c>unavailable_runs</c>
     /// empty: <b>continuity alone B=3 of 3 measured</b>, at 648 prompt tokens, and the discarded
     /// warmup answered B as well. Every row records <c>asked=1</c>, so the narrowed arm is what was

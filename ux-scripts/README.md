@@ -63,7 +63,7 @@ relative path is not a style choice. Naming it absolutely made MSBuild treat one
 identities under `/tmp` (a symlink to `/private/tmp` on macOS) and build them against each other, and
 the symptoms were a Host that built clean and then died at launch, plus intermittent `CS0006` on
 `obj/.../ref/*.dll`. The build's output is shown and also written to
-`.styloagent/scratch/desktop/build-log/solution.log`, so a failure is readable after the fact; the
+`build-log/solution.log`, so a failure is readable after the fact; the
 three scripts used to discard it, which turned a build error into exit 1 and a 0-byte log.
 
 The build now stamps itself as well. `console_record_build_fingerprint` writes `host-build.id` and
@@ -124,7 +124,7 @@ principal key. Each of the three scripts asserts the refusal in its own cases, b
 is that *this* file calls the guard, not that the guard works.
 
 **The guard compares canonical paths, not strings.** As first landed it compared the literal text, and a
-symlink inside the allowed base defeated it: `.styloagent/scratch/desktop/escape-probe/victim` starts with
+symlink inside the allowed base defeated it: `escape-probe/victim` starts with
 the prefix while resolving to `scratch/desktop-probe-outside/victim`, outside it, and a caller acting on
 that decision deletes a directory the guard exists to protect. Measured on this host with a marker file
 before the fix and after it. An automated review routed by `article-` raised it and is credited, with one
@@ -552,7 +552,7 @@ is still honoured, and a missing
 enough to have a verdict. Read the file, never the exit code.
 
 `./ux-scripts/check-runner-gate.sh` checks that gate rather than believing it: non-zero on the real
-failing artifact kept at `.styloagent/scratch/desktop/quarantine-failed-result.json` (the failing run
+failing artifact kept at `quarantine-failed-result.json` (the failing run
 that started all this), non-zero on a missing file, zero on a passing result. It needs no Host and no
 build, and it refuses to report ok if it could not check all three shapes, because a check that
 silently skips a shape is the same defect in a smaller place.
@@ -626,7 +626,7 @@ instead of being retried. Two further consequences of the same wedge:
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
 nine cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
 the new one to show that it still blocks where the new one returns
-(`.styloagent/scratch/desktop/test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
+(`test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
 comparison rather than as a check to run). The stand-in waits for a flag file before anything signals
 it, and that handshake is the whole difference between a check and a coin toss: `trap "" TERM` takes
 effect only once the child has run it, so a signal in the first milliseconds kills a child that was

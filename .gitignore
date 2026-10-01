@@ -1,5 +1,5 @@
 # =============================================================================
-# SECRETS — keep this block FIRST. See .styloagent/spec.md §11 (storage, privacy).
+# SECRETS: keep this block FIRST. See SECURITY.md, "Handling of secrets in this repository".
 # StyloMail handles credentials for SMTP, tenants and the TypeSafe/Jev provider.
 # Nothing in this block may ever be committed. If a secret is committed, treat it
 # as compromised: rotate it, then rewrite history. Adding an ignore rule after the

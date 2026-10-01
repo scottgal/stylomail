@@ -18,20 +18,20 @@ directory you name.
 
 ```sh
 # 1. write a batch: NNN.eml files plus manifest.json
-python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out .styloagent/scratch/batch --profile mixed
+python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out scratch/batch --profile mixed
 
 # 2. post it through the Host's authenticated routes and record what each message became
 python3 tools/corpus/corpus.py seed \
     --base-url http://127.0.0.1:5271 \
-    --key-file .styloagent/scratch/batch/principal.key \
-    --batch .styloagent/scratch/batch \
+    --key-file scratch/batch/principal.key \
+    --batch scratch/batch \
     --resolve-join
 
 # 3. read the decisions back and compare them against the planted facts
 python3 tools/corpus/corpus.py check \
     --base-url http://127.0.0.1:5271 \
-    --key-file .styloagent/scratch/batch/principal.key \
-    --manifest .styloagent/scratch/batch/manifest.json
+    --key-file scratch/batch/principal.key \
+    --manifest scratch/batch/manifest.json
 ```
 
 `--key-file` is a **path to a file**, read in-process. A key is never an argument, never printed and
@@ -196,7 +196,7 @@ is why an absence claim needs this mechanism rather than a fifth predicate. The 
 when the message makes such a claim, so a missing `notPlanted` means "nothing asserted absent" and
 never "asserted empty".
 
-Two guards, both falsified rather than trusted (`.styloagent/scratch/corpus/probe_notplanted.py`):
+Two guards, both falsified rather than trusted (`probe_notplanted.py`):
 
 - **`generate` refuses** a plan that names one id in both `facts` and `not_planted`. A fact cannot be
   planted and asserted absent at once, and a manifest that said so would force `check` to pick a side.
@@ -318,10 +318,10 @@ have to take on trust:
 | measurement | instrument | artifact |
 |---|---|---|
 | the ladder, quarantine reachability, the dead-end campaign dimension, the release path, an Allow populating no listing | `tools/corpus/measure_reachability.py` | its `--out` JSON |
-| the durable-route mechanism and the gate in both directions | `.styloagent/scratch/corpus/probe_gate.py` | `probe-gate/run.txt`, `probe-gate/result.json` |
-| the window flipping continuity to Available, measured on the pair **and** its control | `.styloagent/scratch/corpus/probe_pair.py` | `probe-pair/both-profiles.json` |
-| the campaign rows on all four paired arms | `.styloagent/scratch/corpus/probe_pair.py` | `probe-pair/both-profiles.json` |
-| the v2 batch table and the reconstituted `emails.zip` result | `.styloagent/scratch/corpus/run_batch.py` | `scratch/corpus/logs/` |
+| the durable-route mechanism and the gate in both directions | `probe_gate.py` | `probe-gate/run.txt`, `probe-gate/result.json` |
+| the window flipping continuity to Available, measured on the pair **and** its control | `probe_pair.py` | `probe-pair/both-profiles.json` |
+| the campaign rows on all four paired arms | `probe_pair.py` | `probe-pair/both-profiles.json` |
+| the v2 batch table and the reconstituted `emails.zip` result | `run_batch.py` | `scratch/corpus/logs/` |
 
 ## The two layers a changed destination can reach
 
@@ -418,16 +418,16 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   as a finding there.**
 
   **This is a corroboration, not a discovery, and the credit is not this tool's.** The fact that the
-  route cannot corroborate an allow has been in `.styloagent/architecture.md` (composition-root
-  component) since **30 Sep 2026**, measured by `conversation-`'s 5-arm run: a benign message at
+  route cannot corroborate an allow has been known of the composition root since **30 Sep 2026**,
+  measured by `conversation-`'s 5-arm run: a benign message at
   index 0.0000 came back `Hold` with `policy.allow_uncorroborated_by_deterministic_evidence`, on all
   15 assessments. What the probe above adds is an independent re-measurement from a different
-  fixture, and what the paragraph above adds is the source-level cause, which the architecture text
+  fixture, and what the paragraph above adds is the source-level cause, which the earlier note
   did not have (it says the deterministic layer "never runs there", which is not the mechanism). The
   reason code is also worth naming: it reads as a claim about the message when on this route it is a
   claim about the route.
 - **That difference is the corroboration gate, measured in both directions** from identical bytes
-  (`.styloagent/scratch/corpus/probe_gate.py`, which writes its own `probe-gate/run.txt` transcript
+  (`probe_gate.py`, which writes its own `probe-gate/run.txt` transcript
   and `probe-gate/result.json`): the same benign message is `Allow` on `/v1/submissions` with 14
   deterministic `Available` rows, and `Hold` on `/v1/assessments` with
   `policy.allow_uncorroborated_by_deterministic_evidence` and **zero deterministic `Available`
@@ -532,7 +532,7 @@ directory.
 
 ```sh
 STYLOMAIL_CORPUS_DIR=/path/to/datasets python3 tools/corpus/corpus.py ingest \
-    --source-archive emails.zip --limit 500 --out .styloagent/scratch/reconstituted
+    --source-archive emails.zip --limit 500 --out scratch/reconstituted
 ```
 
 The body and subject are the source's; the envelope, headers and MIME structure are this tool's, so a

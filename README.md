@@ -7,9 +7,9 @@
 > upgrade path, and **no licence has been chosen**, so nothing here grants anyone the right to use,
 > modify or redistribute it. See [License](#license).
 >
-> It is deliberately built to completion rather than to a demo, because the questions it asks can
-> only be answered by a system that runs end to end. That is what the test counts below measure:
-> the experiment is finished enough to be evaluated, not the software ready to be deployed.
+> It is built to completion rather than to a demo, because its questions can only be answered by a
+> system that runs end to end. The test counts below measure that, and say nothing about whether the
+> software is ready to deploy.
 
 An adaptive two-way email security proxy. StyloMail detects suspicious **communication** rather than
 suspicious words: compromised outbound accounts, inbound phishing, impersonation, emerging campaigns,
@@ -29,9 +29,9 @@ durably stored, and after that the mail is its responsibility.
 ## Why it exists
 
 Authentication tells you a message is *authorised*. It does not tell you it is *safe*. A compromised
-account authenticates perfectly while sending abuse, that is precisely the case this system is built
-to catch, and it is why "DKIM passed" is treated here as a fact about a domain rather than a verdict
-about a message.
+account authenticates perfectly while sending abuse, which is the case this system is built to
+catch. It is why "DKIM passed" is treated here as a fact about a domain rather than a verdict about a
+message.
 
 The design follows from three commitments:
 
@@ -98,17 +98,12 @@ flowchart TB
 | **Transport** | SMTP/MTA handoff and the Cloudflare Email Routing connector. |
 | **AccessProxy** | IMAP/POP3 session termination with a pluggable backend credential seam. |
 
-The full component view, ownership map and structural decisions are in
-[`.styloagent/architecture.md`](.styloagent/architecture.md). The specification of record is
-[`.styloagent/spec.md`](.styloagent/spec.md).
-
 ---
 
 ## Design invariants
 
-These are the load-bearing rules. Most of them are enforced by the type system or by a test; where a
-rule cannot be enforced structurally, it is asserted rather than documented, because **a comment is
-an untested assertion**.
+Most of these are enforced by the type system or by a test. Where a rule cannot be enforced
+structurally it is asserted rather than documented, because **a comment is an untested assertion**.
 
 | Invariant | Mechanism |
 | --- | --- |
@@ -149,9 +144,9 @@ export STYLOMAIL_PROFILE_KEY="…"     # 32+ bytes; keyed-hash master key for pr
 dotnet run --project src/StyloMail.Host -- serve
 ```
 
-**Both are required and the host refuses to start without them.** That is deliberate: a missing key
-that silently degraded would work perfectly in tests and quietly collapse tenant isolation in
-production. Half-configured is a startup failure naming the missing variable, never the value.
+**Both are required and the host refuses to start without them.** A missing key that silently
+degraded would work perfectly in tests and quietly collapse tenant isolation in production.
+Half-configured is a startup failure naming the missing variable, never the value.
 
 ### CLI
 
@@ -187,6 +182,17 @@ Mail-size bounds are **coupled across two components and asserted at startup**:
 ingress accepts a message, the sink spools it, and the queue refuses it, so the caller sees a
 capacity deferral that looks like spool pressure while the real cause is two components away. The
 tighter bound wins.
+
+### Local semantic provider (optional)
+
+The semantic tier can run against a local decision model instead of the hosted one. Setting
+`StyloMail:Assessment:Provider` to `Nimble` points assessment at **Ollama** on
+`http://127.0.0.1:11435` with the `nimble:latest` model, needs the profile master key and no provider
+credential, and answers all twelve dimensions in one request. Measured on the reference machine on
+2026-09-30, one such request took 25.1 s to 48.2 s, median 36.2 s over six messages, and the window
+the server actually applies is 4098 prompt tokens with `num_ctx` set to 8192. The settings, the
+window and the full measurement are in
+[docs/running.md](docs/running.md#choosing-the-semantic-provider).
 
 ---
 
@@ -224,10 +230,7 @@ src/
   StyloMail.Transport/      SMTP/MTA handoff, Cloudflare connector
   StyloMail.AccessProxy/    IMAP/POP3 proxy, credential seam
 tests/                      one test project per component, plus seam tests
-.styloagent/
-  spec.md                   the specification of record
-  architecture.md           C4 component view and ownership map
-  tools/                    mutation-sweep harness and lock
+tools/                      corpus generator, host probe, Nimble survey, Laya bridge
 ```
 
 ---
@@ -250,12 +253,11 @@ dotnet test StyloMail.slnx
 
 ### Mutation testing
 
-Every safety claim is mutation-audited, the mechanism is deliberately broken and the suite must go
+Every safety claim is mutation-audited: the mechanism is broken on purpose and the suite must go
 red. A test that has never been seen failing is not evidence of anything.
 
-The harness is at `.styloagent/tools/mutate.py` with per-lane mutation sets in
-`.styloagent/tools/mutations/`, and it is hardened against four traps that each produced a *wrong
-verdict* rather than a missed one:
+The harness carries per-lane mutation sets, and it is hardened against four traps that each produced
+a *wrong verdict* rather than a missed one:
 
 | Trap | Failure mode |
 | --- | --- |
@@ -264,12 +266,9 @@ verdict* rather than a missed one:
 | **Stale binary** | Restoring source preserves mtime; MSBuild skips the rebuild and runs the **mutated binary**, a mutation scored "caught" by the *previous* mutation. **A false positive, which is worse than a miss.** |
 | **Killed sweep** | Interrupting a sweep leaves the mutation applied **and the tree looks clean**, worse still, because nothing signals it. |
 
-Sweeps run against an **isolated copy** of the tree. Any harness that mutates source, committed or
-ad-hoc, takes the lock via `.styloagent/tools/sweep-lock.sh`:
-
-```bash
-.styloagent/tools/sweep-lock.sh with ./my-mutation-round.sh
-```
+Sweeps run against an **isolated copy** of the tree. Every harness that mutates source, committed or
+ad-hoc, takes the sweep lock before its first mutation and releases it when it finishes, so two
+sweeps cannot interleave mutations and attribute each other's failures.
 
 ---
 
@@ -277,7 +276,7 @@ ad-hoc, takes the lock via `.styloagent/tools/sweep-lock.sh`:
 
 **Built and audited:** all twelve components, 1,465 tests green, mutation-audited.
 
-**Not yet done, deliberately:**
+**Not yet done, by choice:**
 
 - **No production deployment.** The store-and-forward path runs end to end, but nothing here has been
   through a hardening review, crash-recovery testing at volume, or a live load profile.

@@ -22,7 +22,7 @@ actually serving, and asserts the whole path end to end.
 
 Run against a Nimble-backed Host on 2026-09-30, 14 of 14 checks passed, and again at
 2026-09-30T23:41Z after the run root moved into this lane. The artifact for the second run is
-`.styloagent/scratch/ingress/host-probe/run-20260930T234121Z/host.log`; the earlier run's log is the
+`run-20260930T234121Z/host.log`; the earlier run's log is the
 one copied into `run-20260930T225933Z/` with its provenance beside it. The checks, and what each one
 establishes:
 
@@ -100,8 +100,8 @@ export PATH="/usr/local/share/dotnet:$PATH"
 python3 tools/host-probe/probe.py
 ```
 
-Optional overrides, all read from the environment: `PROBE_ROOT` (run data, default
-`.styloagent/scratch/ingress/host-probe/`), `PROBE_PORT` (default 5399), `PROBE_OLLAMA`,
+Optional overrides, all read from the environment: `PROBE_ROOT` (run data, default a per-run
+directory under this lane's gitignored scratch), `PROBE_PORT` (default 5399), `PROBE_OLLAMA`,
 `PROBE_MODEL`.
 
 The exit code is 0 only if every check passed. The script prints one `CHECK <name>: PASS|FAIL` line
@@ -117,7 +117,7 @@ drain, because the bound on that belongs to the worker, not to this run.
 
 Run data lands in `$PROBE_ROOT/run-<UTC stamp>/`, printed as a `RUN ROOT:` line at the start of the
 run: `host.log` and `host.db` are kept for inspection afterwards. The default root is inside this
-lane's gitignored scratch (`.styloagent/scratch/ingress/`), not `/tmp`, because the log behind a
+lane's gitignored scratch, not `/tmp`, because the log behind a
 number quoted from a run has to outlive the run and be readable by whoever wants to re-check it. A
 directory per run is also what makes that safe: the fresh database a run needs comes from a fresh
 directory, so nothing has to be cleared and the previous run's evidence stays where it is.

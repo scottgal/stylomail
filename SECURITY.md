@@ -65,5 +65,5 @@ recorded here rather than left for a reader to discover.
 In scope: everything in this repository.
 
 Out of scope: the upstream MTA's own policies; DNS, TLS provisioning and reputation infrastructure;
-and the hosted classifier vendor's data-handling terms, which are an operator decision recorded in
-`.styloagent/spec.md`.
+and the hosted classifier vendor's data-handling terms, which are an operator decision outside this
+repository.

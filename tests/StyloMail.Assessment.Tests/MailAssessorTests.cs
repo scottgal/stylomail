@@ -692,8 +692,8 @@ public sealed class MailAssessorTests
         //
         // Before (i) the 7.3 semantic backbone stayed in the denominator whatever its availability,
         // so coverage was 1.0 out of 8.3 and the deployment held at the default floor. That 8.3 is
-        // applied arithmetic over the weight table and this fixture's rows, in
-        // .styloagent/scratch/ingress/successor-arm/, and not a run of the pre-(i) binary: that rule
+        // applied arithmetic over the weight table and this fixture's rows, in the successor-arm
+        // scratch run, and not a run of the pre-(i) binary: that rule
         // is no longer in the tree to run. After (i) the
         // semantic rows leave, the denominator falls to the deterministic weight alone, coverage is
         // 1.0 out of 1.0, and the default floor is cleared by a row that was measured and came back

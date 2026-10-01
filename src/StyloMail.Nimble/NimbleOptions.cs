@@ -95,7 +95,7 @@ public sealed class NimbleOptions
     /// <para>
     /// <b>The cut is a band a few tokens wide, not an exact boundary</b>, and that is measured rather
     /// than assumed. Five fillers of different content were sent at this window
-    /// (<c>--window-quantum</c>, artifact <c>.styloagent/scratch/nimble/window-quantum.json</c>):
+    /// (<c>--window-quantum</c>, artifact <c>window-quantum.json</c>):
     /// three of them, including one that does not repeat at all, were cut at <b>4098</b>; one was cut
     /// at <b>4104</b>; and two never reached the cut and are excluded, at 2104 and 2604 tokens, which
     /// is a prompt being counted rather than truncated. The suspicion that the repeated filler used by

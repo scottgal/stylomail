@@ -208,6 +208,21 @@ Two consequences worth knowing:
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults; the two above are the only ones a Host deployment can currently set.
 
+#### Measured performance
+
+The figures below are this lane's own measurements on the reference machine, serving `nimble:latest`
+through Ollama on loopback. Each carries its predicate and the artifact it came from; those artifacts
+are working files on the reference machine, not part of the repository.
+
+| Quantity | Marked | Value | Predicate and source |
+| --- | --- | --- | --- |
+| Model and server | MEASURED | `Bespoke-Nimble-9B-merged-current-Q8_0.gguf`, family `qwen35`, `9.0B`, `Q8_0`, served by Ollama `0.35.0` | What the server at `127.0.0.1:11435` reported for `nimble:latest` at 2026-09-30T20:32:30+0100. `nimble-survey4.json:89` (version) and `:97` to `:104` (model details). |
+| Applied prompt window | MEASURED | `4098` tokens with `8192` requested | The plateau of `prompt_eval_count` for a prompt larger than the window, which is the window the server applied. `nimble-shipping-shape-window.json:6` to `:8`, an artifact dated 2026-09-30T23:20:33+0100; the identical block sits at `nimble-window-check.json:10` to `:16`, which carries no date of its own. The same probe recorded `2050` with `4096` requested and `8194` with `16384` requested (`nimble-window-check.json:2` to `:25`). |
+| One full assessment | MEASURED | 25.13 s to 48.172 s, median 36.234 s, six messages | Wall time per message for the shape the adapter sends: `/api/generate` with 12 dimensions per request, every dimension answered. 2026-09-30T23:20:33+0100. The six cases are at `nimble-shipping-shape-window.json:23`, `:55`, `:87`, `:119`, `:151`, `:183`; the range runs from `:152` (25.13, the fastest) to `:184` (48.172, the slowest), and the median is over those six. |
+| One dimension asked alone, model resident | MEASURED | median 2.307 s, min 1.615 s, max 103.259 s, twelve calls | The tool's own summary lines, `nimble-survey4.json:381` to `:383`. The max is one stalled call. A repeat of eight calls reported `median_seconds` 1.751 and `max_seconds` 16.441 (`nimble-stall.json:136` and `:137`), whose note at `:138` says a max near the median there "does not prove it cannot." |
+
+Not measured here: memory footprint, disk size, and behaviour under concurrent requests.
+
 `NeverAsks` is not a provider: it is the deployment stating that it has none and will not ask one.
 The semantic tier then answers every dimension `NotApplicable`, which this design reads as "the
 question exists and was not asked, so nothing was lost". **It is a declaration about the deployment,

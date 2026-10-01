@@ -14,9 +14,9 @@ two kinds of statement and never one field (architecture decision 27):
 
 Run it as a file, from the repository root:
 
-    python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out .styloagent/scratch/batch --profile mixed
-    python3 tools/corpus/corpus.py seed  --base-url http://127.0.0.1:5271 --key-file .styloagent/scratch/batch/principal.key --batch .styloagent/scratch/batch
-    python3 tools/corpus/corpus.py check --base-url http://127.0.0.1:5271 --key-file .styloagent/scratch/batch/principal.key --manifest .styloagent/scratch/batch/manifest.json
+    python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out scratch/batch --profile mixed
+    python3 tools/corpus/corpus.py seed  --base-url http://127.0.0.1:5271 --key-file scratch/batch/principal.key --batch scratch/batch
+    python3 tools/corpus/corpus.py check --base-url http://127.0.0.1:5271 --key-file scratch/batch/principal.key --manifest scratch/batch/manifest.json
 
 Three properties are required rather than nice, and each is enforced here rather than promised:
 
