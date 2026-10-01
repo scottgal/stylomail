@@ -195,7 +195,7 @@ Two consequences worth knowing:
 
 | Key (under `StyloMail:Assessment:`) | Default | Notes |
 | --- | --- | --- |
-| `Provider` | `Jev` | `Jev` or `Nimble`. Matched by name, case-insensitively. |
+| `Provider` | `Jev` | `Jev`, `Nimble` or `NeverAsks`. Matched by name, case-insensitively. |
 
 `Nimble` runs the local decision model instead of the hosted one. Two settings, both under
 `StyloMail:Nimble:`, and both announced in the log at every boot:
@@ -208,11 +208,35 @@ Two consequences worth knowing:
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults; the two above are the only ones a Host deployment can currently set.
 
+`NeverAsks` is not a provider: it is the deployment stating that it has none and will not ask one.
+The semantic tier then answers every dimension `NotApplicable`, which this design reads as "the
+question exists and was not asked, so nothing was lost". **It is a declaration about the deployment,
+never a reading of a provider's health**, and the two are deliberately not interchangeable: an
+unreachable provider produces `Unavailable` rows, and a deployment that never asks produces
+`NotApplicable` ones. Policy must be able to tell those apart, and a blackout must never be
+convertible into a delivery by changing a setting.
+
+Two things follow from that, and they are why it is a name an operator writes down:
+
+- **It is never inferred.** The default stays `Jev`, so a deployment that names nothing and holds no
+  key is the half-configured refusal it already was, rather than one quietly running without semantic
+  evidence. A forgotten secret cannot become this selection.
+- **It holds no credential.** Like `Nimble` it needs the profile master key and nothing else. A
+  provider key left in the environment is not a reason to refuse: a deployment may carry a secret it
+  does not use, so it is **announced in the log at startup** rather than rejected.
+
+**What selecting it buys today is bounded, and this is the measured limit rather than a
+reassurance.** A `NotApplicable` semantic row still counts as a question this message asks, so it
+stays in the coverage denominator, and a deployment running this tier with the allow floor at its
+default is still **held on coverage** rather than allowed. The hold names coverage, not the semantic
+blackout, so it is not being mistaken for an outage. Everything the deployment does measure is
+measured for real; what it does not measure is not silently treated as clean.
+
 Three things follow from the choice, and they are the reason it is a named decision rather than a
 fallback:
 
 - **What the deployment must hold changes.** `Jev` needs a provider key and the profile master key.
-  `Nimble` needs the master key alone, because the local adapter holds no credential to pair with.
+  `Nimble` and `NeverAsks` need the master key alone, because neither holds a credential to pair with.
   The refusal messages name the missing variable, and they only name the ones the selected provider
   actually reads.
 - **An unrecognised name refuses to start**, listing the names it accepts. A typo that quietly
