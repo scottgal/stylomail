@@ -165,11 +165,30 @@ internal static class Program
         // Warm the model and say so. The first call after a context-window change pays a model
         // load, which the survey measured at 3.98 s, and folding that into a measurement would
         // report it as the provider's latency.
-        var warmup = Stopwatch.StartNew();
-        await runner.CallAsync(Corpus.Input(Corpus.Cases[0], null), CancellationToken.None);
-        warmup.Stop();
-        Console.WriteLine($"warmup (may include a model load): {warmup.ElapsedMilliseconds} ms");
-        Console.WriteLine();
+        //
+        // Modes that call nothing are skipped, and the reason is not tidiness. A warmup is a real
+        // call on the shared endpoint, so a mode whose whole point is that it consults no model would
+        // otherwise be the only traffic it sends, and a report saying "no call was made" would be
+        // false. That happened: `arms-current` and the dry rewrites both warmed up while their
+        // reports said zero calls. The property is now enforced here rather than asserted later.
+        // The dry and key modes above return before this point, so they never reach a warmup. These
+        // three do reach it and consult no model: `mime` and `arms-current` are input assembly, and
+        // `site-participants-dry` prints the rewrite it would make without asking anyone about it.
+        var modelFree = which is "mime" or "arms-current" or "site-participants-dry";
+
+        if (modelFree)
+        {
+            Console.WriteLine("warmup skipped: this mode makes no call, so the process sends none.");
+            Console.WriteLine();
+        }
+        else
+        {
+            var warmup = Stopwatch.StartNew();
+            await runner.CallAsync(Corpus.Input(Corpus.Cases[0], null), CancellationToken.None);
+            warmup.Stop();
+            Console.WriteLine($"warmup (may include a model load): {warmup.ElapsedMilliseconds} ms");
+            Console.WriteLine();
+        }
 
         var ran = new List<string>();
 
