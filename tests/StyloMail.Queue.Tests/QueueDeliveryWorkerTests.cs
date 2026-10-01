@@ -80,8 +80,16 @@ public class QueueDeliveryWorkerTests
         // an empty delivered time. The harness clock has not moved in this test, so the expected
         // value is exact rather than approximate.
         //
-        // Measured, not argued: with this line removed, mutation Z ("the delivered timestamp is
-        // never written") runs to a GAP, no test went red. With it, Z is CLAIMED by this test.
+        // ESTABLISHED, and checked rather than argued: at 2ce5a2a~1 this test had no DeliveredAt
+        // assertion of either polarity, so mutation Z ("the delivered timestamp is never written")
+        // had nothing here to fail against. Read from that revision, not re-derived.
+        //
+        // NOT ESTABLISHED YET, and deliberately not claimed: that no test ANYWHERE went red with Z
+        // applied and this control absent. That is the GAP half of the same measurement. It is
+        // authorised and gated on host swap. The measurement is `.styloagent/scratch/queue/
+        // gap-half-run.sh`, and the stronger sentence ("runs to a GAP, no test went red") belongs
+        // back here the moment its artifact exists. The CLAIMED half IS measured: with this control
+        // present, Z is claimed by this test (artifact `.styloagent/scratch/queue/z-artifact.log`).
         Assert.Equal(h.Clock.GetUtcNow(), recipient.DeliveredAt);
     }
 
