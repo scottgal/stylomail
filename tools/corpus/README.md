@@ -45,9 +45,22 @@ whole batch with it, rather than read and posted to the Host. A file that is abs
 batch is a different case and is skipped per message.
 
 Profiles: `benign` (ordinary mail whose checkable properties must come back absent), `phishing`,
-`mixed` (both, plus an envelope violation), `quarantine` (threshold-targeted, see below), and the
-paired fixture as `pair` (a baseline then a second turn carrying it as a window) and `pair-control`
-(the same pair with the change removed).
+`mixed` (both, plus an envelope violation), `quarantine` (threshold-targeted, see below), and two
+paired fixtures that test different layers:
+
+- `pair` / `pair-control`. A baseline, then a second turn carrying it as a **conversation window**.
+  The control is the same pair with the change removed. This is the conversational axis.
+- `template-variant` / `template-variant-control`. The same message twice, with the payment
+  destination swapped in the second copy. The control is the same pair with the destination left
+  alone, which makes turn 2 byte-identical to turn 1. No conversation window is supplied: this is
+  the **campaign** axis, and the comparison is against the Host's recent-message store, not against
+  `conversationContext`.
+
+The two pairs are not variants of each other and the difference is measured, not stylistic. `pair`'s
+second turn **rewrites** its first, and rewriting drops the wording similarity below the campaign
+detector's gate, so `pair` reaches `campaign.near_duplicate` and **never**
+`campaign.security_bearing_variant`. `template-variant`'s second turn **reuses** its first, which is
+the shape that reaches the variant. See "The two layers a changed destination can reach" below.
 
 `--coverage full` supplies authentication provenance and a connecting IP; `reduced` omits both on
 purpose. There is no third value: a batch whose coverage was an accident cannot be told from one
@@ -72,6 +85,19 @@ bodies-only window asks a different question from the one the Host asks. Version
 `turnCharacters` and `windowCharacters` to every message. The window change is why the number moved
 rather than staying: a consumer that compared window contents, or that measured a window's size to
 attribute a provider refusal, would read a different thing under the same number.
+
+Version 3 also added two fact ids and a `where` value, which is additive rather than a shape change:
+`campaign.security_bearing_variant` and `campaign.near_duplicate` are declared by the template
+fixtures, and both carry `"where": "batch"`. **A consumer that switches on `where` must handle
+`batch`**, which means "this fact is a comparison against the messages before this one, not a
+property of this message alone"; `mime`, `submission` and `reasons` keep their existing meanings. The
+number did not move for this, because no field changed name, type or arity: an unrecognised value in
+an existing string field is exactly what a consumer's default case is for.
+
+The same version added a per-message `notPlanted` list, the fifth shape of claim (beside the four
+`expected` predicates). It is additive on the same reasoning: a new optional field, absent from every
+manifest that does not make an absence claim, so a version 3 manifest without it reads exactly as it
+did before the field existed.
 
 ```json
 {
@@ -139,7 +165,8 @@ decision 27).
 
 ### `expected` is a predicate, not an integer
 
-Four shapes, because four kinds of claim are real and an integer can carry only the first:
+Four shapes, because four kinds of claim can be a predicate on an evidence **row**, and an integer
+can carry only the first:
 
 | predicate | the claim it makes |
 |---|---|
@@ -150,6 +177,42 @@ Four shapes, because four kinds of claim are real and an integer can carry only 
 
 A boolean cannot say "present and not firing", and it cannot say "the claim is provenance, not a
 value". Both of those are real, and both appear in a single batch.
+
+### `notPlanted` is the claim that has no row
+
+A fifth kind of claim is real and is **not** a predicate here, because it asserts that there is no
+row to carry a value. A per-message `"notPlanted"` list, sibling to `"planted"`, names fact ids that
+must be **absent from the evidence list entirely**:
+
+```json
+"planted": [ { "id": "campaign.near_duplicate", … } ],
+"notPlanted": [ "campaign.security_bearing_variant" ]
+```
+
+Absent, not present-and-NotApplicable. A row that is there with `availability: Unavailable` says the
+pipeline considered the signal and found nothing to say; a signal absent from the list says it was
+never emitted. Those are different observations, and `{"available": false}` asserts the first, which
+is why an absence claim needs this mechanism rather than a fifth predicate. The field is present only
+when the message makes such a claim, so a missing `notPlanted` means "nothing asserted absent" and
+never "asserted empty".
+
+Two guards, both falsified rather than trusted (`.styloagent/scratch/corpus/probe_notplanted.py`):
+
+- **`generate` refuses** a plan that names one id in both `facts` and `not_planted`. A fact cannot be
+  planted and asserted absent at once, and a manifest that said so would force `check` to pick a side.
+- **`check` fails** a manifest whose `notPlanted` id **is** in the evidence list, and also fails a
+  `notPlanted` id that is not a fact this corpus knows (a typo would otherwise assert nothing), and
+  fails the whole claim on a message refused at intake, where absence is true only because no
+  evidence was gathered and so tests nothing.
+
+**A note for whoever next edits that probe**, because the mistake is easy to reintroduce. The first
+version of the second case moved an id into `notPlanted` but left it in `planted` as well, so the run
+tripped the **contradiction** guard while reporting that the **absence** guard had been exercised.
+The absence guard went untested and the output still said a guard fired: a check that fails for the
+wrong reason is the same defect as a test that passes for the wrong reason, and here it was hiding a
+claim nobody had falsified. To drive the absence path deliberately the id must be REMOVED from
+`planted` first, not merely copied into `notPlanted`. `overview-` ruled (1 Oct) this belongs in the
+document rather than in a message, since the next editor of the probe is the person who needs it.
 
 ### `controlFor`
 
@@ -251,7 +314,74 @@ have to take on trust:
 | the ladder, quarantine reachability, the dead-end campaign dimension, the release path, an Allow populating no listing | `tools/corpus/measure_reachability.py` | its `--out` JSON |
 | the durable-route mechanism and the gate in both directions | `.styloagent/scratch/corpus/probe_gate.py` | `probe-gate/run.txt`, `probe-gate/result.json` |
 | the window flipping continuity to Available, measured on the pair **and** its control | `.styloagent/scratch/corpus/probe_pair.py` | `probe-pair/both-profiles.json` |
+| the campaign rows on all four paired arms | `.styloagent/scratch/corpus/probe_pair.py` | `probe-pair/both-profiles.json` |
 | the v2 batch table and the reconstituted `emails.zip` result | `.styloagent/scratch/corpus/run_batch.py` | `scratch/corpus/logs/` |
+
+## The two layers a changed destination can reach
+
+A changed payment destination is not one fact. `overview-` ruled the `destinations` identifier does
+not exist anywhere in `src/`, and named the two things that do, by layer:
+
+- `semantic.payment_redirection`, a semantic dimension (`Core/SemanticDimension.cs:65`, weight 1.0 at
+  `Policy/PolicyContracts.cs:122`). A model's judgement, so it is not a planted fact and this corpus
+  does not declare it: the corpus plants what is really in the bytes, never what a model will say
+  about them.
+- `payment.identifier`, a deterministic fingerprint component (`Assessment/Semantic/
+  SecurityBearingFingerprint.cs:100`), extracted from the body with no model and no network, feeding
+  the digest that `campaign.security_bearing_variant` is computed from.
+
+So the corpus CAN plant the deterministic half, and now does. Measured 1 Oct, seed 77, count 4, all
+four arms through the real seed-and-check path:
+
+| arm | turn 2 wording | destination | `campaign.security_bearing_variant` |
+|---|---|---|---|
+| `pair` | rewritten | changed | absent |
+| `pair-control` | rewritten | unchanged | absent |
+| `template-variant` | reused | changed | **Available, value 1** |
+| `template-variant-control` | reused | unchanged | absent |
+
+Both reused-wording arms have second-turn messages of **identical length (497 bytes raw, headers
+included; 232 bytes of body)** differing in exactly one line, the sort code and account number, so
+the destination is the only variable between them. Between `pair` and `template-variant` the only
+variable is whether the wording is reused. The two numbers are both given because they measure
+different things and a reader comparing against `manifest.json` will find the body length as
+`turnCharacters` (232) and not the file length.
+
+Two things this table is for:
+
+1. **It corrects a claim this file would otherwise have made.** `pair` was the only paired fixture,
+   and its change was recorded under `undescribedChange` as "real in the bytes, not yet assertable".
+   That was true and incomplete: the change is not assertable on the CONVERSATIONAL layer until the
+   conversation lane lands, but it was assertable on the campaign layer all along, and `pair` cannot
+   reach it because a rewrite is not a reuse. The layer was reachable; the fixture was wrong.
+2. **It is a control, not a demo.** `template-variant-control` reuses the wording and keeps the
+   destination, and the variant does not fire. A detector that fired on any repeated wording would
+   pass the `template-variant` claim while being wrong about ordinary repeated mail, and the control
+   is where that shows.
+
+`campaign.security_bearing_variant` therefore carries `"where": "batch"`, a value no other fact uses.
+Every other fact is a property of one message; this one is a comparison against the messages before
+it, so the same bytes report differently at different positions in a batch. Measured: in a
+`template-variant` batch of four the signal fires on both turn 2s AND on the second turn 1 (index 2),
+which follows the previous pair's changed turn 2 and reverts the destination, and not on index 0,
+which has nothing behind it. The manifest **plants** the fact on each index where it was measured to
+fire and **asserts it absent** at index 0. The rule is positional (index 0 versus the rest) rather
+than by parity: an earlier version planted it on odd indices only, which left index 2 firing, true
+and unasserted, and the manifest claiming less than it knew. The rule is stated for any batch length,
+so the assertion at indices past the measured four is an extrapolation: it was tested rather than
+assumed, by seeding a batch of six and letting `check` fail it if the fifth message behaved
+differently. It did not, and both arms pass at count 4 and count 6.
+
+**The absence is now asserted, not merely observed.** In every arm above where the variant does not
+fire, its row is **absent from the evidence list**, not present-and-zero. That was a gap this file
+used to report and could not close: `fact_present` has no predicate for absence, and
+`{"available": false}` asserts the different and false claim that the row is there and NotApplicable.
+The control asserted the checkable positive (`campaign.near_duplicate` fires) and only *reported* the
+variant's absence. The gap is closed by `notPlanted` (above): `template-variant` asserts the variant
+absent at index 0, where it was measured not to fire, and **planted** at the indices where it was; and
+`template-variant-control` asserts it absent on every message. This was not an interface change to
+hold back for another lane: `overview-` checked the tree and confirmed nothing reads a manifest, so
+the interface between this lane and the console is the `seed` CLI, not the file.
 
 - **The durable route is the only route whose evidence reaches the decision.** `seed` therefore uses
   `POST /v1/submissions`. The mechanism is one step further in than it looks, and an earlier version
@@ -302,11 +432,31 @@ have to take on trust:
   reports `0`, the control reports `1`. So the window's **content is load-bearing for the answer**,
   which is itself the result worth having, and a consumer comparing continuity values across corpus
   versions is comparing answers to different questions.
-  **Not claimed: what `0` and `1` mean.** `conversation-` labels the axis A (the body's content is
-  contained in the supplied window) and B (it advances past it); which integer is which is theirs to
-  say and this tool does not guess it. Reported alongside so it can be checked rather than assumed:
-  the changed turn shares 6 long tokens with turn 1 (it cites the details it supersedes), the control
-  shares 2 (`invoice`, `payment`, topical to the subject).
+  **The mapping, supplied by the lane that owns it (1 Oct), not guessed here.** `conversation-`
+  states it: **`value == 1.0` is A** (consistent with the prior exchange) and **`value == 0.0` is B**
+  (inconsistent with, or unrelated to, the context), criterion text at `Core/SemanticDimension.cs:130-131`.
+  So on this fixture the **changed turn reads B (advancing)** and the **control reads A (contained)**,
+  which is the couplet behaving as built: the changed turn moves past the window and the control does
+  not. An earlier version of this file said the two arms had "the same value at version 2", which was
+  true of the number and misleading about the fixture: both arms read `0` under version 2, which under
+  this mapping means both read B, so version 2 could not distinguish them at all.
+  **And the danger that was flagged is retracted, because it rested on a guess.** This tool had warned
+  that if `0` were A the fixture would be inverted. `0` is B, so it is not inverted. The conditional
+  was honest at the time and it is now resolved, which is the point of not having asserted it.
+- **The token count is not a containment check, it is anti-correlated with the answer.** Measured:
+  the changed turn shares **6** long tokens with turn 1 (it cites the details it supersedes) and the
+  control shares **2** (`invoice`, `payment`), and the arm that overlaps MORE is the arm that reads B.
+  So this tool's containment boolean is worse than non-discriminating: it prints `True` for both arms
+  and its count runs **opposite** to the reading. Neither may be quoted as evidence about containment.
+  `conversation-` reached the same conclusion independently from the other direction (their arm holds
+  the overlap up while changing the asserted state, and also reads B), so the criterion is containment
+  of the asserted state and not shared words. A token metric cannot reproduce it.
+- **Consequence for reading the batch table, and it inverts the intuition.** `conversation-`'s ruling:
+  a non-confirming continuity row is **masked** on the shipping path and contributes nothing to the
+  index, while a confirming one enters the numerator at full weight. So in the pair, the **control arm
+  is the arm that carries risk** for the ordinary property of agreeing with its own thread, and the
+  changed arm carries none. A reader who assumes the control is the quiet half has it backwards. Both
+  arms still return `Allow` here, because the dimension's weight alone does not reach a threshold.
 - **The risk index is a weighted mean over semantic weight only.** `campaign.*` and `behavioural.*`
   evidence contributes to neither numerator nor denominator, so history can make unweighted evidence
   Available and still move the score by nothing. A batch of near-duplicate messages from one sender
@@ -378,6 +528,8 @@ which moves independently and is owned by the Host.
   | `phishing --count 2 --coverage reduced` | 2 accepted, 1 Allow + 1 Hold; `?state=held` 1 row, `?state=awaiting_decision` 1 row |
   | `pair --count 4 --coverage full` | 4 accepted, all Allow, every listing 0 rows |
   | `pair-control --count 4 --coverage full` | 4 accepted, all Allow, every listing 0 rows |
+  | `template-variant --count 4 --coverage full` | 4 accepted, all Allow, every listing 0 rows; `campaign.security_bearing_variant` verified on both turn 2s |
+  | `template-variant-control --count 4 --coverage full` | 4 accepted, all Allow, every listing 0 rows; `campaign.near_duplicate` verified, no variant anywhere |
 
   Every batch above ran on a loopback Host on a port chosen free per run, so no port is recorded
   here: a number in this table would be wrong on the next run. The port in use is printed by
@@ -389,10 +541,12 @@ which moves independently and is owned by the Host.
   decision never reaches is the point, not an omission: an Allow populates no listing, so the pair's
   zero rows are how the control stays quiet.
 
-  The pair rows carry the one number that moved at version 3 and is not explained here: the
-  `semantic.conversational_continuity` row reads **0** for `pair` and **1** for `pair-control`, where
-  under version 2 both read `0.0`. This tool records the reading and declines to interpret which end
-  is A and which is B; that mapping is `conversation-`'s to state (see the window section above).
+  The pair rows carry the number that moved at version 3: the `semantic.conversational_continuity`
+  row reads **0** for `pair` and **1** for `pair-control`, where under version 2 both read `0.0`. By
+  the mapping `conversation-` supplied, `1.0` is A (contained) and `0.0` is B (advancing), so the
+  changed turn reads B and the control reads A, which is the fixture working as designed. See the
+  window section above, which also records that the control arm is the one carrying risk and that the
+  token count runs opposite to the reading.
 
 - **The invocation the console harness uses is verified compatible**: `ux-scripts/console-harness.sh`
   `console_seed_corpus` calls `seed --base-url … --key-file … --batch …`, which is this tool's
