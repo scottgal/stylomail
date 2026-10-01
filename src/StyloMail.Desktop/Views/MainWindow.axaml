@@ -606,6 +606,21 @@
                                    Text="{Binding RiskIndexArithmetic}" />
 
                         <!--
+                            The fraction itself, which is what the refusal text
+                            quotes. The divisor above cannot stand in for it: the
+                            divisor IS the fraction's numerator, so a pane holding
+                            only that field has one term of two. Said as a sentence
+                            for the same reason as the line above, so "not
+                            recorded" is told apart from a measured zero and a
+                            measured one.
+                        -->
+                        <TextBlock x:Name="CoveredWeightArithmeticText"
+                                   Classes="paneDetail"
+                                   Margin="0,0,0,4"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding CoveredWeightArithmetic}" />
+
+                        <!--
                             Seen after delivery. Every action this decision names
                             is post-hoc, and rendering it like any other would
                             tell an operator the system could have intervened when

@@ -30,6 +30,34 @@ public sealed class DecisionViewTests
     }
 
     /// <summary>
+    /// The fraction has three readings and the pane says which one it is: zero
+    /// and one are measurements at the two ends of the range, and null is a
+    /// decision made before the member was recorded. Collapsing the third into
+    /// the first reports an unrecorded arithmetic as a measured empty one, which
+    /// is the failure the neighbour's remarks exist to prevent, so all three
+    /// arms are asserted rather than the value alone.
+    /// </summary>
+    [Fact]
+    public void The_covered_weight_fraction_says_which_of_its_three_readings_it_is()
+    {
+        var full = DecisionView.From(Decision());
+        Assert.Contains("1 was counted", full.CoveredWeightArithmetic);
+        Assert.DoesNotContain("not recorded", full.CoveredWeightArithmetic);
+
+        // The measured-empty reading, derived by substitution from the first so
+        // that the three arms are covered on ONE fixture rather than on files
+        // that can drift apart.
+        var empty = DecisionView.From(Decision(
+            Wire.Decision.Replace("\"coveredWeightFraction\": 1.0", "\"coveredWeightFraction\": 0.0")));
+        Assert.Contains("0 was counted", empty.CoveredWeightArithmetic);
+        Assert.DoesNotContain("not recorded", empty.CoveredWeightArithmetic);
+
+        var absent = DecisionView.From(Decision(Wire.DecisionWithoutOptionalMembers));
+        Assert.Contains("not recorded", absent.CoveredWeightArithmetic);
+        Assert.DoesNotContain("the share the refusal text quotes", absent.CoveredWeightArithmetic);
+    }
+
+    /// <summary>
     /// Every reason resolves to the evidence behind it, because a reason with
     /// no visible evidence is an assertion. This is what makes the pane
     /// navigable rather than merely informative.

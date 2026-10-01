@@ -36,6 +36,7 @@ internal static class Wire
           "proposedActionInShadow": null,
           "riskIndex": 0.82,
           "riskIndexDenominator": 1.33,
+          "coveredWeightFraction": 1.0,
           "reasons": [
             {
               "code": "credential_request_high",
@@ -169,6 +170,7 @@ internal static class Wire
           "proposedActionInShadow": null,
           "riskIndex": 0.04,
           "riskIndexDenominator": null,
+          "coveredWeightFraction": null,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],
@@ -206,6 +208,7 @@ internal static class Wire
           "proposedActionInShadow": "Quarantine",
           "riskIndex": 0.77,
           "riskIndexDenominator": 0.77,
+          "coveredWeightFraction": 0.5,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],
@@ -701,6 +704,7 @@ internal static class Wire
           "proposedActionInShadow": null,
           "riskIndex": 0.5,
           "riskIndexDenominator": 0.5,
+          "coveredWeightFraction": 0.5,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],

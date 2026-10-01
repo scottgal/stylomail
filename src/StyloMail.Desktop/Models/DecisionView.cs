@@ -90,6 +90,22 @@ public sealed class DecisionView
     /// </remarks>
     public required string RiskIndexArithmetic { get; init; }
 
+    /// <summary>
+    /// The share of the asked weight that carried weight, said as a sentence,
+    /// because it is the number the refusal text quotes and a pane showing only
+    /// the divisor cannot recover it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Always a sentence, including when the answer is "not recorded".</b>
+    /// Null is neither zero nor one on this field: a served <c>0</c> and a
+    /// served <c>1</c> are both measurements, at the two ends of the range, and
+    /// a served <c>null</c> is a decision made by a build that did not record
+    /// the fraction. Rendering the absent case as <c>0</c> would report an
+    /// unrecorded share as a measured empty one, which is the failure the
+    /// neighbouring divisor's remarks exist to prevent.
+    /// </remarks>
+    public required string CoveredWeightArithmetic { get; init; }
+
     public required IReadOnlyList<ReasonView> Reasons { get; init; }
 
     public required IReadOnlyList<DimensionView> Dimensions { get; init; }
@@ -166,6 +182,15 @@ public sealed class DecisionView
                     + ": this index is the summed score of the rows that entered it."
                 : "The weight this index was divided by was not recorded for this decision, so it "
                     + "cannot be checked from what is here.",
+
+            // The fraction the refusal text quotes, and the same two readings to
+            // keep apart: zero and one are measurements, null is an absence.
+            CoveredWeightArithmetic = decision.CoveredWeightFraction is { } covered
+                ? "Of the weight this decision asked about, "
+                    + string.Create(CultureInfo.InvariantCulture, $"{covered:0.###}")
+                    + " was counted: this is the share the refusal text quotes."
+                : "The share of the asked weight that was counted was not recorded for this decision, "
+                    + "so it cannot be checked from what is here.",
             Reasons = [.. decision.Reasons.Select(reason => ReasonView.From(reason, bySignal))],
             Dimensions = [.. decision.RiskDimensions.Select(DimensionView.From)],
             Evidence = [.. decision.Evidence.Select(EvidenceView.From)],

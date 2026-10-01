@@ -64,6 +64,24 @@ public sealed record DecisionResponse
     /// </remarks>
     public required double? RiskIndexDenominator { get; init; }
 
+    /// <summary>
+    /// The share of the asked weight that carried weight, as the refusal text
+    /// quotes it. <see cref="RiskIndexDenominator"/> is this fraction's
+    /// NUMERATOR and never its denominator, so a pane holding only that field
+    /// cannot recover the ratio.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null is neither zero nor one.</b> Both ends of the range are
+    /// <i>measurements</i>: a served <c>1</c> is every asked dimension counted,
+    /// and a served <c>0</c> is none of what was asked carrying weight. A served
+    /// <c>null</c> is a decision made by a build that did not record the member,
+    /// which is a row written before it existed, so the pane says the fraction
+    /// is not recorded rather than rendering an unrecorded arithmetic as a
+    /// measured empty one. The Host serves an explicit <c>null</c> for those
+    /// rows rather than omitting the member.
+    /// </remarks>
+    public required double? CoveredWeightFraction { get; init; }
+
     /// <summary>Ordered reason codes: the answer to "why", before any score is shown.</summary>
     public required IReadOnlyList<ReasonResponse> Reasons { get; init; }
 

@@ -7,6 +7,7 @@
   "proposedActionInShadow": null,
   "riskIndex": 0.82,
   "riskIndexDenominator": 1.225,
+  "coveredWeightFraction": 1.0,
   "reasons": [
     { "code": "credential_request_high", "message": "Message requests credentials and the sender has no trusted history.", "evidenceSignalIds": ["sig_cred", "sig_hist"] },
     { "code": "link_display_mismatch", "message": "Displayed link text names one host and the target names another.", "evidenceSignalIds": ["sig_link"] },
