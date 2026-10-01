@@ -140,22 +140,18 @@ actions:
     value: "03-decision-pane"
     description: "The decision pane for the held message, dimension rows and all"
 
-  # The message's own decision, by the model's own number for it. This is what
-  # makes the pane's contents about this message rather than about any decision
-  # the Host holds.
-  #
-  # RE-PINNED 2026-10-01 23:0x, from 0.575 to 0.566, and the move is the point
-  # worth recording rather than a value fitted to the output: the pin was taken
-  # under the OLD applied window, and raising `EffectiveNumCtx` changes how many
-  # of the twelve questions the model answers, which changes the semantic
-  # dimensions and therefore the index. 0.566 was the rendered value in THREE
-  # runs at the window that makes the submission assessable at all. A model-generated score
-  # is a measurement of the model AND the window, so this pin should be read as
-  # one, and asking whether a smoke should pin such a number at all is open.
+  # THE SHAPE, NOT THE NUMBER, as overview- ruled on 2026-10-01: a
+  # model-generated index is a measurement of the model AND the applied window
+  # together, so an exact pin here would fail on a legitimate model or window
+  # change and would be re-pinned rather than investigated, which is how a pin
+  # stops being a test. This assertion held 0.575 and then 0.566 for exactly that
+  # reason: raising `EffectiveNumCtx` changes how many of the twelve questions the
+  # model answers, which changes the semantic dimensions and therefore the index.
+  # An index was rendered, for this message, and the value is a reading.
   - type: Expect
     target: "name=RiskIndexText"
     matcher: ContainsText
-    value: "risk index 0.566"
+    value: "risk index"
 
   # And the rule that number is rendered with, which is not decoration: an index
   # is not a probability, and a pane that showed it as one would be the exact
@@ -164,6 +160,29 @@ actions:
     target: "name=RiskIndexText"
     matcher: ContainsText
     value: "an index, not a probability"
+
+  # THE ARITHMETIC LINE NAMES ITS DIVISOR, and it is the property rather than the
+  # value for the same reason as the index above: the divisor is the weight THIS
+  # message's decision asked about, so it moves with the message. What must hold
+  # is that the pane says an index was divided by a counted weight at all, since
+  # an index a reader cannot check from the pane is one they take on trust.
+  # The literal is quoted from DecisionView.cs:180 rather than from the
+  # screenshot, which read it back as "count weight".
+  - type: Expect
+    target: "name=RiskIndexArithmeticText"
+    matcher: ContainsText
+    value: "Divided by a counted weight of"
+
+  # THE COVERED FRACTION, as a shape for the same reason: 0 and 1 are
+  # measurements at the two ends of the range and null is a build that did not
+  # record the member, so what must hold is that the pane says which of the three
+  # it is looking at rather than rendering nothing. `was counted` is present on
+  # both the measured positive and the measured zero and absent from the
+  # unrecorded sentence, which is the distinction the field exists for.
+  - type: Expect
+    target: "name=CoveredWeightArithmeticText"
+    matcher: ContainsText
+    value: "was counted"
 
   # What policy did with the message, which is the same fact the row is showing
   # from the other side: the row says Held, the decision says Hold.
