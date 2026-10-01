@@ -272,9 +272,16 @@ ran from **19574** tokens on prose to **42026** on a hexadecimal-looking body, a
 base64-ish 33278, mixed 34262, random-case 38570, punctuation-heavy 40094, hex-ish 42026). Reaching
 `32768` needs an expansion above **4.00x**, and **five of the six shapes exceed it**: only prose is safe,
 and the hex-ish arm clears the guard by 1.28x. So `EffectiveNumCtx` at `32768` **refuses a
-twelve-question message whose body is dense, and does not refuse one whose body is prose**. The shape
-that matters most is the one real mail takes, since a base64 attachment or a quoted-printable body is
-dense by construction, and such a message comes back `Unavailable` today. That is the failure the 503
+twelve-question message whose body is dense, and does not refuse one whose body is prose**. What is
+measured is the body's content, and five of six bodies whose text is naturally dense come back
+`Unavailable` today: long hexadecimal, pasted base64 or JSON, log and diff output, heavy punctuation.
+That is the **author's** density rather than a transfer encoding's, because the analyser decodes
+quoted-printable and base64 parts before the classifier sees any text
+(`BoundedMimeMessageAnalyzer.cs:150-151` and `:379`). An attachment cannot be the cause either:
+`NimbleMessageState.Build` puts only metadata in the state for one, a file name, its declared and
+implied content types, a byte size and whether the content was available
+(`NimbleMessageState.cs:82-89`), so attachment content never reaches the prompt, and the dense text that
+can is `BodyText` and `QuotedText`, which share a single budget (`:62-64`). That is the failure the 503
 above records, still present for a content class nobody had varied. Prose runs are unaffected and their
 results stand.
 
