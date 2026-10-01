@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import atexit
 import base64
 import json
 import os
@@ -244,6 +245,13 @@ def redact_connection_token(path: pathlib.Path) -> int:
     if count:
         path.write_text(scrubbed)
     return count
+
+
+# Registered as well as called, because the call at the end of a run is on the happy path only. A
+# probe that raises before it gets there leaves the token in a log that outlives the socket, which is
+# exactly the case the redaction exists for; this is idempotent and tolerates an absent file, so the
+# second call is a no-op and the first survives a crash.
+atexit.register(redact_connection_token, ROOT / "host.log")
 
 
 def main() -> int:
