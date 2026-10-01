@@ -514,7 +514,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// <para>
     /// <b>That paragraph used to derive the 0.0 case from the alphabet, and the derivation is retired
     /// with the alphabet rather than the conclusion.</b> It read "This provider answers with a letter,
-    /// so ..." — under <c>nimble-request-shape/1</c> every value was 1.0 or 0.0 by construction, which
+    /// so ...": under <c>nimble-request-shape/1</c> every value was 1.0 or 0.0 by construction, which
     /// made the collision above unavoidable rather than merely possible. A SystemOne Noul answer is a
     /// probability in [0, 1], so a 0.0 is now one point on a scale the model chose. The consequence a
     /// reader acts on is unchanged and is why the paragraph stays: 0.0 still does not distinguish
