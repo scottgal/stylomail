@@ -700,14 +700,20 @@ public static class HostServices
         //
         // WHY `appsettings.json` CARRIES A PIN, since this is the first appsettings file in this
         // project and the number is not self-explaining. 65536 is a floor above the largest evaluation
-        // measured on a request SHAPE the adapter can produce -- twelve questions, 2400-byte body,
-        // inside both caps -- which is **42026 tokens** (hex-ish, `probe-expansion`). A second
-        // figure, 46556, briefly looked like a competing candidate and is NOT one: `probe-shift.py`
+        // measured on a request shape the adapter can produce, which is **43202 tokens**: hex-ish,
+        // twelve questions, and a **2500-character body** -- the FULL `MaxBodyCharacters` budget, so
+        // the largest body this adapter sends. `nimble-`'s runs bound it from inside, and the arm that
+        // sets the bound is the one AT the budget rather than the first one measured:
+        //   2000-byte body  `.styloagent/scratch/nimble/expansion-shapes-2000.json`  hexish  37298
+        //   2400-byte body  `.../expansion-shapes.json`                              hexish  42026
+        //   2500-byte body  `.../expansion-shapes-2500.json`                         hexish  43202  <- binding
+        // This paragraph cited the 2400-byte arm until `conversation-` enumerated the directory; the
+        // command is `ls .styloagent/scratch/nimble/expansion-shapes*.json` and nobody ran it.
+        //
+        // And 46556, which briefly looked like a competing candidate, is NOT one: `probe-shift.py`
         // asks its `n_real` real questions PLUS the probe question, so its twelve-question arm is a
-        // THIRTEEN-question request, and there are only TWELVE dimensions. `nimble-` found this in
-        // the artifact's own `answers_returned = 13`, the tell that was there all along. A
-        // thirteen-question request and a 3600-byte body are the same class -- reachable as HTTP
-        // requests, not as adapter states -- which is why 42026 stands alone as the bound.
+        // THIRTEEN-question request, and there are only TWELVE dimensions -- the artifact's own
+        // `answers_returned = 13` was the tell that sat unread.
         //
         // AND THE 46556 READING IS STILL WORTH KEEPING, because it errs the safe way: the server read
         // a 46,556-token prompt IN FULL with the codeword at the START returning 0.9987, and that
@@ -731,9 +737,9 @@ public static class HostServices
         //
         // So the claim this pin supports is the narrow one, that 65536 clears every
         // evaluation this repository has measured, and not the broad one that too-high is safe.
-        // The densest shape anyone has TRIED reaches 42026, so this is a floor and not a law, and an
-        // environment variable still overrides it. (46556 is higher but is a THIRTEEN-question arm,
-        // which the dimension set cannot produce.)
+        // The densest shape anyone has TRIED, at the full body budget, reaches 43202, so this is a
+        // floor and not a law, and an environment variable still overrides it. (46556 is higher but is
+        // a THIRTEEN-question arm, which the dimension set cannot produce.)
         //
         // Unparseable or absent means the default, which is the same shape the two keys above use.
         var numCtx = configuration["StyloMail:Nimble:NumCtx"];
@@ -823,7 +829,12 @@ public static class HostServices
         // request size, state shape and question count all held fixed and every arm inside the
         // 8192-byte cap. Six arms at twelve questions with bodies at 2400 bytes, so that each arm is
         // a state the adapter actually produces -- `nimble-`, second run, 23:53 (artifact
-        // `.styloagent/scratch/nimble/expansion-shapes.json`):
+        // `.styloagent/scratch/nimble/expansion-shapes.json`).
+        //
+        // ONE RUN OF THREE, and the BINDING one is not this. The same six arms were run at a 2000-byte
+        // body (hex-ish 37298) and at the full 2500-character budget (hex-ish 43202); the per-row
+        // ratios below are this run's and must not be compared across runs, but the BOUND is set by
+        // the arm AT the budget, which is the 2500-byte one named above.
         //
         //     shape        request B   input_tokens   expansion   B/token
         //     prose            6810         19574      2.874x     0.3479
@@ -858,12 +869,12 @@ public static class HostServices
         //
         // LIMITS, STATED RATHER THAN LEFT FOR A READER, and two of them are corrections to stronger
         // sentences that briefly stood here. The six shapes were CHOSEN and not sampled, so a denser
-        // shape than hexish is unmeasured and the ceiling is open above 42026; non-ASCII is untested,
+        // shape than hexish is unmeasured and the ceiling is open above 43202; non-ASCII is untested,
         // because the adapter escapes it as \uXXXX and that would change the wire bytes. AND THE ARMS
         // RAN AGAINST THE ENDPOINT DIRECTLY, not through the shipping adapter and assessor, so a
         // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
-        // refutable form of the claim is that a 2400-character hexish body through the real pipeline
-        // evaluates about 42026 and is refused at 32768; that run is QUEUED behind the build hold and
+        // refutable form of the claim is that a 2500-character hexish body -- the FULL budget -- through
+        // the real pipeline evaluates about 43202 and is refused at 32768; that run is QUEUED and
         // has not been taken, so the table describes arms, not the deployment.
         //
         // On the POPULATION, AND BOTH OF THE TEMPTING SENTENCES ARE FALSE. Each is refuted at source,
@@ -894,7 +905,7 @@ public static class HostServices
         //
         // AND THE PIN MOVES THIS EXPOSURE RATHER THAN REMOVING IT, which is the sentence to carry out
         // of tonight. At the landed `EffectiveNumCtx 65536` the largest evaluation any MEASURED
-        // admissible body reaches is 42026, so dense content is NO LONGER REFUSED and the refusal is
+        // admissible body reaches is 43202, so dense content is NO LONGER REFUSED and the refusal is
         // not the live case. What still binds is the BODY BUDGET, which the pin does not touch:
         // `NimbleOptions.MaxBodyCharacters` (2500 -- note the OTHER `MaxBodyCharacters`, on
         // `MailAssessorOptions`, defaults to 1_000_000 and is a different cap) shortens any body or
