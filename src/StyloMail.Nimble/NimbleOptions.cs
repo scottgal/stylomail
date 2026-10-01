@@ -78,10 +78,29 @@ public sealed class NimbleOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The model card declares 262144 and the loaded model answers with 8194.</b> Measured: with no
-    /// <c>num_ctx</c> set, <c>/api/show</c> reports a loaded <c>context_length</c> of 8194, so the
-    /// effective window is 8194 regardless of what the card says. 8192 is the conventional setting
-    /// near it and is the value the shipping request shape was measured with.
+    /// <b>What is requested is not what is applied, and this value is the request.</b> The window the
+    /// server actually gives a call is <see cref="AppliedContextWindow"/>, which on the reference
+    /// server is half of this. Anything that reasons about how much of a message was read must use
+    /// that one; this value is only what goes on the wire and what the cache key carries.
+    /// </para>
+    /// <para>
+    /// <b>The three numbers are not the same number, and an earlier version of this remark conflated
+    /// two of them.</b> Measured on 30 Sep 2026 against <c>nimble:latest</c> on the 0.35.0 server:
+    /// <c>/api/show</c> reports <c>qwen35.context_length</c> <b>262144</b> (the architecture's
+    /// maximum, the figure the model card quotes), a Modelfile parameter <c>num_ctx</c> of <b>8194</b>,
+    /// and a request asking 8192 is cut at <b>4098 to 4104</b> depending on what the prompt is made
+    /// of. The <c>context_length</c> field is not 8194, and neither it nor the Modelfile parameter is
+    /// the applied window.
+    /// </para>
+    /// <para>
+    /// <b>The cut is a band a few tokens wide, not an exact boundary</b>, and that is measured rather
+    /// than assumed. Five fillers of different content were sent at this window
+    /// (<c>--window-quantum</c>, artifact <c>.styloagent/scratch/nimble/window-quantum.json</c>):
+    /// three of them, including one that does not repeat at all, were cut at <b>4098</b>; one was cut
+    /// at <b>4104</b>; and two never reached the cut and are excluded, at 2104 and 2604 tokens, which
+    /// is a prompt being counted rather than truncated. The suspicion that the repeated filler used by
+    /// the ladder was quantising the number is therefore refuted: a non-repeating filler lands on the
+    /// same figure.
     /// </para>
     /// <para>
     /// Changing this forces Ollama to reload the model, which the survey measured at 3.98 s on top of
@@ -90,6 +109,67 @@ public sealed class NimbleOptions
     /// </para>
     /// </remarks>
     public int NumCtx { get; set; } = 8192;
+
+    /// <summary>
+    /// The context window the server applies, when it is not the relation <see cref="AppliedContextWindow"/>
+    /// derives. Null means "use the derived value".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An escape hatch, not a setting anyone should need on the reference server.</b> It exists
+    /// because the relation below is a measurement of one server's behaviour rather than a rule of
+    /// the protocol, and a deployment against a server that honours the request exactly should say so
+    /// here rather than inherit a margin it does not need.
+    /// </para>
+    /// <para>
+    /// A client cannot read the applied window from a response. A truncated prompt comes back with
+    /// <c>done_reason</c> "stop", no warning field, and a <c>prompt_eval_count</c> that describes the
+    /// shortened prompt, so the only way to know the window is to measure it by saturating it, which
+    /// is what <c>tools/nimble-survey/survey_nimble.py --context-slots</c> does.
+    /// </para>
+    /// </remarks>
+    public int? EffectiveNumCtx { get; set; }
+
+    /// <summary>
+    /// The window the fit and the truncation backstop reason about: <see cref="EffectiveNumCtx"/> when
+    /// set, otherwise half of <see cref="NumCtx"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Half, because that is where the cut falls, and it is deliberately the low end of the
+    /// band.</b> On the reference server a requested 4096 was cut at 2050, a requested 8192 at 4098,
+    /// and a requested 16384 at 8194. The last two are not single points: five fillers of different
+    /// content at 8192 were cut at 4098 (three of them, one non-repeating), at 4104 (one), and two
+    /// never reached the cut at all, so the cut is a band and half is at or below its floor.
+    /// </para>
+    /// <para>
+    /// <b>Rounding down is the point, not an approximation to apologise for.</b> The property this
+    /// feeds is a truncation backstop: it reports <c>Unavailable</c> when the server evaluated a
+    /// prompt at the window, meaning part of the message was not read. A bound a few tokens below the
+    /// real cut fires slightly early, which costs an unavailable answer on a message that was almost
+    /// certainly cut anyway; a bound a few tokens above it would let a partly-read message through as
+    /// a complete answer, which is the failure this exists to prevent. The derivation is therefore not
+    /// adjusted upward to 4098 to match the band's floor.
+    /// </para>
+    /// <para>
+    /// <b>Two explanations were tested and one was refuted.</b> The obvious cause is a server dividing
+    /// the requested context among parallel slots, so the probe asked for one slot and then for two.
+    /// The applied window did not move: 4098 for one slot, for two, and for the default. The splitting
+    /// mechanism is therefore not <c>num_parallel</c>, and it remains unexplained. What is not in doubt
+    /// is the number, because the same probe established that the server's token counting is absolute
+    /// rather than relative to the window: a fixed 3,720-character prompt evaluated to <b>824</b> tokens
+    /// under a requested 2048 and again under a requested 8192, so the saturated plateau is a real cut
+    /// and not half of a prompt count.
+    /// </para>
+    /// <para>
+    /// <b>Why this matters to a safety property rather than to tuning.</b> A silent truncation is
+    /// invisible from the response, so the adapter's guarantee has to be that a prompt which could be
+    /// cut is never reported as an answer. Reasoning about the requested window made that guarantee
+    /// false: a prompt of 5,000 tokens was under the requested 8192 and over the applied 4098, and the
+    /// backstop compared against 8192 and read clean.
+    /// </para>
+    /// </remarks>
+    public int AppliedContextWindow => EffectiveNumCtx ?? NumCtx / 2;
 
     /// <summary>
     /// Maximum characters of a message body placed in the request state.
