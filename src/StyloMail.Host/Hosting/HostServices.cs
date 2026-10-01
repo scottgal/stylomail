@@ -897,7 +897,19 @@ public static class HostServices
         // ZEROES the budget in one step when `excess + 512 >= budget`, so with `excess >= 1988` at the
         // 2500 default BOTH fields are emptied and the reading is `kept = 0` (`queue-` derived this and
         // simulated four cases, parameter-free).** A capture that sees 0 has not found an error; it has
-        // found the third outcome.
+        // found the emptied-body outcome.
+        //
+        // **AND THERE IS A FOURTH, WHERE THE FIT GIVES UP ENTIRELY AND NOTHING IS ASKED.** `:398-401`
+        // returns null when the budget is already zero, and the caller turns that into
+        // `Unavailable(..., "question set and message state exceed the configured context window")` at
+        // `:165-174`. So a request whose QUESTIONS AND OVERHEAD alone exceed `NumCtx` is never sent, and
+        // every askable row carries that reason. **IT IS REACHABLE, WHICH IS WHY IT IS WORTH STATING:
+        // the fit's only lever is `bodyCharacterBudget`, and it reaches exactly `body_text` and
+        // `quoted_text`. The conversation context is capped at a FIXED 2,000 characters PER ENTRY with
+        // ten entries taken (`NimbleMessageState.cs:153-155`), and the tagged context at `:161` is
+        // untruncated, so up to 20,000 characters of it are IMMUNE to the reduction the loop applies.**
+        // A reply thread can therefore reach the fourth outcome with a modest body, and the largest term
+        // the loop is fighting is the one its lever cannot touch.
         // **43202 answers a DIFFERENT question: what the server reads when the fit does not run**, which
         // is why this arm's output is a PAIR -- the kept length and the resulting evaluation -- and not
         // a token count on its own. That run is QUEUED and has not been taken, so the table describes
