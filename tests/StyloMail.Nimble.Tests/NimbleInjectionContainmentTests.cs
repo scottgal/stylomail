@@ -63,6 +63,19 @@ public sealed class NimbleInjectionContainmentTests
         var system = request.RootElement.GetProperty("system").GetString()!;
         var prompt = request.RootElement.GetProperty("prompt").GetString()!;
 
+        // The control comes first, because both assertions below are `DoesNotContain` over a haystack
+        // and both pass on an EMPTY haystack: a system message that rendered nothing would leave the
+        // "the question set is the pipeline's" claim green while the question set was nowhere in it.
+        // `NimbleQuestionSet.RenderSystem` writes one `<key>.` line per askable dimension, so the
+        // positive half is that the keys are there at all. Eleven are asked here (no context, so
+        // continuity is the one NotApplicable dimension), which makes `q0` the first key and `q10` the
+        // last; the key one past the end is asserted absent, because "no key from the message" is only
+        // a claim if no key beyond the asked set can appear either. `q99` below is the key the hostile
+        // body itself tried to add.
+        Assert.Contains($"{NimbleQuestionSet.KeyFor(0)}.", system, StringComparison.Ordinal);
+        Assert.Contains($"{NimbleQuestionSet.KeyFor(SemanticDimensions.All.Count - 2)}.", system, StringComparison.Ordinal);
+        Assert.DoesNotContain($"{NimbleQuestionSet.KeyFor(SemanticDimensions.All.Count - 1)}.", system, StringComparison.Ordinal);
+
         Assert.DoesNotContain("q99", system, StringComparison.Ordinal);
         Assert.DoesNotContain("Ignore all previous instructions", system, StringComparison.Ordinal);
 
@@ -109,12 +122,27 @@ public sealed class NimbleInjectionContainmentTests
 
         var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
 
+        // The control comes FIRST, because everything below it is an `Assert.All` over a filter and an
+        // `Assert.All` over a filter that matched nothing passes whatever the adapter did. No context
+        // is supplied here, so eleven of the twelve dimensions are asked and continuity is the one
+        // NotApplicable row; eleven is therefore the claim, not a detail.
+        //
+        // The count is a control in both directions, which is why it is one line: a zero would mean the
+        // filter matched nothing (the vacuity this closes), and a twelve would mean continuity had been
+        // scored with no context to score it against, so the filter's exclusion is pinned as well as
+        // its population. A regression that marked an askable dimension NotApplicable used to leave
+        // this test green while it asserted nothing at all.
+        var answered = result.Evidence
+            .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
+            .ToList();
+        Assert.Equal(SemanticDimensions.All.Count - 1, answered.Count);
+
         // No exception, and no scavenged code. A body that is not the promised object is a server that
         // did not honour the schema, and every dimension it would have answered is unavailable rather
         // than guessed at. This is the counterpart to the contract-fault path below: a bad *answer*
         // degrades to the port's explicit absence, a bad *request* raises.
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            answered,
             e =>
             {
                 Assert.Equal(EvidenceAvailability.Unavailable, e.Availability);
@@ -158,9 +186,18 @@ public sealed class NimbleInjectionContainmentTests
         // the reverse of the truth produces rows that are Available, carry a legal value, carry no
         // confidence, and are reported as a normal successful assessment. Nothing in this adapter, and
         // nothing in the port's vocabulary, can tell them from honest ones.
-        Assert.All(
-            suppressed.Evidence.Where(e => e.Availability == EvidenceAvailability.Available),
-            e => Assert.Equal(0.0, e.Value));
+        //
+        // The count is the control, and it is stated rather than left to the Project comparison below:
+        // that comparison only discriminates while the honest side is Available too, so a regression
+        // that made BOTH sides Unavailable would satisfy it and leave the value assertion below running
+        // over an empty set. Eleven askable dimensions, same as the theory above, and the count is a
+        // control in both directions: a zero means the filter matched nothing, a twelve means continuity
+        // was scored for a message that supplied no context for it.
+        var answered = suppressed.Evidence
+            .Where(e => e.Availability == EvidenceAvailability.Available)
+            .ToList();
+        Assert.Equal(SemanticDimensions.All.Count - 1, answered.Count);
+        Assert.All(answered, e => Assert.Equal(0.0, e.Value));
 
         // The indistinguishability, proven rather than asserted in prose: an injected message and a
         // clean one answered with the same letter produce results that differ in no field a reader

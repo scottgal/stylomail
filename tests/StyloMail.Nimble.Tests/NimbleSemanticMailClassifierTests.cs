@@ -69,15 +69,21 @@ public sealed class NimbleSemanticMailClassifierTests
 
         // This model reports no confidence, and the port says Noul never carries one. Defaulting
         // either would fabricate certainty the provider never expressed.
-        Assert.All(
-            result.Evidence.Where(e => e.Availability == EvidenceAvailability.Available),
-            e => Assert.Null(e.Confidence));
+        // The population is the control for both assertions below. The two `Single` lookups above pin
+        // one row each, not eleven, so without this a decoder that answered one dimension and dropped
+        // the rest would leave both `Assert.All`s green over a single row while the claims they carry
+        // ("this model never invents a confidence", "this model decides rather than grades") were
+        // established by one answer. The equality is a control in both directions: a filter that
+        // matched nothing would mean the model was never asked, and a count above eleven would mean
+        // continuity had been scored with no context to score it against.
+        var answered = result.Evidence.Where(e => e.Availability == EvidenceAvailability.Available).ToList();
+        Assert.Equal(SemanticDimensions.All.Count - 1, answered.Count);
+
+        Assert.All(answered, e => Assert.Null(e.Confidence));
 
         // This is the limitation, asserted so it cannot drift unnoticed: a balanaced answer is
         // unreachable on this provider, because the model decides rather than grades.
-        Assert.All(
-            result.Evidence.Where(e => e.Availability == EvidenceAvailability.Available),
-            e => Assert.True(e.Value is 0.0 or 1.0));
+        Assert.All(answered, e => Assert.True(e.Value is 0.0 or 1.0));
     }
 
     [Fact]
@@ -151,8 +157,7 @@ public sealed class NimbleSemanticMailClassifierTests
 
         Assert.Equal(EvidenceAvailability.Available, result.Evidence.Single(e => e.SignalId == "semantic.unsolicited_solicitation").Availability);
         Assert.All(
-            result.Evidence.Where(e => e.SignalId != "semantic.unsolicited_solicitation"
-                && e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1).Where(e => e.SignalId != "semantic.unsolicited_solicitation"),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -164,7 +169,7 @@ public sealed class NimbleSemanticMailClassifierTests
         var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
 
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e =>
             {
                 Assert.Equal(EvidenceAvailability.Unavailable, e.Availability);
@@ -184,7 +189,7 @@ public sealed class NimbleSemanticMailClassifierTests
         var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
 
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -230,7 +235,7 @@ public sealed class NimbleSemanticMailClassifierTests
         // A local provider that is simply not running is not a configuration fault. It is an absent
         // provider, and the port has a state for that.
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
         Assert.StartsWith("unavailable:", result.Cache.KeyDigest, StringComparison.Ordinal);
     }
@@ -245,7 +250,7 @@ public sealed class NimbleSemanticMailClassifierTests
         var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
 
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -284,7 +289,7 @@ public sealed class NimbleSemanticMailClassifierTests
 
         // Unavailable, never a low score. An outage is not a clean bill of health.
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -303,7 +308,7 @@ public sealed class NimbleSemanticMailClassifierTests
         // count and says done_reason "stop", so the evaluated count at the window is all we get.
         Assert.Contains("8192", result.Cache.KeyDigest, StringComparison.Ordinal);
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -325,7 +330,7 @@ public sealed class NimbleSemanticMailClassifierTests
             CancellationToken.None);
 
         Assert.All(
-            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            Asked(result, SemanticDimensions.All.Count - 1),
             e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
     }
 
@@ -386,10 +391,18 @@ public sealed class NimbleSemanticMailClassifierTests
         await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
 
         using var request = JsonDocument.Parse(handler.LastBody);
-        Assert.DoesNotContain(
-            "shortened_for_prompt",
-            request.RootElement.GetProperty("prompt").GetString()!,
-            StringComparison.Ordinal);
+        var prompt = request.RootElement.GetProperty("prompt").GetString()!;
+
+        // The control comes first, because `DoesNotContain` over a haystack passes on an EMPTY
+        // haystack: a state that was never rendered would make the assertion below green while it
+        // established nothing. The sibling test above proves the flag is present on this same field
+        // when a body IS shortened, so the field is the right one to read; this proves it is there
+        // and carrying the message's body before asserting the flag is absent from it.
+        var state = JsonDocument.Parse(prompt).RootElement;
+        Assert.Equal(
+            NimbleTestMessage.Input().Message.BodyText,
+            state.GetProperty("message").GetProperty("body_text").GetString());
+        Assert.DoesNotContain("shortened_for_prompt", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -446,9 +459,10 @@ public sealed class NimbleSemanticMailClassifierTests
         // The row names the model AND the request shape, so a local row is never mistaken for a hosted
         // one and never compared across two shapes without saying so (decision 20). Asserted against
         // the version constant rather than a pasted string, so bumping the shape fails here.
-        Assert.All(
-            result.Evidence.Where(e => e.Availability == EvidenceAvailability.Available),
-            e => Assert.Equal($"nimble:latest+{NimbleQuestionSet.Version}", e.SourceVersion));
+        var answered = result.Evidence.Where(e => e.Availability == EvidenceAvailability.Available).ToList();
+        Assert.Equal(SemanticDimensions.All.Count - 1, answered.Count);
+
+        Assert.All(answered, e => Assert.Equal($"nimble:latest+{NimbleQuestionSet.Version}", e.SourceVersion));
     }
 
     [Fact]
@@ -487,6 +501,32 @@ public sealed class NimbleSemanticMailClassifierTests
     }
 
     [Fact]
+    public async Task Keeps_a_real_digest_to_lowercase_hex_so_a_word_match_on_it_cannot_fail()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
+
+        var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+
+        // `ComputeCacheKeyDigest` returns `Convert.ToHexStringLower(SHA256(...))`, so a real digest is
+        // 64 characters from [0-9a-f]. Pinned rather than assumed, because an assertion of the form
+        // `DoesNotContain("token", digest)` is UNFALSIFIABLE against that alphabet: two of the needle's
+        // four characters, 't' and 'k', are not hex digits, so no hex string can contain it. The live
+        // measurement test carried exactly that assertion until it was replaced with a check on the
+        // `unavailable:` prefix; this is the test that would have shown the old form was vacuous, and
+        // it is here so the next assertion written against this digest has the alphabet in front of it.
+        //
+        // It also catches the change in the other direction. If the digest ever stops being a hash,
+        // every substring and length assumption in this lane changes meaning at once, and that should
+        // be a red test rather than a quiet re-reading of assertions that still pass.
+        var digest = result.Cache.KeyDigest;
+        Assert.Equal(64, digest.Length);
+        Assert.All(digest, c => Assert.True(
+            (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'),
+            $"the digest carried '{c}', which is outside [0-9a-f]: {digest}"));
+    }
+
+    [Fact]
     public async Task Reads_a_response_body_the_server_actually_produced()
     {
         // Captured verbatim from Ollama 0.35.0 on this machine. It carries fields the contract does
@@ -511,6 +551,32 @@ public sealed class NimbleSemanticMailClassifierTests
         Assert.Equal(27, result.InputTokens);
         Assert.Equal(13, result.OutputTokens);
         Assert.Equal(1.0, result.Evidence.Single(e => e.SignalId == "semantic.unsolicited_solicitation").Value);
+    }
+
+    /// <summary>
+    /// The rows for every dimension that was asked, with the population asserted before they are
+    /// handed back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This exists because of one shape, repeated throughout this file: <c>Assert.All</c> over a
+    /// <c>Where</c> filter, where a filter that matched nothing makes the assertion pass whatever the
+    /// adapter did. An outage that marked an askable dimension NotApplicable, or a decode path that
+    /// produced no rows at all, leaves every one of those assertions green while they assert nothing.
+    /// Reading the result cannot tell the difference, so the population is stated here instead.
+    /// </para>
+    /// <para>
+    /// The comparison is an equality rather than a minimum, which makes it a control in both
+    /// directions: zero means the filter matched nothing, and a count above the expected one means
+    /// continuity was scored for a message that supplied no context to score it against. The second is
+    /// the failure this file's continuity tests exist to prevent, and it is worth catching here too.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<Evidence> Asked(SemanticAssessment result, int expected)
+    {
+        var rows = result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable).ToList();
+        Assert.Equal(expected, rows.Count);
+        return rows;
     }
 
     private static int CountSchemaProperties(JsonElement request)

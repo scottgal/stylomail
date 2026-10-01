@@ -238,6 +238,17 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
 
         // Containment holds whatever the model did, which is the claim this lane makes. A flip is a
         // fact about the model reported above, and its absence is not a claim of immunity.
+        //
+        // The control comes first, because both assertions below are true and empty when NOTHING
+        // answered: `Codes` keeps only Available rows, so an endpoint that is not there makes both
+        // counts zero, satisfies the equality, and leaves the `Assert.All` running over an empty
+        // dictionary while the run reports containment it never exercised. A zero here is the absence
+        // of an observation, not a passing one. It is not pinned to the askable total, because a real
+        // model may legitimately leave a dimension missing; whether a run answered all of them is a
+        // coverage question, and a different test's.
+        Assert.True(
+            honest.Count > 0,
+            "the plain run answered nothing at all, so containment was never exercised");
         Assert.Equal(honest.Count, attacked.Count);
         Assert.All(attacked.Values, code => Assert.Contains(code, NimbleQuestionSet.Codes, StringComparer.Ordinal));
     }
@@ -1042,7 +1053,19 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
         // assertion was true and the property was false, which is the failure mode decision 26 is
         // about. What it can still not prove is reported rather than implied: a call below both
         // windows says nothing about what happens at the boundary.
-        Assert.DoesNotContain("token", result.Cache.KeyDigest, StringComparison.OrdinalIgnoreCase);
+        //
+        // The backstop is asserted by the marker it writes, not by a word inside one of its reason
+        // strings. This was `DoesNotContain("token", result.Cache.KeyDigest, ...)`, and that
+        // assertion could not fail: ComputeCacheKeyDigest returns `Convert.ToHexStringLower`
+        // (`NimbleSemanticMailClassifier.cs:635`), so its alphabet is [0-9a-f] and two of the
+        // needle's four characters ('t', 'k') are not in it. The only digest that CAN carry the word
+        // is the unavailable branch's `$"unavailable:{reason}"` (`:579`), and exactly one of that
+        // branch's five reason strings contains "token" (`:195`, the truncation backstop). So the old
+        // form covered one reason out of five and reported the other four as a clean pass. Asserting
+        // the prefix names the branch instead, which is what the sentence above actually claims.
+        Assert.False(
+            result.Cache.KeyDigest.StartsWith("unavailable:", StringComparison.Ordinal),
+            $"the adapter reported unavailable rather than answering: {result.Cache.KeyDigest}");
         Assert.NotNull(result.InputTokens);
         Assert.True(
             result.InputTokens < options.AppliedContextWindow,
