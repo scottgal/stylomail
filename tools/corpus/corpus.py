@@ -317,8 +317,21 @@ SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
 # as a manifest FIELD, with no comparison against 2000 anywhere. The claim is a good one and it is now
 # true rather than removed.
 #
-# STILL OWED, and named here so it is not lost: the bound that is REAL is per window entry and
-# `windowCharacters` is a SUM, so no assertion about it is possible from the manifest as it stands.
+# THE "OWED ASSERTION" IS CLOSED AS UNREACHABLE, and the reason is measured rather than assumed. The
+# bound that is REAL is PER WINDOW ENTRY: the adapter truncates each context entry at 2,000 characters
+# (`NimbleMessageState.cs:155`) while `windowCharacters` here is a SUM, so the assertion I said was owed
+# could not be written against the manifest as it stands. **But no fixture in this corpus can approach
+# that bound either.** A window entry is the PREVIOUS message's raw bytes, and the only profiles that
+# carry a window are `pair` and `pair-control`, whose plans have `html=False, attachment=False` -- so the
+# size axis refuses anything but `small`/`mixed` for them and `mixed` draws `small` on a text-only
+# message. MEASURED: the largest single entry over 40 seeds is **546 characters**, 1,454 under the
+# truncation. **So a guard here would be a DEAD GUARD: nothing can make it fire, which means nothing can
+# test it and it would only look like cover.**
+#
+# THE TRIGGER THAT WOULD MAKE IT LIVE, recorded so it is not lost rather than guarded speculatively: if a
+# window-bearing profile ever gains an html part or an attachment, its window entries become growable and
+# the per-entry bound becomes reachable in one `--size-mix` flag. **The bound should be asserted the day
+# that profile exists and not before.**
 TURN_LIMIT = 2500
 
 # -------------------------------------------------------------------------------------------------
