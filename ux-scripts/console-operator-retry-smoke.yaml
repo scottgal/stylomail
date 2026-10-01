@@ -1,0 +1,202 @@
+name: console-operator-retry-smoke
+description: >
+  Drives the console through an outage that outlasts its automatic retry budget,
+  and then presses Reconnect on a Host that is still away.
+
+  This is P1's proof, and it exists because console-long-outage-smoke.yaml cannot
+  be it. That run brings the Host back before it clicks, so the connect it asks
+  for succeeds on its first attempt and nothing about a retry is exercised. Here
+  the Host stays away for the whole run, so every attempt the console makes after
+  the click is one the operator asked for.
+
+  Three things are asserted, and they are the three conditions the ruling put on
+  a bounded operator retry.
+
+  That it is visible: the status bar says which attempt is in flight and how long
+  is left before the next one, which is the difference between an operator
+  waiting two seconds and one waiting thirty.
+
+  That it does not stack: a second press during the sequence does not start a
+  second sequence. Without that, impatience would keep the console knocking and
+  "bounded" would be a word in a comment.
+
+  That nothing started on its own: before the click, past the automatic budget
+  and with the Host still away, the console is not retrying anything. The
+  automatic path's retries are SignalR's and are not announced here, so a retry
+  line on screen before the click would mean the console had taken it upon itself
+  to keep trying.
+
+  And the ruling's other half, which is what makes those three safe to build: the
+  stale sentence stays up for the whole sequence and after it, because the
+  console never did go Live. It clears on a real transition back to Live and on
+  nothing else, which console-long-outage-smoke.yaml proves from the other side:
+  there the Host comes back and the sentence does come down.
+
+  Run it through ux-scripts/run-console-operator-retry-smoke.sh, not directly.
+  Killing the Host is what causes the outage, and the harness has no shell-out
+  action, so the drop has to come from outside the script.
+
+default_delay: 250
+
+actions:
+  # The precondition, asserted rather than assumed: a console that was never live
+  # has nothing to be stale about, and the click below would prove only that a
+  # console with no history can fail to connect.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 20000
+
+  # Nothing is being retried while there is nothing to retry. Cheap here, and it
+  # establishes who writes in this column at all: only an operator's own connect.
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: Not.ContainsText
+    value: "Retrying"
+    timeout: 5000
+
+  # The synchronisation point. run-console-operator-retry-smoke.sh waits for this
+  # file and only then stops the Host, so the outage starts from a moment the
+  # console is provably following it.
+  - type: Screenshot
+    value: "01-feed-live"
+    description: "The console following a Host that is up"
+
+  # The Host is killed here. The console has to notice, and has to say that what
+  # is on screen may now be behind: this is the sentence the rest of the script
+  # keeps watch on.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 90000
+
+  - type: Screenshot
+    value: "02-feed-dropped"
+    description: "The same window after the Host it was following went away"
+
+  # Past the automatic budget, which is the same 0, 2, 10 and 30 second cadence
+  # the operator's sequence uses. SignalR attempts and then closes the connection
+  # for good, so 52 seconds puts every one of its attempts behind this script and
+  # leaves the console with nothing of its own left to try. Deliberately not
+  # generous: it is the thing being measured, and it is what makes the line
+  # asserted below a fact about the operator's sequence rather than about
+  # SignalR's.
+  - type: Wait
+    value: "52000"
+
+  # Still down, and still saying so. A short timeout on purpose: this is a read
+  # of what is on the screen, not a wait for something to appear.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live updates stopped, screen may be out of date"
+    timeout: 5000
+
+  # Nothing is retrying, and the Host has been away for the better part of a
+  # minute. This is the third condition: no sequence starts without a person.
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: Not.ContainsText
+    value: "Retrying"
+    timeout: 5000
+
+  - type: Screenshot
+    value: "03-given-up-with-nothing-retrying"
+    description: "Past the automatic budget, with nothing retrying and nobody having asked"
+
+  # The operator's action, and the only thing that starts a sequence. Clicked by
+  # its automation id rather than its label, so the button's wording can change
+  # without this run silently stopping to test it.
+  - type: Click
+    target: "testid=reconnect-console"
+    description: "Reconnect, with the Host still away"
+
+  # The sequence is visible, and it says which attempt it is on. The wording is
+  # asserted as a prefix and not in full: the counter moves on as the waits are
+  # taken, and a script that pinned this instant would be asserting the timing of
+  # the first attempt rather than that the attempt is shown at all.
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: ContainsText
+    value: "Retrying: attempt"
+    timeout: 20000
+
+  # The sentence stays up while the console retries. The state behind it has
+  # changed from Dropped to Unreachable, because a fresh attempt settles in
+  # whatever this Host answers with, and the marker is deliberately not a
+  # function of the state: gating it on Dropped is what used to make it vanish at
+  # the moment the console most needed to keep saying it.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: ContainsText
+    value: "may be out of date"
+    timeout: 5000
+
+  - type: Screenshot
+    value: "04-retrying-with-the-screen-still-stale"
+    description: "An operator's connect in flight, over a screen it has not read since"
+
+  # The last of the four waits, which is thirty seconds long and therefore the
+  # only window in this run wide enough to press the button inside. Reached at
+  # about twelve seconds after the click.
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: ContainsText
+    value: "Retrying: attempt 4 of 4, next in 30 seconds"
+    timeout: 60000
+
+  # The second press, in the middle of that window. It must do nothing at all:
+  # the sequence is bounded and already saying where it has got to, so a press
+  # that restarted the count would keep the console knocking for as long as
+  # somebody kept pressing, which is the opposite of bounded.
+  - type: Click
+    target: "testid=reconnect-console"
+    description: "A second press, while the sequence is running"
+
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: ContainsText
+    value: "attempt 4 of 4"
+    timeout: 5000
+
+  - type: Screenshot
+    value: "05-second-press-changed-nothing"
+    description: "Still on the fourth attempt after a second press"
+
+  # Past the end of the original sequence, counted from the attempt it was on
+  # rather than from the press. The first sequence gives up at about forty-two
+  # seconds after the first click, and the longest this wait can start is at
+  # twelve seconds after it, so by now a console that kept to its own schedule
+  # has stopped. One that restarted on the second press would still be inside its
+  # thirty second wait, which is what makes "not retrying" the decisive reading
+  # rather than an artifact of how long this script waited.
+  - type: Wait
+    value: "35000"
+
+  - type: Expect
+    target: "name=LiveFeedRetryText"
+    matcher: Not.ContainsText
+    value: "Retrying"
+    timeout: 15000
+
+  # And the screen is still known to be behind. The sequence ended without ever
+  # going Live, so nothing has been read and nothing has been cleared: the
+  # sentence comes down on a real transition back to Live and on nothing else,
+  # not on giving up and not on an attempt having been made.
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: ContainsText
+    value: "may be out of date"
+    timeout: 5000
+
+  - type: Screenshot
+    value: "06-gave-up-and-still-stale"
+    description: "The sequence spent, the Host still away, the screen still known to be behind"

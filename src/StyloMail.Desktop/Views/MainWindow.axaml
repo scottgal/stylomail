@@ -21,7 +21,7 @@
 
         <!-- ============ status bar ============ -->
         <Border DockPanel.Dock="Bottom" Classes="statusbar">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                 <Ellipse Grid.Column="0"
                          Width="8" Height="8"
                          Margin="0,0,8,0"
@@ -55,8 +55,26 @@
                            Text="{Binding LiveFeedHeadline}"
                            ToolTip.Tip="{Binding LiveFeedDetail}" />
 
+                <!--
+                    What the console is doing about a feed that will not open.
+
+                    A line of its own beside the headline, because the two answer
+                    different questions and only one of them changes when an
+                    operator presses Reconnect: the headline says whether the
+                    screen can be trusted, and this says whether waiting is worth
+                    anything or the operator has to act. Empty when nothing is
+                    being retried, and present rather than hidden even then, for
+                    the reason the Reconnect button below records.
+                -->
+                <TextBlock x:Name="LiveFeedRetryText"
+                           Grid.Column="3"
+                           Classes="status"
+                           Margin="0,0,16,0"
+                           Text="{Binding LiveFeedRetry}"
+                           ToolTip.Tip="The console retries a connect you asked for on the same bounded cadence it uses on its own: four attempts at 0, 2, 10 and 30 seconds." />
+
                 <TextBlock x:Name="HostAddressText"
-                           Grid.Column="4"
+                           Grid.Column="5"
                            Classes="status"
                            Text="{Binding HostAddress}" />
 
@@ -81,7 +99,7 @@
                     is re-asserting a connection rather than re-proving identity.
                 -->
                 <Button x:Name="ReconnectButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         Classes="rowButton"
                         Margin="0,0,16,0"
                         VerticalAlignment="Center"

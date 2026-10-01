@@ -162,6 +162,7 @@ public sealed class ShellModel : ObservableObject
 
             Raise(nameof(LiveFeedHeadline));
             Raise(nameof(LiveFeedDetail));
+            Raise(nameof(LiveFeedRetry));
             Raise(nameof(ScreenMayBeStale));
         }
     }
@@ -169,6 +170,17 @@ public sealed class ShellModel : ObservableObject
     public string LiveFeedHeadline => LiveFeed.Headline;
 
     public string LiveFeedDetail => LiveFeed.Detail;
+
+    /// <summary>
+    /// What the console is doing about a feed that will not open, or empty.
+    /// </summary>
+    /// <remarks>
+    /// Its own line rather than folded into the headline above, on the same
+    /// reasoning as the headline itself: "the feed stopped" and "the console is
+    /// on its third try, next in ten seconds" are different facts, and the
+    /// second is the one that tells an operator whether to wait or to act.
+    /// </remarks>
+    public string LiveFeedRetry => LiveFeed.RetryHeadline;
 
     /// <summary>
     /// Whether what is on screen may have moved on since it was read.

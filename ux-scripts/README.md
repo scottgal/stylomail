@@ -18,6 +18,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-feed-recovery-smoke.sh # ... and that Host taken away and brought back
 ./ux-scripts/run-console-address-change-smoke.sh # ... and pointed at an address nothing answers on
 ./ux-scripts/run-console-long-outage-smoke.sh # ... and taken away for longer than the console retries
+./ux-scripts/run-console-operator-retry-smoke.sh # ... and pressed Reconnect on while it is still away
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
@@ -84,13 +85,24 @@ rather than an assumption.
 | Dropped | a feed that was Live stops | `run-console-feed-drop-smoke.sh` | `Live updates stopped, screen may be out of date`, in amber |
 | Recovered | the same Host, back on the same address, key and database | `run-console-feed-recovery-smoke.sh` | `Live` again, over a surface it has read again |
 | Past the budget | the same Host, back after the console has stopped retrying | `run-console-long-outage-smoke.sh` | the stopped feed and the stale row still on screen, and `Live` only after the operator's Reconnect |
+| Retrying | an operator's Reconnect, with the Host still away | `run-console-operator-retry-smoke.sh` | `Retrying: attempt n of 4, next in n seconds`, over a screen still marked out of date, and the same count after a second press |
 
 `console-harness.sh` reads `CONSOLE_TRAFFIC` when it starts the Host: `true` (the default) maps the
-Hub, `false` starts a Host without it. The last two states cannot be reached from a YAML at all,
+Hub, `false` starts a Host without it. The last three states cannot be reached from a YAML at all,
 because the harness has no shell-out action and nothing in a script can stop a process, so their
-runners stop the Host from outside. Both wait for the screenshot that proves the console is Live
+runners stop the Host from outside. Each waits for the screenshot that proves the console is Live
 before killing, rather than sleeping a fixed amount: a fixed sleep would be the one thing here that
 makes the test flaky, and flaky is the same as absent for a proof.
+
+The retrying row is the only one whose runner never brings the Host back, and that is the point of
+it rather than an omission. A Host that returns is `run-console-long-outage-smoke.sh`, where the
+connect succeeds on its very first attempt and no retry is exercised at all. Here the console spends
+its whole sequence knocking at an address with nothing behind it, which is the only arrangement in
+which the bound can be seen: the counter is asserted at its last wait (the thirty second one, the
+only window wide enough to press the button inside), a second press is required to change nothing,
+and the sequence is required to stop on its own schedule rather than on a restarted one. The stale
+sentence is asserted across all of it and after it, because the console never did go `Live`; the
+long-outage run asserts the other half of that rule, that the sentence comes down when it does.
 
 Recovery is the one state where saying `Live` is not the claim. The console sets its feed state to
 Live as soon as the socket is back and raises the resynchronisation after, so a script that only
@@ -372,7 +384,9 @@ is why a failing run and a passing run looked identical from outside.
 
 So the verdict is read where it is written. `console_final_status <result.json> <process status>`
 prints `success=…, N actions, M failed` with the failed actions named, and returns non-zero unless
-the run passed; all six runners end with it. The process status is still honoured, and a missing
+the run passed; every runner here ends with it (ten of them at the time of writing, and the count is
+worth re-deriving rather than trusting: `ls ux-scripts/run-console-*.sh | wc -l`). The process status
+is still honoured, and a missing
 `result.json` is a failure rather than an absence of one, because that is a run that never got far
 enough to have a verdict. Read the file, never the exit code.
 

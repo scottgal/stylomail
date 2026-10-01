@@ -39,6 +39,26 @@ public partial class MainWindow : Window
     /// </remarks>
     private TrafficFeed? _feed;
 
+    /// <summary>
+    /// The connect an operator asked for that is running, or null when none is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The guard behind the second of the three conditions a bounded operator
+    /// retry has to meet: a press while a sequence is running must not start a
+    /// second one. Without it a press during the thirty-second wait would
+    /// rebuild the feed and start the count again, so impatience would keep the
+    /// console knocking indefinitely, which is the opposite of bounded.
+    /// </para>
+    /// <para>
+    /// <b>An identity rather than a flag</b>, because two sequences can overlap.
+    /// The connection screen's save supersedes one that is running, and a bool
+    /// would then be cleared by the superseded sequence's own unwind, leaving
+    /// the live one unguarded. Each sequence clears only the ticket it set.
+    /// </para>
+    /// </remarks>
+    private object? _connectInFlight;
+
     private readonly ShellModel _model;
 
     /// <summary>
@@ -797,7 +817,9 @@ public partial class MainWindow : Window
 
         if (!dialog.Edit.RequiresReconnect) return;
 
-        await ReconnectAsync().ConfigureAwait(true);
+        // The connection itself changed, so this supersedes any sequence still
+        // running: those attempts are answers about the Host being left behind.
+        await ReconnectAsync(connectionChanged: true).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -869,49 +891,86 @@ public partial class MainWindow : Window
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>
     /// <remarks>
+    /// <para>
     /// Two callers, and they are different acts. <c>OpenConnectionDialogAsync</c>
     /// calls it because the operator changed something. <c>OnReconnectClick</c>
     /// calls it because the operator wants the connection re-asserted, which is
     /// the way back from an outage longer than the feed's retry budget; that one
     /// changes nothing and reads the stored key.
+    /// </para>
+    /// <para>
+    /// <b>Both are operator actions, so the feed they open is retried.</b> A
+    /// press is the operator saying the Host should be there, and a single
+    /// attempt that lands on a Host still starting up would leave them with
+    /// nothing to do but press again, which is the state P1 exists to remove.
+    /// Nothing else in this window opens a retried feed: a window that came up
+    /// on its own gets one attempt, so no sequence ever starts without a person.
+    /// </para>
     /// </remarks>
-    public async Task ReconnectAsync()
+    /// <param name="connectionChanged">
+    /// Whether the operator changed the address or the key, as opposed to asking
+    /// for the same connection again. A changed connection supersedes a sequence
+    /// already running, because those attempts are answers about a Host this
+    /// console has just left.
+    /// </param>
+    public async Task ReconnectAsync(bool connectionChanged = false)
     {
         if (_services is null) return;
 
-        var previous = _services;
+        // A press while one of these is already running does nothing. The
+        // sequence is bounded and it is already showing which attempt it is on,
+        // so a second press has nothing to add and starting it again would undo
+        // the bound.
+        if (_connectInFlight is not null && !connectionChanged) return;
+
+        var ticket = new object();
+        _connectInFlight = ticket;
 
         try
         {
-            _services = AppServices.Create(
-                ConsoleEnvironment.HostAddress(previous.Settings),
-                previous.Keychain,
-                settings: previous.Settings);
+            var previous = _services;
 
-            previous.Dispose();
+            try
+            {
+                _services = AppServices.Create(
+                    ConsoleEnvironment.HostAddress(previous.Settings),
+                    previous.Keychain,
+                    settings: previous.Settings);
 
-            await OnUiThreadAsync(() => _model.SetHostAddress(_services.HostAddress.ToString()))
-                .ConfigureAwait(false);
+                previous.Dispose();
+
+                await OnUiThreadAsync(() => _model.SetHostAddress(_services.HostAddress.ToString()))
+                    .ConfigureAwait(false);
+            }
+            catch (ArgumentException ex)
+            {
+                // The address is refused by policy. Report it and keep the old
+                // connection rather than leaving the console with no client at all.
+                Console.Error.WriteLine($"[Connection] {ex.Message}");
+
+                await OnUiThreadAsync(() => _model.CompleteAction(ex.Message, failed: true))
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await RefreshHostAsync().ConfigureAwait(true);
+            await LoadSendersAsync().ConfigureAwait(true);
+            await LoadSelectionAsync().ConfigureAwait(true);
+
+            // The old feed was to the old Host. Leaving it subscribed would have
+            // this window reporting on a deployment it no longer talks to, and a
+            // dropped feed never recovers by being pointed somewhere else.
+            await StartTrafficFeedAsync(retry: true).ConfigureAwait(true);
         }
-        catch (ArgumentException ex)
+        finally
         {
-            // The address is refused by policy. Report it and keep the old
-            // connection rather than leaving the console with no client at all.
-            Console.Error.WriteLine($"[Connection] {ex.Message}");
-
-            await OnUiThreadAsync(() => _model.CompleteAction(ex.Message, failed: true))
-                .ConfigureAwait(false);
-            return;
+            // Only this sequence's own ticket: a superseded one that cleared the
+            // field outright would unguard the sequence that replaced it.
+            if (ReferenceEquals(_connectInFlight, ticket))
+            {
+                _connectInFlight = null;
+            }
         }
-
-        await RefreshHostAsync().ConfigureAwait(true);
-        await LoadSendersAsync().ConfigureAwait(true);
-        await LoadSelectionAsync().ConfigureAwait(true);
-
-        // The old feed was to the old Host. Leaving it subscribed would have
-        // this window reporting on a deployment it no longer talks to, and a
-        // dropped feed never recovers by being pointed somewhere else.
-        await StartTrafficFeedAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -929,24 +988,47 @@ public partial class MainWindow : Window
     /// Public so the harness and the screenshot path can open a feed without
     /// pretending to be an operator opening a window.
     /// </para>
+    /// <para>
+    /// <b>What the previous subscription knew is carried into the replacement.</b>
+    /// The fact "what is on screen may be behind" belongs to the screen, and the
+    /// screen outlives this object: without the handover, the reconnect an
+    /// operator reaches for during an outage would drop the very warning the
+    /// outage raised, and the console would claim a currency it does not have.
+    /// </para>
     /// </remarks>
-    public async Task StartTrafficFeedAsync(CancellationToken cancellationToken = default)
+    /// <param name="retry">
+    /// Whether to keep trying on the bounded cadence after this attempt. Set
+    /// only by an operator action; see <see cref="ReconnectAsync"/>.
+    /// </param>
+    public async Task StartTrafficFeedAsync(
+        CancellationToken cancellationToken = default,
+        bool retry = false)
     {
         if (_services is null) return;
 
         var previous = _feed;
         _feed = null;
 
+        var surfaceMayBeStale = false;
+
         if (previous is not null)
         {
+            surfaceMayBeStale = previous.SurfaceMayBeStale;
+
             previous.NoticeReceived -= OnTrafficNotice;
             previous.StateChanged -= OnFeedStateChanged;
             previous.Resynchronise -= OnFeedResynchronise;
 
+            // Disposing cancels any sequence the previous subscription was
+            // still running, which is what makes a superseding reconnect
+            // abandon its attempts at the Host it is leaving.
             await previous.DisposeAsync().ConfigureAwait(true);
         }
 
-        var feed = new TrafficFeed(_services.HostAddress, _services.ApiKey);
+        var feed = new TrafficFeed(
+            _services.HostAddress,
+            _services.ApiKey,
+            surfaceMayBeStale: surfaceMayBeStale);
 
         feed.NoticeReceived += OnTrafficNotice;
         feed.StateChanged += OnFeedStateChanged;
@@ -954,14 +1036,28 @@ public partial class MainWindow : Window
 
         _feed = feed;
 
-        await feed.StartAsync(cancellationToken).ConfigureAwait(true);
+        var state = retry
+            ? await feed.StartWithRetryAsync(cancellationToken).ConfigureAwait(true)
+            : await feed.StartAsync(cancellationToken).ConfigureAwait(true);
+
         await PublishFeedStatusAsync(feed).ConfigureAwait(true);
+
+        // A sequence can outlive the reads above: it is bounded at about
+        // forty-two seconds, and the Host may have come back inside that. What
+        // is on screen was read before it did, so a live feed here has not yet
+        // been reflected on the screen, and the stale marker comes off only on
+        // a read that lands. Guarded on this still being the window's feed,
+        // since a superseding reconnect owns the screen from that point on.
+        if (retry && state is TrafficFeedState.Live && ReferenceEquals(_feed, feed))
+        {
+            await ResynchroniseAsync().ConfigureAwait(true);
+        }
     }
 
     /// <summary>Puts the feed's state into the model, on the UI thread.</summary>
     private Task PublishFeedStatusAsync(TrafficFeed feed)
         => OnUiThreadAsync(() =>
-            _model.LiveFeed = LiveFeedStatus.From(feed.State, feed.SurfaceMayBeStale));
+            _model.LiveFeed = LiveFeedStatus.From(feed.State, feed.SurfaceMayBeStale, feed.Retrying));
 
     /// <summary>
     /// A notice arrived. Raised on a transport thread.

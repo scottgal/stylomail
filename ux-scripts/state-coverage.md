@@ -251,14 +251,49 @@ both were found by reading the instrument rather than the result.
    `LiveFeedStatus.From` carries "screen may be out of date" and `Unreachable` and `NoFeed` both
    render the headline "No live feed", so a console that had a live feed a minute ago now makes a
    claim about the deployment instead; and pressing Reconnect during the outage leaves the console
-   worse off than not pressing it, until it is pressed again. Proposed to `overview-` 2026-10-01 and
-   awaiting a ruling, as P1 (give an operator-initiated connect the bounded policy the client already
-   applies to a connection that started successfully: 4 attempts at 0, 2, 10 and 30 seconds, stopped
-   by the same ~42 second budget, and nothing at all without an explicit operator action) and P2 (a
-   feed that is not `Live` while `SurfaceMayBeStale` is set keeps rendering the stale warning,
-   whichever failure the last attempt produced; the flag is already tracked and only `Dropped` uses
-   it). **Not to build without a ruling**: any retry past P1's numbers, and an automatic retry past
-   the budget in any form.
+   worse off than not pressing it, until it is pressed again. Proposed to `overview-` 2026-10-01,
+   ruled on the same day, and built. The ruling is the proposal as P1 (an operator-initiated connect
+   gets the bounded policy the client already applies to a connection that started successfully: 4
+   attempts at 0, 2, 10 and 30 seconds, stopped by the same ~42 second budget, and nothing at all
+   without an explicit operator action, with the status bar showing which attempt is in flight and
+   what is left, and a press during a sequence starting nothing) and P2 (a feed that is not `Live`
+   while `SurfaceMayBeStale` is set keeps rendering the stale warning, whichever failure the last
+   attempt produced). **Still not to build**: any retry past P1's numbers, and an automatic retry
+   past the budget in any form.
+
+   Built as one policy rather than two, which was the ruling's condition for going ahead:
+   `src/StyloMail.Desktop/Api/TrafficRetryPolicy.cs` is an `IRetryPolicy` with the four waits
+   written down, handed to `WithAutomaticReconnect` on the automatic path and walked by
+   `TrafficFeed.StartWithRetryAsync` on the operator's, so "how long until the console gives up" has
+   one answer. `Budget` is the sum of the table rather than a second constant, so it cannot drift
+   from it. The sequence announces itself through `FeedRetry`, which the window publishes and
+   `LiveFeedStatus.RetryHeadline` phrases; the second press is refused by `TrafficFeed` and again by
+   the window's `_connectInFlight` ticket, because the window rebuilds the feed on every reconnect
+   and the feed's own guard disappears with the object it belonged to.
+
+   Two deliberate deviations, both narrower than the ruling and both reported to `overview-`:
+   - **A refusal and a 404 are not retried.** `Refused` and `NoFeed` are answers the deployment has
+     already given, and neither changes inside forty-two seconds. Re-presenting a key the Host has
+     just rejected is a worse failure than the one being retried, and a key that is wrong is a
+     credential problem, not a connection one.
+   - **The stale sentence survives the state changing underneath it.** A fresh connect during an
+     outage settles in `Unreachable`, not `Dropped`, so the headline after a failed Reconnect reads
+     "No live feed, screen may be out of date" rather than "Live updates stopped, screen may be out
+     of date". What P2 asked for is that the sentence stays true; which failure produced it is a
+     fact about the last attempt, and the marker is now a function of the console's history instead.
+     `SurfaceMayBeStale` is carried into each replacement `TrafficFeed` by the window, and cleared
+     only by `ResynchroniseAsync` after a sequence that ended `Live` and three reads that landed.
+
+   Proved by `run-console-operator-retry-smoke.sh` (`console-operator-retry-smoke.yaml`), which is
+   the first run in this directory to leave the Host away across the operator's Reconnect: 22
+   actions, every one of them an assertion about the sequence, the counter or the stale row, with
+   the drop caused at the moment the console is provably Live and no restart to race anywhere. Its
+   fourth screenshot shows the whole bar at once - "Cannot reach the Host", "No live feed, screen may
+   be out of date", "Retrying: attempt 2 of 4, next in 2 seconds" - which is the state a person was
+   previously left to guess at. `run-console-long-outage-smoke.sh` still proves the other ending and
+   is unchanged: there the Host comes back, the click's first attempt succeeds, and the stale
+   sentence comes down on the re-read, which is the half of P2 that says it clears on a real
+   transition back to `Live` and on nothing else.
 9. ~~**The decision fixture the harness ships no longer parses.**~~ **Done** 2026-10-01. The mirror
    had grown two required members (`src/StyloMail.Desktop/Api/Contracts/DecisionContracts.cs:31,42`)
    and `ux-scripts/decision-fixture.json` did not carry them, so every run that fell back to it logged
