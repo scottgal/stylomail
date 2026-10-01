@@ -185,12 +185,213 @@ public sealed class LedgerLegacyRowTests
             body.RootElement.GetProperty("channel").GetProperty("kind").GetString());
     }
 
+    [Fact]
+    public async Task A_decision_written_before_the_index_arithmetic_existed_is_still_readable()
+    {
+        // The real assessor, so the row actually carries dimensions. A fake that returns none would
+        // leave the nested members out of the document entirely and the rewrite below would edit
+        // nothing, which is the vacuous-pass shape this file's Assert.NotEqual guards against.
+        using var host = new TestHost().WithRealAssessor();
+        var assessmentId = await AssessAsync(host);
+
+        var stored = ReadStoredPayload(host, assessmentId);
+        var legacy = RemoveDimensionMembers(
+            RemoveMembers(stored, "riskIndexDenominator"),
+            "weight", "counted", "exclusionReason");
+
+        Assert.NotEqual(stored, legacy);
+        RewritePayload(host, assessmentId, legacy);
+
+        var ledger = host.Services.GetRequiredService<IDecisionLedger>();
+        var read = await ledger.FindAsync(
+            TestPrincipals.AcmeTenant, assessmentId, CancellationToken.None);
+
+        Assert.NotNull(read);
+        Assert.Equal(assessmentId, read.AssessmentId);
+
+        // Null, and neither of the two things that would make this row look informative. Not zero: the
+        // weight is policy configuration that was never stored beside the decision, so a zero would be
+        // a plausible number served on a row that did carry weight. Not derived either: the counted
+        // flag is left null with the weight rather than half-filled, because half a pair invites a
+        // reader to guess the other half.
+        Assert.Null(read.RiskIndexDenominator);
+        Assert.All(
+            read.RiskDimensions,
+            dimension =>
+            {
+                Assert.Null(dimension.Weight);
+                Assert.Null(dimension.Counted);
+            });
+    }
+
+    [Fact]
+    public async Task A_row_that_never_recorded_its_arithmetic_serves_null_while_an_empty_one_serves_zero()
+    {
+        // The distinction the nullable shape exists to preserve, made from two rows that are otherwise
+        // the same decision. Both are assessed by the real pipeline with the semantic provider
+        // unreachable, so both measured nothing and counted nothing. One was written by this build and
+        // recorded that as a denominator of 0.0; the other is rewritten into the pre-37 shape, where
+        // the arithmetic was never written down at all. If a later reader merged the two, the second
+        // would read as a measurement it is not.
+        using var host = new TestHost().WithRealAssessor();
+        var measuredId = await AssessAsync(host);
+        var legacyId = await AssessAsync(host);
+
+        var stored = ReadStoredPayload(host, legacyId);
+        RewritePayload(
+            host,
+            legacyId,
+            RemoveDimensionMembers(
+                RemoveMembers(stored, "riskIndexDenominator"),
+                "weight", "counted", "exclusionReason"));
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        using var measuredBody = JsonDocument.Parse(
+            await reviewer.GetStringAsync($"/v1/decisions/{measuredId}"));
+        using var legacyBody = JsonDocument.Parse(
+            await reviewer.GetStringAsync($"/v1/decisions/{legacyId}"));
+
+        // The measurement: a number, and the empty arithmetic this composition produces (nothing was
+        // available to count, so there was no index to divide).
+        Assert.Equal(
+            JsonValueKind.Number,
+            measuredBody.RootElement.GetProperty("riskIndexDenominator").ValueKind);
+        Assert.Equal(
+            0.0,
+            measuredBody.RootElement.GetProperty("riskIndexDenominator").GetDouble());
+
+        // The admission: the member is present and null, not absent and not zero.
+        Assert.Equal(
+            JsonValueKind.Null,
+            legacyBody.RootElement.GetProperty("riskIndexDenominator").ValueKind);
+
+        // And the same on the rows, where a null counted flag must not be readable as false.
+        Assert.All(
+            legacyBody.RootElement.GetProperty("riskDimensions").EnumerateArray(),
+            row =>
+            {
+                Assert.Equal(JsonValueKind.Null, row.GetProperty("weight").ValueKind);
+                Assert.Equal(JsonValueKind.Null, row.GetProperty("counted").ValueKind);
+            });
+
+        // The listing serves the legacy row rather than dropping it, which is the half of this that a
+        // read-by-id cannot show: before the ruling this row could not be deserialised and the page
+        // skipped it.
+        using var listing = JsonDocument.Parse(await reviewer.GetStringAsync("/v1/decisions"));
+        var listed = listing.RootElement.GetProperty("decisions").EnumerateArray()
+            .Select(item => item.GetProperty("assessmentId").GetString())
+            .ToList();
+
+        Assert.Contains(legacyId, listed);
+        Assert.Equal(0, listing.RootElement.GetProperty("skippedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_row_measured_with_the_semantic_provider_down_still_counts_the_deterministic_findings()
+    {
+        // Decision 42 gave the risk-shaped MIME findings declared weights, and the MIME analysis runs
+        // whether or not the semantic provider answers. So "the semantic provider was unreachable"
+        // stopped meaning "nothing was counted", which is what took the sibling above red: the same
+        // composition that once served a denominator of 0.0 now serves one built from the findings the
+        // message itself poses.
+        //
+        // The point is that the serving no longer reports a purely semantic quantity. With the
+        // provider down no semantic dimension is answerable, so every counted row here is a
+        // deterministic one and the denominator is the sum of their weights. Asserted relationally
+        // rather than against a literal, because the literal is a property of DimensionWeights while
+        // this test is about what the route serves.
+        using var host = new TestHost().WithRealAssessor();
+        var assessmentId = await AssessAsync(host);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        using var body = JsonDocument.Parse(
+            await reviewer.GetStringAsync($"/v1/decisions/{assessmentId}"));
+
+        var rows = body.RootElement.GetProperty("riskDimensions").EnumerateArray().ToList();
+        var counted = rows.Where(row => row.GetProperty("counted").GetBoolean()).ToList();
+
+        // Guarded rather than assumed: a semantic row that became answerable here would mean this test
+        // is measuring something else, and it should fail rather than silently widen.
+        Assert.NotEmpty(counted);
+        Assert.All(
+            counted,
+            row => Assert.StartsWith("deterministic.", row.GetProperty("name").GetString()!));
+
+        Assert.Equal(
+            counted.Sum(row => row.GetProperty("weight").GetDouble()),
+            body.RootElement.GetProperty("riskIndexDenominator").GetDouble());
+    }
+
+    [Fact]
+    public async Task One_unreadable_row_does_not_take_the_listing_down_with_it()
+    {
+        // The listing deserialises every row on the page, so a single payload the build cannot read
+        // would otherwise turn a page of decisions into no page at all, taking the rows that are
+        // perfectly readable down with it. The row here is truncated rather than merely old: a shape
+        // this build cannot parse at all is the case that stays unreadable whatever the contract
+        // decides about rows written by an earlier build.
+        using var host = new TestHost();
+        var readableId = await AssessAsync(host);
+        var unreadableId = await AssessAsync(host);
+
+        var stored = ReadStoredPayload(host, unreadableId);
+        var truncated = stored[..(stored.Length / 2)];
+        Assert.NotEqual(stored, truncated);
+        RewritePayload(host, unreadableId, truncated);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await reviewer.GetAsync("/v1/decisions");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var listed = body.RootElement.GetProperty("decisions").EnumerateArray()
+            .Select(item => item.GetProperty("assessmentId").GetString())
+            .ToList();
+
+        // The readable row is still served, and the unreadable one is absent rather than fatal.
+        Assert.Contains(readableId, listed);
+        Assert.DoesNotContain(unreadableId, listed);
+
+        // And the skip is stated on the page rather than only logged. A page that dropped the row
+        // silently would be a page reporting itself complete when it is not, which is the failure this
+        // count exists to make unrepresentable.
+        Assert.Equal(1, body.RootElement.GetProperty("skippedCount").GetInt32());
+    }
+
     private static string RemoveMembers(string payload, params string[] members)
     {
         var document = JsonNode.Parse(payload)!.AsObject();
         foreach (var member in members)
         {
             document.Remove(member);
+        }
+
+        return document.ToJsonString();
+    }
+
+    /// <summary>
+    /// Removes members from every entry of the row's dimension list.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="RemoveMembers"/> because the required members a row can predate are
+    /// not all top-level: the index arithmetic travels inside each dimension, and a helper that only
+    /// reached the outer object would leave those entries intact and the test passing while proving
+    /// nothing.
+    /// </remarks>
+    private static string RemoveDimensionMembers(string payload, params string[] members)
+    {
+        var document = JsonNode.Parse(payload)!.AsObject();
+        var dimensions = document["riskDimensions"]?.AsArray()
+            ?? throw new InvalidOperationException("The stored row carries no riskDimensions to edit.");
+
+        foreach (var dimension in dimensions)
+        {
+            foreach (var member in members)
+            {
+                dimension!.AsObject().Remove(member);
+            }
         }
 
         return document.ToJsonString();

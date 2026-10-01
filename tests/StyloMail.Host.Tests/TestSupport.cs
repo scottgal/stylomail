@@ -746,10 +746,16 @@ internal sealed class RecordingAssessor : IMailAssessor
         _spool = spool;
     }
 
+    /// <remarks>
+    /// <c>callerSuppliedRawMessage</c> is ignored: this double never parses, so there is no view for
+    /// bytes to stand in for. It reads the envelope's durable payload, which is the other source,
+    /// and a test about supplied bytes needs the real assessor rather than this one.
+    /// </remarks>
     public async ValueTask<MailAssessment> AssessAsync(
         MailAnalysisInput input,
         AssessmentContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte>? callerSuppliedRawMessage = null)
     {
         Calls.Add((input, context));
 
@@ -853,6 +859,34 @@ internal sealed class RecordingAssessor : IMailAssessor
         return buffer.ToArray();
     }
 
+    /// <summary>
+    /// The weight the synthetic decision's single row carries.
+    /// </summary>
+    /// <remarks>
+    /// Named so the row's weight and the index denominator are the same number by construction rather
+    /// than by two literals that agree today. A fixture whose denominator stops matching the weight it
+    /// publishes is the defect decision 37 is about, arrived at from the test side.
+    /// </remarks>
+    private const double SyntheticWeight = 1.0;
+
+    /// <summary>
+    /// The one row the synthetic decision is made of.
+    /// </summary>
+    /// <remarks>
+    /// Available and counted, so the index is the row's own score and the denominator is its weight.
+    /// The name is deliberately not a configured signal id: a test that matched on it would be testing
+    /// this fixture rather than the code that reads it.
+    /// </remarks>
+    private static RiskDimension SyntheticDimension(double index) => new()
+    {
+        Name = "test.synthetic",
+        Score = index,
+        Availability = EvidenceAvailability.Available,
+        Weight = SyntheticWeight,
+        Counted = true,
+        EvidenceSignalIds = [],
+    };
+
     public static MailAssessment Build(
         MailAnalysisInput input,
         AssessmentContext context,
@@ -866,8 +900,18 @@ internal sealed class RecordingAssessor : IMailAssessor
         TenantId = input.Envelope.TenantId,
         Channel = input.Channel,
         Evidence = [],
-        RiskDimensions = [],
+
+        // One synthetic row rather than none, so the served body reproduces its own index the way a
+        // real decision must (decision 37). The scorer publishes a row for every configured signal,
+        // counted or not, so an empty list is a shape the pipeline cannot produce; and a caller
+        // recomputing from an empty list gets 0/1 for a response whose index reads 0.05, which is
+        // the disagreement this record exists to make impossible.
+        RiskDimensions = [SyntheticDimension(action == MailAction.Allow ? 0.05 : 0.95)],
         RiskIndex = action == MailAction.Allow ? 0.05 : 0.95,
+
+        // The counted row's own weight, so this is the sum the response explains rather than a number
+        // chosen to look plausible: sum(weight * score) / denominator above is the index above.
+        RiskIndexDenominator = SyntheticWeight,
         Action = action,
         ProposedActionInShadow = context.ShadowMode ? action : null,
         DeliveryTiming = DeliveryTiming.PreAcceptance,

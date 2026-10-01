@@ -54,6 +54,27 @@ public sealed record DecisionResponse
     /// </summary>
     public required double RiskIndex { get; init; }
 
+    /// <summary>
+    /// The summed weight of the counted dimensions: the denominator <see cref="RiskIndex"/> was
+    /// divided by.
+    /// </summary>
+    /// <remarks>
+    /// Served beside the index rather than left to the reader, because an index that cannot be
+    /// checked from its own response is not a record (decision 37). The denominator cannot be
+    /// recovered from the rows: it counts only what entered it, and the rows that did not are exactly
+    /// the ones a reader would have to guess about. Without this, a caller recomputing
+    /// <c>sum(weight * score) / sum(weight)</c> from the served rows adds the masked row's weight back
+    /// in and gets the pre-decision-31 index, a wrong number that agrees with a shape the system no
+    /// longer has.
+    /// <para>
+    /// <b>Null is not zero.</b> A served <c>0</c> is the measured empty arithmetic, the decision whose
+    /// every dimension went uncounted; a served <c>null</c> is a decision made before the arithmetic
+    /// was recorded at all, and its weight is not recoverable from the row. Merging them would read an
+    /// unrecorded index as an empty one.
+    /// </para>
+    /// </remarks>
+    public required double? RiskIndexDenominator { get; init; }
+
     public required IReadOnlyList<ReasonResponse> Reasons { get; init; }
 
     public required IReadOnlyList<RiskDimensionResponse> RiskDimensions { get; init; }
@@ -79,12 +100,16 @@ public sealed record DecisionResponse
         Channel = assessment.Channel,
         DeliveryTiming = assessment.DeliveryTiming,
         RiskIndex = assessment.RiskIndex,
+        RiskIndexDenominator = assessment.RiskIndexDenominator,
         Reasons = [.. assessment.Reasons.Select(ReasonResponse.From)],
         RiskDimensions = [.. assessment.RiskDimensions.Select(d => new RiskDimensionResponse
         {
             Name = d.Name,
             Score = d.Score,
             Availability = d.Availability,
+            Weight = d.Weight,
+            Counted = d.Counted,
+            ExclusionReason = d.ExclusionReason,
             EvidenceSignalIds = d.EvidenceSignalIds,
         })],
         Evidence = [.. assessment.Evidence.Select(e => new EvidenceResponse
@@ -181,6 +206,48 @@ public sealed record RiskDimensionResponse
     public required double Score { get; init; }
 
     public required EvidenceAvailability Availability { get; init; }
+
+    /// <summary>
+    /// The configured weight this row carried when the assessment was made, or null when the decision
+    /// was made before the arithmetic was recorded.
+    /// </summary>
+    /// <remarks>
+    /// Required, not optional, deliberately: an optional member can be dropped by a future projection
+    /// site without a compile error, and a response that drops it stops being checkable while still
+    /// looking complete. The weights are configuration and configuration moves, so a response that
+    /// omitted them would read differently after a settings change while its own numbers stayed
+    /// fixed. Nullable as well as required is what lets a pre-37 decision say "not recorded" without
+    /// serving a weight of zero, which would be a plausible number rather than an admission.
+    /// </remarks>
+    public required double? Weight { get; init; }
+
+    /// <summary>
+    /// Whether this row entered the index's numerator and denominator alike, or null when the decision
+    /// was made before the flag was recorded.
+    /// </summary>
+    /// <remarks>
+    /// <b>False is not a score of zero.</b> A row that was measured and came back <c>0.0</c> was
+    /// counted and dilutes the index; a row decision 31 masked contributed nothing at all. Both serve
+    /// as <c>score: 0, availability: Available</c>, which is the defect decision 37 rules on, so the
+    /// flag travels with the row rather than being inferred from the score.
+    /// <para>
+    /// Null is a third state and is not derived for a pre-37 row, even though its availability would
+    /// suggest a value: a counted flag with no weight behind it cannot reproduce the arithmetic, and
+    /// serving half of a pair invites a reader to guess the other half. A client renders null as
+    /// "unrecorded" rather than as false.
+    /// </para>
+    /// </remarks>
+    public required bool? Counted { get; init; }
+
+    /// <summary>
+    /// Why this row was not counted, when its availability alone does not say it.
+    /// </summary>
+    /// <remarks>
+    /// Null for the ordinary cases, where "absent" or "unavailable" is the whole explanation, and
+    /// null on a counted row. Set where a row is available and still excluded, which today means
+    /// decision 31's one-sided mask. A client renders nothing for null rather than an empty reason.
+    /// </remarks>
+    public string? ExclusionReason { get; init; }
 
     public required IReadOnlyList<string> EvidenceSignalIds { get; init; }
 }

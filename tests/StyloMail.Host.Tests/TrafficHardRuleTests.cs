@@ -81,7 +81,7 @@ public sealed class TrafficHardRuleTests
     }
 
     [Fact]
-    public void The_hosted_worker_dials_through_the_port_that_announces()
+    public async Task The_hosted_worker_dials_through_the_port_that_announces()
     {
         // The wrapper is applied where the port is built, not where it is registered, because
         // whether a port exists at all is the same question as whether the worker runs. That makes
@@ -92,10 +92,45 @@ public sealed class TrafficHardRuleTests
         host.Configure("StyloMail:Transport:Upstream:Port", "25");
         host.Configure("StyloMail:Transport:Upstream:Tls", "None");
 
-        var port = host.Services.GetRequiredService<QueueDeliveryHostedService>().DeliveryPort;
+        var worker = host.Services.GetRequiredService<QueueDeliveryHostedService>();
+
+        var port = await WaitForDeliveryPort(worker);
 
         var announcing = Assert.IsType<TrafficEmittingDeliveryPort>(port);
         Assert.IsType<StyloMail.Transport.Delivery.SmtpDeliveryPort>(announcing.Inner);
+    }
+
+    /// <summary>
+    /// The port the worker announced, waited for rather than read once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The worker assigns this as it starts, and <c>host.Services</c> returns once the host has
+    /// started, so one read should never see null. It did, once, in a 366-test full run, and did not
+    /// reproduce in isolation, on re-runs, or under two concurrent full suites: the mechanism was
+    /// never named, so nothing here claims to have found it.
+    /// </para>
+    /// <para>
+    /// What is certain is the shape of the old read: it assumed a start it never waited for, and an
+    /// assumption cannot see the thing it assumed. A bounded wait can, and it still fails when the
+    /// port is genuinely never announced (a second later, on the assertion below), so it removes the
+    /// assumption without masking an absent port. The ordinary case returns on the first iteration
+    /// and costs nothing.
+    /// </para>
+    /// </remarks>
+    private static async Task<IDeliveryPort?> WaitForDeliveryPort(QueueDeliveryHostedService worker)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            if (worker.DeliveryPort is { } port)
+            {
+                return port;
+            }
+
+            await Task.Delay(10);
+        }
+
+        return worker.DeliveryPort;
     }
 
     [Fact]

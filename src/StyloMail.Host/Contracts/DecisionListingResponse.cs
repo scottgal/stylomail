@@ -34,6 +34,18 @@ public sealed record DecisionListingResponse
 
     public required bool HasMore { get; init; }
 
+    /// <summary>
+    /// How many rows on this page could not be read back by this build and are therefore not listed.
+    /// </summary>
+    /// <remarks>
+    /// <b>Required, so every page states the count rather than leaving it to be assumed.</b> Zero means
+    /// the page is the whole window; a non-zero value means rows exist that this build cannot render,
+    /// and a reviewer reading a short page should be able to tell "nothing matched" from "something
+    /// could not be decoded". A row that cannot be read is skipped rather than failing the page, which
+    /// is the right trade only if the skip is visible here.
+    /// </remarks>
+    public required int SkippedCount { get; init; }
+
     public static DecisionListingResponse From(string tenantId, MailAction? action, DecisionListingPage page) => new()
     {
         TenantId = tenantId,
@@ -41,6 +53,7 @@ public sealed record DecisionListingResponse
         Decisions = [.. page.Items.Select(DecisionSummaryResponse.From)],
         NextCursor = page.NextCursor,
         HasMore = page.HasMore,
+        SkippedCount = page.SkippedCount,
     };
 }
 

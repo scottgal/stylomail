@@ -28,6 +28,13 @@ namespace StyloMail.Host.Serialization;
 /// be inventing history rather than restoring it, and should not be added here.
 /// </para>
 /// <para>
+/// <b>Members added after rows already existed may carry null by design.</b> The index arithmetic
+/// (decision 37) is the case: a decision stored before it existed serves <c>null</c> for its weight,
+/// counted flag and denominator. That is the row saying its build did not record them, not an omission
+/// this converter failed to fill, and it must stay distinct from the two back-fills above, which
+/// restore what a row actually was.
+/// </para>
+/// <para>
 /// <b>Read at the persistence boundary only.</b> This is deliberately not part of
 /// <see cref="HostJson.Options"/>, which would make every assessment everywhere tolerant of missing
 /// required members and quietly undo the guarantee <c>required</c> exists to provide.
@@ -61,6 +68,22 @@ public sealed class PersistedAssessmentConverter : JsonConverter<MailAssessment>
         Backfill(assessment, nameof(MailAssessment.DeliveryTiming), DeliveryTiming.PreAcceptance, options);
         Backfill(assessment, nameof(MailAssessment.Channel), ChannelContext.Email, options);
 
+        // The index arithmetic (decision 37) is a different kind of member from the two above, and it
+        // is handled differently on purpose. A back-fill restores a value that the row's own contents
+        // determine; these three cannot be recovered at all, because the weights are policy
+        // configuration that was never persisted alongside the decision. So the row is not given a
+        // value, it is given the answer "the build that made this decision did not record it": null.
+        //
+        // Stated rather than left absent because `required` is enforced on *presence*, so a merely
+        // missing member still fails the read, and a null member and an absent one are different
+        // things to System.Text.Json. This is why the members are nullable: the alternative, a
+        // zero, would serve a plausible number on a row that actually carried weight.
+        StateUnrecorded(assessment, nameof(MailAssessment.RiskIndexDenominator), options);
+        StateUnrecordedInDimensions(
+            assessment,
+            [nameof(RiskDimension.Weight), nameof(RiskDimension.Counted)],
+            options);
+
         // HostJson.Options does NOT contain this converter, which is what stops this call recursing
         // into the method it is called from. Adding this converter to Options would be an infinite
         // loop, and PersistedRead is built as Options plus this converter for exactly that reason.
@@ -93,6 +116,64 @@ public sealed class PersistedAssessmentConverter : JsonConverter<MailAssessment>
         if (!assessment.ContainsKey(name))
         {
             assessment[name] = JsonSerializer.SerializeToNode(legacyValue, options);
+        }
+    }
+
+    /// <summary>
+    /// States null for a member whose value an earlier build did not record.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a <see cref="Backfill{T}"/>: that method restores what a row was, and this one
+    /// records that the row does not say. Written as its own method so the two are not read as the same
+    /// operation by the next person, since conflating them is how a null would become a zero.
+    /// </remarks>
+    private static void StateUnrecorded(
+        JsonObject assessment,
+        string member,
+        JsonSerializerOptions options)
+    {
+        var name = options.PropertyNamingPolicy?.ConvertName(member) ?? member;
+
+        if (!assessment.ContainsKey(name))
+        {
+            // The JSON null literal rather than a null reference, so the property is present and null
+            // rather than dropped, which is the distinction `required` is enforced on.
+            assessment[name] = JsonNode.Parse("null");
+        }
+    }
+
+    /// <summary>
+    /// States null for each member on every entry of a collection of objects, for the members that
+    /// travel inside a row rather than beside it.
+    /// </summary>
+    private static void StateUnrecordedInDimensions(
+        JsonObject assessment,
+        IReadOnlyList<string> members,
+        JsonSerializerOptions options)
+    {
+        var collection = options.PropertyNamingPolicy?.ConvertName(nameof(MailAssessment.RiskDimensions))
+            ?? nameof(MailAssessment.RiskDimensions);
+
+        if (assessment[collection] is not JsonArray dimensions)
+        {
+            // No dimensions at all is a shape this converter has nothing to add to: the collection
+            // member is itself required, so a document lacking it fails the read for a reason that is
+            // not this decision's, and inventing an empty list here would be a default rather than a
+            // restoration.
+            return;
+        }
+
+        foreach (var dimension in dimensions)
+        {
+            if (dimension is not JsonObject row)
+            {
+                continue;
+            }
+
+            foreach (var member in members)
+            {
+                StateUnrecorded(row, member, options);
+            }
         }
     }
 }

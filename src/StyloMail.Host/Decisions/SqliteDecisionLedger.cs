@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using StyloMail.Core;
 using StyloMail.Host.Serialization;
 using StyloMail.Host.Storage;
@@ -20,14 +21,20 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
 {
     private readonly HostDatabase _database;
     private readonly ITrafficEvents _events;
+    private readonly ILogger<SqliteDecisionLedger> _logger;
 
-    public SqliteDecisionLedger(HostDatabase database, ITrafficEvents events)
+    public SqliteDecisionLedger(
+        HostDatabase database,
+        ITrafficEvents events,
+        ILogger<SqliteDecisionLedger> logger)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _database = database;
         _events = events;
+        _logger = logger;
     }
 
     public Task RecordAsync(MailAssessment assessment, CancellationToken cancellationToken)
@@ -188,16 +195,50 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
         }
 
         var items = new List<MailAssessment>(rows.Count);
+        var skipped = 0;
 
         foreach (var row in rows)
         {
-            if (JsonSerializer.Deserialize<MailAssessment>(row.Payload, HostJson.PersistedRead) is { } assessment)
+            MailAssessment? assessment;
+
+            try
+            {
+                assessment = JsonSerializer.Deserialize<MailAssessment>(row.Payload, HostJson.PersistedRead);
+            }
+            catch (JsonException ex)
+            {
+                // A row this build cannot read is skipped rather than allowed to fail the page. This
+                // list deserialises every row it returns, so one unreadable payload would otherwise
+                // turn a page of decisions into no page at all, taking the rows that are perfectly
+                // readable down with it. The row is named so the gap is traceable, and the payload is
+                // not logged: a stored assessment is message content.
+                //
+                // The skip is also counted onto the page rather than only logged. A page that drops
+                // rows silently reports itself complete when it is not, which is the failure the
+                // fleet's own suite gate was bitten by: a total that looked whole and was not.
+                _logger.LogWarning(
+                    ex,
+                    "Decision {AssessmentId} was skipped in the listing: its stored payload cannot be "
+                    + "read by this build.",
+                    row.AssessmentId);
+
+                skipped++;
+                continue;
+            }
+
+            if (assessment is not null)
             {
                 items.Add(assessment);
             }
         }
 
-        return Task.FromResult(new DecisionListingPage { Items = items, NextCursor = nextCursor });
+        return Task.FromResult(
+            new DecisionListingPage
+            {
+                Items = items,
+                NextCursor = nextCursor,
+                SkippedCount = skipped,
+            });
     }
 
     /// <summary>

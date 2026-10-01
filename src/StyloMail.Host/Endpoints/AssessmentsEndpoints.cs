@@ -14,11 +14,26 @@ namespace StyloMail.Host.Endpoints;
 /// <c>POST /v1/assessments</c>, assess a message with no delivery and no learning.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This route deliberately shares ingress checks with submission and deliberately shares nothing
 /// else with it. It does not spool a payload, does not create queue state, and does not commit
 /// trusted learning. Callers who want to participate in live traffic accounting use
 /// <c>POST /v1/submissions</c> instead; the two are separate routes precisely so that the choice
 /// is explicit rather than implied by a flag.
+/// </para>
+/// <para>
+/// <b>It supplies the original bytes, because it stores none.</b> A submission spools its payload and
+/// the assessor reads it back through the envelope's durable reference; an assessment writes nothing
+/// durable, so that reference is deliberately ephemeral and resolves to nothing. The bytes this route
+/// has already decoded are handed to the assessor instead, and that is not a convenience. Without
+/// them the deterministic extraction never runs, no checkable evidence exists for the message, and
+/// the policy engine holds every message whose risk index would otherwise have allowed it: measured,
+/// the same bytes submitted both ways return <c>Allow</c> with twenty-two deterministic signals on
+/// the submission route and <c>Hold</c> with none here.
+/// <b>Assessing without deterministic evidence is a defect on this route, not a mode</b>, because
+/// the two routes are handed the same message in the same shape and are expected to reach the same
+/// decision about it.
+/// </para>
 /// </remarks>
 internal static class AssessmentsEndpoints
 {
@@ -75,7 +90,15 @@ internal static class AssessmentsEndpoints
             assessmentOnly: true,
             clock);
 
-        var assessment = await assessor.AssessAsync(prepared!.Analysis, context, cancellationToken);
+        // The decoded body travels with the call. The envelope's reference is ephemeral on this route
+        // by design, so without this the assessor reaches no bytes at all and the parse it would have
+        // done for itself never happens: nothing durable is written by handing them over, and the
+        // assessor reads them only after its own source has come back empty.
+        var assessment = await assessor.AssessAsync(
+            prepared!.Analysis,
+            context,
+            cancellationToken,
+            prepared.RawBytes);
 
         // Recording the decision is part of assessing, not a delivery side effect: an assessment
         // nobody can look up afterwards is not explainable. If it cannot be recorded we do not

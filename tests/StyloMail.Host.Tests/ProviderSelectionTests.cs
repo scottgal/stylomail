@@ -5,7 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StyloMail.Assessment;
+using StyloMail.Host.Assessors;
 using StyloMail.Host.Hosting;
+using StyloMail.Host.Observability;
 using StyloMail.Nimble;
 
 namespace StyloMail.Host.Tests;
@@ -444,5 +446,59 @@ public sealed class NimbleProviderCompositionTests
             () => host.Services.GetRequiredService<StyloMail.Core.IMailAssessor>());
 
         Assert.Contains("half-configured", thrown.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A local deployment holding a provider key it cannot pair with starts and says so, rather than
+    /// refusing to start.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The documented asymmetry, asserted on the pair the hosted provider refuses.</b> A provider
+    /// key with no master key is the half-configured deployment that must not start under the hosted
+    /// provider, because its adapter would run against a key that pairs with nothing. Locally there
+    /// is no credential to pair with, so the same pair means the deployment is unconfigured rather
+    /// than misconfigured, and the honest answer is a host that starts, warns, and stops advertising
+    /// itself as ready.
+    /// </para>
+    /// <para>
+    /// <b>The fixture is deliberately not "neither secret".</b> That pair is unconfigured under both
+    /// providers, so a test using it would pass even if the local path inherited the hosted
+    /// provider's refusal, which is exactly the fault worth catching. This pair distinguishes them,
+    /// and swapping <c>ResolveForProvider</c> for <c>Resolve</c> in the composition turns this test
+    /// red.
+    /// </para>
+    /// <para>
+    /// <b>Resolving the assessor is the assertion that it did not refuse.</b> A throw from
+    /// <c>GetRequiredService</c> here would mean an operator's only repair was to obtain a credential
+    /// for a provider they are not using.
+    /// </para>
+    /// <para>
+    /// Readiness is asserted as exactly one failed check for the same reason the neighbouring health
+    /// test gives: any other name appearing here would mean the 503 had a cause other than the
+    /// missing assessor, and the assertion would have passed over it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task The_local_provider_with_an_unpairing_key_starts_not_ready_rather_than_refusing()
+    {
+        using var host = new TestHost()
+            .WithAssessmentSecrets(jevApiKey: "an-unused-provider-key", profileMasterKey: null)
+            .Configure("StyloMail:Assessment:Provider", "Nimble");
+
+        Assert.IsType<UnavailableMailAssessor>(
+            host.Services.GetRequiredService<StyloMail.Core.IMailAssessor>());
+
+        using var client = host.Anonymous();
+
+        var response = await client.GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(
+            new[] { ReadinessProbe.AssessorUnavailable },
+            body.RootElement.GetProperty("failedChecks").EnumerateArray().Select(e => e.GetString()));
     }
 }

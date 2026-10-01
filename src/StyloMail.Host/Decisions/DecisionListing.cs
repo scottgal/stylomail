@@ -93,5 +93,19 @@ public sealed record DecisionListingPage
     /// </summary>
     public string? NextCursor { get; init; }
 
+    /// <summary>
+    /// How many rows the page held that this build could not read back, and which are therefore not in
+    /// <see cref="Items"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>A page that drops rows silently is a page that reports itself complete when it is not.</b>
+    /// The rows are skipped rather than allowed to fail the page (one unreadable payload should not
+    /// take a whole listing down), but a skip that is only a log line is invisible to the caller that
+    /// is reading the response. Counted here so the number travels with the page, and defaults to 0
+    /// because "nothing was skipped" is the true answer for every row that read back, including all
+    /// rows written since the arithmetic was recorded.
+    /// </remarks>
+    public int SkippedCount { get; init; }
+
     public bool HasMore => NextCursor is not null;
 }

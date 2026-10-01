@@ -64,6 +64,11 @@ public sealed class ChatIntakeDrainTests
                 Evidence = [],
                 RiskDimensions = [],
                 RiskIndex = 0,
+
+                // Nothing was counted, which is what the scorer publishes as 0.0 (a decision whose
+                // every dimension was unavailable), and the denominator has to agree with the rows
+                // rather than being stated for the shape to look right (decision 37).
+                RiskIndexDenominator = 0.0,
                 Action = MailAction.Allow,
                 DeliveryTiming = DeliveryTiming.PostDelivery,
                 Reasons = [],
