@@ -1373,11 +1373,26 @@ public sealed class MailPolicyEngineTests
     /// looking at before it could divide, and the published denominator would not be sufficient.
     /// </summary>
     /// <remarks>
-    /// Decision 41 is why this belongs here and nowhere else. The covered fraction reaches no client
-    /// (the response's coverage member is the message's eight booleans, not this fraction), and the
-    /// change decision 32 makes to it, 0.9359 to 1.0 on a fully measured arm, is invisible through
-    /// every route because both values sit above both shipped floors. So this test is the only place
-    /// the change can be observed to happen at all, which is exactly what decision 41 asks for.
+    /// Decision 41 is why this belongs here rather than in a consumer. The reason it gave was that the
+    /// covered fraction reached no client, so this test was the only place its value could be seen at
+    /// all. <b>That half is superseded, and the routing is what changed rather than the arithmetic.</b>
+    /// The fraction is now served: <c>MailAssessment.CoveredWeightFraction</c>
+    /// (<c>src/StyloMail.Core/MailAssessment.cs</c>) reaches <c>DecisionResponse.CoveredWeightFraction</c>
+    /// (<c>src/StyloMail.Host/Contracts/DecisionResponse.cs</c>, added by <c>5f578de</c>, 2026-10-01 20:01),
+    /// which is a DIFFERENT member from that response's <c>Coverage</c>, the message's booleans that the
+    /// original sentence contrasted this against, and the console displays it as
+    /// <c>DecisionView.CoveredWeightArithmetic</c> (<c>src/StyloMail.Desktop/Models/DecisionView.cs</c>,
+    /// <c>3dbbec4</c>, 2026-10-01 22:37). So a client can read the value, which it could not when this
+    /// remark was written.
+    ///
+    /// <para>
+    /// What still belongs here is the ARITHMETIC, and it is a property of the composition rather than of
+    /// any consumer: the two directions land on one denominator, which is the whole subject of this test
+    /// and is checkable nowhere else. And what survives of decision 41's second half is narrower than
+    /// "invisible through every route": the change decision 32 makes, 0.9359 to 1.0 on a fully measured
+    /// arm, moves NO GATE, because both values sit above both shipped floors. A reader of the console can
+    /// now see the number; no action changes with it.
+    /// </para>
     /// </remarks>
     [Fact]
     public void The_denominator_is_the_same_whichever_way_continuity_answers()
@@ -1403,7 +1418,9 @@ public sealed class MailPolicyEngineTests
         // And the fully measured arm reads 1.0, not the 7.3/7.8 a client summing the served rows
         // where counted over all rows would compute. Both candidate values clear both shipped floors
         // (MinimumCoverageForAllow 0.30, MinimumCoverageForIrreversibleAction 0.60), which is why no
-        // gate moves and why this assertion is the only place the difference can be caught.
+        // gate moves. This assertion is where the ARITHMETIC is pinned; it is no longer the only place
+        // the value can be seen, because the fraction is served and the console displays it (see the
+        // remarks above for the route and the commits).
         Assert.Equal(1.0, disconfirming.CoveredWeightFraction, precision: 12);
         Assert.Equal(1.0, confirming.CoveredWeightFraction, precision: 12);
     }
