@@ -202,7 +202,7 @@ Two consequences worth knowing:
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `Endpoint` | `http://127.0.0.1:11435/api/generate` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. |
+| `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
@@ -217,9 +217,11 @@ are working files on the reference machine, not part of the repository.
 | Quantity | Marked | Value | Predicate and source |
 | --- | --- | --- | --- |
 | Model and server | MEASURED | `Bespoke-Nimble-9B-merged-current-Q8_0.gguf`, family `qwen35`, `9.0B`, `Q8_0`, served by Ollama `0.35.0` | What the server at `127.0.0.1:11435` reported for `nimble:latest` at 2026-09-30T20:32:30+0100. `nimble-survey4.json:89` (version) and `:97` to `:104` (model details). |
-| Applied prompt window | MEASURED | `4098` tokens with `8192` requested | The plateau of `prompt_eval_count` for a prompt larger than the window, which is the window the server applied. `nimble-shipping-shape-window.json:6` to `:8`, an artifact dated 2026-09-30T23:20:33+0100; the identical block sits at `nimble-window-check.json:10` to `:16`, which carries no date of its own. The same probe recorded `2050` with `4096` requested and `8194` with `16384` requested (`nimble-window-check.json:2` to `:25`). |
-| One full assessment | MEASURED | 25.13 s to 48.172 s, median 36.234 s, six messages | Wall time per message for the shape the adapter sends: `/api/generate` with 12 dimensions per request, every dimension answered. 2026-09-30T23:20:33+0100. The six cases are at `nimble-shipping-shape-window.json:23`, `:55`, `:87`, `:119`, `:151`, `:183`; the range runs from `:152` (25.13, the fastest) to `:184` (48.172, the slowest), and the median is over those six. |
+| Applied prompt window | MEASURED, `nimble-request-shape/1` | `4098` tokens with `8192` requested | The plateau of `prompt_eval_count` for a prompt larger than the window, which is the window the server applied. `nimble-shipping-shape-window.json:6` to `:8`, an artifact dated 2026-09-30T23:20:33+0100; the identical block sits at `nimble-window-check.json:10` to `:16`, which carries no date of its own. The same probe recorded `2050` with `4096` requested and `8194` with `16384` requested (`nimble-window-check.json:2` to `:25`). |
+| One full assessment | MEASURED, `nimble-request-shape/1` | 25.13 s to 48.172 s, median 36.234 s, six messages | Wall time per message for the shape the adapter sends: `/api/generate` with 12 dimensions per request, every dimension answered. 2026-09-30T23:20:33+0100. The six cases are at `nimble-shipping-shape-window.json:23`, `:55`, `:87`, `:119`, `:151`, `:183`; the range runs from `:152` (25.13, the fastest) to `:184` (48.172, the slowest), and the median is over those six. |
 | One dimension asked alone, model resident | MEASURED | median 2.307 s, min 1.615 s, max 103.259 s, twelve calls | The tool's own summary lines, `nimble-survey4.json:381` to `:383`. The max is one stalled call. A repeat of eight calls reported `median_seconds` 1.751 and `max_seconds` 16.441 (`nimble-stall.json:136` and `:137`), whose note at `:138` says a max near the median there "does not prove it cannot." |
+
+The `nimble-request-shape/1` mark names the transport both rows' predicates describe. The adapter's shape is now `nimble-request-shape/2` (`NimbleQuestionSet.cs:63`) and the default endpoint ends in `/v1/systemone` (`NimbleOptions.cs:56`), so those figures stand as measurements of the transport they name and not of the one that ships. The window row's own source states the condition outright: `NimbleOptions.cs:99-104` records that the relation was measured under the OLD request, and that every statement on `AppliedContextWindow` is a measurement of the previous transport until it is re-taken.
 
 Not measured here: memory footprint, disk size, and behaviour under concurrent requests.
 
