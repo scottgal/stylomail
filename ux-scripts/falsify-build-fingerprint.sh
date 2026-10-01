@@ -173,7 +173,13 @@ mutation_H() { perl -pi -e 's/^    if \[\[ ! "\$CONSOLE_PORT" =~ \^\[0-9\]\+\$ \
 mutation_I() { perl -0777 -pi -e 's/    if ! : < \/dev\/null 2>\/dev\/null; then\n        return 2\n    fi\n//' console-harness.sh; }
 
 # J. The probe is stuck on the third value, so it never answers about the port at
-#    all. Cases 1 and 2 of the sibling must go red, and case 9 on its control.
+#    all. The cases it reddens and the reasoning are the J paragraph at the top of
+#    this file, and the number itself lives once, in the pass list below.
+#
+#    This line used to carry its own copy of the number, and that copy said "cases 1
+#    and 2" long after the header had been corrected to the measured set: a
+#    prediction written before the sweep, left standing beside the correction. The
+#    duplicate is what drifted, not the number, so the duplicate is what is gone.
 mutation_J() { perl -pi -e 's/^    if ! : < \/dev\/null 2>\/dev\/null; then$/    if true; then/' console-harness.sh; }
 
 # A guard against the mutations themselves going stale: if a perl pattern stops
