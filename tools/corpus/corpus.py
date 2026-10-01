@@ -688,10 +688,18 @@ def plan_pair(seed: int, index: int) -> MessagePlan:
     **What is declared and what is not.** `semantic.conversational_continuity` is declared as
     AVAILABILITY, because supplying the window is something this tool does and the availability is
     its direct consequence. The *change* itself is recorded in `undescribedChange` and NOT declared
-    as a planted fact: the signal id a change surfaces as belongs to the conversation lane and does
-    not exist in the tree yet, and inventing one would put a claim in the manifest that no pipeline
-    could report and that `check` would fail a correct pipeline for. The change is real in the bytes
-    (different account number); it is simply not yet assertable, and the manifest says which.
+    as a planted fact, for a temporary reason and a durable one. Practically, no signal id for it
+    exists in the tree, and inventing one would put a claim in the manifest that no pipeline could
+    report and that `check` would fail a correct pipeline for. Lastingly, a `planted` entry is a
+    promise about a **deterministic** property, and the ids this change could surface as today are
+    the semantic dimensions: `semantic.payment_redirection` going true, or
+    `semantic.conversational_continuity`'s own judgement that the turn does not fit the window. Those
+    values are model answers, and the corpus declares continuity as availability only and never
+    asserts a value, so **more semantic ids cannot make this plantable**. It becomes plantable the
+    day a deterministic finding reports that a turn differs from its supplied window; the ten in
+    `src/StyloMail.Policy/DeterministicFindings.cs` do not, and `deterministic.thread_header_consistency`
+    is nearest and is about headers rather than the body. The change is real in the bytes (different
+    account number); it is simply not assertable, and the manifest says which.
     """
     return _plan_pair(seed, index, control=False)
 
@@ -733,9 +741,11 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
             "from": "sort code 20-00-00, account number 11112222",
             "to": "sort code 04-00-04, account number 12345678",
             "note": (
-                "recorded but NOT declared as a planted fact: no conversation signal id exists in "
-                "the tree yet, and a manifest that named one would be asserting something nothing "
-                "can report. The change is real in the bytes; it is not yet assertable."
+                "recorded but NOT declared as a planted fact: a planted entry promises a "
+                "DETERMINISTIC property, and the ids this change could surface as are semantic "
+                "dimensions whose value is the model's own answer, which the corpus never asserts. "
+                "Nothing to report here until a deterministic finding describes a turn differing "
+                "from its supplied window. The change is real in the bytes; it is not assertable."
             ),
         }
     return MessagePlan(

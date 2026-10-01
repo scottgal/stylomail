@@ -269,10 +269,16 @@ The pair declares `semantic.conversational_continuity` as **availability only**.
 is something this tool does, so its availability is the corpus's to claim. The value is the model's
 judgement and the corpus does not declare it.
 
-The *change* in a pair is recorded in `undescribedChange` and deliberately **not** in `planted`. No
-conversation signal id exists in the tree yet, so a `planted` entry would be a claim nothing can
-report and `check` would fail a correct pipeline for it. The field says what the change is, where it
-is, and why it is not assertable. A `planted` list is a list of promises; this one is not made.
+The *change* in a pair is recorded in `undescribedChange` and deliberately **not** in `planted`, for a
+temporary reason and a durable one. No signal id for it exists in the tree today, so a `planted` entry
+would be a claim nothing can report and `check` would fail a correct pipeline for it. More
+importantly, a `planted` entry is a promise about a **deterministic** property, and the ids this change
+could surface as are the semantic dimensions (`semantic.payment_redirection` going true, or the
+continuity answer itself), whose values are the model's judgement and which the corpus declares as
+availability only. So this does not become plantable when the conversation lane lands more semantic
+ids. It becomes plantable when a **deterministic** finding reports that a turn differs from its
+supplied window. The field says what the change is, where it is, and why it is not assertable. A
+`planted` list is a list of promises; this one is not made.
 
 ### The rest
 
