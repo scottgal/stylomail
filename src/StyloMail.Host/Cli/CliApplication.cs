@@ -346,7 +346,15 @@ public static class CliApplication
             return 0;
         }
 
-        var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
+        // Same content-root pin as the web entry point, and it has to be the same one: this builder
+        // defaults the root to the CWD exactly as WebApplication.CreateBuilder does, so a CLI command
+        // run from elsewhere read a different appsettings.json than the same deployment's server. Two
+        // front ends, one composition root, so one root path.
+        var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(
+            new Microsoft.Extensions.Hosting.HostApplicationBuilderSettings
+            {
+                ContentRootPath = AppContext.BaseDirectory,
+            });
         builder.Services.AddStyloMailHost(builder.Configuration);
 
         using var host = builder.Build();

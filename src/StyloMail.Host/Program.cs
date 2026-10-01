@@ -19,11 +19,29 @@ if (command is not ServeCommand)
     return await CliApplication.RunAsync(args, Console.Out);
 }
 
-var builder = WebApplication.CreateBuilder(args);
+// The content root is pinned to the deploy directory rather than left to the CWD. The default is
+// Directory.GetCurrentDirectory(), and configuration is then read from HERE, so a Host started from
+// anywhere but this project's own folder silently ignored its appsettings.json. That is not
+// hypothetical: the EffectiveNumCtx pin landed in src/StyloMail.Host/appsettings.json and a run
+// launched from elsewhere booted at the derived 4096, logging `EffectiveNumCtx (unset, derived)`.
+// A configuration file that the binary does not read is a configuration, not a setting.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 builder.Services.AddStyloMailHost(builder.Configuration);
 
 var app = builder.Build();
+
+// Printed on every boot for the reason the window line is: a value that is SET but not APPLIED is
+// indistinguishable from an applied one until something says which root it was read from. Finding
+// that the earlier pin was never in force took an hour of enumerating every host.log in the
+// workspace, and this line answers it directly.
+app.Logger.LogInformation(
+    "StyloMail content root: {ContentRoot}. Configuration and appsettings.json are read from here.",
+    app.Environment.ContentRootPath);
 
 // Schema before traffic: the host's tables, the persistence schema and the queue's, all in the
 // one database file this deployment uses.
