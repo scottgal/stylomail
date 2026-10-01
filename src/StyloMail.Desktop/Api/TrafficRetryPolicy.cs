@@ -23,6 +23,18 @@ namespace StyloMail.Desktop.Api;
 /// would use.
 /// </para>
 /// <para>
+/// <b>These four numbers must stay exactly SignalR's own defaults.</b> The
+/// automatic reconnect is not following this object into new territory; it is
+/// being handed the schedule it already had, and the only reason to state it is
+/// so that the operator's sequence and the automatic one are provably the same
+/// cadence rather than two that happen to agree today. So a change here is not a
+/// tuning decision, it is a divergence: it would leave the two paths waiting
+/// different amounts, and nothing on the status line would say which one the
+/// operator was watching. There is no acceptable divergence. If SignalR's
+/// defaults ever move, they move here in the same change, and the automatic path
+/// is re-measured against the operator's, not assumed.
+/// </para>
+/// <para>
 /// Deliberately an instance type rather than a static table: a test can build
 /// one with millisecond delays and assert the whole sequence's behaviour without
 /// spending the real 42 seconds. Production uses <see cref="Shared"/>.
@@ -30,7 +42,17 @@ namespace StyloMail.Desktop.Api;
 /// </remarks>
 public sealed class TrafficRetryPolicy : IRetryPolicy
 {
-    /// <summary>The four waits, in the order they are taken.</summary>
+    /// <summary>
+    /// The four waits, in the order they are taken.
+    /// </summary>
+    /// <remarks>
+    /// SignalR's own default reconnect sequence, and it has to stay that way:
+    /// zero, then two, then ten, then thirty seconds. See the class remarks for
+    /// why no divergence is acceptable. The assertion that this is what the
+    /// object produces, and that the automatic path is handed the same numbers,
+    /// is in tests/StyloMail.Desktop.Tests/TrafficFeedTests.cs, which is where
+    /// the constraint is checked rather than merely stated.
+    /// </remarks>
     private static readonly TimeSpan[] DefaultDelays =
     [
         TimeSpan.Zero,
