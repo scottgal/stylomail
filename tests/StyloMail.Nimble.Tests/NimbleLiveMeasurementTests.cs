@@ -80,11 +80,24 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
 {
     private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 
+    /// <summary>
+    /// UTF-8 with no byte-order mark, for artifacts a machine reads back.
+    /// </summary>
+    /// <remarks>
+    /// <c>Encoding.UTF8</c> writes a BOM, and a JSON parser that does not expect one rejects the file
+    /// outright: the first attempt to re-read the corpus artifact failed on exactly that, so the
+    /// writer is what gets fixed rather than every reader. An artifact is an input to a tool, not text
+    /// for a person to open, and a file that only some parsers accept is not evidence a reviewer can
+    /// check.
+    /// </remarks>
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     [NimbleLiveFact]
     public async Task Answers_every_dimension_of_every_corpus_case_in_one_request_each()
     {
         var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        using var recorder = new RecordingHandler { InnerHandler = new HttpClientHandler() };
+        using var http = new HttpClient(recorder) { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
         var cases = NimbleCorpus.Cases;
@@ -109,6 +122,13 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
             var result = await classifier.ClassifyAsync(input, CancellationToken.None);
             clock.Stop();
             times.Add(clock.ElapsedMilliseconds);
+
+            // The request that produced this answer, kept verbatim. A prompt token count is not a
+            // reproduction: without the payload there is no way to tell a shape difference from a
+            // model difference, and this lane has already had one finding attributed to the wrong
+            // cause for want of exactly this. Carries the message, which is untrusted input and not
+            // a secret, so it belongs in the artifact rather than in a report.
+            var sentRequest = recorder.LastRequestBody;
 
             var asked = result.Evidence
                 .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
@@ -148,6 +168,10 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 max_body_characters = options.MaxBodyCharacters,
                 request_shape = NimbleQuestionSet.Version,
                 codes,
+                // Cloned so the document can be disposed here rather than kept alive by the element.
+                sent_request = sentRequest is null
+                    ? null
+                    : (JsonElement?)JsonDocument.Parse(sentRequest).RootElement.Clone(),
             });
         }
 
@@ -218,13 +242,527 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
         Assert.All(attacked.Values, code => Assert.Contains(code, NimbleQuestionSet.Codes, StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// Whether the local model's continuity answer is a signal or noise, now that a window is coming.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This dimension has never answered for real.</b> Nothing in the shipped wiring supplies
+    /// conversation context, so <c>semantic.conversational_continuity</c> has been reported
+    /// NotApplicable since it was written. Conversation modelling makes it load-bearing, and the
+    /// question that has to be settled first is whether the local model's answer is reproducible at
+    /// all, because a dimension that flips between runs is noise carrying a weight of 0.5.
+    /// </para>
+    /// <para>
+    /// <b>Windows that differ in content and in size, because stability alone is not the question.</b>
+    /// A model that answers "present" ten times out of ten to every window is perfectly stable and
+    /// carries no information whatsoever. Same message, same model, and only the supplied window
+    /// varying (its own conversation against an unrelated one, at two turns and at three) is what
+    /// makes this a measurement rather than a reassuring number. If every window comes back the same
+    /// way, the dimension is not discriminating and its weight earns nothing.
+    /// </para>
+    /// <para>
+    /// <b>The whole answer vector, not only the continuity letter.</b> A letter that holds still
+    /// while the other dimensions move underneath it is not a stable signal, it is one answer that
+    /// happens to be constant on a request the model is reading differently each time, so the run
+    /// records every available dimension's code and the summary reports how many runs produced the
+    /// identical whole vector. That number, not the letter's own distribution, is what says whether
+    /// the dimension is usable.
+    /// </para>
+    /// <para>
+    /// Asserted here: only what must hold whatever the model does, which is that the question was
+    /// asked and that every answer is a legal code. The distributions are reported, and no stability
+    /// claim is made beyond the runs recorded.
+    /// </para>
+    /// </remarks>
+    [NimbleLiveFact]
+    public async Task Records_whether_the_continuity_answer_is_stable_when_a_window_is_supplied()
+    {
+        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        var classifier = new NimbleSemanticMailClassifier(http, options);
+
+        const string caseName = "reply-in-thread";
+        var baseInput = NimbleCorpus.BuildInput(caseName);
+
+        // The message never changes. Only the window does, so a difference between two cells is
+        // attributable to the window and to nothing else.
+        //
+        // Window CONTENT and window SIZE are both varied, because the content turned out to be half
+        // the axis: conversation-'s M3 answers B for a benign in-thread message at a three-turn window
+        // while M2 answered A for the jev reply-in-thread fixture at the same turn count and shape.
+        // Turn count is therefore not the variable. Whether the window is this message's own
+        // conversation is, and that is what these two families of turns are for.
+        var inThread = new[]
+        {
+            "From: orders@northwind.example\nSubject: Your order NW-4482 has shipped\n\n"
+            + "Order NW-4482 was dispatched today and should arrive within two working days.",
+            "From: alice@example.test\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Thanks, that timing works. I am at that address all week.",
+            "From: orders@northwind.example\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Noted. The courier will ask for a signature; the front desk can take it.",
+        };
+        var unrelated = new[]
+        {
+            "From: finance@example.test\nSubject: September payroll run\n\n"
+            + "Payroll for September closes on the 28th. Submit expense claims before then.",
+            "From: facilities@example.test\nSubject: Lift maintenance\n\n"
+            + "The east lift is out of service on Thursday morning.",
+            "From: newsletters@example.test\nSubject: This week in widgets\n\n"
+            + "Five things our editors think you should read this week.",
+        };
+
+        var windows = new List<(string Label, string[] Turns)>();
+        foreach (var size in new[] { 2, 3 })
+        {
+            windows.Add(($"in thread, {size} turns", inThread.Take(size).ToArray()));
+            windows.Add(($"unrelated, {size} turns", unrelated.Take(size).ToArray()));
+        }
+
+        await classifier.ClassifyAsync(baseInput, CancellationToken.None);
+
+        var runs = new List<object>();
+        var summaries = new List<object>();
+
+        // A failed run is recorded here and asserted on once every cell has run, rather than throwing
+        // mid-loop. Forty calls at 8 to 45 s each is a long monopoly of a single shared model, and a
+        // transient provider failure on the last run of the last cell must not discard the evidence
+        // the other thirty-nine produced. The test still fails; the artifact still explains why.
+        var unavailable = new List<string>();
+
+        try
+        {
+            foreach (var (label, turns) in windows)
+            {
+                var input = baseInput with
+                {
+                    Message = baseInput.Message with { ConversationContext = turns },
+                };
+
+                var answers = new List<string>();
+                var vectors = new List<string>();
+                var times = new List<long>();
+                int? promptTokens = null;
+                for (var run = 0; run < ContinuityRuns; run++)
+                {
+                    var clock = Stopwatch.StartNew();
+                    var result = await classifier.ClassifyAsync(input, CancellationToken.None);
+                    clock.Stop();
+                    times.Add(clock.ElapsedMilliseconds);
+                    promptTokens = result.InputTokens;
+
+                    var continuity = result.Evidence
+                        .Single(e => e.SignalId == SemanticDimensions.ConversationalContinuityId);
+
+                    // Asked, whatever the answer. A window was supplied, so NotApplicable here would
+                    // mean the gate that decides askability disagrees with the window it was handed.
+                    // Unavailable is a different case: the provider failed, not the gate.
+                    var available = continuity.Availability == EvidenceAvailability.Available;
+                    if (available)
+                    {
+                        Assert.Contains(
+                            continuity.Value == 1.0 ? "A" : "B",
+                            NimbleQuestionSet.Codes,
+                            StringComparer.Ordinal);
+                    }
+                    else
+                    {
+                        unavailable.Add($"{label} run {run}: {continuity.Availability}");
+                    }
+
+                    // The whole answer vector, not only the continuity letter. A dimension can hold
+                    // the same letter for ten runs while three others move underneath it, and only the
+                    // vector tells the two cases apart: one stable answer on a stable request, or one
+                    // answer standing still on top of a request the model reads differently each time.
+                    var vector = string.Concat(
+                        result.Evidence
+                            .Where(e => e.Availability == EvidenceAvailability.Available)
+                            .OrderBy(e => e.SignalId, StringComparer.Ordinal)
+                            .Select(e => e.Value == 1.0 ? "A" : "B"));
+
+                    var answer = available ? (continuity.Value == 1.0 ? "A" : "B") : null;
+                    if (available)
+                    {
+                        answers.Add(answer!);
+                        vectors.Add(vector);
+                    }
+
+                    runs.Add(new
+                    {
+                        window = label,
+                        run,
+                        availability = continuity.Availability.ToString(),
+                        answer,
+                        vector,
+                        elapsed_ms = clock.ElapsedMilliseconds,
+                        prompt_tokens = result.InputTokens,
+                    });
+                }
+
+                var distribution = answers
+                    .GroupBy(a => a, StringComparer.Ordinal)
+                    .OrderBy(g => g.Key, StringComparer.Ordinal)
+                    .Select(g => $"{g.Key}={g.Count()}");
+
+                output.WriteLine(
+                    $"{caseName} / {label}: {string.Join(" ", distribution)} of {answers.Count} "
+                    + $"(turns={turns.Length}, prompt_tokens={promptTokens}, "
+                    + $"median_ms={times.OrderBy(t => t).ElementAt(times.Count / 2)})");
+
+                // The vector agreement is the number that says whether the dimension is usable: a
+                // letter that never moves while the rest of the vector churns is not a stable signal,
+                // it is one answer that happens to be constant on a request the model is not
+                // answering the same way. An all-unavailable cell has no vector to agree on, and says
+                // so rather than throwing on an empty list.
+                var modal = vectors
+                    .GroupBy(v => v, StringComparer.Ordinal)
+                    .OrderByDescending(g => g.Count())
+                    .ThenBy(g => g.Key, StringComparer.Ordinal)
+                    .FirstOrDefault();
+                var distinct = vectors.Distinct(StringComparer.Ordinal).Count();
+
+                output.WriteLine(
+                    $"{caseName} / {label}: whole vector identical in {modal?.Count() ?? 0} of "
+                    + $"{vectors.Count} runs ({distinct} distinct vector(s), "
+                    + $"modal {modal?.Key ?? "none"})");
+
+                summaries.Add(new
+                {
+                    window = label,
+                    runs = vectors.Count,
+                    identical_whole_vector_runs = modal?.Count() ?? 0,
+                    distinct_vectors = distinct,
+                    modal_vector = modal?.Key,
+                    continuity_distribution = string.Join(" ", distribution),
+                });
+            }
+        }
+        finally
+        {
+            WriteContinuityIfRequested(
+                new
+                {
+                    case_name = caseName,
+                    runs_per_window = ContinuityRuns,
+                    unavailable_runs = unavailable,
+                    runs,
+                    summaries,
+                },
+                output);
+        }
+
+        Assert.True(
+            unavailable.Count == 0,
+            $"continuity was not Available on {unavailable.Count} run(s): {string.Join("; ", unavailable)}");
+    }
+
+    /// <summary>
+    /// Repeat count for the continuity measurement. Ten is what was asked for.
+    /// </summary>
+    /// <remarks>
+    /// Overridable with <c>NIMBLE_CONTINUITY_RUNS</c>, because the local model is single and shared:
+    /// four cells at ten repeats is forty calls, which is a long monopoly of it when another lane is
+    /// waiting. Whatever the count, it is recorded in the artifact beside the distribution, so a
+    /// smaller run cannot be mistaken for a full one.
+    /// </remarks>
+    private static int ContinuityRuns =>
+        Environment.GetEnvironmentVariable("NIMBLE_CONTINUITY_RUNS") is { Length: > 0 } configured
+            && int.TryParse(configured, NumberStyles.Integer, CultureInfo.InvariantCulture, out var runs)
+            && runs > 0
+                ? runs
+                : 10;
+
+    /// <summary>
+    /// Writes the continuity distribution to <c>NIMBLE_CONTINUITY_OUT</c> when it is set.
+    /// </summary>
+    /// <remarks>
+    /// A separate variable from the corpus measurement's, so one run does not overwrite the other's
+    /// artifact: these answer different questions and a report should be able to cite both.
+    /// </remarks>
+    private static void WriteContinuityIfRequested(object payload, ITestOutputHelper output)
+    {
+        if (Environment.GetEnvironmentVariable("NIMBLE_CONTINUITY_OUT") is not { Length: > 0 } path)
+        {
+            return;
+        }
+
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(
+                new
+                {
+                    measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                    request_shape = NimbleQuestionSet.Version,
+                    num_ctx = new NimbleOptions().NumCtx,
+
+                    // Named `configured_`, not `applied_window`. Decision 26 separates the REQUESTED
+                    // window from the MEASURED one, and decision 35 records the measured one as a band,
+                    // 4098 to 4104 at a requested 8192, floor 4098. This field is neither: it is
+                    // NumCtx / 2 from AppliedContextWindow, a conservative bound derived from the
+                    // configuration. Called `applied_window` it reads as the measurement, which is the
+                    // exact confusion decision 26 exists to prevent.
+                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    result = payload,
+                },
+                IndentedJson),
+            Utf8NoBom);
+
+        output.WriteLine($"wrote {path}");
+    }
+
+    /// <summary>
+    /// The continuity question over one body and one window, asked at twelve questions and at one,
+    /// in one lane.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this probe exists.</b> Forty runs with the twelve-question shape answered B in every
+    /// cell, including the two in-thread cells whose window carries the sentence the body quotes back
+    /// (window turn 1 is the dispatch line the fixture quotes) but never the body's own sentence. A
+    /// constant across every cell cannot separate "the message advances the state, so B is right"
+    /// from "the asking shape keeps this question at B for this fixture", and the lane has a measured
+    /// shape effect elsewhere, so the second is live rather than hypothetical.
+    /// </para>
+    /// <para>
+    /// <b>Reading <c>conversation-</c>'s M6 artifact afterwards sharpened that.</b> Their six A
+    /// conditions all answer A over a window whose second turn is the message's own sentence, and
+    /// their three B conditions answer B over that same window with a different body. So what the
+    /// window must contain is the body, not the text the body quotes, and the four cells never had
+    /// that. It is why the window below is theirs rather than this lane's.
+    /// </para>
+    /// <para>
+    /// <b>Three arms, one lane, and the pair is the experiment.</b> All three are the committed corpus
+    /// case with its window replaced by <c>conversation-</c>'s M6 window,
+    /// <c>Threads.All[0].PriorTurns</c>, copied verbatim: three turns whose second turn is the
+    /// restating body itself. That containment is the axis, not the body alone. The restating body is
+    /// then asked twice, once with the twelve questions the Host path sends and once with the
+    /// continuity question alone, and those two arms differ in nothing else: same body, same window,
+    /// same constructor, same profile. That pair is the isolation <c>overview-</c> ruled owed, since
+    /// the twelve-question A it compares against, <c>conversation-</c>'s <c>A2-bare-reply</c>, comes
+    /// from another lane's constructor and envelope. The third arm is the advancing body asked alone,
+    /// carried so this artifact still carries what the previous one carried.
+    /// </para>
+    /// <para>
+    /// <b>The window is the correction, and it is a correction to this lane's own first attempt.</b>
+    /// The first run of this probe sent this lane's own two-turn window, in which neither body repeats
+    /// anything, so under the containment axis both inputs advanced and B on both was the axis's own
+    /// prediction rather than a result about the asking shape. The bodies are unchanged; the window is
+    /// the window <c>A2-bare-reply</c> answered A at in twelve questions, so the asking shape is now
+    /// the only thing that differs from a condition with a known letter.
+    /// </para>
+    /// <para>
+    /// <b>What each outcome means, recorded before the run rather than after it.</b> The single-question
+    /// run answered B on both bodies over this window; that is already recorded and this run repeats
+    /// the arm rather than replacing it. What is new is the pair, and it is the isolation
+    /// <c>overview-</c> ruled owed: <b>restating at twelve questions A with restating at one question
+    /// B</b> isolates the asking shape, because the body, the window, the constructor and the profile
+    /// are the same object in both arms, and it confirms the fleet-level rule within one lane instead
+    /// of across two. <b>B at both shapes</b> means the asking shape is not the variable for this
+    /// input at all, so the twelve-question A lives in the other lane's constructor and envelope
+    /// rather than in the question count, which would be the bigger finding and would put the envelope
+    /// question back at the centre. Anything else, including a cell that splits within itself, is
+    /// reported as it comes and not forced into either box.
+    /// </para>
+    /// <para>
+    /// <b>What it cannot decide.</b> This is the absent-profile, adapter-level shape, the same one the
+    /// four cells were measured at, while the A that motivates the restating input was also measured
+    /// end to end through the Host. An A here would not by itself explain the Host's A; it would say
+    /// the containment axis reaches this shape as well.
+    /// </para>
+    /// <para>
+    /// <b>Status: BUILT, STUB-CHECKED, AND NOT RUN, because a different instrument answered the
+    /// question first.</b> <c>overview-</c> replaced this pair with the survey's own controlled cell
+    /// pointed at continuity (<c>.styloagent/scratch/nimble/continuity-shape-cell.json</c>), which
+    /// answered B under BOTH shapes on the flagship body, so the case for the shape effect as a
+    /// property of the asking shape is not there. The pair is kept rather than deleted because it
+    /// differs from that cell in one way that matters: the cell sends the survey's delimited body,
+    /// while this runs the shipping adapter, so an A at twelve questions here would be evidence about
+    /// the deployment that the cell cannot give. No artifact exists for it and no letter from it may
+    /// be quoted; its last check was the stub, which answers A to everything and reads nothing.
+    /// </para>
+    /// </remarks>
+    [NimbleLiveFact]
+    public async Task Records_whether_the_restating_axis_survives_the_single_question_shape()
+    {
+        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        var classifier = new NimbleSemanticMailClassifier(http, options);
+
+        // conversation-'s M6 window, `Threads.All[0].PriorTurns`, copied verbatim rather than
+        // referenced: that lane's measure tool is not a dependency of this assembly. Turn 2 is the
+        // restating body itself, which is the containment the axis is about. A2-bare-reply answers A
+        // over this window at twelve questions; the point of sending it here is that only the asking
+        // shape then differs from a condition with a known letter.
+        var window = new[]
+        {
+            "From: Northwind Supplies <orders@northwind.example>\nSubject: Your order NW-4482 has shipped\n\n"
+            + "Order NW-4482 was dispatched today and should arrive within two working days.",
+            "From: alice@example.example\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Thanks for the update. Two working days is fine.",
+            "From: Northwind Supplies <orders@northwind.example>\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Noted, thank you. The tracking reference will follow once the carrier scans it.",
+        };
+
+        var continuityOnly = new[] { SemanticDimensions.ConversationalContinuityId };
+
+        // The one-lane pair, and it is `overview-`'s ask: the SAME body over the SAME window at one
+        // question and at twelve, so the asking shape is the only thing that moves between the first
+        // two arms. Same constructor, same profile, same window, same body. The comparison against
+        // `conversation-`'s A2 crosses two lanes and therefore two corpus constructors, which is why
+        // an inference drawn from it is an inference rather than an isolation. `advancing` is kept at
+        // one question, the arm it was, so this run still carries what the previous artifact carries.
+        var inputs = new (string Label, string Body, IReadOnlyList<string> Dimensions)[]
+        {
+            ("restating, one question",
+                "Thanks for the update. Two working days is fine.", continuityOnly),
+            ("restating, twelve questions",
+                "Thanks for the update. Two working days is fine.",
+                SemanticDimensions.All.Select(d => d.Id).ToList()),
+            ("advancing, one question",
+                "Thanks, the parcel arrived this morning.", continuityOnly),
+        };
+
+        var baseInput = NimbleCorpus.BuildInput("reply-in-thread");
+
+        var prepared = inputs
+            .Select(i => (
+                i.Label,
+                Input: baseInput with
+                {
+                    Message = baseInput.Message with { BodyText = i.Body, ConversationContext = window },
+                    Dimensions = SemanticDimensions.All.Where(d => i.Dimensions.Contains(d.Id)).ToList(),
+                }))
+            .ToList();
+
+        await classifier.ClassifyAsync(baseInput, CancellationToken.None);
+
+        var runs = new List<object>();
+        var summaries = new List<object>();
+        var unavailable = new List<string>();
+
+        try
+        {
+            foreach (var (label, input) in prepared)
+            {
+                var answers = new List<string>();
+                var times = new List<long>();
+                int? promptTokens = null;
+
+                // Asked, per arm rather than once for the run: the two `restating` arms differ in
+                // exactly this number and that difference is the experiment.
+                var askedHere = input.Dimensions.Count;
+
+                for (var run = 0; run < ContinuityRuns; run++)
+                {
+                    var clock = Stopwatch.StartNew();
+                    var result = await classifier.ClassifyAsync(input, CancellationToken.None);
+                    clock.Stop();
+                    times.Add(clock.ElapsedMilliseconds);
+                    promptTokens = result.InputTokens;
+
+                    var continuity = result.Evidence
+                        .Single(e => e.SignalId == SemanticDimensions.ConversationalContinuityId);
+
+                    var available = continuity.Availability == EvidenceAvailability.Available;
+                    if (available)
+                    {
+                        Assert.Contains(continuity.Value == 1.0 ? "A" : "B", NimbleQuestionSet.Codes, StringComparer.Ordinal);
+                        answers.Add(continuity.Value == 1.0 ? "A" : "B");
+                    }
+                    else
+                    {
+                        unavailable.Add($"{label} run {run}: {continuity.Availability}");
+                    }
+
+                    runs.Add(new
+                    {
+                        input = label,
+                        run,
+                        availability = continuity.Availability.ToString(),
+                        answer = available ? (continuity.Value == 1.0 ? "A" : "B") : null,
+                        asked = result.Evidence.Count(e => e.Availability != EvidenceAvailability.NotApplicable),
+                        elapsed_ms = clock.ElapsedMilliseconds,
+                        prompt_tokens = result.InputTokens,
+                    });
+                }
+
+                var distribution = answers
+                    .GroupBy(a => a, StringComparer.Ordinal)
+                    .OrderBy(g => g.Key, StringComparer.Ordinal)
+                    .Select(g => $"{g.Key}={g.Count()}");
+
+                output.WriteLine(
+                    $"{label}: {string.Join(" ", distribution)} of {answers.Count} "
+                    + $"(asked={askedHere}, prompt_tokens={promptTokens}, median_ms="
+                    + $"{(times.Count > 0 ? times.OrderBy(t => t).ElementAt(times.Count / 2) : 0)})");
+
+                summaries.Add(new
+                {
+                    input = label,
+                    body = input.Message.BodyText,
+                    asked = askedHere,
+                    runs = answers.Count,
+                    distribution = string.Join(" ", distribution),
+                });
+            }
+        }
+        finally
+        {
+            WriteAxisShapeIfRequested(
+                new
+                {
+                    case_name = "reply-in-thread",
+                    asked_by_arm = prepared.Select(p => p.Input.Dimensions.Count).ToList(),
+                    arms = prepared.Select(p => p.Label).ToList(),
+                    dimensions = continuityOnly,
+                    window_turns = window,
+                    window_source = "conversation-'s M6 window, Threads.All[0].PriorTurns, copied verbatim; "
+                        + "its second turn is the restating body itself",
+                    runs_per_input = ContinuityRuns,
+                    unavailable_runs = unavailable,
+                    summary = summaries,
+                    runs,
+                },
+                output);
+        }
+
+        Assert.True(
+            unavailable.Count == 0,
+            $"continuity was not Available on {unavailable.Count} run(s): {string.Join("; ", unavailable)}");
+    }
+
+    private static void WriteAxisShapeIfRequested(object payload, ITestOutputHelper output)
+    {
+        if (Environment.GetEnvironmentVariable("NIMBLE_AXIS_SHAPE_OUT") is not { Length: > 0 } path)
+        {
+            return;
+        }
+
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(
+                new
+                {
+                    measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                    request_shape = NimbleQuestionSet.Version,
+                    num_ctx = new NimbleOptions().NumCtx,
+                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    input_shape = "absent profile, no tagged context; one arm asks one question and one asks twelve",
+                    result = payload,
+                },
+                IndentedJson),
+            Utf8NoBom);
+
+        output.WriteLine($"wrote {path}");
+    }
+
     private static Dictionary<string, string> Codes(SemanticAssessment assessment)
         => assessment.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available)
             .ToDictionary(e => e.SignalId, e => e.Value == 1.0 ? "A" : "B", StringComparer.Ordinal);
 
     [NimbleLiveFact]
-    public async Task Never_exceeds_the_window_it_configured()
+    public async Task Never_exceeds_the_window_the_server_actually_applies()
     {
         var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
@@ -236,11 +774,51 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
         // The backstop in the adapter reports unavailable when the server evaluated a prompt at the
         // window. A real call reaching the end of this test means the fit held against a real server
         // rather than only against a stub.
+        //
+        // Against the APPLIED window. This assertion used to compare with NumCtx, which is half again
+        // too generous on this server: the measured applied window is 4098 at a requested 8192, so a
+        // prompt of 5,000 tokens satisfied "under 8192" while the server had already cut it. The
+        // assertion was true and the property was false, which is the failure mode decision 26 is
+        // about. What it can still not prove is reported rather than implied: a call below both
+        // windows says nothing about what happens at the boundary.
         Assert.DoesNotContain("token", result.Cache.KeyDigest, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(result.InputTokens);
         Assert.True(
-            result.InputTokens < options.NumCtx,
-            $"the server evaluated {result.InputTokens} prompt tokens at a window of {options.NumCtx}");
+            result.InputTokens < options.AppliedContextWindow,
+            $"the server evaluated {result.InputTokens} prompt tokens at an applied window of "
+            + $"{options.AppliedContextWindow} (requested {options.NumCtx})");
+
+        output.WriteLine(
+            $"applied window {options.AppliedContextWindow} at requested {options.NumCtx}, "
+            + $"evaluated {result.InputTokens}");
+    }
+
+    /// <summary>
+    /// Keeps the body of the last request the adapter sent, so the artifact carries the request and
+    /// not only its consequences.
+    /// </summary>
+    /// <remarks>
+    /// A pass-through, not a stub: it changes nothing about the call. Reading a
+    /// <c>JsonContent</c> body is repeatable, so recording it does not consume what is sent, and it
+    /// happens before the send so a request that fails still leaves its payload behind.
+    /// </remarks>
+    private sealed class RecordingHandler : DelegatingHandler
+    {
+        public string? LastRequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Content is not null)
+            {
+                LastRequestBody = await request.Content
+                    .ReadAsStringAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private void WriteIfRequested(
@@ -273,7 +851,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
             },
             IndentedJson);
 
-        File.WriteAllText(path, payload, Encoding.UTF8);
+        File.WriteAllText(path, payload, Utf8NoBom);
         output.WriteLine($"wrote {path}");
     }
 }

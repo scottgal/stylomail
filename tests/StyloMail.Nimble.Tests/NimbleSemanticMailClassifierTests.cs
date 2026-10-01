@@ -308,6 +308,47 @@ public sealed class NimbleSemanticMailClassifierTests
     }
 
     [Fact]
+    public async Task Reports_unavailable_when_the_prompt_was_cut_to_the_window_the_server_applies()
+    {
+        // 4,098 is what the reference server evaluated a saturated prompt to at a requested 8192, and
+        // the number is the whole point: it is BELOW the requested window, so the check this replaced
+        // ("did the server evaluate at least num_ctx tokens") answered no and a completely truncated
+        // prompt came back as a clean, complete answer. Decision 26, reproduced here as a regression
+        // guard rather than left to the live measurement to notice only when it is already happening.
+        var handler = new RecordingHandler((_, _) => NimbleTestDoubles.Ok(
+            SemanticDimensions.All,
+            NimbleTestDoubles.AllAffirmative,
+            promptEvalCount: 4098));
+
+        var result = await NimbleTestDoubles.Create(handler).ClassifyAsync(
+            NimbleTestMessage.Input(),
+            CancellationToken.None);
+
+        Assert.All(
+            result.Evidence.Where(e => e.Availability != EvidenceAvailability.NotApplicable),
+            e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
+    }
+
+    [Fact]
+    public void Derives_the_applied_window_from_the_requested_one_at_half()
+    {
+        // The relation the backstop above depends on, pinned where it can be seen. Half is a
+        // measurement of the reference server rather than a rule of the protocol, which is why
+        // EffectiveNumCtx exists to override it; this asserts the default, not the law.
+        //
+        // It is the LOW end of a measured band rather than the cut itself: five fillers of different
+        // content were cut at 4098 (three, one non-repeating) and 4104 (one), so half sits at or
+        // below the cut and a backstop built on it fires early rather than late. The band and the
+        // reasoning for not rounding up are in the remarks on AppliedContextWindow.
+        Assert.Equal(4_096, new NimbleOptions { NumCtx = 8_192 }.AppliedContextWindow);
+        Assert.Equal(10_240, new NimbleOptions { NumCtx = 20_480 }.AppliedContextWindow);
+
+        // Stated explicitly, so a deployment that measures its own server can say so and get the
+        // margin back rather than inheriting one it does not need.
+        Assert.Equal(20_480, new NimbleOptions { NumCtx = 20_480, EffectiveNumCtx = 20_480 }.AppliedContextWindow);
+    }
+
+    [Fact]
     public async Task Never_sends_a_prompt_longer_than_the_context_window()
     {
         var handler = new RecordingHandler((_, _) =>
@@ -427,6 +468,22 @@ public sealed class NimbleSemanticMailClassifierTests
         Assert.Equal(baseline.Cache.KeyDigest, again.Cache.KeyDigest);
         Assert.NotEqual(baseline.Cache.KeyDigest, otherWindow.Cache.KeyDigest);
         Assert.NotEqual(baseline.Cache.KeyDigest, otherBody.Cache.KeyDigest);
+
+        // The applied window is a shape input the requested one does not determine: EffectiveNumCtx
+        // moves it while NumCtx stays at its default 8192, and it is the applied window that governs
+        // truncation. Keying num_ctx alone served a caller who set the override an assessment taken
+        // under the halved window, which is the divergence the digest exists to prevent.
+        var otherApplied = await NimbleTestDoubles.Create(handler, new NimbleOptions { EffectiveNumCtx = 20_480 })
+            .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+        Assert.NotEqual(baseline.Cache.KeyDigest, otherApplied.Cache.KeyDigest);
+
+        // And the converse, which is what makes the fix precise rather than merely different: an
+        // override that lands on the same window the default produces is the same request, so it must
+        // not fragment the cache. NumCtx 8192 with EffectiveNumCtx 4096 is the default's applied
+        // window named explicitly.
+        var sameApplied = await NimbleTestDoubles.Create(handler, new NimbleOptions { NumCtx = 8192, EffectiveNumCtx = 4_096 })
+            .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+        Assert.Equal(baseline.Cache.KeyDigest, sameApplied.Cache.KeyDigest);
     }
 
     [Fact]

@@ -181,17 +181,37 @@ internal static class JevCorpus
         + "The key is never printed, logged, written into a fixture or committed.";
 
     /// <summary>
-    /// Reads the credential from the environment, and from nowhere else.
+    /// Reads the credential from the environment variable, or from the file that variable names.
     /// </summary>
     /// <remarks>
     /// <b>The value is returned and never rendered.</b> Nothing here writes it to a log, an exception,
-    /// a fixture or a report, and the exception raised elsewhere carries only the message above. A
-    /// key read from a file would also be a key on disk inside a working copy, which is one careless
-    /// `git add -f` from being committed; an environment variable is scoped to the process holding it.
+    /// a fixture or a report, and the exception raised elsewhere carries only the message above.
+    /// <b>The file route has one rule: the path points outside the working copy.</b> A key read from a
+    /// file inside a working copy is one careless `git add -f` from being committed, which is why the
+    /// plain variable is tried first and why the variable form is scoped to the process holding it.
+    /// The path is not a secret; the file it names is.
     /// </remarks>
-    internal static bool TryReadCredential(out string apiKey)
+    internal static bool TryReadCredential(out string apiKey) =>
+        TryReadCredential(
+            Environment.GetEnvironmentVariable(ApiKeyEnvironmentVariable),
+            Environment.GetEnvironmentVariable(ApiKeyFilePathVariable),
+            out apiKey);
+
+    /// <summary>
+    /// The resolution itself, as a function of its two inputs, so precedence and the two refusals can
+    /// be asserted without mutating process-wide state in a suite that runs its classes in parallel.
+    /// </summary>
+    /// <remarks>
+    /// <b>Order is part of the contract.</b> The plain variable wins when both are set, so a value in
+    /// the environment is never shadowed by a stale path. <b>Empty is missing:</b> an empty or
+    /// whitespace-only file falls through to the refusal rather than becoming a key, because "the file
+    /// exists" is not "the file holds a credential", and a key-shaped empty string sent as a
+    /// credential is a request we should never have made. <b>Trimmed on read:</b> a key read with its
+    /// trailing newline is a different string, and the difference surfaces as a 401 that reads like a
+    /// bad key rather than as the parsing defect it is.
+    /// </remarks>
+    internal static bool TryReadCredential(string? fromEnvironment, string? path, out string apiKey)
     {
-        var fromEnvironment = Environment.GetEnvironmentVariable(ApiKeyEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
         {
             apiKey = fromEnvironment;
@@ -201,7 +221,6 @@ internal static class JevCorpus
         // Read in this process, never in a shell. The command that runs the recorder carries a path
         // and nothing else, so there is no point at which the value is interpolated into a command
         // line or handed to a child process through the environment.
-        var path = Environment.GetEnvironmentVariable(ApiKeyFilePathVariable);
         if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
         {
             var fromFile = File.ReadAllText(path, Encoding.UTF8).Trim();

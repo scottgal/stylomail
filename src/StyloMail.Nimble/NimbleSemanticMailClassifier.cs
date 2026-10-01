@@ -179,14 +179,21 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         // with done_reason "stop", no warning, and an evaluated-token count that describes the
         // shortened prompt rather than the one that was sent. An answer about a message the model
         // only partly saw is worse than no answer, so it is not reported as one.
-        if (response.PromptEvalCount is { } evaluated && evaluated >= _options.NumCtx)
+        //
+        // Against the APPLIED window, never the requested one. Comparing with NumCtx was blind by
+        // exactly the amount that matters: the server applies about half of it, so a prompt cut to
+        // 4098 tokens reported 4098, the check asked whether that was >= 8192, and a completely
+        // truncated prompt came back as a clean and complete answer. That is decision 26, and it was
+        // measured rather than reasoned about.
+        if (response.PromptEvalCount is { } evaluated && evaluated >= _options.AppliedContextWindow)
         {
             _breaker.RecordSuccess();
             return Unavailable(
                 askable,
                 notApplicableEvidence,
                 now,
-                $"server evaluated {evaluated} prompt tokens at a window of {_options.NumCtx}");
+                $"server evaluated {evaluated} prompt tokens at an applied window of "
+                + $"{_options.AppliedContextWindow}");
         }
 
         _breaker.RecordSuccess();
@@ -239,17 +246,31 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     }
 
     /// <summary>
-    /// Renders the state into the prompt, shortening the body until the whole request provably fits
-    /// the context window.
+    /// Renders the state into the prompt, shortening the body until the whole request fits the
+    /// context window.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why a character budget proves something about tokens.</b> A tokeniser can never emit more
-    /// tokens than there are bytes to cover, so a prompt of at most <c>num_ctx</c> bytes is at most
-    /// <c>num_ctx</c> tokens. Keeping the UTF-8 length under the window therefore makes a silent
-    /// truncation impossible by construction rather than unlikely in practice. The corroborating
-    /// measurement is that English text here runs about 5 characters per token, so the bound is loose
-    /// by roughly that factor and the body is not being over-trimmed.
+    /// <b>Why a byte budget says something about tokens.</b> A tokeniser can never emit more tokens
+    /// than there are bytes to cover, so a prompt of at most <c>num_ctx</c> bytes is at most
+    /// <c>num_ctx</c> tokens. English text here runs about 5 characters per token, so in practice the
+    /// bound is loose by roughly that factor and the body is not over-trimmed.
+    /// </para>
+    /// <para>
+    /// <b>That is a bound, not a proof, and an earlier version of this comment called it one.</b> It
+    /// shows the prompt is under the <em>requested</em> window in tokens, and the server applies about
+    /// half of that (see <see cref="NimbleOptions.AppliedContextWindow"/>). The plausible worst case is
+    /// dense low-entropy text, base64 or a long encoded URL, which runs nearer two characters per token
+    /// than five: a prompt at the 8,192-byte ceiling can reach the 4,098-token applied window from
+    /// above rather than below. So this method is best effort, and the guarantee that a partly-read
+    /// message is never reported as an answer belongs to the backstop in the caller, which compares the
+    /// evaluated count against the applied window.
+    /// </para>
+    /// <para>
+    /// <b>The budget is not simply the applied window, and that is deliberate.</b> The rendered question
+    /// set is 4,264 bytes on its own, so 'total bytes at most the applied window in tokens' would leave
+    /// no room for a state at all and would refuse every message. The byte ceiling keeps the request
+    /// small; the backstop keeps the answer honest when it is not small enough.
     /// </para>
     /// <para>
     /// The loop shortens by at least the measured excess each pass and stops at zero, so it terminates.
@@ -574,6 +595,16 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// because changing it reloads the model, the shape because batching changed three of twelve
     /// answers. A key that omitted either would serve an assessment taken under one shape to a caller
     /// asking under another.
+    /// <para>
+    /// <b>Both windows are keyed, not only the requested one.</b> <see cref="NimbleOptions.NumCtx"/> is
+    /// what is sent, but <see cref="NimbleOptions.AppliedContextWindow"/> is what truncation actually
+    /// answers to, and <see cref="NimbleOptions.EffectiveNumCtx"/> can move the second without moving
+    /// the first. Keying <c>num_ctx</c> alone would let a caller who set <c>EffectiveNumCtx</c> be
+    /// served an assessment taken under the halved window, which is the divergence this digest exists
+    /// to prevent. Keying the applied window rather than the option means an override that lands on the
+    /// same window as the default does not fragment the cache, which is the behaviour the pair of
+    /// assertions in the classifier tests pins down.
+    /// </para>
     /// </remarks>
     private string ComputeCacheKeyDigest(
         SemanticMailInput input,
@@ -588,6 +619,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 schema = SemanticDimensions.QuestionSchemaVersion,
                 request_shape = NimbleQuestionSet.Version,
                 num_ctx = _options.NumCtx,
+                applied_window = _options.AppliedContextWindow,
                 asked = askable.Count,
                 state = NimbleMessageState.Build(
                     input.Message,
