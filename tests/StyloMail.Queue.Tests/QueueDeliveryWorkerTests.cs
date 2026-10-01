@@ -1,3 +1,5 @@
+using System.Data;
+using System.Reflection;
 using StyloMail.Core;
 
 namespace StyloMail.Queue.Tests;
@@ -433,9 +435,42 @@ public class QueueDeliveryWorkerTests
         // Everything the worker does goes through QueueStore. If it wrote to the queue's tables
         // directly, a change to the schema or the state machine could pass every store test and
         // still be broken from here.
-        var storeMethods = typeof(QueueStore).GetMethods().Select(m => m.Name).ToHashSet();
-        Assert.Contains("ClaimNextAsync", storeMethods);
-        Assert.Contains("CompleteAsync", storeMethods);
-        Assert.Contains("OpenPayload", storeMethods);
+        //
+        // To write to a table it would have to hold a handle, so the check is the worker's whole
+        // dependency surface: every field it keeps and every constructor parameter it accepts.
+        // Bounded deliberately. This reads the surface and not the method bodies, so a
+        // `new SqliteConnection(...)` written inline would slip past it. The worker holds no
+        // connection string and no data-access type, which is what makes that form impractical
+        // rather than impossible.
+        var surface = typeof(QueueDeliveryWorker)
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+            .Select(f => f.FieldType)
+            .Concat(typeof(QueueDeliveryWorker)
+                .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .SelectMany(c => c.GetParameters())
+                .Select(p => p.ParameterType))
+            .ToArray();
+
+        static string?[] DataAccessTypesIn(IEnumerable<Type> types)
+        {
+            // Named rather than derived from the assembly, so a rename elsewhere cannot quietly
+            // widen what counts as a data-access type.
+            string[] dataAccess = ["Microsoft.Data.Sqlite", "Microsoft.EntityFrameworkCore", "Dapper", "System.Data"];
+            return types
+                .Where(t => dataAccess.Any(ns => t.Namespace?.StartsWith(ns, StringComparison.Ordinal) == true))
+                .Select(t => t.FullName)
+                .ToArray();
+        }
+
+        // Two controls before the claim, because the claim is a negative and a negative that
+        // matches nothing is green for no reason. First the probe found a real surface:
+        Assert.Contains(typeof(QueueStore), surface);
+        Assert.Contains(typeof(IDeliveryPort), surface);
+
+        // And second the filter itself still fires, on a type that cannot have stopped being a
+        // data-access type without a framework change:
+        Assert.NotEmpty(DataAccessTypesIn([typeof(DataTable)]));
+
+        Assert.Empty(DataAccessTypesIn(surface));
     }
 }
