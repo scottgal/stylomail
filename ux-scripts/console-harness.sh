@@ -116,6 +116,103 @@ console_dotnet_build() {
     ( cd "$CONSOLE_REPO" && dotnet build StyloMail.slnx --nologo 2>&1 )
 }
 
+# The build fingerprint: what produced the numbers, not only when they were taken.
+#
+# A run identifier says WHEN a measurement was taken and nothing about WHAT
+# produced it. The Host the harness starts is built from the shared working tree,
+# so another lane's uncommitted edit is inside the engine of every console
+# measurement taken after their save, and no reading of load or swap tells you
+# which engine you measured through. `overview-` found a Host build carrying an
+# uncommitted Policy change on 2026-10-01 and raised it fleet-wide at 05:03;
+# `corpus-` proposed the remedy, which is this: stamp the artifact with the
+# binary and not only with the source.
+#
+# Every *.dll in the Host's output directory, digest and mtime, then one digest
+# over that manifest. The single digest is what a commit message can cite; the
+# manifest beside it is what a reader needs when two runs disagree about a
+# number.
+#
+# It never fails the run and it never invents an answer. A fingerprint that could
+# not be taken is a fact about the evidence rather than a reason to stop, so it
+# is printed as an absence, and the rule the absence serves is the fleet's own:
+# say that you cannot name the build rather than state a number whose build you
+# cannot name.
+console_sha256() {
+    shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+}
+
+# macOS and GNU stat disagree about the flag, and this tree runs on macOS. The
+# fallback is here so a check can exercise this anywhere, and 0 is an honest
+# "unknown" rather than a plausible time.
+console_file_mtime() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+console_newest_mtime() {
+    local newest=0 file stamp
+    for file in "$1"/*.dll; do
+        [[ -f "$file" ]] || continue
+        stamp="$(console_file_mtime "$file")"
+        (( stamp > newest )) && newest="$stamp"
+    done
+    echo "$newest"
+}
+
+console_record_build_fingerprint() {
+    local out_dir manifest file count fingerprint newest
+    out_dir="$(dirname "$CONSOLE_HOST_APP")"
+    manifest="$CONSOLE_RUN/host-build.txt"
+    mkdir -p "$CONSOLE_RUN"
+
+    # The previous run's stamp goes before anything can fail, and that ordering is
+    # the point rather than tidiness. A run that cannot record its own build must
+    # not leave the last run's id where a reader will find it and cite it, because
+    # the id file is exactly the artifact this stamp exists to make citable. An
+    # absence that leaves a stale number behind is the defect, not the absence.
+    rm -f "$CONSOLE_RUN/host-build.id" "$manifest"
+
+    # Checked rather than assumed, because a missing shasum would otherwise
+    # produce a manifest full of empty digests and a fingerprint that is stable,
+    # plausible and meaningless. That is the failure mode this whole stamp exists
+    # to prevent, so it must not be able to take it.
+    if ! command -v shasum >/dev/null 2>&1; then
+        echo "Host build: NOT RECORDED, shasum is not on PATH"
+        return 0
+    fi
+
+    if [[ ! -d "$out_dir" ]]; then
+        echo "Host build: NOT RECORDED, no output directory at $out_dir"
+        return 0
+    fi
+
+    : > "$manifest"
+    local identity="" name digest
+    for file in "$out_dir"/*.dll; do
+        [[ -f "$file" ]] || continue
+        name="$(basename "$file")"
+        digest="$(console_sha256 "$file")"
+        printf '%s  %s  %s\n' "$digest" "$(console_file_mtime "$file")" "$name" >> "$manifest"
+        identity+="$digest  $name"$'\n'
+    done
+
+    count="$(wc -l < "$manifest" | tr -d ' ')"
+    if (( count == 0 )); then
+        echo "Host build: NOT RECORDED, no assemblies under $out_dir"
+        return 0
+    fi
+
+    # The identity is over content and name only. Folding the mtime in would make
+    # two builds of identical source two different builds, which is false, and an
+    # identity that disagrees with the thing it identifies is worse than none.
+    # The mtime is recorded beside it because it answers the other question,
+    # which is whether this binary predates the change being measured.
+    fingerprint="$(printf '%s' "$identity" | shasum -a 256 | cut -d' ' -f1)"
+    newest="$(console_newest_mtime "$out_dir")"
+    echo "Host build: ${fingerprint:0:12} over $count assemblies, newest $(date -r "$newest" '+%H:%M:%S' 2>/dev/null || echo "$newest")"
+    echo "${fingerprint:0:12}" > "$CONSOLE_RUN/host-build.id"
+    return 0
+}
+
 console_build_all() {
     # The build log is an artifact, so it goes in this lane's scratch rather than
     # in /tmp. /tmp is shared, is invisible to the fleet's recent_files view, and
@@ -134,6 +231,11 @@ console_build_all() {
     console_dotnet_build | tee "$log"
     local status="${PIPESTATUS[0]}"
     if [[ $status -eq 0 ]]; then
+        # The stamp goes on the success path only, because a failed build means
+        # there is no new binary to name: whatever is in the output directory is
+        # the previous build, and naming it here would attribute this run's
+        # numbers to a build this run did not produce.
+        console_record_build_fingerprint
         return 0
     fi
 
@@ -152,8 +254,11 @@ console_build_all() {
     if [[ $status -ne 0 ]]; then
         echo "build failed again with exit $status, so this is probably not a" >&2
         echo "collision. Full log: $log_dir/solution-retry.log" >&2
+        return "$status"
     fi
-    return "$status"
+
+    console_record_build_fingerprint
+    return 0
 }
 
 # Starts a throwaway Host and waits for it to answer, rather than sleeping a

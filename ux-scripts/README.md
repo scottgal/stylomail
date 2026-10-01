@@ -22,6 +22,8 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
+./ux-scripts/check-build-fingerprint.sh      # not a smoke: checks what the build records about itself
+./ux-scripts/check-stop-host-bounded.sh      # not a smoke: checks the stop path cannot hang
 ```
 
 `run-console-address-change-smoke.sh` is the only run that changes the Host mid-run from inside the
@@ -59,6 +61,32 @@ the symptoms were a Host that built clean and then died at launch, plus intermit
 `obj/.../ref/*.dll`. The build's output is shown and also written to
 `.styloagent/scratch/desktop/build-log/solution.log`, so a failure is readable after the fact; the
 three scripts used to discard it, which turned a build error into exit 1 and a 0-byte log.
+
+The build now stamps itself as well. `console_record_build_fingerprint` writes `host-build.id` and
+`host-build.txt` into the run directory: a digest and an mtime per assembly in the Host's output
+directory, and one digest over that. The reason came from the fleet on 2026-10-01. A run identifier
+says *when* a measurement was taken and nothing about *what* produced it, and this Host is built from
+the shared working tree, so another lane's uncommitted edit sits inside the engine of every console
+number taken after their save. `overview-` found a prebuilt Host carrying an uncommitted Policy change
+and raised it fleet-wide; the rule that came out of it is that a number whose build cannot be named is
+not quoted as a number, and `corpus-` proposed the stamp.
+
+Two decisions in it are worth knowing before reading a digest. The identity covers assembly *contents*
+and names only, so a rebuild of unchanged source keeps the same id, while each assembly's mtime is
+recorded beside it in the manifest, because "was this build taken before the change being measured" is
+a question about time and not about content. And it is stamped on the build success path only: a
+failed build leaves the previous binary in the output directory, and naming that here would attribute
+this run's numbers to a build this run did not produce. A run that cannot stamp prints
+`Host build: NOT RECORDED` and removes any earlier stamp, so a reader cannot find a previous run's id
+and cite it as this run's build.
+
+`./ux-scripts/check-build-fingerprint.sh` checks that without a Host or a build, in seconds, against a
+directory of stand-in assemblies. The case that matters is the falsifiable one: one file's bytes change
+with the file's size and mtime held fixed, and the id has to move. It also pins the other direction
+(a new mtime alone leaves the identity alone) and every absence path. What it does **not** establish is
+that the stamp is taken on a real run: it exercises the function directly, and the wiring into
+`console_build_all` is a reading of that file rather than a measurement of one, because no smoke has
+run since the stamp was added.
 
 That log used to live in `/tmp`, and it moved on 2026-10-01 because four agents lost time reading
 stale console logs there: `/tmp` is shared, invisible to the fleet's `recent_files` view, and old
