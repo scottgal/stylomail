@@ -4377,7 +4377,7 @@ internal static class Program
         Compare("envelope.tenant", left.Envelope.TenantId, right.Envelope.TenantId, content: false);
         Compare("envelope.direction", left.Envelope.Direction.ToString(), right.Envelope.Direction.ToString(), content: false);
         Compare("envelope.mailFrom", left.Envelope.MailFrom, right.Envelope.MailFrom, content: true);
-        Compare("envelope.rcptTo", string.Join(" ", left.Envelope.RcptTo), string.Join(" ", right.Envelope.RcptTo), content: true);
+        Compare("envelope.rcptTo", string.Join("\x00", left.Envelope.RcptTo), string.Join("\x00", right.Envelope.RcptTo), content: true);
 
         Compare("dimensions.count", captured.Dimensions.Count.ToString(CultureInfo.InvariantCulture), mine.Dimensions.Count.ToString(CultureInfo.InvariantCulture), content: false);
 
