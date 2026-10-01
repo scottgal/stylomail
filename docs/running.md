@@ -311,7 +311,20 @@ refused with HTTP 400 rather than shortened, so the failure a deployment would m
 and not a quiet under-read. That is a statement about the **WINDOW** only: the provider shortens message bodies for
 a second and unrelated reason, `MaxBodyCharacters` defaulting to **2500** (`NimbleOptions.cs:229`), so a
 body or a quoted tail over that is shortened before the window is considered at all, and a message can be
-shortened while the window has nothing to do with it.
+shortened while the window has nothing to do with it. **Which of the two cuts a given message depends on
+its NON-body content, and the operational end of it is MEASURED**: at the pinned window, twelve questions
+and three messages per arm, a 1500-character body was shortened in **0 of 3** cases, a
+2000-character body in **0 of 3**, and a 2500-character body in **3 of 3** (`corpus-`,
+2026-10-02T00:38). **So the ceiling is not what cuts**: a body of exactly 2500 characters is not over
+`MaxBodyCharacters`, and it was the FIT that shortened it. The threshold sits between 2000 and 2500 and is
+not measured; and 2000 is measured-safe for THAT state shape rather than a ceiling, since a message
+carrying more links, attachments or envelope gives the fit less room and can be cut at a shorter body.
+At the expansion arms' own minimal state the room is larger still (6910-byte requests against a
+2500-byte body, so 4410 bytes of overhead under the 8192-byte cap), which is why nothing was cut there.
+Both cuts land on `BodyText` and `QuotedText`, and the row they produce stays **`Available`**
+while carrying a `reason` attribute saying the body was shortened
+(`NimbleSemanticMailClassifier.cs:591`), so **availability alone does not tell a reader whether the
+read was whole** and anything consuming these rows has to look at the reason rather than the state.
 
 **It does not follow that the number the SERVER applies moved with it, and nothing in that log line
 says it did.** On this transport the request is not asking the server for a window at all: the
