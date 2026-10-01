@@ -29,10 +29,15 @@ namespace StyloMail.Host.Assessors;
 /// </remarks>
 public sealed class UnavailableMailAssessor : IMailAssessor
 {
+    /// <remarks>
+    /// <c>callerSuppliedRawMessage</c> is ignored: this type never parses anything, so there is no
+    /// view for bytes to stand in for.
+    /// </remarks>
     public ValueTask<MailAssessment> AssessAsync(
         MailAnalysisInput input,
         AssessmentContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte>? callerSuppliedRawMessage = null)
         => throw new AssessorUnavailableException(
             "No IMailAssessor is configured on this host, so no assessment can be produced.");
 }
