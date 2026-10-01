@@ -4736,9 +4736,11 @@ internal static class Program
     /// <remarks>
     /// <para>
     /// <b>A run identifier says when a number was measured; it does not say what.</b> This tool
-    /// compiles Core, Mime, Nimble, Assessment, Persistence and Queue out of the SHARED working tree at
-    /// build time, so whatever another lane had uncommitted at that moment is in the code that produced
-    /// the number, and nothing in the run's own output records it. `overview-`'s 05:03:47 broadcast is
+    /// compiles ten other StyloMail projects, the whole transitive closure of its project references,
+    /// out of the SHARED working tree at build time: Core, Mime, Nimble and Assessment directly, and
+    /// Adaptive, Chat, Jev, Persistence, Policy and Queue two hops away through Assessment. So whatever
+    /// another lane had uncommitted at that moment is in the code that produced the number, and nothing
+    /// in the run's own output records it. `overview-`'s 05:03:47 broadcast is
     /// the case in point: a Host build carried an uncommitted engine change, and no reading of load or
     /// swap could tell a lane which engine its Host was running.
     /// </para>
