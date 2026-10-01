@@ -237,7 +237,7 @@ and prefer surfacing that evaluation in your own logs over inferring it from a s
 **The number the Host logs as `applied` is the PROVIDER's own figure and not the server's, and it
 follows `EffectiveNumCtx` by construction.** `AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`
 (`NimbleOptions.cs:192`), and the boot line prints exactly that field under the name `applied`
-(`HostServices.cs:755-760`, the window line the Host logs at every boot; it moved from `:733-740` when
+(`HostServices.cs:754-759`, the window line the Host logs at every boot; it moved from `:733-740` when
 that file was edited the same night, so read it by content rather than by number). Measured from three
 boot lines at three settings, each read out of its own file: unset reads `applied 4096`, `16384` reads
 `applied 16384`, `32768` reads `applied 32768`
@@ -316,8 +316,9 @@ shortened while the window has nothing to do with it.
 says it did.** On this transport the request is not asking the server for a window at all: the
 `/api/generate` body used to carry `NumCtx` as `options.num_ctx`, and the SystemOne body has no
 `options` member, so the setting is a **client-side assumption** and the server applies whatever it
-applies (`NimbleOptions.cs:88-96`, and `NimbleSemanticMailClassifier.cs:297-301` marks the same change
-UNMEASURED). A client cannot read the applied window back either: a truncated prompt returns
+applies (`NimbleOptions.cs:88-96`, and `NimbleSemanticMailClassifier.cs:319-323` marks the same change
+UNMEASURED, at `:297-301` when this section was written). A client cannot read the applied window back
+either: a truncated prompt returns
 `done_reason` "stop", no warning field, and a `prompt_eval_count` describing the shortened prompt, so
 the window is only knowable by saturating it (`NimbleOptions.cs:144-149`). The `llama-server` serving
 this endpoint was read at 2026-10-01T23:22 carrying `-c 8194` and `--context-shift` on its command
