@@ -315,8 +315,13 @@ shortened while the window has nothing to do with it. **Which of the two cuts a 
 its NON-body content, and the operational end of it is MEASURED**: at the pinned window, twelve questions
 and three messages per arm, a 1500-character body was shortened in **0 of 3** cases, a
 2000-character body in **0 of 3**, and a 2500-character body in **3 of 3** (`corpus-`,
-2026-10-02T00:38). **So the ceiling is not what cuts**: a body of exactly 2500 characters is not over
-`MaxBodyCharacters`, and it was the FIT that shortened it. The threshold sits between 2000 and 2500 and is
+2026-10-02T00:38). **So the ceiling is not what cuts a given message**: a body of exactly 2500 characters
+is not over `MaxBodyCharacters`, and it was the FIT that shortened it, because the two do different jobs,
+the ceiling bounding how much of a message is ever offered and the fit reducing it per message until the
+whole request fits (`NimbleSemanticMailClassifier.cs:358` then the loop below it). Setting the ceiling
+from the measured room instead would be wrong in the other direction, since a figure derived from a
+link-rich message would truncate every link-poor one before the fit saw it. The threshold sits between
+2000 and 2500 and is
 not measured; and 2000 is measured-safe for THAT state shape rather than a ceiling, since a message
 carrying more links, attachments or envelope gives the fit less room and can be cut at a shorter body.
 At the expansion arms' own minimal state the room is larger still (6910-byte requests against a
