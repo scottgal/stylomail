@@ -411,7 +411,22 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   (`.styloagent/scratch/corpus/probe_gate.py`, which writes its own `probe-gate/run.txt` transcript
   and `probe-gate/result.json`): the same benign message is `Allow` on `/v1/submissions` with 14
   deterministic `Available` rows, and `Hold` on `/v1/assessments` with
-  `policy.allow_uncorroborated_by_deterministic_evidence` and **zero** deterministic rows.
+  `policy.allow_uncorroborated_by_deterministic_evidence` and **zero deterministic `Available`
+  rows**. The qualifier is load-bearing, and this is not the same claim as "the list holds no row of
+  deterministic origin". Origin and availability are separate fields and give separate answers:
+  `assessment.behavioural_context` is a row whose `Origin` is `Deterministic` and whose
+  `Availability` is `Unavailable` (the `BehaviouralContextUnavailable` marker in
+  `src/StyloMail.Assessment/MailAssessor.cs`), **and its source is the sender profile store, not the
+  message**. A filter on origin alone keeps it, so a whole-list comparison of two routes, two runs or
+  two call orders can show it moving and read that as a difference in the thing being compared.
+  **The probe's call order is load-bearing for the same reason**: it posts `/v1/submissions` before
+  `/v1/assessments` for each message, and only the submission route warms the store
+  (`UpdateObservedState` returns early on `context.AssessmentOnly`). Submit-first suppresses that
+  marker on the assessment that follows; an assess-first order emits it, and the assessment list then
+  carries one deterministic-*origin* row while still carrying zero `Available` ones. Name the row and
+  assert the shape of the difference rather than filtering it out: filtering by availability would
+  also drop byte-derived rows that are legitimately `Unavailable`, and filtering by origin keeps the
+  profile-store row. (Broadcast trap from `ingress-`, 1 Oct, verified by me at source.)
 - **A queue row and a ledger entry are reachable with no provider credential.** Every message that
   passes envelope validation answers 202 with `{queueId, status, assessmentId, recipients[…]}`.
 - **An `Allow` populates no console listing.** `GET /v1/messages` enumerates only
