@@ -24,12 +24,27 @@ console_build_all || exit 1
 rm -rf "$CONSOLE_RUN"
 mkdir -p "$CONSOLE_RUN"
 
-# Cleared, not appended to. The harness writes screenshots without removing
-# what a previous run left, so a step that stops running leaves its old image
-# behind and it reads as this run's output. That cost real time: a screenshot
-# from a passing run was read as evidence about a failing one.
-rm -rf "$CONSOLE_REPO/ux-results"
-mkdir -p "$CONSOLE_REPO/ux-results"
+# This runner's own output directory, and the wipe below is scoped to it.
+#
+# The wipe used to be `rm -rf "$CONSOLE_REPO/ux-results"`, the whole tree, while
+# the eight sibling runners each declared a subdirectory of it "because the main
+# smoke wipes ux-results wholesale". A subdirectory of a directory that is
+# `rm -rf`'d does not survive the wipe, so that mitigation did not mitigate:
+# every one of those runners wrote its evidence into a place the next main smoke
+# deleted. It was not hypothetical. The long-outage run's five screenshots were
+# gone by the time `overview-` looked for them, destroyed by a main smoke twenty
+# minutes later, and ux-results is gitignored (.gitignore:137) so nothing was
+# recoverable. Found at source by `overview-` while correcting a document that
+# cited those screenshots.
+#
+# The directory is still cleared rather than appended to, which is the original
+# reason and still true: the harness writes screenshots without removing what a
+# previous run left, so a step that stops running leaves its old image behind and
+# it reads as this run's output. That cost real time as well: a screenshot from a
+# passing run was read as evidence about a failing one.
+CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/console-smoke"
+rm -rf "$CONSOLE_RESULTS"
+mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE =="
 console_start_host || exit 1
@@ -59,7 +74,7 @@ dotnet run --project src/StyloMail.Desktop -- \
     --ux-headless \
     --ux-test \
     --script ux-scripts/console-smoke.yaml \
-    --output ux-results
+    --output "$CONSOLE_RESULTS"
 STATUS=$?
 
 echo
@@ -69,15 +84,15 @@ echo "== result =="
 # printed an empty result block and the numbers behind the pass were only in
 # the file. A runner that cannot show its own evidence is one step from a
 # runner that does not have any.
-if [[ -f ux-results/result.json ]]; then
-    cat ux-results/result.json
+if [[ -f "$CONSOLE_RESULTS/result.json" ]]; then
+    cat "$CONSOLE_RESULTS/result.json"
 fi
 echo
-echo "screenshots in ux-results/"
+echo "screenshots in $CONSOLE_RESULTS/"
 
 # The harness's exit code is not its verdict: a failing script exits 0. Read the
 # verdict from result.json before reporting anything. This is the runner the
 # fleet's completion gate calls, so a green tick here that came from an exit code
 # rather than from the assertions is the one failure mode that matters most.
-console_final_status "ux-results/result.json" "$STATUS"
+console_final_status "$CONSOLE_RESULTS/result.json" "$STATUS"
 exit $?

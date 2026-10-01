@@ -60,9 +60,12 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# Its own scratch and output directories. The main smoke wipes ux-results
-# wholesale, so sharing would mean one run's screenshots standing in for
-# another's.
+# Its own scratch and output directories, so one run's screenshots cannot stand
+# in for another's: the harness clears nothing it wrote before, so two runners
+# sharing a directory would leave whichever ran last as the only artifacts.
+# (The reason this file used to give was the main smoke's wholesale wipe of
+# ux-results; see run-console-smoke.sh, where that wipe is now scoped to its own
+# subdirectory.)
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 

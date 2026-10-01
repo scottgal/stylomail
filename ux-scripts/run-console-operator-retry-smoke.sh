@@ -62,7 +62,8 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# Its own output directory, because the main smoke wipes ux-results wholesale.
+# Its own output directory, because the harness clears nothing it wrote before:
+# two runners sharing one would leave whichever ran last as the only artifacts.
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 

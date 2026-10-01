@@ -67,9 +67,12 @@ directory of each script stays under `/tmp` on purpose: it holds the per-run pri
 scratch would keep a credential-bearing file indefinitely where `/tmp` has it removed on the way out.
 
 Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
-under `ux-results/`, so one run's artifacts can never be read as another's. The main smoke wipes
-`ux-results` wholesale, so running it deletes the other scripts' screenshots: run those again rather
-than reading a stale image.
+under `ux-results/`, and it clears only its own. The main smoke writes into `ux-results/console-smoke/`
+and wipes that; it used to be `rm -rf ux-results`, which deleted every sibling's evidence and made the
+subdirectory scheme inert, because a subdirectory of a directory that is `rm -rf`'d does not survive.
+That was not theoretical: a main smoke twenty minutes after the long-outage run destroyed its five
+screenshots, and `ux-results/` is gitignored so nothing was recoverable. Found at source by `overview-`
+on 2026-10-01. Running the main smoke is now safe for the other runs' artifacts.
 
 ## The live feed's four states
 
@@ -246,7 +249,7 @@ re-derive them:
 ```bash
 # Script mode: runs to completion, exits, writes screenshots and result.json
 dotnet run --project src/StyloMail.Desktop -- \
-    --ux-headless --ux-test --script ux-scripts/console-smoke.yaml --output ux-results
+    --ux-headless --ux-test --script ux-scripts/console-smoke.yaml --output ux-results/console-smoke
 
 # Interactive REPL: explore by hand, list controls, click, screenshot
 dotnet run --project src/StyloMail.Desktop -- --ux-repl

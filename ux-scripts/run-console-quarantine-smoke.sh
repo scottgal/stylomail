@@ -60,8 +60,9 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# Its own scratch and output directories. The main smoke wipes ux-results
-# wholesale, and each satellite run has its own subdirectory for the same reason.
+# Its own scratch and output directories. Each satellite run has its own
+# subdirectory because the harness clears nothing it wrote before, so sharing one
+# would leave whichever ran last as the only artifacts.
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 

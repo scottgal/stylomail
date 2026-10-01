@@ -48,9 +48,11 @@ console_build_all || exit 1
 #
 # The output goes in a subdirectory of ux-results rather than a sibling of it
 # because ux-results is already ignored and a new top-level directory would
-# dirty the shared tree. The main smoke wipes ux-results wholesale, so running
-# it after this one leaves these artifacts to be regenerated rather than stale:
-# this script clears its own subdirectory on every run. The scratch directory it
+# dirty the shared tree. That subdirectory is this script's own and it clears it
+# on every run, so what is there is always this script's latest and never a
+# stale artifact of an earlier one. (The main smoke used to be one of the reasons
+# this mattered, because it wiped ux-results wholesale; that wipe is now scoped
+# to its own subdirectory, see run-console-smoke.sh.) The scratch directory it
 # shares with nothing is set above, before the harness is sourced.
 CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/no-feed"
 

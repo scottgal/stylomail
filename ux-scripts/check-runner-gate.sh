@@ -72,10 +72,20 @@ echo
 echo "== shape 3: a passing artifact =="
 PASSING="${1:-}"
 if [[ -z "$PASSING" ]]; then
-    # Newest first, so a run that has just happened is the one checked. The main
-    # smoke wipes ux-results wholesale, which is why this searches rather than
-    # naming a path.
-    PASSING="$(find "$CONSOLE_REPO/ux-results" -name result.json -print 2>/dev/null | head -1)"
+    # Sorted by modification time, newest first, so a run that has just happened
+    # is the one checked. It searches rather than naming a path because each
+    # runner writes into its own subdirectory and the caller has not said which
+    # run they mean.
+    #
+    # The sort is the fix. This was `find ... | head -1`, which is the order the
+    # directory happens to hand back and not newest-first at all, so the "newest"
+    # in the comment above it was a claim the code did not make. That mattered
+    # less when the tree held one result.json; it stopped being survivable when
+    # the main smoke stopped wiping its siblings, because this can now choose
+    # between a dozen and would otherwise pick whichever the filesystem listed
+    # first.
+    PASSING="$(find "$CONSOLE_REPO/ux-results" -name result.json -exec stat -f '%m %N' {} + 2>/dev/null \
+        | sort -rn | head -1 | cut -d' ' -f2-)"
 fi
 
 if [[ -z "$PASSING" || ! -f "$PASSING" ]]; then

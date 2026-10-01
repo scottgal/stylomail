@@ -50,10 +50,10 @@ trap cleanup EXIT INT TERM
 
 console_build_all || exit 1
 
-# Its own output directory too. The main smoke wipes ux-results wholesale, so
-# sharing it would mean one run's artifacts standing in for another's; this
-# script clears its own subdirectory every time instead. The scratch directory
-# is set above, before the harness is sourced.
+# Its own output directory too: sharing one would mean one run's artifacts
+# standing in for another's, because the harness clears nothing it wrote before.
+# This script clears its own subdirectory every time instead. The scratch
+# directory is set above, before the harness is sourced.
 rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
 
