@@ -71,7 +71,18 @@ public class QueueDeliveryWorkerTests
         Assert.Equal(1, port.CallCount);
 
         var item = await h.Store.GetItemAsync(queueId);
-        Assert.Equal(DeliveryState.Delivered, QueueHarness.By(item!, "rcpt@example.test").State);
+        var recipient = QueueHarness.By(item!, "rcpt@example.test");
+        Assert.Equal(DeliveryState.Delivered, recipient.State);
+
+        // The only POSITIVE assertion on DeliveredAt in the repository. Every other one is an
+        // Assert.Null, in this project and in Transport's seam tests, so without this line a store
+        // that stopped writing the column would keep every lane green while the operator UI showed
+        // an empty delivered time. The harness clock has not moved in this test, so the expected
+        // value is exact rather than approximate.
+        //
+        // Measured, not argued: with this line removed, mutation Z ("the delivered timestamp is
+        // never written") runs to a GAP, no test went red. With it, Z is CLAIMED by this test.
+        Assert.Equal(h.Clock.GetUtcNow(), recipient.DeliveredAt);
     }
 
     [Fact]
