@@ -237,8 +237,10 @@ and prefer surfacing that evaluation in your own logs over inferring it from a s
 **The number the Host logs as `applied` is the PROVIDER's own figure and not the server's, and it
 follows `EffectiveNumCtx` by construction.** `AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`
 (`NimbleOptions.cs:192`), and the boot line prints exactly that field under the name `applied`
-(`HostServices.cs:733-740`). Measured from three boot lines at three settings, each read out of its own
-file: unset reads `applied 4096`, `16384` reads `applied 16384`, `32768` reads `applied 32768`
+(`HostServices.cs:755-760`, the window line the Host logs at every boot; it moved from `:733-740` when
+that file was edited the same night, so read it by content rather than by number). Measured from three
+boot lines at three settings, each read out of its own file: unset reads `applied 4096`, `16384` reads
+`applied 16384`, `32768` reads `applied 32768`
 (`.styloagent/scratch/ingress/host-probe/run-20261001T220049Z/host.log:4`,
 `run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Those are
 two lanes' runs rather than one instrument, so the series is three boots and not a controlled sweep, and
@@ -336,15 +338,20 @@ a bisect that moved only the state size accepted twelve answers at **48050** tok
 body returned **HTTP 400** with no answers, that last arm being well outside the cap and so evidence
 about the SERVER rather than about anything a deployment meets
 (`.styloagent/scratch/nimble/probe-shift.py`, `.styloagent/scratch/nimble/bisect-window.py`, `nimble-`,
-2026-10-01T23:33). So the window this server applies is **at least 56210 tokens**, the larger of the two
-measurements in this section, and a request above its limit is refused rather than shortened. INFERRED
-rather than measured: that this server never
-silently truncates, which rests on an admissible request being read whole at 22584 tokens and on a loud
-refusal above the limit, rather than on a direct reading of the window. **The console consequence runs
-the opposite way to the one this section first implied:** on this transport the truncation backstop is
-not catching a server that shifts, it is the thing that refused a request the server would have
-answered, which is exactly the 503 above, and the number it should be set to is derived from the
-server's measured capacity rather than from a carried ratio.
+2026-10-01T23:33). **And the same probe was re-run over the dense shape, because `--context-shift` drops
+the OLDEST context first and a codeword at the START of the body is exactly what a shift would take**
+(`nimble-`, 2026-10-02T00:04, `.styloagent/scratch/nimble/probe-shift-dense.json`; hex-ish body at 2400
+characters, twelve questions): a start-of-body codeword is answered at **0.9987** at **46556** input
+tokens and an end-of-body one at **0.9984**, a difference of 0.0003, with the one-question controls
+working at 0.9975 and 0.9959. So the server applies a window of **at least 56210 tokens**, and it reads a
+**46556**-token dense prompt whole, which covers the whole of the dense range this section measures.
+INFERRED rather than measured: that this server never silently truncates, which rests on admissible
+requests being read whole at those sizes and on a loud refusal above the limit, rather than on a direct
+reading of the window. **The console consequence runs the opposite way to the one this section first
+implied:** on this transport the truncation backstop is not catching a server that shifts, it is the
+thing that refused a request the server would have answered, which is exactly the 503 above, and the
+number it should be set to is derived from the server's measured capacity rather than from a carried
+ratio.
 
 #### Measured performance
 
