@@ -338,6 +338,16 @@ def main() -> int:
         # adapter would use unaided rather than a second one it would not.
         "StyloMail__Nimble__Endpoint": f"{OLLAMA}/v1/systemone",
         "StyloMail__Nimble__Model": MODEL,
+        # AN EXPERIMENT KNOB, not a shipping default, and named so it cannot be mistaken for one.
+        # `NimbleOptions.cs:192` is `AppliedContextWindow => EffectiveNumCtx ?? NumCtx / 2`, so the
+        # twelve-question request is SENT against a window it fits (`NumCtx`, 8192) and REFUSED against
+        # half of it (4096). Setting this from the outside lets one run ask "is the halving the whole
+        # cause?" without editing nimble- 's options or their fit, and without pretending the answer is
+        # a fix. UNSET MEANS THE PROBE BEHAVES EXACTLY AS BEFORE, so a default run is unchanged and the
+        # 10/12 baseline stays comparable. The knob exists because the relation it overrides is
+        # documented as a measurement of the OLD transport carried over rather than re-derived.
+        **({"StyloMail__Nimble__EffectiveNumCtx": os.environ["PROBE_EFFECTIVE_NUM_CTX"]}
+           if os.environ.get("PROBE_EFFECTIVE_NUM_CTX") else {}),
         "StyloMail__Storage__SpoolRoot": str(ROOT / "spool"),
         "StyloMail__Storage__DatabasePath": str(ROOT / "host.db"),
         # The live feed is off by default and a deployment without it is complete, so it is enabled

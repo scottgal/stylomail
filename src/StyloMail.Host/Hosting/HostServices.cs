@@ -687,11 +687,29 @@ public static class HostServices
         var defaults = new NimbleOptions();
         var endpoint = configuration["StyloMail:Nimble:Endpoint"];
         var model = configuration["StyloMail:Nimble:Model"];
+        // These two are bound because they were NOT, and that cost two live experiments. This method
+        // named only Endpoint and Model, so a `StyloMail:Nimble:EffectiveNumCtx` set by an operator,
+        // a probe or a deployment reached nothing: the property stayed null, `AppliedContextWindow`
+        // stayed at its derived half of `NumCtx`, and two runs came back byte-identical to the
+        // baseline with the setting silently ignored and reported as a negative result.
+        //
+        // A configuration key nothing reads is worse than a missing one, because it looks like a knob.
+        // `NumCtx` is bound with it rather than separately: it is the other half of the relation
+        // (`AppliedContextWindow => EffectiveNumCtx ?? NumCtx / 2`), so binding the override alone
+        // would leave the number it overrides unreachable and the pair impossible to reason about.
+        //
+        // Unparseable or absent means the default, which is the same shape the two keys above use.
+        var numCtx = configuration["StyloMail:Nimble:NumCtx"];
+        var effectiveNumCtx = configuration["StyloMail:Nimble:EffectiveNumCtx"];
 
         var options = new NimbleOptions
         {
             Endpoint = string.IsNullOrWhiteSpace(endpoint) ? defaults.Endpoint : endpoint,
             Model = string.IsNullOrWhiteSpace(model) ? defaults.Model : model,
+            NumCtx = int.TryParse(numCtx, out var numCtxValue) ? numCtxValue : defaults.NumCtx,
+            EffectiveNumCtx = int.TryParse(effectiveNumCtx, out var effectiveNumCtxValue)
+                ? effectiveNumCtxValue
+                : null,
         };
 
         // Both values, on every boot, so which model answered is a fact in the log rather than a
