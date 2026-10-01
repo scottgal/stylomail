@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 
 import atexit
 import base64
+import hashlib
 import json
 import os
 import pathlib
@@ -254,6 +255,36 @@ def redact_connection_token(path: pathlib.Path) -> int:
 atexit.register(redact_connection_token, ROOT / "host.log")
 
 
+def stamp_build() -> str:
+    """The identity of the binary this run executes, written beside its log.
+
+    A run identifier says WHEN a number was taken, not WHAT took it. This probe starts the Host from
+    the prebuilt assembly, so every number it reports is a number about whatever tree that assembly
+    was last built from: an engine change that is uncommitted when the build happens is inside the
+    binary and leaves no mark on the run's output, and no reading of load or swap can tell a reader
+    which engine ran. The assembly's digest and build time, with HEAD and a digest of the uncommitted
+    paths at launch, are what let a reader name the build behind the counts.
+
+    Written before the child starts, so the stamp describes the binary that ran rather than one that
+    was in place afterwards.
+    """
+    stat = HOST_DLL.stat()
+    built = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(timespec="seconds")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO),
+                          capture_output=True, text=True).stdout.strip()
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(REPO),
+                            capture_output=True, text=True).stdout
+    uncommitted = [line for line in status.splitlines() if line.strip()]
+    return "\n".join([
+        f"host assembly: {HOST_DLL}",
+        f"host assembly sha256: {hashlib.sha256(HOST_DLL.read_bytes()).hexdigest()}",
+        f"host assembly built (UTC, from mtime): {built}",
+        f"HEAD at launch: {head}",
+        f"uncommitted paths at launch: {len(uncommitted)}",
+        f"uncommitted status sha256: {hashlib.sha256(status.encode()).hexdigest()}",
+    ])
+
+
 def main() -> int:
     if not HOST_DLL.exists():
         print(f"FAIL: {HOST_DLL} is not built. Run: dotnet build src/StyloMail.Host/StyloMail.Host.csproj",
@@ -270,6 +301,12 @@ def main() -> int:
               f"PROBE_ROOT to a directory of your own.", flush=True)
         return 1
     print(f"RUN ROOT: {ROOT}", flush=True)
+
+    # Every number below is a number about this assembly. Written and printed here, before the child
+    # is started, so the artifact carries what took the measurement and not only when.
+    stamp = stamp_build()
+    (ROOT / "build.txt").write_text(stamp + "\n")
+    print(stamp, flush=True)
 
     profile_key_file = ROOT / "profile.key"
     principal_key_file = ROOT / "principal.key"
