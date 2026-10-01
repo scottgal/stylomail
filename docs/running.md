@@ -205,7 +205,7 @@ Two consequences worth knowing:
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
 | `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
-| `EffectiveNumCtx` | *(unset)* | The window the server is taken to APPLY. Unset means the provider derives `NumCtx / 2`, so the default applied window is **4096**. **Set it above the largest request the deployment sends**, because the guard refuses any answer the server evaluated at or above the applied window, so a request that fits the byte budget can still be refused. |
+| `EffectiveNumCtx` | *(unset)* | The window this provider ASSUMES the server applies, and the number its guard refuses against. Unset means it derives `NumCtx / 2`, so the default assumed window is **4096**. **Set it above the largest request the deployment sends**, because the guard refuses any answer evaluated at or above that number, so a request that fits the byte budget can still be refused (see below for what this does and does not say about the server). |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
 its own defaults.
@@ -233,6 +233,41 @@ at an applied window of 16384`, and the same four at `32768` were answered. So t
 message clears `16384` and a single real submission does not, and the margin a deployment needs
 depends on its mail rather than on either figure. Set this above the largest evaluation you measure,
 and prefer surfacing that evaluation in your own logs over inferring it from a size in bytes.
+
+**The number the Host logs as `applied` is the PROVIDER's own figure and not the server's, and it
+follows `EffectiveNumCtx` by construction.** `AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`
+(`NimbleOptions.cs:192`), and the boot line prints exactly that field under the name `applied`
+(`HostServices.cs:733-740`). Measured on one instrument at three configurations, from that line: unset
+reads `applied 4096`, `16384` reads `applied 16384`, `32768` reads `applied 32768`
+(`.styloagent/scratch/ingress/host-probe/run-20261001T220049Z/host.log:4`,
+`run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Raising
+the setting therefore DOES move the number the guard compares against, which is what the 503-to-202
+effect above measures, and the advice above is real advice for the guard.
+
+**It does not follow that the number the SERVER applies moved with it, and nothing in that log line
+says it did.** On this transport the request is not asking the server for a window at all: the
+`/api/generate` body used to carry `NumCtx` as `options.num_ctx`, and the SystemOne body has no
+`options` member, so the setting is a **client-side assumption** and the server applies whatever it
+applies (`NimbleOptions.cs:88-96`, and `NimbleSemanticMailClassifier.cs:297-301` marks the same change
+UNMEASURED). A client cannot read the applied window back either: a truncated prompt returns
+`done_reason` "stop", no warning field, and a `prompt_eval_count` describing the shortened prompt, so
+the window is only knowable by saturating it (`NimbleOptions.cs:144-149`). The `llama-server` serving
+this endpoint was read at 2026-10-01T23:22 carrying `-c 8194` and `--context-shift` on its command
+line, reproduced by a second lane on the same pid, parent and model blob, and the provider's own
+remarks (`NimbleOptions.cs:107-113`) say the Modelfile parameter `num_ctx` of 8194 is neither
+`qwen35.context_length` (262144) nor the applied window. So treat `-c 8194` as a measured fact about how
+the server was launched, and NOT as the window it applies.
+
+**And what an over-long prompt meets is a CUT rather than an error.** The measured cut is about HALF
+the requested value (a requested 4096 cut at 2050, 8192 at 4098, 16384 at 8194,
+`NimbleOptions.cs:159-163`), and the provider labels that relation as measured under the PREVIOUS
+request and carried over rather than re-derived (`NimbleOptions.cs:99-104`). That same read found
+`--context-shift` on this endpoint's command line, and that flag makes an over-long prompt **continue
+rather than error**, so a row answered over a cut prompt comes back `Available`: there is no refusal
+for the guard to fire on. INFERRED, and it is the reason to be careful with a green console: the rows
+can score while reading only part of the prompt, so a passing run is not evidence that the whole
+message was assessed. The figure that would settle it is the server's own token count for a real
+multi-question submission, read against the window it applied, and it has not been taken.
 
 #### Measured performance
 
