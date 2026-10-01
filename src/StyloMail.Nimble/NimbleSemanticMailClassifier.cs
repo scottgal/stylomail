@@ -85,6 +85,28 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </summary>
     private const int PromptByteMargin = 512;
 
+    /// <summary>
+    /// Recorded on a semantic row whose prompt was shortened, so the row explains the weaker value
+    /// it carries without leaving the covered set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why a reason and not a downgrade.</b> The row stays <c>Available</c>. The policy engine's
+    /// security check reads this lane's ids by availability and reads the covered weight beside it,
+    /// so reporting a shortened read as <c>ReducedCoverage</c> would take the row out of both at
+    /// once on every message whose body exceeds the character budget. The reason is the channel that
+    /// survives that ruling, and it is the one a console can render beside the availability.
+    /// </para>
+    /// <para>
+    /// <b>Scoped to the CLIENT deliberately.</b> This adapter can see that it cut the body itself;
+    /// it cannot see what the server then did with the request, because the request carries no
+    /// window and the response reports no window either. A reason that claimed the message was read
+    /// over less than it contains, without saying by whose hand, would be read as covering both.
+    /// </para>
+    /// </remarks>
+    private const string PromptShortenedReason =
+        "the client shortened the message body to fit the context window";
+
     private readonly HttpClient _http;
     private readonly NimbleOptions _options;
     private readonly TimeProvider _time;
@@ -138,9 +160,9 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         }
 
         var questions = NimbleQuestionSet.BuildQuestions(askable);
-        var state = FitState(input, questions);
+        var fitted = FitState(input, questions);
 
-        if (state is null)
+        if (fitted is null)
         {
             // The questions plus a state holding no body at all still exceed the window. Answering
             // would mean describing a message the model did not read, so nothing is asked.
@@ -154,7 +176,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         var request = new NimbleSystemOneRequest
         {
             Model = _options.Model,
-            State = state,
+            State = fitted.Value.State,
             Questions = questions,
         };
 
@@ -217,7 +239,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         _breaker.RecordSuccess();
 
         var evidence = notApplicableEvidence;
-        evidence.AddRange(MapAnswers(askable, response, now));
+        evidence.AddRange(MapAnswers(askable, response, now, fitted.Value.BodyShortened));
 
         return new SemanticAssessment
         {
@@ -320,7 +342,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// complete message.
     /// </para>
     /// </remarks>
-    private string? FitState(
+    private (string State, bool BodyShortened)? FitState(
         SemanticMailInput input,
         IReadOnlyDictionary<string, NimbleQuestion> questions)
     {
@@ -328,15 +350,15 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
 
         while (true)
         {
-            var state = JsonSerializer.Serialize(
-                NimbleMessageState.Build(
-                    input.Message,
-                    input.TaggedContext,
-                    input.Profile,
-                    budget,
-                    _options.MaxLinks,
-                    _options.MaxAttachments).State,
-                StateJson);
+            var built = NimbleMessageState.Build(
+                input.Message,
+                input.TaggedContext,
+                input.Profile,
+                budget,
+                _options.MaxLinks,
+                _options.MaxAttachments);
+
+            var state = JsonSerializer.Serialize(built.State, StateJson);
 
             // The WHOLE request is measured, not the two halves added together. Under the old shape
             // the questions and the state travelled in two fields, so their byte counts could simply
@@ -356,7 +378,12 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
 
             if (total <= _options.NumCtx)
             {
-                return state;
+                // The flag travels out with the state rather than being re-derived by the caller.
+                // The loop's exit is the only place that knows whether the body was cut, and a
+                // caller comparing budgets afterwards would be reconstructing a fact it was just
+                // handed. It is the same flag the state already carries for the model, which is why
+                // nothing new is computed here.
+                return (state, built.BodyShortened);
             }
 
             if (budget == 0)
@@ -493,11 +520,24 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// would be inventing exactly the distinction this limitation is about. The SystemOne answer
     /// carries no <c>confidence</c> member for a Noul question, so there is not even a field to read.
     /// </para>
+    /// <para>
+    /// <b>An answered row is not always a FULL one, and it says so without leaving the covered
+    /// set.</b> Where <paramref name="bodyShortened"/> is set the answer was produced over a body
+    /// this adapter cut to make the request fit, and the row carries a reason naming that. It stays
+    /// <see cref="EvidenceAvailability.Available"/> deliberately rather than being downgraded: these
+    /// are the eight ids the policy engine's security check reads <em>by availability</em>, so a
+    /// downgrade to <see cref="EvidenceAvailability.ReducedCoverage"/> would take the row out of that
+    /// check and out of the covered weight at once, on every message whose body or quoted text
+    /// exceeds the character budget. The reason is what makes the shortening visible where a fraction
+    /// cannot, and it is the same principle the state already applies to the model one step out: the
+    /// request tells the model the body is partial, and this tells the consumer the same.
+    /// </para>
     /// </remarks>
     private static List<Evidence> MapAnswers(
         IReadOnlyList<SemanticDimension> askable,
         NimbleSystemOneResponse response,
-        DateTimeOffset observedAt)
+        DateTimeOffset observedAt,
+        bool bodyShortened)
     {
         var evidence = new List<Evidence>(askable.Count);
         var modelVersion = response.Model ?? "unknown";
@@ -523,12 +563,23 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 continue;
             }
 
+            // A shortened read stays Available and carries a REASON, rather than being downgraded.
+            // The ruling is that it must stay COUNTED: these are the same eight ids the policy
+            // engine's elevated-security check reads by availability, and it reads them together with
+            // the covered weight, so a downgrade would drop a row out of both at once for any message
+            // whose body or quoted text exceeds the character budget. The reason is what makes the
+            // shortening visible instead, and it names the CLIENT's hand, because that is the only
+            // one this adapter can see.
             evidence.Add(new Evidence
             {
                 SignalId = dimension.Id,
                 Origin = EvidenceOrigin.Semantic,
                 Availability = EvidenceAvailability.Available,
                 Value = value,
+
+                // Present only when the client cut the body, so a reader can tell a full read from a
+                // partial one without inferring it from the state.
+                Attributes = bodyShortened ? [Attribute("reason", PromptShortenedReason)] : null,
 
                 // Left null deliberately, as the hosted adapter leaves it. The model reports no
                 // confidence, and defaulting one would fabricate certainty it never expressed. This

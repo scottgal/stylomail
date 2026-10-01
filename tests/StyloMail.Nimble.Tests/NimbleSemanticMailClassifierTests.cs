@@ -467,6 +467,66 @@ public sealed class NimbleSemanticMailClassifierTests
     }
 
     [Fact]
+    public async Task Reports_the_shortening_as_a_reason_when_the_fit_shortened_the_body()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
+
+        // The same fixture the shortening test above uses, so the two read the same way: a body far
+        // larger than the window, which forces the fitting path rather than the happy one.
+        var input = NimbleTestMessage.With(m => m with { BodyText = new string('x', 400_000) });
+        var classifier = NimbleTestDoubles.Create(handler, new NimbleOptions { MaxBodyCharacters = 200_000 });
+
+        var result = await classifier.ClassifyAsync(input, CancellationToken.None);
+
+        var answered = result.Evidence
+            .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
+            .ToList();
+
+        // The population control comes first, on the sibling test's reasoning: a run that reported
+        // every row Unavailable would satisfy the reason assertion below VACUOUSLY, and an absence or
+        // a uniformity assertion over an empty or wrong set establishes nothing.
+        Assert.NotEmpty(answered);
+
+        // The row STAYS Available, which is the ruling's arithmetic consequence rather than an
+        // oversight: these are the ids the policy engine's security check reads by availability, and
+        // it reads the covered weight beside them, so a downgrade would take a shortened read out of
+        // both at once. This assertion alone would also hold for a body that was never shortened,
+        // which is what the sibling test below is for.
+        Assert.All(answered, e => Assert.Equal(EvidenceAvailability.Available, e.Availability));
+
+        // And the shortening is visible where a fraction cannot show it: the row says BY WHOSE HAND,
+        // because the only hand this adapter can see is its own. A reason that read as covering the
+        // server's behaviour too would be a claim it cannot make.
+        Assert.All(answered, e => Assert.Contains(
+            e.Attributes ?? [],
+            a => a.Name == "reason" && a.Value.Contains("client", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Reports_no_reason_when_the_fit_shortened_nothing()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
+
+        var result = await NimbleTestDoubles.Create(handler)
+            .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+
+        var answered = result.Evidence
+            .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
+            .ToList();
+
+        Assert.NotEmpty(answered);
+        Assert.All(answered, e => Assert.Equal(EvidenceAvailability.Available, e.Availability));
+
+        // No reason is attached to a full read. Without this half a classifier that attached the
+        // reason unconditionally would pass the sibling test, and it is the PAIR that says the row
+        // and the request agree; the state's own `body_text_shortened_for_prompt` is the same
+        // distinction read from the other end.
+        Assert.All(answered, e => Assert.Null(e.Attributes));
+    }
+
+    [Fact]
     public async Task Sends_exactly_the_measured_request_shape_to_the_configured_endpoint()
     {
         var handler = new RecordingHandler((_, _) =>
