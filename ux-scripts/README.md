@@ -16,10 +16,21 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-nimble-smoke.sh     # ... against a Host with a working local assessor
 ./ux-scripts/run-console-quarantine-smoke.sh # ... and a message policy quarantined, then released
 ./ux-scripts/run-console-feed-recovery-smoke.sh # ... and that Host taken away and brought back
+./ux-scripts/run-console-address-change-smoke.sh # ... and pointed at an address nothing answers on
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
 ```
+
+`run-console-address-change-smoke.sh` is the only run that changes the Host mid-run from inside the
+console: it saves a second address on the connection screen, and the address is a loopback port
+nothing is listening on, so the console's own state is the measurement. That makes the port a
+precondition rather than a detail, and the runner checks it and refuses to start if something answers
+there. It also owns the precedence rule it was written to find: a stored address has to win over the
+harness's `STYLOMAIL_HOST`, or the console rebuilds to the Host it is already on and the address the
+operator saved is inert. The run was red for that reason before it was green, and it asserts the
+address the client holds as well as the state that follows from it, so a future failure says which of
+the two moved.
 
 The Nimble and quarantine runs are the only two that need something installed: a local Ollama on 11435
 holding a `nimble` model. They are runs of their own rather than sections of the main smoke for that
@@ -387,8 +398,12 @@ the fastest way to make a run meaningless.
   the drop, keeps what it had read, and then goes back to `Live` over a surface it has read again,
   when the Host returns on the same address with the same key and database. What it does not reach is
   the other ending: a Host away for longer than SignalR's retry budget, which is roughly 42 seconds.
-  The console stops retrying there and says so, and nothing in this directory reaches that state or
-  shows what the operator can do about it. That is the next run, not a setting.
+  The console stops retrying there and says so, and nothing in this directory reaches that state yet.
+  What the operator can do about it does exist as of `1ce74d7`: **Reconnect** in the status bar
+  rebuilds the client and the feed from the settings and the stored key, and the connection screen
+  now reconnects for an address change as well as a key change. The run that proves the far ending is
+  still owed, and it has to show that recovery does *not* happen on its own by T+55, or it is the
+  short-outage run twice.
 - **Native OS dialogs.** There are none yet. When the API key entry lands it will open one, and that
   is the same wall mylo records: an `NSOpenPanel` is not an Avalonia control, so the harness can
   neither see nor click it.
