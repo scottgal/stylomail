@@ -75,6 +75,20 @@ public enum EvidenceAvailability
 }
 
 /// <summary>Where a piece of evidence came from. Origin decides how much authority it carries.</summary>
+/// <remarks>
+/// Read this as the Host's label for the row rather than as a fact about how the
+/// value was produced, because the two can disagree. The row
+/// assessment.behavioural_context is emitted carrying Deterministic while its
+/// source is the sender's profile store, which is what Behavioural describes, so
+/// that row asserts an origin whose own definition excludes it (reported by
+/// ingress- at overview-'s direction on 1 Oct 2026, and the row is the Assessment
+/// lane's to fix).
+///
+/// The console renders this value verbatim and must not compensate for it. A pane
+/// that reworded an upstream value it disagreed with would hide the defect from
+/// the person looking straight at it, and the label being visibly wrong is worth
+/// more than the label being quietly plausible.
+/// </remarks>
 public enum EvidenceOrigin
 {
     /// <summary>Computed locally from the message and envelope. Reproducible, no provider involved.</summary>
