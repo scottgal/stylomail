@@ -126,6 +126,12 @@ public sealed class MailPolicyEngineTests
                 evidence: [calm, row]);
 
             Assert.Equal(MailAction.Allow, decision.Action);
+
+            // The control the negative needs, and the reason it is stated rather than assumed: a
+            // reason list that is provably populated, so the absence below is a statement about this
+            // predicate and not about an empty collection passing it for no reason.
+            Assert.Contains(decision.Reasons, r => r.Code == "policy.risk_below_threshold");
+
             Assert.DoesNotContain(decision.Reasons, r => r.Code == "policy.refusing_finding");
         }
     }
@@ -145,7 +151,26 @@ public sealed class MailPolicyEngineTests
 
         var decision = Decide(Risk(0.0, 1.0), Context(), evidence: evidence);
 
+        // The negative below is only evidence if the collection it reads is populated and the
+        // predicate it uses still fires. Without the first, an empty reason list passes it; without
+        // the second, a renamed code string passes it forever. Both made this a vacuous green until
+        // `overview-`'s audit asked every lane to read its own negative claims, and the action is
+        // asserted here rather than left implied because in this lane a wrong action is the failure
+        // mode, not a wrong number.
+        Assert.Equal(MailAction.Allow, decision.Action);
+        Assert.Contains(decision.Reasons, r => r.Code == "policy.risk_below_threshold");
+
         Assert.DoesNotContain(decision.Reasons, r => r.Code == "policy.refusing_finding");
+
+        // The second control: the same predicate, on the shape it must match. A refusing id at 1.0
+        // fires it, so the absence above is a statement about these three ids and not about a literal
+        // that has stopped matching anything.
+        var refusing = Decide(
+            Risk(0.0, 1.0),
+            Context(),
+            evidence: [Deterministic(DeterministicFindings.TrustedAuthenticationFailure, 1.0)]);
+
+        Assert.Contains(refusing.Reasons, r => r.Code == "policy.refusing_finding");
     }
 
     [Fact]
@@ -186,6 +211,31 @@ public sealed class MailPolicyEngineTests
         Assert.Equal(MailAction.Allow, neverAsked.Action);
         Assert.DoesNotContain(
             neverAsked.Reasons,
+            r => r.Code == "policy.refusing_findings_not_evaluated");
+
+        // Asked and INCONCLUSIVE is not the same as not evaluated either, and this arm is what stops a
+        // later widening of the predicate while every test still passes. A ReducedCoverage row is a
+        // check that RAN and declined to conclude: the auth analyzer read the results, found none from
+        // a trusted verifier, and would not invent a number, so the null Value is a refusal to state a
+        // measurement rather than one going missing. The other two ids are measured and clean here, so
+        // this row is the only candidate the note could fire on, and the coverage arithmetic agrees it
+        // was asked: the unanswered-semantic gate keys on Unavailable, not on this.
+        var inconclusive = new[]
+        {
+            RefusingRow(
+                DeterministicFindings.TrustedAuthenticationFailure,
+                EvidenceAvailability.ReducedCoverage,
+                null),
+            RefusingRow(DeterministicFindings.LinkIdnHomograph, EvidenceAvailability.Available, 0.0),
+            RefusingRow(DeterministicFindings.AttachmentTypeMismatch, EvidenceAvailability.Available, 0.0),
+            calm,
+        };
+
+        var declined = Decide(Risk(0.0, 1.0), Context(), evidence: inconclusive);
+
+        Assert.Equal(MailAction.Allow, declined.Action);
+        Assert.DoesNotContain(
+            declined.Reasons,
             r => r.Code == "policy.refusing_findings_not_evaluated");
 
         // Asked and unanswered, and absent entirely, both leave a check that did not run.

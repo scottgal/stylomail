@@ -217,19 +217,36 @@ public sealed class MailPolicyEngine
     /// <para>
     /// The trigger is the evidence, not a caller-supplied list: it fires when a refusing id has no
     /// <c>Available</c> row and the question was actually put, which is the absent case and the
-    /// <c>Unavailable</c> case. A <c>NotApplicable</c> row is not a trigger, because a question the
-    /// message never raised is not a check that failed to run, and reading a deployment's shape as an
-    /// outage is the mistake this deliberately avoids.
+    /// <c>Unavailable</c> case. Two shapes deliberately do not fire: <c>NotApplicable</c>, where the
+    /// message never raised the question, and <c>ReducedCoverage</c>, where the producer ran the check
+    /// and declined to conclude. Neither is a check that failed to run.
     /// </para>
     /// <para>
-    /// <b>Why the NotApplicable carve-out is stated rather than inferred from "no Available row".</b>
-    /// The requirement that produced this note carried both phrasings and they disagree at the edge: "a
-    /// refusal-shaped id has no Available row" read literally would include a <c>NotApplicable</c> row,
-    /// while "in question and unanswered" excludes it. The intent clause governs, and it is corroborated
-    /// twice: a <c>NotApplicable</c>-only list is defined elsewhere as "not an outage, nothing was asked
-    /// of the provider, so nothing was lost", and treating it as an outage would make an
-    /// inapplicable-only deployment defer rather than deliver. Recorded here because the literal clause
-    /// is the one a later reader is likely to re-derive from.
+    /// <b>Why the carve-outs are stated rather than inferred from "no Available row".</b> The
+    /// requirement that produced this note carried both phrasings and they disagree at the edge: "a
+    /// refusal-shaped id has no Available row" read literally would include both a <c>NotApplicable</c>
+    /// row and a <c>ReducedCoverage</c> row, while "in question and unanswered" excludes both. The
+    /// intent clause governs, and it separates three shapes: <b>never asked</b> (<c>NotApplicable</c>),
+    /// <b>asked and inconclusive</b> (<c>ReducedCoverage</c>), and <b>could not measure</b>
+    /// (<c>Unavailable</c> or absent, the only two that fire). Recorded because the literal clause is
+    /// the one a later reader is likely to re-derive from.
+    /// </para>
+    /// <para>
+    /// <b>The non-firing shapes, and why each sits where it does.</b> For <c>NotApplicable</c> the
+    /// corroboration is the definition elsewhere of an inapplicable-only list as "not an outage,
+    /// nothing was asked of the provider, so nothing was lost"; firing on it would make an
+    /// inapplicable-only deployment defer rather than deliver. <c>ReducedCoverage</c> is the one a later
+    /// reader is most likely to widen, so it is spelled out: it is a check that <em>ran</em> and could
+    /// not conclude. <c>trusted_authentication_failure</c> reaches it when the analyzer examined the
+    /// auth results, found none from a trusted verifier, and declined to invent a number, so its null
+    /// <c>Value</c> is the producer refusing to state a measurement rather than one going missing, which
+    /// is the opposite of the <c>Unavailable</c> case. The decisive corroboration is the engine's own
+    /// arithmetic: the unanswered-semantic gate keys on <c>Unavailable</c> and counts a
+    /// <c>ReducedCoverage</c> row as asked, so a note reading "was not evaluated" on a row the
+    /// arithmetic counts as asked would put two of the engine's own statements in contradiction, and
+    /// which one a reader met first would depend only on where they entered. Frequency was the weaker
+    /// argument and is not the ruling: the deleted field's defect was that it fired when nothing was
+    /// wrong, not that it fired often.
     /// </para>
     /// <para>
     /// Appended, never prepended, so the reason that produced the decision is still read first. This is
