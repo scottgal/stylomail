@@ -653,16 +653,22 @@ public sealed class MailAssessorTests
     [Fact]
     public async Task TheNeverAskingDeclarationAloneDoesNotClearTheCoverageFloor()
     {
-        // The boundary of what declaring it never asks buys, measured rather than assumed. The
-        // declaration changes the SHAPE of the semantic evidence, not its absence: every dimension
-        // stays an unanswered question in the denominator, because a semantic row is never removed
-        // from it. So a deployment that declares never-asks and leaves the allow floor at its default
-        // still holds on coverage, and the hold names coverage rather than the semantic blackout,
-        // which is the difference that matters: it is not being mistaken for an outage.
+        // The boundary of what declaring it never asks buys, and it is a boundary about measurement
+        // rather than about the declaration. Ruling (i) removes a semantic NotApplicable row from
+        // the denominator along with the numerator, and this fixture's only weighted rows are
+        // semantic, so the counted set is empty: not "asked and unanswered" but "never posed".
+        // Coverage is 0 over 0, reported as 0, and the hold is coverage rather than the semantic
+        // blackout, which is the difference that matters: it is not being mistaken for an outage.
         //
-        // This is the honest limit of the composition declaration, and it is written down because the
-        // other reading ("it declares never-asks, so it may deliver") is the one a later reader would
-        // otherwise assume, and would then look for the floor's absence as a bug.
+        // The assertions here do not separate that rule from the one it replaced, and saying so is
+        // worth more than leaving it for a reader to discover. Before (i) this fixture held too: the
+        // numerator was empty either way, and the backbone sitting in the denominator moved the
+        // fraction without moving the outcome. The declaration's effect is only visible once a
+        // deterministic row has been measured, which is the test below.
+        //
+        // Written down because the other reading ("it declares never-asks, so it may deliver") is the
+        // one a later reader would otherwise assume, and would then look for the floor's absence as a
+        // bug.
         var harness = Build(neverAsks: true);
         harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
 
@@ -673,6 +679,63 @@ public sealed class MailAssessorTests
 
         Assert.Equal(MailAction.Hold, assessment.Action);
         Assert.Contains(assessment.Reasons, r => r.Code == "policy.insufficient_coverage_to_allow");
+        Assert.DoesNotContain(assessment.Reasons, r => r.Code == "policy.allow_without_a_semantic_answer");
+    }
+
+    [Fact]
+    public async Task ANeverAskingDeploymentClearsTheAllowFloorOnAMeasuredDeterministicRowAlone()
+    {
+        // What the declaration buys, and the movement ruling (i) makes. This is the boundary test
+        // above with one change: the MIME analyzer emits a real weighted finding id instead of the
+        // stub's own, so one deterministic question is in the weight table and was answered. That
+        // single row is the whole difference between the two tests.
+        //
+        // Before (i) the 7.3 semantic backbone stayed in the denominator whatever its availability,
+        // so coverage was 1.0 out of 8.3 and the deployment held at the default floor. That 8.3 is
+        // applied arithmetic over the weight table and this fixture's rows, in
+        // .styloagent/scratch/ingress/successor-arm/, and not a run of the pre-(i) binary: that rule
+        // is no longer in the tree to run. After (i) the
+        // semantic rows leave, the denominator falls to the deterministic weight alone, coverage is
+        // 1.0 out of 1.0, and the default floor is cleared by a row that was measured and came back
+        // clean. This is the product claim the ruling was taken for, and it is why the floor no
+        // longer needs to be operator-settable: a deployment that declares it never asks can clear
+        // the allow floor on deterministic evidence alone.
+        //
+        // The value is a measured zero on purpose. A mismatch at 1.0 would produce the same coverage
+        // and a different action, which would leave this test resting on the scorer's threshold
+        // rather than on the coverage floor it is about.
+        var harness = Build(neverAsks: true);
+        harness.Mime.EvidenceSignalId = DeterministicFindings.LinkDisplayMismatch;
+        harness.Mime.EvidenceValue = 0.0;
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            Submittable(),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        // The counted set is that one row and nothing else. This is what "the denominator is the
+        // posed deterministic weight alone" means, read off the published rows rather than
+        // inferred: each row carries the weight it was configured with and whether it was counted.
+        var counted = assessment.RiskDimensions.Where(row => row.Counted == true).ToList();
+        var only = Assert.Single(counted);
+        Assert.Equal(DeterministicFindings.LinkDisplayMismatch, only.Name);
+        Assert.Equal(1.0, only.Weight);
+        Assert.Equal(EvidenceAvailability.Available, only.Availability);
+
+        // And the rows the ruling removed are still published, which is the half a fix that merely
+        // stopped counting them would drop: every semantic dimension is present, marked uncounted,
+        // and NotApplicable rather than Unavailable, so "never asked" has not decayed into "asked and
+        // nothing came back".
+        var semantic = assessment.RiskDimensions
+            .Where(row => row.Name.StartsWith("semantic.", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(semantic);
+        Assert.All(semantic, row => Assert.Equal(EvidenceAvailability.NotApplicable, row.Availability));
+        Assert.All(semantic, row => Assert.False(row.Counted));
+
+        Assert.Equal(MailAction.Allow, assessment.Action);
+        Assert.DoesNotContain(assessment.Reasons, r => r.Code == "policy.insufficient_coverage_to_allow");
         Assert.DoesNotContain(assessment.Reasons, r => r.Code == "policy.allow_without_a_semantic_answer");
     }
 
