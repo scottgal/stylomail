@@ -435,6 +435,27 @@ console_port_is_taken() {
 }
 
 console_start_host() {
+    # A port that cannot be probed must not read as a free one. `nimble-` broadcast
+    # this exact shape against their netstat gate on 2026-10-01: a probe that dies
+    # yields the same bytes as a quiet endpoint, so the gate says clear. This file's
+    # probe is a direct connect rather than a netstat grep, and it does not have
+    # their bug, but an empty or non-numeric CONSOLE_PORT makes the connect fail for
+    # a reason that is not "nothing is listening", and `console_port_is_taken` would
+    # report free for a port that was never asked about. Line 27's `:-` catches an
+    # empty value that came through the environment, so the reachable route is an
+    # assignment made AFTER this file is sourced, which is the order the header
+    # already tells runners to use.
+    #
+    # Refused here rather than inside the probe, because the probe's contract is a
+    # yes/no about a port and folding "I have no port" into "taken" would make the
+    # caller print "already in use" about a port it never had.
+    if [[ ! "$CONSOLE_PORT" =~ ^[0-9]+$ ]]; then
+        echo "CONSOLE_PORT is '$CONSOLE_PORT', which is not a port number, so no probe can" >&2
+        echo "say whether it is in use. Set it to a number, or leave it unset to take the" >&2
+        echo "default, and set it BEFORE sourcing this file." >&2
+        return 1
+    fi
+
     if console_port_is_taken; then
         echo "Port $CONSOLE_PORT is already in use, so this run would talk to" >&2
         echo "whatever is listening there rather than to its own Host." >&2

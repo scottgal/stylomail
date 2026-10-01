@@ -432,6 +432,43 @@ fi
 rm -rf "$decoy" "$ours"
 fi
 
+# Case 8: a port that cannot be probed is refused, not read as free. `nimble-`
+# broadcast this shape against their own netstat gate on 2026-10-01: a probe that
+# dies produces the same bytes as a quiet endpoint, so the gate says clear and the
+# run starts. This file's probe is a direct connect and does not have their bug, but
+# an empty CONSOLE_PORT makes that connect fail for a reason that is not "nothing is
+# listening". The refusal has to name the real problem: "already in use" would send
+# the reader looking for a holder that does not exist.
+case_number=$((case_number + 1))
+echo "case $case_number: a CONSOLE_PORT that is not a number is refused, not read as free"
+
+saved_port="$CONSOLE_PORT"
+CONSOLE_PORT=""
+output="$(console_start_host 2>&1)"
+status=$?
+CONSOLE_PORT="not-a-port"
+output_bad="$(console_start_host 2>&1)"
+status_bad=$?
+CONSOLE_PORT="$saved_port"
+
+if (( status != 0 && status_bad != 0 )); then
+    pass "an empty and a non-numeric port are both refused"
+else
+    fail "an unprobeable port was accepted (empty exit $status, non-numeric exit $status_bad)"
+fi
+
+if [[ "$output" == *"not a port number"* && "$output_bad" == *"not a port number"* ]]; then
+    pass "the refusal names the port as the problem"
+else
+    fail "the refusal does not say the port is the problem: $output"
+fi
+
+if [[ "$output" != *"already in use"* ]]; then
+    pass "it does not claim a holder it never found"
+else
+    fail "it reports a holder for a port it could not probe: $output"
+fi
+
 rm -rf "$CONSOLE_RUN"
 
 echo

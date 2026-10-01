@@ -132,14 +132,19 @@ correction back: its suggested `realpath -m` is not available here, because macO
 It fails closed, so a machine that can resolve nothing refuses everything rather than allowing everything.
 
 The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
-never the shared tree. Seven mutations, one per pass, each with the exact set of
+never the shared tree. Eight mutations, one per pass, each with the exact set of
 cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
 dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
-sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8). One per pass
+sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8), H the port
+validation disabled (the sibling's 8). One per pass
 because several of them target case 8, and a red that two
-mutations could have caused names neither property. Each pass also asserts its own pattern still matched:
+mutations could have caused names neither property. Each line names the file its case number belongs to,
+because three of these redden a case 8 in the fingerprint check and one reddens a case 8 in the sibling,
+and a bare "8" cannot be attributed to either. Each pass also asserts its own pattern still matched:
 a mutation whose perl stops matching is a no-op, and in this session that no-op first read as a clean
-pass, then was reported as "applied" by a precondition that had copied the same stale pattern.
+pass, then was reported as "applied" by a precondition that had copied the same stale pattern. H was
+written with one `]` where the source has two (`$ ]]; then`), and the precondition caught it as
+"did not apply" rather than letting a `<none>` pass as a mutation that had been tried.
 
 What none of this establishes is that the stamp is taken on a real run. The check exercises the function
 directly and `stamp-host-build.sh` names a real directory, but whether `console_build_all` calls it on a
@@ -519,9 +524,20 @@ instead of being retried. Two further consequences of the same wedge:
   accepts a connect, so "connected" is "taken" and "not connected" is "free". Diagnostics that name a
   pid work with `ps`. `./ux-scripts/check-stop-host-bounded.sh` asserts the harness contains no
   `lsof` call, so the sentence and the code cannot drift apart again.
+- **A probe that cannot run must not answer "free".** The two-way answer above has a hole, and
+  `nimble-` broadcast it against their netstat gate on 2026-10-01: a probe that never executed is
+  byte-identical to a quiet endpoint, so the dangerous failure is a dead probe read as a count of
+  zero. Measured here, `CONSOLE_PORT=""` makes the `/dev/tcp` connect to `127.0.0.1:` fail, which
+  reads as FREE and the run would start. Line 27's `${CONSOLE_PORT:-5271}` catches an empty value that
+  arrived through the *environment*, so the reachable route is narrower than it first looked: an
+  assignment made after this file is sourced, which is the order the header already tells runners to
+  use. `console_start_host` therefore refuses a `CONSOLE_PORT` that is not a run of digits, before the
+  probe, naming the value as the problem rather than claiming a holder: the sibling's case 8 asserts
+  the refusal, that the message says "not a port number", and that it does **not** say "already in
+  use". Mutation H keeps that case load-bearing.
 
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
-six cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
+eight cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
 the new one to show that it still blocks where the new one returns
 (`.styloagent/scratch/desktop/test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
 comparison rather than as a check to run). The stand-in waits for a flag file before anything signals

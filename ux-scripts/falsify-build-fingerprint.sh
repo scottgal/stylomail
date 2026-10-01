@@ -33,6 +33,8 @@
 #   G. The canonicaliser returns its argument unchanged, leaving only the string
 #      comparison. Case 8 must go red on the symlink assertion.
 #
+#   H. The port-value validation is disabled. The sibling's case 8 must go red.
+#
 # Measured 2026-10-01: each mutation reddens exactly the cases named above.
 
 set -uo pipefail
@@ -79,7 +81,11 @@ pass() {
         /^  FAIL/       { if (!seen[n]++) printf "%s ", n }
     ' )"
 
-    printf '%-24s red: %s\n' "$name" "${red:-<none>}"
+    # The subject is named because two of these mutations redden a case 8 that is
+    # not the same case 8: D, E and G redden case 8 of the fingerprint check and H
+    # reddens case 8 of the sibling. A bare "8" cannot be attributed to a file, so
+    # the line names the file the number belongs to.
+    printf '%-24s red: %-6s %s\n' "$name" "${red:-<none>}" "$subject"
 
     if [[ "$red" != "$expect" ]]; then
         printf '%-24s EXPECTED red: %s\n' "" "$expect"
@@ -104,12 +110,18 @@ mutation_F() { perl -0777 -pi -e 's/if ! console_assert_run_dir_is_ours "\$0"[^;
 #    being inside the base.
 mutation_G() { perl -pi -e 's/^    local path="\$1"$/    local path="\$1"; printf "%s\\n" "\$path"; return 0/' console-harness.sh; }
 
+# H. The port-value validation in console_start_host is disabled, leaving the connect
+#    probe to answer for a port that was never probed. Case 8 of the sibling check must
+#    go red: nimble- broadcast this shape against their netstat gate on 2026-10-01.
+mutation_H() { perl -pi -e 's/^    if \[\[ ! "\$CONSOLE_PORT" =~ \^\[0-9\]\+\$ \]\]; then$/    if false; then/' console-harness.sh; }
+
 # A guard against the mutations themselves going stale: if a perl pattern stops
 # matching, the "mutation" is a no-op and the pass reports <none>, which is a
 # failure here rather than a quiet success.
 mutation_A_applied() { ! grep -q 'identity+="\$digest' console-harness.sh; }
 mutation_D_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-build-fingerprint.sh; }
 mutation_E_applied() { grep -q '"\$allowed_canon"\*' console-harness.sh; }
+mutation_H_applied() { grep -q '^    if false; then$' console-harness.sh; }
 mutation_G_applied() { grep -q 'printf "%s\\n" "\$path"; return 0' console-harness.sh; }
 mutation_F_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-stop-host-bounded.sh; }
 
@@ -125,6 +137,7 @@ pass "D guard call dropped" "8 "       "$fingerprint" mutation_D || failures=$((
 pass "E slash dropped" "8 "            "$fingerprint" mutation_E || failures=$((failures + 1))
 pass "F sibling guard dropped" "7 "    "$stop"        mutation_F || failures=$((failures + 1))
 pass "G canonicaliser neutered" "8 "   "$fingerprint" mutation_G || failures=$((failures + 1))
+pass "H port validation dropped" "8 "  "$stop"        mutation_H || failures=$((failures + 1))
 
 # The preconditions, checked last so the reports above are printed either way.
 did_it_apply() {
@@ -140,6 +153,7 @@ did_it_apply "D guard call dropped" mutation_D_applied
 did_it_apply "E slash dropped" mutation_E_applied
 did_it_apply "F sibling guard dropped" mutation_F_applied
 did_it_apply "G canonicaliser neutered" mutation_G_applied
+did_it_apply "H port validation dropped" mutation_H_applied
 
 rm -rf "$scratch"
 
