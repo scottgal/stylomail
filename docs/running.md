@@ -289,12 +289,14 @@ results stand.
 `NumCtx`, while the number the guard compares is the SERVER's token count, which content scales by
 between 2.9x and 6.2x on these shapes. **A budget in bytes cannot bound a quantity that content scales
 several-fold**, and the ratio moves with the REQUEST size too, so the fit's cap is a bound on the wrong
-quantity twice over. Three limits, stated rather than left for a reader: the six shapes were **chosen
+quantity twice over. Four limits, stated rather than left for a reader: the six shapes were **chosen
 rather than sampled**, so a shape that fails bounds that shape and not all content; these arms were
 re-taken at a body size below the provider's own 2500-character budget, because an earlier run at 3600
 bytes was reachable as an HTTP request but **not as a state the adapter produces**, so its figures
-over-state what a message can reach; and whether content denser than the hex-ish arm exists, or whether
-non-ASCII behaves differently, has not been measured. Size the setting against the largest evaluation
+over-state what a message can reach; the six arms were taken against the ENDPOINT directly rather than
+through the shipping adapter and assessor, so a dense body on the real path is measured by neither run;
+and whether content denser than the hex-ish arm exists, or whether non-ASCII behaves differently, has not
+been measured. Size the setting against the largest evaluation
 YOUR mail produces, and treat any figure here as a measurement of this lane's fixtures rather than a
 bound on yours.
 
