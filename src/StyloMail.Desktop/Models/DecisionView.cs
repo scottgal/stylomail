@@ -185,12 +185,24 @@ public sealed class DecisionView
 
             // The fraction the refusal text quotes, and the same two readings to
             // keep apart: zero and one are measurements, null is an absence.
-            CoveredWeightArithmetic = decision.CoveredWeightFraction is { } covered
-                ? "Of the weight this decision asked about, "
-                    + string.Create(CultureInfo.InvariantCulture, $"{covered:0.###}")
-                    + " was counted: this is the share the refusal text quotes."
-                : "The share of the asked weight that was counted was not recorded for this decision, "
-                    + "so it cannot be checked from what is here.",
+            // Three readings, and the ZERO is the one that reassures rather than
+            // alarms: the engine's divisions are guarded (CompositeRiskScorer
+            // :275-276), so nothing counted yields an index of 0.0, and a fully
+            // masked message then reads exactly like a measured-benign one on the
+            // number a reader looks at first. The sentence says so, because the
+            // engine is already safe here (MailPolicyEngine gates coverage 0.0
+            // against MinimumCoverageForAllow) and the pane is where a reader has
+            // to be told.
+            CoveredWeightArithmetic = decision.CoveredWeightFraction is not { } covered
+                ? "The share of the asked weight that was counted was not recorded for this decision, "
+                    + "so it cannot be checked from what is here."
+                : covered > 0
+                    ? "Of the weight this decision asked about, "
+                        + string.Create(CultureInfo.InvariantCulture, $"{covered:0.###}")
+                        + " was counted: this is the share the refusal text quotes."
+                    : "None of the weight this decision asked about was counted, so the risk index "
+                        + "beside this is NOT a measurement: a fully masked message and a "
+                        + "measured-benign one read the same here.",
             Reasons = [.. decision.Reasons.Select(reason => ReasonView.From(reason, bySignal))],
             Dimensions = [.. decision.RiskDimensions.Select(DimensionView.From)],
             Evidence = [.. decision.Evidence.Select(EvidenceView.From)],

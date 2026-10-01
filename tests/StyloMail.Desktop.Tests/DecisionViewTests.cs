@@ -49,7 +49,7 @@ public sealed class DecisionViewTests
         // that can drift apart.
         var empty = DecisionView.From(Decision(
             Wire.Decision.Replace("\"coveredWeightFraction\": 1.0", "\"coveredWeightFraction\": 0.0")));
-        Assert.Contains("0 was counted", empty.CoveredWeightArithmetic);
+        Assert.Contains("NOT a measurement", empty.CoveredWeightArithmetic);
         Assert.DoesNotContain("not recorded", empty.CoveredWeightArithmetic);
 
         var absent = DecisionView.From(Decision(Wire.DecisionWithoutOptionalMembers));
