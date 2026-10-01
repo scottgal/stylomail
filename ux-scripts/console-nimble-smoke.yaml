@@ -140,6 +140,18 @@ actions:
     value: "03-decision-pane"
     description: "The decision pane for the held message, dimension rows and all"
 
+  # AND THE SAME PANE FROM ITS END, because a screenshot is the VISIBLE REGION and
+  # this pane scrolls: a screenshot alone cannot tell "the pane omits a row" from
+  # "the row is below the fold", and the twelfth dimension's absence is exactly
+  # that question. The driver has no full-page screenshot, so the scroll is the
+  # instrument, and the pair of pictures is what makes the row list a reading.
+  - type: Scroll
+    target: "name=DecisionPaneScroll"
+    value: "ScrollToEnd"
+  - type: Screenshot
+    value: "04-decision-pane-end"
+    description: "The same pane scrolled to its end, for the rows below the fold"
+
   # THE SHAPE, NOT THE NUMBER, as overview- ruled on 2026-10-01: a
   # model-generated index is a measurement of the model AND the applied window
   # together, so an exact pin here would fail on a legitimate model or window
