@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using StyloMail.Assessment;
 using StyloMail.Core;
 
 namespace StyloMail.Host.Tests;
@@ -29,18 +30,39 @@ namespace StyloMail.Host.Tests;
 /// unavailable.
 /// </para>
 /// <para>
-/// <b>What is compared, and why not the whole evidence list.</b> The deterministic rows are the
-/// subject: they are what the bytes produce, and they are absent from the route without them. The
-/// full lists can differ by one row that has nothing to do with either route,
-/// <c>assessment.behavioural_context</c>, which is emitted when the sender has no behavioural
-/// profile yet and therefore rides on whichever assessment happens to be the sender's first. That is
-/// a property of the run rather than of the route, and asserting the whole list equal would make
-/// this test red for a reason it is not about.
+/// <b>What is compared, and the one row that may differ.</b> The deterministic rows are the subject:
+/// they are what the bytes produce, and they are absent from the route without them. Exactly one row
+/// of deterministic origin is not produced by the bytes,
+/// <c>assessment.behavioural_context</c>, which records that the classifier judged the words without
+/// knowing the sender. The two routes differ on whether they can change what is known about that
+/// sender, and by design rather than by accident: the submission route observes the message and
+/// warms the sender's profile, while the assessment route is assessment only and
+/// <c>UpdateObservedState</c> returns before it writes anything, leaving the profile store exactly as
+/// it was found. So the row is recorded by any call that runs before the sender's first submission,
+/// and it is absent from a call that runs after one.
+/// </para>
+/// <para>
+/// That is a property of the profile store rather than of either route's view of the message. This
+/// test names the row and asserts the shape of the difference per order, rather than filtering the
+/// row out: a divergence in the byte derived rows still fails, and so does a second unexplained row.
 /// </para>
 /// </remarks>
 public sealed class AssessmentRouteAgreementTests
 {
-    private const string ExtractionUnavailable = "assessment.deterministic_extraction";
+    /// <summary>
+    /// The marker the assessment route used to carry alone, named through the id the source
+    /// publishes rather than through a literal.
+    /// </summary>
+    /// <remarks>
+    /// A literal that no longer matches the source would make the <c>DoesNotContain</c> below pass by
+    /// matching nothing, which is the same vacuous shape the non empty guard exists to prevent.
+    /// </remarks>
+    private const string ExtractionUnavailable = AssessmentEvidenceIds.DeterministicExtractionUnavailable;
+
+    /// <summary>
+    /// The one deterministic origin row that comes from the profile store rather than from the bytes.
+    /// </summary>
+    private const string BehaviouralContext = AssessmentEvidenceIds.BehaviouralContextUnavailable;
 
     /// <summary>
     /// The call order is a control, not a second opinion.
@@ -105,7 +127,34 @@ public sealed class AssessmentRouteAgreementTests
         // routes, the two empty lists below would be equal and this test would pass while proving
         // nothing, which is the shape of the defect it exists to catch.
         Assert.NotEmpty(submitted);
-        Assert.Equal(submitted, assessed);
+
+        // The byte derived rows, in both orders. This is the property the test is named for.
+        Assert.Equal(
+            submitted.Where(id => id != BehaviouralContext),
+            assessed.Where(id => id != BehaviouralContext));
+
+        // And the one row allowed to differ, with the assertion on the shape of the difference rather
+        // than an exclusion: filtering the row out would also hide a second row that had no business
+        // changing.
+        Assert.Empty(assessed.Except(submitted, StringComparer.Ordinal));
+
+        if (submitFirst)
+        {
+            // The submission went first with the sender still unknown: it recorded the row and,
+            // because it is not assessment only, observed the message and warmed the profile. The
+            // assessment that follows finds a profile and records nothing.
+            Assert.Equal<string>(
+                [BehaviouralContext],
+                submitted.Except(assessed, StringComparer.Ordinal));
+        }
+        else
+        {
+            // The assessment went first and wrote nothing durable, so the submission that follows it
+            // still finds no profile. Both calls record the row and the lists agree outright.
+            Assert.Empty(submitted.Except(assessed, StringComparer.Ordinal));
+            Assert.Contains(BehaviouralContext, submitted);
+            Assert.Contains(BehaviouralContext, assessed);
+        }
 
         // And neither route reports that extraction did not run, which is the marker the assessment
         // route used to carry on its own and nobody else did.
@@ -184,6 +233,13 @@ public sealed class AssessmentRouteAgreementTests
     /// <remarks>
     /// Filtered on the origin rather than on a name prefix, because the origin is the fact: a row
     /// derived from the bytes is what the route without them cannot produce, whatever it is called.
+    /// <para>
+    /// Deterministic origin is not quite the same claim as derived from the bytes, and the caller
+    /// subtracts the one row where the two part company:
+    /// <see cref="AssessmentEvidenceIds.BehaviouralContextUnavailable"/> is deterministic and comes
+    /// from the profile store. Naming it at the call site rather than weakening the filter keeps the
+    /// filter honest about what it selects.
+    /// </para>
     /// </remarks>
     private static List<string> DeterministicSignalIds(JsonDocument decision) =>
         [.. decision.RootElement.GetProperty("evidence").EnumerateArray()

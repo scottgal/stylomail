@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using System.Text;
 using StyloMail.Assessment;
+using StyloMail.Assessment.Semantic;
 using StyloMail.Core;
 using StyloMail.Host.Assessors;
 using StyloMail.Host.Auth;
@@ -513,6 +514,21 @@ public static class HostServices
                 JevOptions.ApiKeyEnvironmentVariable);
         }
 
+        if (provider == AssessmentProvider.NeverAsks && !string.IsNullOrWhiteSpace(secrets.JevApiKey))
+        {
+            // The sharper version of the case above: this deployment declares that nothing is ever
+            // sent to a semantic provider, and it is holding a provider key anyway. Announced rather
+            // than refused for the same reason, and announced rather than ignored because an
+            // operator who has just turned the semantic tier off is exactly the operator who should
+            // be told that a key is still sitting in the environment.
+            logger.LogWarning(
+                "StyloMail assessment: {Provider} is selected and {JevKey} is set, but this "
+                + "deployment never asks a semantic provider, so no key is read and no message "
+                + "content leaves it on the semantic path.",
+                provider,
+                JevOptions.ApiKeyEnvironmentVariable);
+        }
+
         var options = new MailAssessorOptions
         {
             ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(secrets.ProfileMasterKey!)),
@@ -550,6 +566,14 @@ public static class HostServices
                     clock),
                 services.GetRequiredService<ProviderCredentialHealth>(),
                 clock),
+
+            // The deployment's own declaration that it has no semantic provider. It is constructed
+            // here rather than reached by leaving a provider unreachable, because the two produce
+            // different evidence and only one of them may authorise a delivery on local evidence
+            // alone: this emits NotApplicable rows, an outage emits Unavailable ones, and policy
+            // refuses the second. The clock is passed so the rows carry the assessment's clock and a
+            // fixed-clock replay writes the same stamps the run it replays did.
+            AssessmentProvider.NeverAsks => new NeverAskingSemanticClassifier(clock),
 
             _ => throw new InvalidOperationException(
                 $"No composition is defined for assessment provider '{provider}', so the host cannot "

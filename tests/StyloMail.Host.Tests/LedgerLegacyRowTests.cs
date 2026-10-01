@@ -1,9 +1,12 @@
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using StyloMail.Core;
 using StyloMail.Host.Decisions;
+using StyloMail.Host.Endpoints;
 using StyloMail.Host.Storage;
 
 namespace StyloMail.Host.Tests;
@@ -102,6 +105,111 @@ public sealed class LedgerLegacyRowTests
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return body.RootElement.GetProperty("assessmentId").GetString()!;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // The chat route
+    // ---------------------------------------------------------------------------------------------
+
+    private const string SlackSecret = "test-signing-secret-not-a-real-one";
+    private const string OurBotId = "B0OWN";
+    private const string WatchedChannel = "C01";
+
+    /// <summary>How long to wait for the drain, which runs off the request path.</summary>
+    private static readonly TimeSpan ChatAssessmentTimeout = TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>
+    /// A host whose chat intake is wired end to end, so a posted event becomes a recorded decision.
+    /// </summary>
+    private static TestHost ChatHost() =>
+        new TestHost().WithChatIntake(SlackSecret, OurBotId, WatchedChannel);
+
+    /// <summary>
+    /// Two link-free turns with different text, so the second is not settled as a near-duplicate of
+    /// the first and both are assessed.
+    /// </summary>
+    private static readonly string ChatTurnA = Turn("Ev-chat-a", "morning, are we still on for tuesday");
+
+    private static readonly string ChatTurnB = Turn("Ev-chat-b", "thanks, that works for me");
+
+    private static string Turn(string eventId, string text) => $$$"""
+        {"type":"event_callback","event_id":"{{{eventId}}}","event_time":1760000000,
+         "team_id":"T01",
+         "event":{"type":"message","channel":"{{{WatchedChannel}}}","user":"U01","text":"{{{text}}}",
+                  "ts":"1760000000.000100"}}
+        """;
+
+    private static string Stamp(TestHost host) =>
+        host.Services.GetRequiredService<TimeProvider>().GetUtcNow().ToUnixTimeSeconds().ToString();
+
+    private static string Sign(string timestamp, string body)
+    {
+        var mac = new HMACSHA256(Encoding.UTF8.GetBytes(SlackSecret)).ComputeHash(
+            Encoding.UTF8.GetBytes($"v0:{timestamp}:{body}"));
+
+        return $"v0={Convert.ToHexString(mac).ToLowerInvariant()}";
+    }
+
+    private static HttpRequestMessage SignedSlack(TestHost host, string body)
+    {
+        var timestamp = Stamp(host);
+        var request = new HttpRequestMessage(HttpMethod.Post, SlackEventsEndpoints.Route)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+
+        request.Headers.Add(SlackEventsEndpoints.TimestampHeader, timestamp);
+        request.Headers.Add(SlackEventsEndpoints.SignatureHeader, Sign(timestamp, body));
+        return request;
+    }
+
+    /// <summary>
+    /// Posts a signed chat turn and returns the assessment id the drain wrote for it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Polling, because the endpoint's answer is about the intake rather than the assessment.</b>
+    /// The Slack surface acknowledges once the event is stored so the platform does not retry, and the
+    /// drain assesses it afterwards off the request path. A test that read the ledger the moment the
+    /// endpoint answered would be asserting something the endpoint never promised. Ids already seen
+    /// are excluded rather than assumed absent, so the second turn cannot be satisfied by the first
+    /// turn's row.
+    /// </remarks>
+    private static async Task<string> AssessChatAsync(
+        TestHost host,
+        string body,
+        params string[] alreadyKnown)
+    {
+        using (var client = host.Anonymous())
+        {
+            using var response = await client.SendAsync(SignedSlack(host, body));
+            response.EnsureSuccessStatusCode();
+        }
+
+        var deadline = DateTimeOffset.UtcNow + ChatAssessmentTimeout;
+        var known = alreadyKnown.ToHashSet(StringComparer.Ordinal);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+            using var listing = JsonDocument.Parse(await reviewer.GetStringAsync("/v1/decisions"));
+
+            var fresh = listing.RootElement.GetProperty("decisions").EnumerateArray()
+                .Select(item => item.GetProperty("assessmentId").GetString()!)
+                .FirstOrDefault(id => !known.Contains(id));
+
+            if (fresh is not null)
+            {
+                return fresh;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            "The chat intake never produced a decision: the drain assessed no event that the listing "
+            + $"did not already carry, within {ChatAssessmentTimeout.TotalSeconds:0} seconds.");
     }
 
     private static string ReadStoredPayload(TestHost host, string assessmentId)
@@ -225,25 +333,35 @@ public sealed class LedgerLegacyRowTests
     }
 
     [Fact]
-    public async Task A_row_that_never_recorded_its_arithmetic_serves_null_while_an_empty_one_serves_zero()
+    public async Task A_row_that_never_recorded_its_arithmetic_serves_null_while_a_chat_row_serves_zero()
     {
         // The distinction the nullable shape exists to preserve, made from two rows that are otherwise
-        // the same decision. Both are assessed by the real pipeline with the semantic provider
-        // unreachable, so both measured nothing and counted nothing. One was written by this build and
-        // recorded that as a denominator of 0.0; the other is rewritten into the pre-37 shape, where
-        // the arithmetic was never written down at all. If a later reader merged the two, the second
-        // would read as a measurement it is not.
-        using var host = new TestHost().WithRealAssessor();
-        var measuredId = await AssessAsync(host);
-        var legacyId = await AssessAsync(host);
+        // the same decision: two link-free chat turns, so neither poses a deterministic question and
+        // neither has a semantic answer. One was written by this build and recorded the empty
+        // arithmetic as a denominator of 0.0; the other is rewritten into the pre-37 shape, where the
+        // arithmetic was never written down at all. If a later reader merged the two, the second would
+        // read as a measurement it is not.
+        //
+        // CHAT RATHER THAN EMAIL, and the reason is the whole point of the fixture. An email always
+        // poses at least one deterministic question, because the envelope identity and the padding
+        // findings are published on every message the MIME analyser sees whatever the message
+        // contains, so the smallest denominator an email can serve is their weight and never zero.
+        // Asserting "an empty one serves zero" on the email route would assert something false. A chat
+        // turn has no such floor: the findings the chat producer emits are all conditional on the
+        // message carrying a link, so a link-free turn empties the question set and the numerator and
+        // the denominator both come out zero. The distinction is only assertable on a payload that can
+        // actually be empty, and this is the route where one can.
+        using var host = ChatHost();
+        var measuredId = await AssessChatAsync(host, ChatTurnA);
+        var legacyId = await AssessChatAsync(host, ChatTurnB, measuredId);
 
         var stored = ReadStoredPayload(host, legacyId);
-        RewritePayload(
-            host,
-            legacyId,
-            RemoveDimensionMembers(
-                RemoveMembers(stored, "riskIndexDenominator"),
-                "weight", "counted", "exclusionReason"));
+        var legacy = RemoveDimensionMembers(
+            RemoveMembers(stored, "riskIndexDenominator"),
+            "weight", "counted", "exclusionReason");
+
+        Assert.NotEqual(stored, legacy);
+        RewritePayload(host, legacyId, legacy);
 
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
@@ -251,6 +369,37 @@ public sealed class LedgerLegacyRowTests
             await reviewer.GetStringAsync($"/v1/decisions/{measuredId}"));
         using var legacyBody = JsonDocument.Parse(
             await reviewer.GetStringAsync($"/v1/decisions/{legacyId}"));
+
+        var rows = measuredBody.RootElement.GetProperty("riskDimensions").EnumerateArray().ToList();
+
+        // The row is the one this fixture meant to make. Asserted rather than left to the comment,
+        // because an email row here would carry a floor under its denominator and the zero below
+        // would then be a claim about a surface the fixture never reached.
+        Assert.Equal(
+            nameof(ChannelKind.Slack),
+            measuredBody.RootElement.GetProperty("channel").GetProperty("kind").GetString());
+
+        // Nothing was counted, which is what makes the zero below a measurement rather than a gap.
+        Assert.DoesNotContain(rows, row => row.GetProperty("counted").GetBoolean());
+
+        // THE ATTRIBUTION, without which the zero is unattributable. A denominator of 0.0 can come
+        // from a shape that asked nothing as easily as from a provider that answered nothing, and
+        // those are different rows: one is a message with no questions to pose, the other is a
+        // deployment that lost its whole semantic layer. Every semantic dimension is present here, and
+        // every one of them says the provider did not answer rather than that the question did not
+        // apply. Asserted on the presence and the state together, because a blackout and an empty
+        // shape are indistinguishable from the denominator alone.
+        var semantic = rows
+            .Where(row => row.GetProperty("name").GetString()!
+                .StartsWith("semantic.", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(SemanticDimensions.All.Count, semantic.Count);
+        Assert.All(
+            semantic,
+            row => Assert.Equal(
+                nameof(EvidenceAvailability.Unavailable),
+                row.GetProperty("availability").GetString()));
 
         // The measurement: a number, and the empty arithmetic this composition produces (nothing was
         // available to count, so there was no index to divide).

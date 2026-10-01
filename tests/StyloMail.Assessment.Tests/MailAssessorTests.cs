@@ -24,11 +24,21 @@ public sealed class MailAssessorTests
         InMemoryRawMessageSource Payloads,
         StyloMail.Adaptive.Learning.SendingQuotaLedger Ledger);
 
+    /// <param name="neverAsks">
+    /// Wires the production never-asking tier in place of the recording stub, which is what a
+    /// deployment with <c>AssessmentProvider.NeverAsks</c> actually runs. The shape is the
+    /// production class's on purpose: a harness that fabricated it could keep this suite green while
+    /// the composition emitted something else. <b>It follows that <see cref="Harness.Classifier"/>
+    /// is NOT in the chain for such a test</b>, so its counters and its inputs say nothing about what
+    /// ran, and an assertion on them there would be an assertion about a component the assessor never
+    /// reached.
+    /// </param>
     private static Harness Build(
         MailAssessorOptions? options = null,
         bool queueThrowsIfReached = false,
         bool classifierUnavailable = false,
-        int outboundRecipientBudget = 500)
+        int outboundRecipientBudget = 500,
+        bool neverAsks = false)
     {
         var clock = new FixedClock();
         var recorder = new StepRecorder();
@@ -41,10 +51,14 @@ public sealed class MailAssessorTests
             outboundRecipientBudget,
             TimeSpan.FromHours(1));
 
+        ISemanticMailClassifier tier = neverAsks
+            ? new NeverAskingSemanticClassifier(clock)
+            : classifier;
+
         var assessor = new MailAssessor(
             mime,
             new SemanticCacheClassifier(
-                classifier,
+                tier,
                 new InMemorySemanticCacheStore(),
                 (options ?? Builders.Options()).SemanticCache),
             profiles,
@@ -423,6 +437,57 @@ public sealed class MailAssessorTests
         }
     }
 
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(1.0)]
+    [InlineData(2.0)]
+    [InlineData(1000.0)]
+    public async Task The_served_count_row_reproduces_the_scorers_step_for_the_same_input(double count)
+    {
+        // Decision 42's arithmetic, asked of the served row rather than of the function. The scorer
+        // normalises a count with `DeterministicFindings.Normalise` (a bounded step, 1.0 at one or
+        // more) while the row it publishes carries the signal's own value, so the two numbers a
+        // reader has are the magnitude and the weight. Reproducing the index from them means
+        // clamping, exactly as `ADecisionCarriesTheInputsToItsOwnArithmetic` does, and this test is
+        // the reason that clamp is not decoration: at a count of two the published score is 2.0 and
+        // the contribution the scorer used is 1.0 * weight, so an unclamped product is double.
+        //
+        // The step and the clamp agree over this whole domain, which is why the assertion below can
+        // hold, and they agree only because a count is a non-negative integer. `0.5` is deliberately
+        // absent from the cases: there they diverge (0.5 against 0.0) and no message can produce it,
+        // which is pinned at the function in `DeterministicFindingUnitTests` rather than pretended
+        // at the route here.
+        var harness = Build();
+        harness.Mime.EvidenceSignalId = DeterministicFindings.TrustedAuthenticationFailure;
+        harness.Mime.EvidenceValue = count;
+
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        var row = Assert.Single(
+            assessment.RiskDimensions,
+            d => d.Name == DeterministicFindings.TrustedAuthenticationFailure);
+
+        // Counted at zero as well as at one: a finding that is measured and says "none" is a
+        // measurement, and dropping the row instead would make the denominator depend on the
+        // answer rather than on the question.
+        Assert.True(row.Counted is true);
+        Assert.NotNull(row.Weight);
+
+        // The value the row publishes, which is the input to the reader's model and not the step.
+        Assert.Equal(count, row.Score, precision: 12);
+
+        Assert.Equal(
+            Math.Clamp(row.Score, 0.0, 1.0) * row.Weight!.Value,
+            DeterministicFindings.Normalise(count, SignalUnit.Count) * row.Weight!.Value,
+            precision: 12);
+    }
+
     [Fact]
     public async Task AnAssessmentThatMeasuredNothingPublishesAnEmptyArithmeticRatherThanAQuietOne()
     {
@@ -444,6 +509,44 @@ public sealed class MailAssessorTests
         Assert.Equal(0.0, assessment.RiskIndex);
     }
 
+    // THE CONTROL for the three assertions above, added after an audit of this suite's negatives.
+    // All three are also satisfied by a decision that published no dimensions at all: an empty list
+    // has nothing counted, and an empty arithmetic divides to zero and publishes zero. That is the
+    // quiet shape this test's name claims to tell apart from a measured one, so the dimensions have
+    // to be present before their not being counted means anything.
+    //
+    // Kept as a separate test rather than folded in, because the property is about the shape of the
+    // outage rather than about the arithmetic, and a reader looking for "did anything get asked"
+    // should be able to run that question on its own.
+    [Fact]
+    public async Task AnOutageLeavesTheDimensionsPresentSoTheZeroIsMeasuredRatherThanEmpty()
+    {
+        var harness = Build(classifierUnavailable: true);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        var semantic = assessment.RiskDimensions
+            .Where(d => d.Name.StartsWith("semantic.", StringComparison.Ordinal))
+            .ToList();
+
+        // Every configured question is present, and every one of them says the provider did not
+        // answer rather than that the question did not apply. The second half is what separates a
+        // blackout from a deployment that never asks.
+        Assert.Equal(SemanticDimensions.All.Count, semantic.Count);
+        Assert.All(semantic, d => Assert.False(d.Counted is true));
+
+        // What is NOT claimed here, deliberately: that the deterministic rows are counted in this
+        // shape. Written that way first and it was false, which is what running it is for. This test
+        // pins the presence of the questions, because absence is the reading a zero cannot tell
+        // apart from a blackout; the deterministic contribution under an outage is a different
+        // question and belongs to the test that measures it.
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Unavailable
     // ---------------------------------------------------------------------------------------------
@@ -460,6 +563,11 @@ public sealed class MailAssessorTests
             CancellationToken.None);
 
         var semantic = assessment.Evidence.Where(e => e.Origin == EvidenceOrigin.Semantic).ToList();
+
+        // THE CONTROL: Assert.All over an empty list proves nothing, and "unavailable evidence
+        // propagates as unavailable" is exactly what an empty list would satisfy for free. The
+        // assertions below only mean something once there is evidence for them to be about.
+        Assert.NotEmpty(semantic);
 
         Assert.All(semantic, e =>
         {
@@ -491,21 +599,30 @@ public sealed class MailAssessorTests
     }
 
     [Fact]
-    public async Task ALocalOnlyDeploymentDeclaresItselfOnBothKnobsAndIsThenAllowed()
+    public async Task ALocalOnlyDeploymentThatDeclaresItNeverAsksIsAllowedOnItsOwnEvidence()
     {
+        // A tenant that forbids external content processing has no semantic state to report, and the
+        // claim that it may still deliver needs three parts, not two. The composition root stops
+        // declining responsibility for an outage that is not an outage; the coverage floor is
+        // stated; and the composition says, in the evidence, that the questions were never asked.
+        // The third is the one this test exists for, and it is what the first two were standing in
+        // for.
         var options = Builders.Options() with
         {
-            // A tenant that forbids external content processing has an explicitly unavailable
-            // semantic state by design, so it has to say so in both places: the composition root
-            // must stop declining responsibility for an outage that is not an outage, and policy
-            // must stop requiring coverage this deployment will never have. Two knobs rather than
-            // one is the right shape, each is a different component stating a different fact, and
-            // a single switch would have hidden which of them was being disabled.
+            // Part one. This knob is inert once nothing is Unavailable, which is itself the point:
+            // the deferral exists for an outage and this deployment has none.
             DeclineResponsibilityOnSemanticOutage = false,
+
+            // Part two, and the reason it is written down rather than dropped. Zero was once enough
+            // on its own to let a local-evidence deployment through, and it is not any more: policy
+            // will not convert an unanswered semantic question into a delivery whatever the floor
+            // says, which is the rule that holds every deployment whose provider is down. The floor
+            // is set here so this test records that the allow no longer rests on it.
             Policy = new PolicyOptions { MinimumCoverageForAllow = 0 },
         };
 
-        var harness = Build(options, classifierUnavailable: true);
+        // Part three. The production tier, not the stub in another state.
+        var harness = Build(options, neverAsks: true);
         harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
 
         var assessment = await harness.Assessor.AssessAsync(
@@ -514,14 +631,63 @@ public sealed class MailAssessorTests
             CancellationToken.None);
 
         Assert.Equal(MailAction.Allow, assessment.Action);
+
+        // The shape that carries it, asserted in both directions because only the pair is a proof:
+        // every semantic question is NotApplicable (it exists and was never put) and none is
+        // Unavailable (asked, and nothing came back). "Not Unavailable" alone would also pass a
+        // deployment that emitted no semantic rows at all, and the two rows mean opposite things.
+        var semantic = assessment.Evidence
+            .Where(e => e.Origin == EvidenceOrigin.Semantic)
+            .ToList();
+
+        Assert.NotEmpty(semantic);
+        Assert.All(semantic, row => Assert.Equal(EvidenceAvailability.NotApplicable, row.Availability));
+
+        // And the gate that holds a deployment whose provider is down is not what produced this.
+        // That gate is the whole of the difference between the two deployments, so stating that it
+        // did not fire is stating which deployment this was.
+        Assert.DoesNotContain(assessment.Reasons, r => r.Code == "policy.allow_without_a_semantic_answer");
+        Assert.Contains(assessment.Reasons, r => r.Code == "policy.risk_below_threshold");
+    }
+
+    [Fact]
+    public async Task TheNeverAskingDeclarationAloneDoesNotClearTheCoverageFloor()
+    {
+        // The boundary of what declaring it never asks buys, measured rather than assumed. The
+        // declaration changes the SHAPE of the semantic evidence, not its absence: every dimension
+        // stays an unanswered question in the denominator, because a semantic row is never removed
+        // from it. So a deployment that declares never-asks and leaves the allow floor at its default
+        // still holds on coverage, and the hold names coverage rather than the semantic blackout,
+        // which is the difference that matters: it is not being mistaken for an outage.
+        //
+        // This is the honest limit of the composition declaration, and it is written down because the
+        // other reading ("it declares never-asks, so it may deliver") is the one a later reader would
+        // otherwise assume, and would then look for the floor's absence as a bug.
+        var harness = Build(neverAsks: true);
+        harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            Submittable(),
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Hold, assessment.Action);
+        Assert.Contains(assessment.Reasons, r => r.Code == "policy.insufficient_coverage_to_allow");
+        Assert.DoesNotContain(assessment.Reasons, r => r.Code == "policy.allow_without_a_semantic_answer");
     }
 
     [Fact]
     public async Task ALocalOnlyDeploymentThatOnlyDeclaresOneKnobIsStillHeldRatherThanAllowed()
     {
         // The failure this guards against is a deployment that disables the deferral and then
-        // believes it has opted out. It has not: policy still has no coverage to allow on, and the
-        // honest outcome stays a bounded hold until the deployment says what it actually means.
+        // believes it has opted out. It has not, and the reason is not the coverage floor: the
+        // provider was asked here and answered nothing, so each semantic question arrived
+        // Unavailable, and policy reads an unanswered question as a reason to hold whatever the
+        // floor says. The honest outcome stays a bounded hold until the deployment declares that it
+        // never asks, which is the tier the test above wires.
+        //
+        // Stated at the gate rather than at the symptom, because a comment naming coverage would
+        // send a reader to change a number that cannot move this.
         var options = Builders.Options() with { DeclineResponsibilityOnSemanticOutage = false };
         var harness = Build(options, classifierUnavailable: true);
         harness.Payloads.Add("spool://tenant-1/msg-1", Builders.RawMessage);

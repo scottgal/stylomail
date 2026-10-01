@@ -38,6 +38,36 @@ public sealed class DeterministicSignalIdAgreementTests
         .Select(field => (string)field.GetRawConstantValue()!)
         .ToHashSet(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The unit each weighted deterministic id declares, written against the producer's own constant.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed on <see cref="MimeSignals"/> rather than on <see cref="DeterministicFindings"/>'s copy of
+    /// the same literal, which is the whole point: what this pins is the unit policy attaches to the
+    /// id the producer <em>publishes</em>. A rename on either side stops compiling here, and a unit
+    /// that quietly changes shape stops passing, which matters because the unit is the only thing
+    /// telling a count apart from a ratio when the number arrives.
+    /// </para>
+    /// <para>
+    /// Contributed by <c>policy-</c>, who could not home it: these ids are literals in both assemblies
+    /// because Policy sits below Mime, and this project is the one that sees both.
+    /// </para>
+    /// </remarks>
+    private static readonly Dictionary<string, SignalUnit> DeclaredUnits = new(StringComparer.Ordinal)
+    {
+        [MimeSignals.TrustedAuthenticationFailure] = SignalUnit.Count,
+        [MimeSignals.LinkDisplayMismatch] = SignalUnit.Ratio,
+        [MimeSignals.LinkIdnHomograph] = SignalUnit.Count,
+        [MimeSignals.DisplayNameAddressMismatch] = SignalUnit.Boolean,
+        [MimeSignals.AttachmentTypeMismatch] = SignalUnit.Count,
+        [MimeSignals.HtmlTextDisagreement] = SignalUnit.Ratio,
+        [MimeSignals.PaddingObfuscation] = SignalUnit.Count,
+        [MimeSignals.ReplyToDivergence] = SignalUnit.Boolean,
+        [MimeSignals.EnvelopeHeaderIdentity] = SignalUnit.Count,
+        [MimeSignals.ThreadHeaderConsistency] = SignalUnit.Count,
+    };
+
     /// <summary>The ids in <paramref name="ids"/> that the MIME analyser never publishes.</summary>
     private static List<string> Orphans(IEnumerable<string> ids) =>
         ids.Where(id => !Published.Contains(id))
@@ -101,5 +131,37 @@ public sealed class DeterministicSignalIdAgreementTests
             unweighted.Count == 0,
             "Declared as deterministic with a unit but absent from DimensionWeights, so the finding "
             + "is never counted: " + string.Join(", ", unweighted));
+    }
+
+    [Fact]
+    public void Every_weighted_deterministic_id_declares_the_unit_the_producer_publishes()
+    {
+        Assert.NotEmpty(DeclaredUnits);
+
+        foreach (var (id, unit) in DeclaredUnits)
+        {
+            // The one assertion the test above cannot make. That one requires a unit to exist; this
+            // one requires it to be the right shape, because a count read as a ratio is not a smaller
+            // number, it is a different claim about the message.
+            Assert.True(
+                DeterministicFindings.Units.TryGetValue(id, out var actual),
+                $"{id} is published by the MIME analyser and weighted by policy with no unit declared "
+                + "for it, so nothing can normalise its value.");
+
+            Assert.Equal(unit, actual);
+        }
+
+        // Named rather than counted, for the reason the id checks above are: an eleventh id, weighted
+        // and given a unit of its own, would leave the loop agreeing about ten things while saying
+        // nothing about the one that was added.
+        var undeclared = DeterministicFindings.Units.Keys
+            .Except(DeclaredUnits.Keys, StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            undeclared.Count == 0,
+            "Weighted and given a unit, but not named here, so its unit is unpinned: "
+            + string.Join(", ", undeclared));
     }
 }

@@ -3,9 +3,12 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using StyloMail.Core;
 using StyloMail.Host.Contracts;
+using StyloMail.Host.Decisions;
 using StyloMail.Host.Serialization;
+using StyloMail.Host.Storage;
 
 namespace StyloMail.Host.Tests;
 
@@ -243,6 +246,51 @@ public sealed class DecisionListingTests
         // whether the detail route would carry one.
     }
 
+    [Fact]
+    public async Task A_row_this_build_cannot_read_is_skipped_and_the_log_does_not_carry_it()
+    {
+        // The listing skips a row it cannot deserialise rather than failing the page, and the skip is
+        // counted so the page cannot report itself whole. This pins the other half of that behaviour:
+        // what the log line is allowed to carry, because the line's own comment promises the payload
+        // is not logged and it used to hand the logger a JsonException anyway.
+        //
+        // Two ways this line could put message content into the log, and they need separate
+        // assertions because they are separate carriers. The payload itself could be interpolated
+        // into the message, which the marker assertion below catches. The exception object could be
+        // passed as the logger's exception argument, which no assertion on the formatted message can
+        // catch: the exception travels beside the text, not inside it, so this is asserted on the
+        // carrier. A message-only check would pass against the exception-logging version and prove
+        // nothing, which is why the recorder keeps the two apart.
+        //
+        // Beside, not instead of, LedgerLegacyRowTests.One_unreadable_row_does_not_take_the_listing_down_with_it.
+        // That one asserts the page survives and counts the skip; this one asserts what the skip is
+        // allowed to log. They seed the same kind of row and would still both be needed if only one of
+        // the two properties broke.
+        var log = new RecordingLogger();
+
+        using var host = new TestHost()
+            .WithClock()
+            .Override(services => services.AddSingleton<ILogger<SqliteDecisionLedger>>(log));
+
+        await AssessAsync(host, TestPrincipals.AcmeSenderKey, "figures");
+        var assessmentId = MakeTheStoredPayloadUnreadable(host);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var page = await ListingAsync(reviewer);
+
+        // Skipped rather than served, and counted rather than dropped silently.
+        Assert.Empty(page.Decisions);
+        Assert.Equal(1, page.SkippedCount);
+
+        var entry = Assert.Single(log.Entries, e => e.Message.Contains(assessmentId, StringComparison.Ordinal));
+
+        // The diagnostics a skipped row needs, still there: which row, and what kind of failure.
+        Assert.Contains(nameof(JsonException), entry.Message, StringComparison.Ordinal);
+
+        Assert.DoesNotContain(PayloadMarker, entry.Message, StringComparison.Ordinal);
+        Assert.Null(entry.Exception);
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     private static async Task<DecisionListingResponse> ListingAsync(
@@ -287,6 +335,70 @@ public sealed class DecisionListingTests
                 rawMime: TestMessages.Base64(TestMessages.SampleMime.Replace("Quarterly figures", subject)))));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// A string that appears nowhere except inside a stored payload, so an assertion that it is
+    /// absent from a log message means the payload did not reach the message.
+    /// </summary>
+    private const string PayloadMarker = "review-embargo-body-marker";
+
+    /// <summary>
+    /// Replaces this tenant's only stored payload with a document no build can read, and returns the
+    /// id of the row it corrupted.
+    /// </summary>
+    /// <remarks>
+    /// Truncated rather than merely shaped wrong, so the failure belongs to the parser and not to a
+    /// converter: this test is about what the skip logs, and a payload that failed inside one of this
+    /// build's own converters would route that question through the converter instead.
+    /// </remarks>
+    private static string MakeTheStoredPayloadUnreadable(TestHost host)
+    {
+        var database = host.Services.GetRequiredService<HostDatabase>();
+
+        using var connection = database.Open();
+
+        using var read = connection.CreateCommand();
+        read.CommandText = "SELECT assessment_id FROM host_decision_ledger WHERE tenant_id = $tenant;";
+        read.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+        var assessmentId = (string)read.ExecuteScalar()!;
+
+        using var write = connection.CreateCommand();
+        write.CommandText =
+            "UPDATE host_decision_ledger SET payload = $payload "
+            + "WHERE tenant_id = $tenant AND assessment_id = $id;";
+        write.Parameters.AddWithValue("$payload", "{\"body\": \"" + PayloadMarker);
+        write.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+        write.Parameters.AddWithValue("$id", assessmentId);
+        write.ExecuteNonQuery();
+
+        return assessmentId;
+    }
+
+    /// <summary>
+    /// Records what was logged, holding the exception object and the formatted message apart.
+    /// </summary>
+    /// <remarks>
+    /// Apart on purpose, and that is the whole point of the type: a recorder that folded the exception
+    /// into the text would make the two carriers indistinguishable, and the property under test is
+    /// which of the two the code chose to hand over. The formatter is called with a null exception for
+    /// the same reason, so the message is exactly the text the log line produced.
+    /// </remarks>
+    private sealed class RecordingLogger : ILogger<SqliteDecisionLedger>
+    {
+        public List<(string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((formatter(state, null), exception));
     }
 }
 

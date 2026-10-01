@@ -415,7 +415,16 @@ public sealed class JevOptionsBindingTests
             "super-secret-api-key-value",
             logger);
 
-        Assert.DoesNotContain("super-secret-api-key-value", string.Join("\n", logger.Warnings), StringComparison.Ordinal);
+        var warnings = string.Join("\n", logger.Warnings);
+
+        // THE CONTROL, and the fixture above is why it is needed rather than optional: the endpoint
+        // is deliberately not the default so that the override announcement fires. An empty warning
+        // list joins to the empty string, and every assertion below would then pass for no reason,
+        // including against a change that deleted the announcement. Without this, removing the
+        // warning entirely keeps this test green while the property it guards goes unmeasured.
+        Assert.Contains("127.0.0.1:9", warnings, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("super-secret-api-key-value", warnings, StringComparison.Ordinal);
     }
 
     private static IConfiguration Configuration(params (string Key, string Value)[] values)

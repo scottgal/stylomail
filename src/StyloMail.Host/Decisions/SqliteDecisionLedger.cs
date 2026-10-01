@@ -213,14 +213,25 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
                 // readable down with it. The row is named so the gap is traceable, and the payload is
                 // not logged: a stored assessment is message content.
                 //
+                // Which is why the exception object is not passed either. An exception is not
+                // position-only: JsonException.Message is built from the JSON path, and the object
+                // carries an InnerException and a stack trace besides, so handing it to the logger
+                // would log more about the row than this line intends to. What the skip actually
+                // needs to be traceable is the row and the shape of the failure, and both survive
+                // without it: the type says which reader refused and Path says where. Path is a
+                // strict subset of Message, so this is narrower than logging the exception whatever
+                // the framework puts in either, and Path is a JSON path over this schema's member
+                // names rather than anything the stored message supplied.
+                //
                 // The skip is also counted onto the page rather than only logged. A page that drops
                 // rows silently reports itself complete when it is not, which is the failure the
                 // fleet's own suite gate was bitten by: a total that looked whole and was not.
                 _logger.LogWarning(
-                    ex,
                     "Decision {AssessmentId} was skipped in the listing: its stored payload cannot be "
-                    + "read by this build.",
-                    row.AssessmentId);
+                    + "read by this build ({Kind} at {Path}).",
+                    row.AssessmentId,
+                    ex.GetType().Name,
+                    ex.Path);
 
                 skipped++;
                 continue;

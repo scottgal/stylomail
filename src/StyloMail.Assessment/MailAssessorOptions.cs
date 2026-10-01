@@ -98,11 +98,15 @@ public sealed record MailAssessorOptions
     /// </para>
     ///
     /// <para>
-    /// Set it to <see langword="false"/> for a deployment that genuinely runs on the local evidence
-    /// path with no semantic provider at all, the case the spec describes for tenants that forbid
-    /// external content processing. Those deployments are not experiencing an outage; they have an
-    /// explicitly unavailable state by design, and refusing every message would be refusing the
-    /// deployment's whole traffic.
+    /// <b>Setting it to <see langword="false"/> does not make a deployment local-evidence-only, and
+    /// must not be read as doing so.</b> It suppresses one composition step; it does not change what
+    /// the semantic tier answers. A deployment that never asks a provider declares that where the
+    /// tier itself is chosen (the host composes one for it, and has no provider to dial), and the
+    /// declaration is what turns the semantic evidence <c>NotApplicable</c>: the question exists and
+    /// was never put, so nothing was lost. With this knob off and a provider still being asked, every
+    /// question is asked and unanswered, and policy refuses to convert that into a delivery whatever
+    /// the allow floor says. A runtime blackout is a blackout regardless of the knobs a deployment
+    /// set, because the alternative is that configuration can buy an allow.
     /// </para>
     /// </remarks>
     public bool DeclineResponsibilityOnSemanticOutage { get; init; } = true;

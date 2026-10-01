@@ -305,6 +305,12 @@ public sealed class ManagementSurfaceTests
 
         var body = await (await client.GetAsync("/v1/senders")).Content.ReadAsStringAsync();
 
+        // THE CONTROL. The four assertions below are negatives, and an empty or error body
+        // satisfies every one of them. This read is the one that must reflect the write above, so
+        // the label just stored is the thing that has to be visible before its absence of
+        // credentials means anything.
+        Assert.Contains("Acme outbound", body, StringComparison.Ordinal);
+
         foreach (var key in new[] { TestPrincipals.AcmeSenderKey, TestPrincipals.AcmeOperatorKey,
                      TestPrincipals.AcmeReviewerKey, TestPrincipals.GlobexSenderKey })
         {

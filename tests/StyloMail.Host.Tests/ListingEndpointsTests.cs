@@ -54,7 +54,16 @@ public sealed class ListingEndpointsTests
         using var host = new TestHost();
         using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
-        var body = await (await client.GetAsync("/v1/senders")).Content.ReadAsStringAsync();
+        var response = await client.GetAsync("/v1/senders");
+        var body = await response.Content.ReadAsStringAsync();
+
+        // THE CONTROL. Every assertion below is a negative, and a negative is satisfied by an empty
+        // body, by an error envelope, and by a listing that returned nothing. The rows whose
+        // credentials must be absent have to be present first, or this reports a clean listing it
+        // never read. The sibling test for minted keys asserts its own row before its negative for
+        // the same reason; this one had the loop without it.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(TestPrincipals.AcmeReviewerPrincipal, body, StringComparison.Ordinal);
 
         foreach (var key in new[]
                  {

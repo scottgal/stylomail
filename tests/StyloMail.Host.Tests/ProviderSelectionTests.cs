@@ -51,6 +51,19 @@ public sealed class AssessmentProviderSelectionTests
     }
 
     [Fact]
+    public void The_never_asking_declaration_is_selected_by_name()
+    {
+        // A deployment naming this is stating a fact about itself: it has no semantic provider and
+        // never puts a question to one. It is a name an operator writes down rather than something
+        // inferred from which secrets happen to be set, and the default asserted above is what keeps
+        // a missing key from ever meaning it.
+        var provider = AssessmentProviderSelection.Select(
+            Configuration((AssessmentProviderSelection.ConfigurationKey, "NeverAsks")));
+
+        Assert.Equal(AssessmentProvider.NeverAsks, provider);
+    }
+
+    [Fact]
     public void An_unknown_provider_refuses_to_start_and_names_what_it_would_accept()
     {
         // The refusal, not a fallback. A typo that quietly selected the hosted provider would send
@@ -121,6 +134,29 @@ public sealed class ProviderCredentialResolutionTests
         var state = HostCredentials.ResolveForProvider(AssessmentProvider.Nimble, "an-unused-provider-key", MasterKey);
 
         Assert.Equal(CredentialState.Configured, state);
+    }
+
+    [Fact]
+    public void The_never_asking_declaration_is_configured_by_the_master_key_alone()
+    {
+        // It holds no credential and dials nothing, so it needs what the local provider needs and no
+        // more. The direction that matters is the other one, and it is enforced in selection rather
+        // than here: no pair of secret values can produce this choice, because a value that names no
+        // member refuses to start instead of falling back.
+        Assert.Equal(
+            CredentialState.Configured,
+            HostCredentials.ResolveForProvider(AssessmentProvider.NeverAsks, null, MasterKey));
+
+        Assert.Equal(
+            CredentialState.Configured,
+            HostCredentials.ResolveForProvider(
+                AssessmentProvider.NeverAsks,
+                "an-unused-provider-key",
+                MasterKey));
+
+        Assert.Equal(
+            CredentialState.NotConfigured,
+            HostCredentials.ResolveForProvider(AssessmentProvider.NeverAsks, null, null));
     }
 
     [Fact]

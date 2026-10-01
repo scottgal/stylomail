@@ -146,9 +146,19 @@ public sealed class HealthAndMetricsTests
         }
 
         using var anonymous = host.Anonymous();
-        foreach (var path in new[] { "/health/live", "/health/ready", "/metrics" })
+        foreach (var (path, marker) in new[]
+                 {
+                     ("/health/live", "status"),
+                     ("/health/ready", "status"),
+                     ("/metrics", "stylomail_"),
+                 })
         {
             var text = await anonymous.GetStringAsync(path);
+
+            // THE CONTROL. Every assertion below is a negative, and a blank body satisfies all
+            // three at once for every path. The marker is what the route is supposed to carry, so a
+            // route that stopped serving its own shape fails here instead of passing as clean.
+            Assert.Contains(marker, text, StringComparison.Ordinal);
 
             Assert.DoesNotContain(Secret, text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("leak.canary@example.com", text, StringComparison.OrdinalIgnoreCase);

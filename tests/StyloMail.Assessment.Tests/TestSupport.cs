@@ -92,6 +92,18 @@ internal sealed class RecordingMimeAnalyzer : IMimeMessageAnalyzer
 
     public string EvidenceSignalId { get; set; } = "mime.link.display_mismatch";
 
+    /// <summary>
+    /// The value the emitted row carries, so a test can pose a count above the step's knee.
+    /// </summary>
+    /// <remarks>
+    /// Settable rather than fixed at <c>1.0</c> because <c>1.0</c> is the one value on which the
+    /// scorer's step and the clamp a reader applies cannot be told apart: a count of one steps to
+    /// <c>1.0</c> and clamps to <c>1.0</c>. A count of two or more is where a published magnitude
+    /// and a published step stop looking the same, and no fixture could reach that with the value
+    /// pinned.
+    /// </remarks>
+    public double EvidenceValue { get; set; } = 1.0;
+
     public bool Reject { get; set; }
 
     public MimeParseDisposition RejectionDisposition { get; set; } = MimeParseDisposition.LimitExceeded;
@@ -109,7 +121,7 @@ internal sealed class RecordingMimeAnalyzer : IMimeMessageAnalyzer
                 SignalId = EvidenceSignalId,
                 Origin = EvidenceOrigin.Deterministic,
                 Availability = EvidenceAvailability.Available,
-                Value = 1.0,
+                Value = EvidenceValue,
                 SourceVersion = "mime/1",
                 ObservedAt = _clock.GetUtcNow(),
                 ObservedScope = "message",

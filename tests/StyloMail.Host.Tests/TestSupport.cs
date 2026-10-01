@@ -383,6 +383,55 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// A chat intake wired end to end: the Slack surface accepting events for a watched channel, and
+    /// a real <see cref="IChatAssessor"/> behind the drain that assesses them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this is not just <see cref="WithSlackIngress"/>.</b> That helper stops at the endpoint,
+    /// which is all the endpoint's own tests read: they assert what the intake holds and never wait
+    /// for the drain, so the assessor behind it is irrelevant to them. A test that wants the
+    /// <em>decision</em> a chat message produced needs the other half, and that is three more facts.
+    /// The channel has to be watched, or triage settles the message on scope and nothing is written.
+    /// The inbound tenant has to be named, because the platform's tenant id is a claim about someone
+    /// else's workspace and this surface takes the tenant from configuration instead. And the profile
+    /// master key has to be present, or the composition root builds
+    /// <c>UnavailableChatAssessor</c> and the drain has nothing to assess with.
+    /// </para>
+    /// <para>
+    /// <b>Composed on top of <see cref="WithRealAssessor"/>, which this path never calls.</b> The
+    /// secret overrides below leave the host's own <c>IMailAssessor</c> registration in place rather
+    /// than replacing it with the fake, and the production composition refuses to build that without
+    /// the secrets it expects. Registering the real one first keeps the root resolvable; a chat turn
+    /// reaches none of it.
+    /// </para>
+    /// <para>
+    /// The master key is a fixture value rather than a secret: it pseudonymises profile identifiers
+    /// inside this process, and nothing here is persisted beyond the test's own root.
+    /// </para>
+    /// </remarks>
+    public TestHost WithChatIntake(
+        string signingSecret,
+        string ownBotId,
+        params string[] watchedChannels)
+    {
+        WithRealAssessor();
+        WithSlackIngress(signingSecret, ownBotId);
+
+        Configure("StyloMail:Slack:InboundTenantId", TestPrincipals.AcmeTenant);
+
+        for (var index = 0; index < watchedChannels.Length; index++)
+        {
+            Configure($"StyloMail:Slack:WatchedChannels:{index}", watchedChannels[index]);
+        }
+
+        return WithAssessmentSecrets(jevApiKey: null, profileMasterKey: ChatProfileMasterKey);
+    }
+
+    /// <summary>A fixture, not a secret. See <see cref="WithChatIntake"/>.</summary>
+    private const string ChatProfileMasterKey = "fixture-chat-profile-master-key-not-a-secret";
+
+    /// <summary>
     /// Counts what reaches durable acceptance, so a seam that accepts twice can be seen.
     /// </summary>
     /// <remarks>

@@ -14,6 +14,12 @@ namespace StyloMail.Host.Hosting;
 /// running half-configured while every surface said healthy.
 /// </para>
 /// <para>
+/// One member names the absence of a provider altogether (<see cref="NeverAsks"/>). That is a
+/// deployment's decision about itself rather than a report about a provider, and it is listed here
+/// because it decides the same two things the other members do: which semantic tier is constructed,
+/// and what the deployment must be configured with before it may start.
+/// </para>
+/// <para>
 /// It is also a <em>locality</em> decision. The hosted provider sends message content to a third
 /// party by definition; the local one sends it to an endpoint that defaults to this machine. Which
 /// of those a deployment intends is not something to discover from a log after the mail has gone.
@@ -40,6 +46,37 @@ public enum AssessmentProvider
     /// <see cref="Jev"/>.
     /// </remarks>
     Nimble,
+
+    /// <summary>
+    /// No semantic provider at all: this deployment declares that it never asks one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A declaration about the deployment, never a reading of a provider's health.</b> Selecting
+    /// it says that no question will be put to a semantic provider for any message, ever, and the
+    /// semantic tier answers every dimension <c>NotApplicable</c>: the question exists, it was not
+    /// asked, so nothing was lost. That is the fact a deployment needs in order to allow on local
+    /// evidence with a clean semantic column, and it is why this exists as a named selection rather
+    /// than as a consequence of the provider being unreachable: <b>an outage produces
+    /// <c>Unavailable</c> rows and this produces <c>NeverAsks</c> rows, and policy must be able to
+    /// tell a deployment that never asks from one that asked and heard nothing.</b> A blackout must
+    /// never be convertible into an allow by configuration, in either direction.
+    /// </para>
+    /// <para>
+    /// <b>It must be chosen explicitly, and it is not the default.</b> The default stays
+    /// <see cref="Jev"/>, so a deployment that names nothing and holds no key is the half-configured
+    /// refusal it already was rather than a deployment quietly running without semantic evidence. A
+    /// forgotten secret must never be able to become this selection, which is the whole reason this
+    /// is a provider name an operator writes down and not something inferred from an absent key.
+    /// </para>
+    /// <para>
+    /// It holds no credential, so like <see cref="Nimble"/> it requires the profile master key and
+    /// nothing else. A provider key left set is announced at startup rather than refused: a
+    /// deployment may carry a secret it is not using, and refusing to start over it would hand the
+    /// deployment's availability to someone else's configuration.
+    /// </para>
+    /// </remarks>
+    NeverAsks,
 }
 
 /// <summary>

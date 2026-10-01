@@ -171,12 +171,26 @@ public sealed class CliTests
         host.Assessor.Action = StyloMail.Core.MailAction.Quarantine;
         var queueId = await QuarantinedSubmissionAsync(host);
 
+        // THE CONTROL, and it is the sibling test's own assertion run inside this one: the Globex
+        // listing is only evidence of isolation if the same quarantined mail is visible to the
+        // tenant that owns it. Without it, a command that failed and printed nothing, or one that
+        // returned an error envelope, satisfies the negative below for entirely the wrong reason.
+        var own = new StringWriter();
+        var ownExit = await CliCommands.QuarantineListAsync(
+            host.Services,
+            new QuarantineListCommand(TestPrincipals.AcmeTenant, AsJson: true),
+            own);
+
+        Assert.Equal(0, ownExit);
+        Assert.Contains(queueId, own.ToString(), StringComparison.Ordinal);
+
         var output = new StringWriter();
-        await CliCommands.QuarantineListAsync(
+        var exitCode = await CliCommands.QuarantineListAsync(
             host.Services,
             new QuarantineListCommand(TestPrincipals.GlobexTenant, AsJson: true),
             output);
 
+        Assert.Equal(0, exitCode);
         Assert.DoesNotContain(queueId, output.ToString(), StringComparison.Ordinal);
     }
 
