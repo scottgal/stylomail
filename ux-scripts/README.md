@@ -56,8 +56,14 @@ relative path is not a style choice. Naming it absolutely made MSBuild treat one
 identities under `/tmp` (a symlink to `/private/tmp` on macOS) and build them against each other, and
 the symptoms were a Host that built clean and then died at launch, plus intermittent `CS0006` on
 `obj/.../ref/*.dll`. The build's output is shown and also written to
-`/tmp/stylomail-console-build/solution.log`, so a failure is readable after the fact; the three
-scripts used to discard it, which turned a build error into exit 1 and a 0-byte log.
+`.styloagent/scratch/desktop/build-log/solution.log`, so a failure is readable after the fact; the
+three scripts used to discard it, which turned a build error into exit 1 and a 0-byte log.
+
+That log used to live in `/tmp`, and it moved on 2026-10-01 because four agents lost time reading
+stale console logs there: `/tmp` is shared, invisible to the fleet's `recent_files` view, and old
+enough to be mistaken for current evidence. Artifacts go in this lane's scratch. The `CONSOLE_RUN`
+directory of each script stays under `/tmp` on purpose: it holds the per-run principal key, and
+scratch would keep a credential-bearing file indefinitely where `/tmp` has it removed on the way out.
 
 Each script owns its own Host, its own `CONSOLE_RUN` scratch directory and its own output directory
 under `ux-results/`, so one run's artifacts can never be read as another's. The main smoke wipes

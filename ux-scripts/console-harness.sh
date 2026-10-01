@@ -110,7 +110,17 @@ console_dotnet_build() {
 }
 
 console_build_all() {
-    local log_dir="${CONSOLE_BUILD_LOG_DIR:-/tmp/stylomail-console-build}"
+    # The build log is an artifact, so it goes in this lane's scratch rather than
+    # in /tmp. /tmp is shared, is invisible to the fleet's recent_files view, and
+    # survives long enough to be misread as current evidence: on 2026-10-01 four
+    # agents lost time on console logs there for exactly that reason.
+    #
+    # The run directory (CONSOLE_RUN, above) is deliberately NOT moved, and the
+    # two defaults look inconsistent unless the reason travels with them: the run
+    # directory holds the per-run principal key, and scratch would keep a
+    # credential-bearing file indefinitely where /tmp has it removed on the way
+    # out. Artifacts move; credentials do not.
+    local log_dir="${CONSOLE_BUILD_LOG_DIR:-$CONSOLE_REPO/.styloagent/scratch/desktop/build-log}"
     local log="$log_dir/solution.log"
     mkdir -p "$log_dir"
     echo "== building StyloMail.slnx for the console harness =="
