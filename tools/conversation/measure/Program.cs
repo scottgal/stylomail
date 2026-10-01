@@ -175,7 +175,7 @@ internal static class Program
         // three do reach it and consult no model: `mime` and `arms-current` are input assembly, and
         // `site-participants-dry` prints the rewrite it would make without asking anyone about it.
         var modelFree = which is "mime" or "arms-current" or "site-participants-dry"
-            or "participants-sharp-dry";
+            or "participants-sharp-dry" or "host-guard-dry" or "letters";
 
         if (modelFree)
         {
@@ -346,6 +346,39 @@ internal static class Program
         {
             await ParticipantsSharp(runner, dry: true);
             ran.Add("participants-sharp-dry");
+        }
+
+        // The cell that decides whether B means anything: the anchor's own window and provenance
+        // with a body plainly unrelated to it. If an unrelated body answers what the fixture's exact
+        // reply answers, then the anchor's letter separates nothing and is not a relatedness signal.
+        // Four calls: the anchor, the guard twice, and the anchor again as the closing bracket.
+        if (which is "host-guard")
+        {
+            await HostGuard(runner, dry: false);
+            ran.Add("host-guard");
+        }
+
+        // No calls, for the same reason the other dry twins exist: a body swap that does not reach
+        // the classifier input is a defect in the cell and must be found without the model in the loop.
+        if (which is "host-guard-dry")
+        {
+            await HostGuard(runner, dry: true);
+            ran.Add("host-guard-dry");
+        }
+
+        // The control for the fence the four comparison cells now open with. No calls: the predicate
+        // is exercised directly, because a fence that cannot be shown to fire is the defect it fences.
+        if (which is "letters")
+        {
+            var letters = Letters();
+            ran.Add("letters");
+
+            if (letters != 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("completed with failure: letters");
+                return letters;
+            }
         }
 
         Console.WriteLine();
@@ -2691,7 +2724,17 @@ internal static class Program
         var baseline = measured[0].Continuity;
         var flipped = measured.Skip(1).Where(r => !string.Equals(r.Continuity, baseline, StringComparison.Ordinal)).ToList();
 
-        if (flipped.Count == 0)
+        var lettersAreAnswers = measured.All(r => IsAnswer(r.Continuity));
+
+        if (!lettersAreAnswers)
+        {
+            Console.WriteLine(
+                "NOT A READING: at least one variant did not answer A or B, so its continuity row was "
+                + "absent or unavailable. 'Every variant answered the same' is true of non-answers as "
+                + "well, and this branch would otherwise rule the envelope and the authentication block "
+                + "out on the strength of calls that produced no letter.");
+        }
+        else if (flipped.Count == 0)
         {
             Console.WriteLine(
                 $"NO FLIP: every variant answered {baseline}, the same as the Host's own input. The "
@@ -2721,6 +2764,7 @@ internal static class Program
             served_digest = served,
             anchor_matches_served = capture.Digest is not null
                 && string.Equals(capture.Digest, served, StringComparison.Ordinal),
+            letters_are_answers = lettersAreAnswers,
             baseline = measured[0].Continuity,
             variants = measured.Select(r => new
             {
@@ -2883,6 +2927,14 @@ internal static class Program
                 "SECTION 1 NOT A SET OF REPEATS: the adapter digest moved between calls, so these "
                 + "answers are about different questions and none of them is a repeat of another.");
         }
+        else if (!AllAnswers(anchors))
+        {
+            Console.WriteLine(
+                "SECTION 1 NOT A READING: at least one anchor call did not answer A or B, so its "
+                + "continuity row was absent or unavailable. One repeated non-answer is not a stable "
+                + "answer, and the four single-field changes would be called independent sufficiencies "
+                + "on the strength of calls that produced no letter.");
+        }
         else if (distinctAnchorAnswers.Count == 1)
         {
             Console.WriteLine(
@@ -2943,6 +2995,15 @@ internal static class Program
                     "the cell is a change to nothing: the adapter digest did not move when the verifier "
                     + "string did, so the string never reached the state and the answers below are the "
                     + "anchor's answers under a different label.";
+
+                Console.WriteLine($"SECTION 2 {verifierVerdict}");
+            }
+            else if (!AllAnswers(anchors) || !AllAnswers(verifiers))
+            {
+                verifierVerdict =
+                    "not comparable: at least one call did not answer A or B, so its continuity row was "
+                    + "absent or unavailable. Two non-answers are equal as well, so the caller-supplied "
+                    + "label would read as not moving the answer on calls that produced no answer.";
 
                 Console.WriteLine($"SECTION 2 {verifierVerdict}");
             }
@@ -3669,16 +3730,20 @@ internal static class Program
                     $"THE LETTER FOLLOWS THE NUMBER OF DISTINCT SENDERS: holding the count at "
                     + $"{distinct.Count} and changing only who the senders are leaves the answer at "
                     + $"{baseline}, while dropping the count to 1 moves it to {answers["count"][0].Continuity} "
-                    + $"({answers["count"].Count} of {answers["count"].Count}). So the confound in "
-                    + "`site-participants` was the whole effect and its reading survives: two distinct "
-                    + "senders answer B, one answers A.",
+                    + $"({answers["count"].Count} of {answers["count"].Count}). So the reading "
+                    + "`site-participants` named is confirmed by a clean single-variable change: two "
+                    + "distinct senders answer B, one answers A, whoever that one is.",
                 (true, true) =>
-                    $"THE SENDER IDENTITY MATTERS: changing only who the window's senders are, with the "
-                    + $"count held at {distinct.Count}, moves the answer off {baseline} to "
-                    + $"{answers["identity"][0].Continuity}, and dropping the count to 1 also reaches "
-                    + $"{answers["count"][0].Continuity}. Both conditions are A against the anchor's "
-                    + $"{baseline}, so the letter is not following the count alone and the confound in "
-                    + "`site-participants` was not the whole effect.",
+                    $"THE SENDER IDENTITY IS SUFFICIENT ON ITS OWN: the identity condition is a clean "
+                    + $"single-variable change against the anchor, holding the count at {distinct.Count} "
+                    + "and the per-turn pattern, and it moved the answer off "
+                    + $"{baseline} to {answers["identity"][0].Continuity} in "
+                    + $"{answers["identity"].Count} of {answers["identity"].Count} calls. The count "
+                    + $"condition answers {answers["count"][0].Continuity} as well, but it is NOT "
+                    + "evidence about the count in either direction: against the anchor it changes the "
+                    + "second turn's address as well as the count. What is established is that the "
+                    + "identity condition's letter does not need the count to be 1, and the confound "
+                    + "named in `site-participants` is dissolved rather than carried.",
                 (true, false) =>
                     $"THE LETTER FOLLOWS THE IDENTITY AND NOT THE COUNT: changing only who the window's "
                     + $"senders are moves the answer off {baseline} to {answers["identity"][0].Continuity}, "
@@ -3686,9 +3751,9 @@ internal static class Program
                     + "the opposite of the count reading and it is reported as measured, not explained.",
                 _ =>
                     $"NEITHER CONDITION MOVES IT: with the count held at {distinct.Count} and with the "
-                    + $"count at 1 the answer is {baseline}, the anchor's own letter. So the "
-                    + "`site-participants` reading does not reproduce on this shape, and the confound it "
-                    + "named is not the whole story either.",
+                    + $"count at 1 the answer is {baseline}, the anchor's own letter. So neither the "
+                    + "identity nor the count explains the movement `site-participants` saw, and its "
+                    + "reading does not reproduce on this shape.",
             };
         }
 
@@ -3720,6 +3785,205 @@ internal static class Program
         });
         Console.WriteLine();
     }
+
+    /// <summary>
+    /// The anchor's own window and provenance with a body plainly unrelated to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the cell that asks what the anchor's letter is worth. Every other cell in this lane
+    /// moves one field of the captured input and reports which way the letter went; this one pairs the
+    /// anchor's exact window with a body that has nothing to do with it. <c>site-participants</c> and
+    /// <c>participants-sharp</c> both showed that a window can be changed and reach A, so the question
+    /// the anchor's own B does not answer on its own is whether B is specific to the fixture's reply or
+    /// simply what any body the window does not contain produces.
+    /// </para>
+    /// <para>
+    /// <b>One field moves: the message's own new text.</b> The quoted history the anchor carries is held
+    /// exactly as it is, and so are the envelope, authentication block, channel, subject, links,
+    /// attachments, window and coverage. Dropping the quote was the first version of this cell and it is
+    /// refused on purpose: the anchor carries a quoted block of its own, and removing a second field
+    /// would make a letter that moved for the quote indistinguishable from one that moved for the body.
+    /// A single-variable change is the whole value of this cell.
+    /// </para>
+    /// <para>
+    /// <b>The digest is read before the letter.</b> If the guard renders the same classifier key as the
+    /// anchor then the body never reached the model, and a letter taken from that would be a reading
+    /// about a change that was not made. That outcome is reported as not-a-reading, not as a result.
+    /// </para>
+    /// </remarks>
+    private static async Task HostGuard(Runner runner, bool dry)
+    {
+        // Not a paraphrase of the window and not a fact the window contains: credentials rotation,
+        // which nothing in this thread is about. It is also this lane's own guard body from M6b, so its
+        // answer here is comparable with the no-provenance reading of the same words.
+        const string UnrelatedBody = "Please rotate the API credentials before the end of the quarter.";
+
+        var window = Threads.All[0].PriorTurns;
+
+        var analysis = Corpus.Analyze("reply-in-thread", window, authenticated: true, HostVerifierId, HostTenantId);
+
+        var capture = await HostInputCapture.CaptureAsync(
+            Path.Combine(ResultsDirectory, "capture"),
+            analysis.Message!,
+            HostTenantId,
+            Corpus.Bytes("reply-in-thread"));
+
+        if (capture.Input is null)
+        {
+            Console.WriteLine("REFUSING: the capture produced no input, so there is no anchor to guard.");
+            return;
+        }
+
+        var served = ReadE2eDigest("arm2-reply-in-thread-mismatched");
+        var anchor = capture.Input;
+        var message = anchor.Message;
+        var quoted = message.QuotedText?.Length ?? 0;
+
+        Console.WriteLine("== host-guard: does the anchor's letter separate a related body from an unrelated one? ==");
+        Console.WriteLine($"anchor digest  : {capture.Digest ?? "none"}");
+        Console.WriteLine($"served digest  : {served ?? "NOT FOUND"}");
+        Console.WriteLine(capture.Digest is not null && string.Equals(capture.Digest, served, StringComparison.Ordinal)
+            ? "the anchor is the Host's input: its key reproduces the digest that arm was served."
+            : "THE ANCHOR DOES NOT MATCH: what follows changes an input that is not the Host's.");
+        Console.WriteLine($"window turns   : {message.ConversationContext?.Count ?? 0}");
+        Console.WriteLine($"anchor body    : {message.BodyText.Length} chars, quoted {quoted} chars");
+        Console.WriteLine($"guard body     : {UnrelatedBody.Length} chars, quoted {quoted} chars (held)");
+        Console.WriteLine();
+
+        // Replacing a body that is not there is a change to nothing, and the anchor is expected to
+        // carry one. Refused rather than substituted, because a cell that swaps a field it did not find
+        // is measuring a condition it did not name.
+        if (string.IsNullOrWhiteSpace(message.BodyText))
+        {
+            Console.WriteLine(
+                "REFUSING: the anchor carries no body text, so replacing it would not be the change "
+                + "this cell reports. No call was made.");
+            return;
+        }
+
+        var guard = anchor with
+        {
+            Message = message with { BodyText = UnrelatedBody },
+        };
+
+        if (dry)
+        {
+            Console.WriteLine(
+                "DRY: the guard replaces BodyText and holds everything else, including the quoted "
+                + "history, the envelope, the authentication block, the channel, the subject, the "
+                + "links, the attachments, the window and the coverage. No call was made.");
+            Console.WriteLine();
+            return;
+        }
+
+        // Four calls: the anchor, the guard twice, and the anchor again. The bracket is at both ends
+        // rather than one, so a drift in the anchor shows up whichever half it lands in.
+        var plan = new (string Label, SemanticMailInput Input)[]
+        {
+            ("anchor", anchor),
+            ("guard", guard), ("guard", guard),
+            ("anchor", anchor),
+        };
+
+        var answers = new Dictionary<string, List<(string Continuity, string? Digest)>>(StringComparer.Ordinal)
+        {
+            ["anchor"] = [],
+            ["guard"] = [],
+        };
+
+        foreach (var (label, input) in plan)
+        {
+            var result = await runner.CallAsync(input, CancellationToken.None);
+
+            answers[label].Add((result.Continuity, result.KeyDigest));
+
+            Console.WriteLine(
+                $"  {label,-7} continuity={result.Continuity,-15} tokens={result.PromptTokens,-6} "
+                + $"answered={result.Answered}/{result.Asked} adapter digest={result.KeyDigest ?? "none"}");
+            Console.Out.Flush();
+        }
+
+        Console.WriteLine();
+
+        var anchors = answers["anchor"];
+        var guards = answers["guard"];
+
+        string verdict;
+
+        if (!AllAnswers(anchors) || !AllAnswers(guards))
+        {
+            verdict =
+                "NOT A READING: at least one call did not answer A or B, so its continuity row was "
+                + "absent or unavailable. Two non-answers are equal as well, so this cell would report "
+                + "the letter failing to separate them from a call that produced no letter, and it "
+                + "reports that rather than a result.";
+        }
+        else if (!OneSet(anchors) || !OneSet(guards))
+        {
+            verdict =
+                "not comparable: a group of calls did not answer one letter at one digest, so the "
+                + "groups are not sets of repeats and a difference between them is not the change.";
+        }
+        else if (string.Equals(guards[0].Digest, anchors[0].Digest, StringComparison.Ordinal))
+        {
+            verdict =
+                "NOT A READING: the unrelated body renders the same classifier key as the anchor, so the "
+                + "body never reached the model and the letters here are two runs of one question. This "
+                + "cell cannot say whether the letter separates a related body from an unrelated one, and "
+                + "it reports that rather than a result.";
+        }
+        else
+        {
+            var baseline = anchors[0].Continuity;
+
+            verdict = string.Equals(guards[0].Continuity, baseline, StringComparison.Ordinal)
+                ? $"THE LETTER DOES NOT SEPARATE THEM: the anchor's own captured body answers {baseline} "
+                    + $"and a body with nothing to do with the window answers {baseline} as well, at two "
+                    + "different classifier keys. So on this shape the letter is what a body the window "
+                    + $"does not contain produces, and the anchor's {baseline} is not evidence that the "
+                    + "fixture's reply is inconsistent with its window."
+                : $"THE LETTER SEPARATES THEM: the anchor's own captured body answers {baseline} and the "
+                    + $"plainly unrelated body answers {guards[0].Continuity} at a different classifier "
+                    + $"key, {guards.Count} of {guards.Count} times. So at this provenance the letter does "
+                    + $"track whether the body belongs to the window, and the anchor's {baseline} is "
+                    + "specific to its own body.";
+        }
+
+        Console.WriteLine(verdict);
+
+        Write("host-guard", new
+        {
+            tenant = HostTenantId,
+            anchor_digest = capture.Digest,
+            served_digest = served,
+            anchor_matches_served = capture.Digest is not null
+                && string.Equals(capture.Digest, served, StringComparison.Ordinal),
+            window_turns = message.ConversationContext?.Count ?? 0,
+            anchor_body_chars = message.BodyText.Length,
+            anchor_quoted_chars = quoted,
+            guard_body_chars = UnrelatedBody.Length,
+            replaced_fields = GuardReplacedFields,
+            held_fields = GuardHeldFields,
+            same_classifier_key = string.Equals(guards[0].Digest, anchors[0].Digest, StringComparison.Ordinal),
+            anchor_answers = anchors.Select(a => a.Continuity).ToList(),
+            anchor_digests = anchors.Select(a => a.Digest).ToList(),
+            guard_answers = guards.Select(a => a.Continuity).ToList(),
+            guard_digests = guards.Select(a => a.Digest).ToList(),
+            verdict,
+        });
+        Console.WriteLine();
+    }
+
+    /// <summary>The fields the guard cell replaces, named so the artifact states what the change was.</summary>
+    private static readonly string[] GuardReplacedFields = ["body text"];
+
+    /// <summary>The fields the guard cell holds fixed, named so a reader can see what was not moved.</summary>
+    private static readonly string[] GuardHeldFields =
+    [
+        "quoted history", "envelope", "authentication block", "channel", "subject", "links",
+        "attachments", "window", "coverage",
+    ];
 
     /// <summary>The sender address on a prior turn's first line, or null if the turn carries none.</summary>
     /// <remarks>
@@ -3824,6 +4088,121 @@ internal static class Program
         => calls.Count > 0
             && calls.Select(c => c.Continuity).Distinct(StringComparer.Ordinal).Count() == 1
             && calls.Select(c => c.Digest).Distinct(StringComparer.Ordinal).Count() == 1;
+
+    /// <summary>The control for the letter fence: the predicate is exercised without a model.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What this verifies, and what it does not.</b> It verifies that <c>IsAnswer</c> separates the
+    /// two answers from every value <c>Describe</c> can return in their place, and that <c>AllAnswers</c>
+    /// goes false as soon as one call in a group is a non-answer. It does <b>not</b> verify that each
+    /// cell calls them; that is a fact about the call sites, read rather than measured, and it is why
+    /// this mode names the four cells it fences in its own output rather than implying coverage it
+    /// cannot see. No model call is made and none is possible: nothing here reaches the classifier.
+    /// </para>
+    /// </remarks>
+    private static int Letters()
+    {
+        var cases = new (string Value, bool Expected)[]
+        {
+            ("A", true),
+            ("B", true),
+            ("absent", false),
+            ("Unavailable", false),
+            ("NotApplicable", false),
+            ("", false),
+        };
+
+        Console.WriteLine("== letters: the fence that stops a non-answer being read as a letter ==");
+        Console.WriteLine();
+
+        var failures = new List<string>();
+
+        foreach (var (value, expected) in cases)
+        {
+            var actual = IsAnswer(value);
+            var ok = actual == expected;
+
+            if (!ok)
+            {
+                failures.Add($"IsAnswer({value switch { "" => "\"\"", _ => value }}) = {actual}, expected {expected}");
+            }
+
+            Console.WriteLine($"  IsAnswer({value,-15}) = {actual,-6} {(ok ? "ok" : "WRONG")}");
+        }
+
+        var mixed = new List<(string Continuity, string? Digest)>
+        {
+            ("A", "digest"), ("Unavailable", "digest"),
+        };
+
+        var allAnswering = new List<(string Continuity, string? Digest)>
+        {
+            ("B", "digest"), ("B", "digest"),
+        };
+
+        if (AllAnswers(mixed))
+        {
+            failures.Add("AllAnswers returned true for a group containing a non-answer");
+        }
+
+        if (!AllAnswers(allAnswering))
+        {
+            failures.Add("AllAnswers returned false for a group of two answers");
+        }
+
+        Console.WriteLine(
+            $"  AllAnswers([A, Unavailable]) = {(AllAnswers(mixed) ? "true" : "false"),-6} "
+            + $"{(AllAnswers(mixed) ? "WRONG" : "ok")}");
+        Console.WriteLine(
+            $"  AllAnswers([B, B])          = {(AllAnswers(allAnswering) ? "true" : "false"),-6} "
+            + $"{(AllAnswers(allAnswering) ? "ok" : "WRONG")}");
+        Console.WriteLine();
+
+        var fenced = new[]
+        {
+            "host-guard", "site-envelope", "site-close section 1", "site-close section 2",
+        };
+
+        Console.WriteLine($"fenced cells, by call site: {string.Join(", ", fenced)}");
+
+        if (failures.Count == 0)
+        {
+            Console.WriteLine("CONTROL PASSED: the fence separates answers from non-answers on every case.");
+            return 0;
+        }
+
+        foreach (var failure in failures)
+        {
+            Console.WriteLine($"CONTROL FAILED: {failure}");
+        }
+
+        return 1;
+    }
+
+    /// <summary>Whether a letter is an answer at all. Only A and B are; everything else is its absence.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This exists because every comparison in this file is a negative claim, and a negative claim is
+    /// satisfied by two non-answers.</b> <c>Describe</c> returns <c>A</c> or <c>B</c> for an Available
+    /// row and the availability's own name otherwise (<c>absent</c>, <c>Unavailable</c>, and so on). The
+    /// cells here read a letter and ask whether two of them are equal: "the guard answers what the
+    /// anchor answers", "no variant flipped", "one letter on all calls of one input". If the endpoint
+    /// was down, or the row never came back, every one of those comparisons holds for a reason that has
+    /// nothing to do with the change under test, and the cell reports the strongest finding it has
+    /// (<i>the letter does not separate them</i>, <i>the envelope is ruled out</i>) from nothing at all.
+    /// </para>
+    /// <para>
+    /// The digest fences do not cover this: they catch "the change never reached the model", which is a
+    /// different failure from "the change reached the model and no letter came back". <c>site-answer</c>
+    /// already had the right control, an <c>is "A" or "B"</c> gate before an arm may count; this is that
+    /// gate written once and applied to the cells that compare this lane's own letters.
+    /// </para>
+    /// </remarks>
+    private static bool IsAnswer(string continuity) => continuity is "A" or "B";
+
+    /// <summary>Whether every call in a group answered a letter, which is the precondition for comparing them.</summary>
+    private static bool AllAnswers(IEnumerable<(string Continuity, string? Digest)> calls)
+        => calls.All(c => IsAnswer(c.Continuity));
 
     /// <summary>
     /// The same window with every prior turn's sender address replaced, or null if any turn has none.
@@ -4353,6 +4732,60 @@ internal static class Program
     private static string Format(Dictionary<string, int> distribution)
         => string.Join(",", distribution.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} x{p.Value}"));
 
+    /// <summary>The build an artifact's numbers came out of, stamped beside them.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A run identifier says when a number was measured; it does not say what.</b> This tool
+    /// compiles Core, Mime, Nimble, Assessment, Persistence and Queue out of the SHARED working tree at
+    /// build time, so whatever another lane had uncommitted at that moment is in the code that produced
+    /// the number, and nothing in the run's own output records it. `overview-`'s 05:03:47 broadcast is
+    /// the case in point: a Host build carried an uncommitted engine change, and no reading of load or
+    /// swap could tell a lane which engine its Host was running.
+    /// </para>
+    /// <para>
+    /// <b>It stamps the assemblies, not the source.</b> The source file's mtime moves when it is
+    /// touched; the compiled assembly is what actually ran. Each StyloMail assembly in this build's
+    /// output directory is recorded with its SHA-256 and its last-write time in UTC, which is what a
+    /// reader needs to tell two builds apart.
+    /// </para>
+    /// <para>
+    /// <b>What it does not cover: anything measured through a running Host.</b> The end-to-end arms in
+    /// this lane's scratch were driven through the Host process over HTTP (its own `host.log` is
+    /// beside them), so those numbers are Policy-bearing in a way this stamp cannot describe. They
+    /// carry no binary stamp and cannot be given one retroactively.
+    /// </para>
+    /// <para>
+    /// <b>And the boundary is not as clean as "this tool has no Policy in it".</b> The tool references
+    /// Assessment, Assessment references Policy, so a <c>StyloMail.Policy.dll</c> is copied into this
+    /// output directory and the stamp records it. That is why the stamp lists more assemblies than the
+    /// tool names. The path this lane measures is Assessment's <c>SemanticCacheKey.Digest</c>, and it
+    /// has not been traced into Policy; the honest statement is that the digest path is Assessment's,
+    /// not that Policy is provably unreachable.
+    /// </para>
+    /// </remarks>
+    private static object BuildStamp()
+    {
+        var directory = AppContext.BaseDirectory;
+
+        var assemblies = Directory.Exists(directory)
+            ? Directory.GetFiles(directory, "StyloMail.*.dll")
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(f => new
+                {
+                    assembly = Path.GetFileName(f),
+                    sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))),
+                    written_utc = File.GetLastWriteTimeUtc(f).ToString("O", CultureInfo.InvariantCulture),
+                })
+                .ToList()
+            : [];
+
+        return new
+        {
+            stamped_from = "the assemblies beside conversation-measure.dll in this build",
+            assemblies,
+        };
+    }
+
     private static void Write(string name, object payload)
     {
         var path = Path.Combine(ResultsDirectory, name + ".json");
@@ -4360,6 +4793,7 @@ internal static class Program
         {
             measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             tool = "tools/conversation/measure",
+            build = BuildStamp(),
             payload,
         };
 
