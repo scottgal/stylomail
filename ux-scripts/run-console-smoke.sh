@@ -19,10 +19,15 @@ trap cleanup EXIT INT TERM
 # Both binaries, from a clean checkout, with the output shown. This is the only
 # build step: the Host is built here rather than launched with `dotnet run` so
 # the pid the harness records is the Host itself and the cleanup can stop it.
-console_build_all || exit 1
+# The run directory, asked for explicitly rather than inherited. This script used to
+# have no default of its own, so it took whatever console-harness.sh had set, and a
+# caller with CONSOLE_RUN exported therefore handed this runner their directory to
+# delete. The default is now the harness's main-smoke path named once, in the harness,
+# and console_runner_run_dir refuses an inherited one unless CONSOLE_REUSE_RUN=1 says
+# otherwise. It must come before the build, which stamps into $CONSOLE_RUN.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT_MAIN" || exit 2
 
-rm -rf "$CONSOLE_RUN"
-mkdir -p "$CONSOLE_RUN"
+console_build_all || exit 1
 
 # This runner's own output directory, and the wipe below is scoped to it.
 #

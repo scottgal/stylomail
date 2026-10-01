@@ -23,13 +23,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # simulated.
 export CONSOLE_TRAFFIC=false
 
-# This script's own scratch directory, and the assignment has to be here rather
-# than below the source. The harness sets CONSOLE_RUN to the main smoke's path,
-# so a `${CONSOLE_RUN:-...}` default after sourcing keeps that value and this
-# script reuses the main smoke's directory: two runs writing one tree, which is
-# the thing the comment further down says cannot happen. Before the source it
-# defaults correctly, and an operator can still override it from the outside.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-no-feed-ux}"
+# This script's own run directory, and it is no longer assigned here. It used to be
+# `export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-no-feed-ux}"` before the
+# source, and that assignment is what made `export CONSOLE_RUN=<another run>` delete
+# that run: `${CONSOLE_RUN:-...}` keeps an inherited value. The default is handed to
+# console_runner_run_dir below the source instead, which refuses an inherited
+# directory unless the caller sets CONSOLE_REUSE_RUN=1. An operator can still point
+# this run elsewhere, but has to say so.
+CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-no-feed-ux"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
@@ -38,6 +39,10 @@ cleanup() {
     console_stop_host
 }
 trap cleanup EXIT INT TERM
+
+# Before the build: console_build_all stamps into $CONSOLE_RUN, so an inherited
+# directory has to be refused before it rather than after. See console_runner_run_dir.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
 
 console_build_all || exit 1
 
@@ -56,8 +61,8 @@ console_build_all || exit 1
 # shares with nothing is set above, before the harness is sourced.
 CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/no-feed"
 
-rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
-mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
+rm -rf "$CONSOLE_RESULTS"
+mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE, with no live-traffic Hub =="
 console_start_host || exit 1

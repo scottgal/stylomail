@@ -29,11 +29,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export CONSOLE_ASSESSOR=false
 export CONSOLE_DECISION_FIXTURE=false
 
-# This script's own scratch directory, set before the harness is sourced because
-# the harness sets CONSOLE_RUN itself. A `${CONSOLE_RUN:-...}` default placed
-# after the source keeps the harness's value rather than this one, and every
-# script then shares the main smoke's directory.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-not-ready-ux}"
+# This script's own run directory, and it is no longer assigned here. It used to be
+# `export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-not-ready-ux}"` before
+# the source, and that is what made `export CONSOLE_RUN=<another run>` delete that
+# run: `${CONSOLE_RUN:-...}` keeps an inherited value. The default goes to
+# console_runner_run_dir below the source instead, which refuses an inherited
+# directory unless the caller sets CONSOLE_REUSE_RUN=1, and clears it otherwise.
+CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-not-ready-ux"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
@@ -43,6 +45,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Before the build: console_build_all stamps into $CONSOLE_RUN, so an inherited
+# directory has to be refused before it rather than after. See console_runner_run_dir.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
+
 console_build_all || exit 1
 
 # Its own output directory, for the reason the other scripts give: the main
@@ -50,8 +56,8 @@ console_build_all || exit 1
 # run owns. The scratch directory is set above, before the harness is sourced.
 CONSOLE_RESULTS="$CONSOLE_REPO/ux-results/not-ready"
 
-rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
-mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
+rm -rf "$CONSOLE_RESULTS"
+mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE, with no assessment credential =="
 console_start_host || exit 1

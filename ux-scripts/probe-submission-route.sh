@@ -36,10 +36,13 @@
 
 set -uo pipefail
 
-# Before the source, because console-harness.sh assigns this itself and a
-# `${CONSOLE_RUN:-...}` after it keeps the harness's value. See ux-scripts/README.md,
-# "Writing a script", step 3.
-CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-probe-ux}"
+# This script's own run directory, and it is no longer assigned here. It used to be
+# `CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-probe-ux}"` before the source,
+# and that is what made `CONSOLE_RUN=<another run>` delete that run: `${CONSOLE_RUN:-...}`
+# keeps an inherited value. The default goes to console_runner_run_dir below instead,
+# which refuses an inherited directory unless the caller sets CONSOLE_REUSE_RUN=1.
+# See ux-scripts/README.md, "Writing a script", step 3.
+CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-probe-ux"
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/console-harness.sh"
 
@@ -64,9 +67,10 @@ trap 'console_stop_host' EXIT INT TERM
 #
 # A consequence worth knowing: two probes running at once must not share this
 # directory, since each would delete the other's Host state. Run shapes in
-# sequence, or give a concurrent one its own CONSOLE_RUN.
-rm -rf "$CONSOLE_RUN"
-mkdir -p "$CONSOLE_RUN"
+# sequence, or give a concurrent one its own CONSOLE_RUN -- which now has to be
+# deliberate, because console_runner_run_dir refuses an inherited one unless the
+# caller sets CONSOLE_REUSE_RUN=1. It is also what does the clearing here.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
 
 # One message, the same shape console_seed_decision uses: a display name that
 # disagrees with its From address, an anchor whose text disagrees with its href,

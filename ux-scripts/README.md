@@ -24,9 +24,10 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
 ./ux-scripts/check-build-fingerprint.sh      # not a smoke: checks what the build records about itself
 ./ux-scripts/check-stop-host-bounded.sh      # not a smoke: checks the stop path cannot hang
+./ux-scripts/check-run-dir-refusal.sh        # not a smoke: checks whose run directory a runner takes
 ./ux-scripts/stamp-host-build.sh             # not a smoke: stamps a real build directory, the instrument
                                              #   the check above is a check of
-./ux-scripts/falsify-build-fingerprint.sh    # not a smoke: proves the fingerprint check can go red
+./ux-scripts/falsify-build-fingerprint.sh    # not a smoke: proves the three checks above can go red
 ```
 
 `run-console-address-change-smoke.sh` is the only run that changes the Host mid-run from inside the
@@ -131,21 +132,53 @@ correction back: its suggested `realpath -m` is not available here, because macO
 `-m` outright, so the resolution uses the same `python3` the harness already needs for the port preflight.
 It fails closed, so a machine that can resolve nothing refuses everything rather than allowing everything.
 
+**Runners have the other half of the rule, and it cannot be the same guard.** A runner's declared job
+includes clearing its run directory before it starts, and every runner lives under `/tmp` on purpose, so
+"everything under this lane's scratch" would refuse every smoke. What is refused instead is ADOPTION:
+the runner keeps its own default and an inherited `CONSOLE_RUN` is refused unless the caller sets
+`CONSOLE_REUSE_RUN=1`. That opt-in is not a way to read another run: it means the directory is deleted
+first. All eleven runners plus the main smoke carried `export CONSOLE_RUN="${CONSOLE_RUN:-<own path>}"`
+before the source and `rm -rf "$CONSOLE_RUN"` after it, so `export CONSOLE_RUN=/tmp/run-a` and then any
+one of them deleted run A, principal key and artifacts together. Measured 2026-10-01 and filed medium,
+ruled by `overview-` in the shape above; the clearing now exists once, in `console_runner_run_dir`, which
+each runner calls immediately before its build. Before it, not after, because `console_build_all` stamps
+into `$CONSOLE_RUN`: a refusal that arrived later would already have written a manifest naming this build
+into another run's directory.
+
+`./ux-scripts/check-run-dir-refusal.sh` asserts that without a Host and without a build, in seconds: five
+cases, 0 failures. Case 1 runs a real runner with the caller's directory set and asserts it exits 2,
+leaves the directory's sentinels untouched, names the opt-in, and never reaches the build tool; case 2
+that an uninherited call takes the default it is given and clears it; case 3 that the opt-in adopts and
+clears; case 4 is the control for case 3, the same call with the opt-in absent, which must refuse; case 5
+asserts every one of the eleven is wired before its build, that none still clears `$CONSOLE_RUN` itself,
+and that each names its own directory, with exactly one on the main smoke's path. The `dotnet` in case 1
+is a stub exported to that child alone, so the check cannot start a solution build even in the red case it
+exists to catch: a check that can build is a check nobody runs while the gate is shut.
+
 The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
-never the shared tree. Ten mutations, one per pass, each with the exact set of
+never the shared tree. Fifteen mutations, one per pass, each with the exact set of
 cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
 dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
 sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8), H the port
 validation disabled (the sibling's 8), I the probe's allocation test removed (the sibling's 9), J the
-probe stuck on "cannot tell" (the sibling's 4, 6 and 9). One per pass
+probe stuck on "cannot tell" (the sibling's 4, 6 and 9), K the run-directory opt-in moved to
+`!= "1"` (1, 3, 4), L the refusal removed so the function always takes the default (1, 3, 4), M one
+runner clearing its own `$CONSOLE_RUN` again (5), N one runner's call moved after its build (1, 5), O one
+runner declaring the main smoke's directory as its own (5). K and L share a red set and are still two
+mutations: they edit different lines, each with its own precondition. K's set was measured before it was
+written down, and the first run reddened 3 as well, because a moved opt-in stops working in both
+directions: it no longer gates the adoption and it no longer permits it. One per pass
 because several of them target case 8, and a red that two
 mutations could have caused names neither property. Each line names the file its case number belongs to,
 because three of these redden a case 8 in the fingerprint check and one reddens a case 8 in the sibling,
-and a bare "8" cannot be attributed to either. A case header inside a nested run's captured output is not
+and a bare "8" cannot be attributed to either. The run-directory check renumbers nothing and shares
+case 1 and case 5 with the others, which is the same hazard one check further out. A case header inside a
+nested run's captured output is not
 a case header: the guard case embeds a whole child run in its failure message, and once a mutation let
 the child run, this parser attributed the outer case's later failure to the CHILD's case number, which
-moved when a case was added here. Both checks now indent embedded child output from its second line, so
-the parser cannot see it, and the failure that exposed it is mutation F's. Its own scratch guard was the
+moved when a case was added here. The two older checks now indent embedded child output from its second
+line, so the parser cannot see it; the run-directory check embeds none, because it flattens the child's
+lines onto the FAIL line when it quotes them. The failure that exposed it is mutation F's. Its own scratch guard was the
 weaker form of the one it exists to defend: a literal prefix plus a `..` substring, which a symlink at any
 component of the path satisfies while the `rm -rf` resolves elsewhere. It now canonicalises both sides
 with `console_canonical_path` (from the ORIGINAL harness, since mutation G neuters the copy's) and
@@ -375,11 +408,17 @@ by hand needs `STYLOMAIL_HOST` and `STYLOMAIL_SMOKE_KEY` set, which are the Debu
 1. Find the control you want to drive in `Views/MainWindow.axaml`. If it has no `x:Name`, give it one.
 2. Add a `*.yaml` beside the others and run it through the shell script.
 3. If it needs a Host of its own, write a runner for it, and set the switches that configure that Host
-   **before** the `source` - including `CONSOLE_RUN`. The harness assigns `CONSOLE_RUN` itself, so a
-   runner that sets it afterwards with `${CONSOLE_RUN:-...}` keeps the harness's value and silently
-   shares the main smoke's scratch directory. That is two runs writing one tree, which the comment in
-   each runner says cannot happen. It did, in all three of them, until the not-ready script was
-   written and its `ready.json` turned up in another script's directory.
+   **before** the `source`. The harness assigns `CONSOLE_RUN` itself, so a runner that sets it
+   afterwards with `${CONSOLE_RUN:-...}` keeps the harness's value and silently shares the main smoke's
+   scratch directory. That is two runs writing one tree, which the comment in each runner says cannot
+   happen. It did, in all three of them, until the not-ready script was written and its `ready.json`
+   turned up in another script's directory. The same construct has a second failure that took longer to
+   find, because it only appears when someone else's variable is in play: an exported `CONSOLE_RUN` is
+   KEPT by `${CONSOLE_RUN:-...}`, so the runner that set it then deleted the caller's run. So a runner
+   no longer assigns `CONSOLE_RUN` at all. It declares its own path as `CONSOLE_RUN_DEFAULT` before the
+   source and hands it to `console_runner_run_dir` immediately before its build, which refuses an
+   inherited value unless `CONSOLE_REUSE_RUN=1` says otherwise. See
+   `./ux-scripts/check-run-dir-refusal.sh`, and do not write the assignment back in.
 
 Selectors are Playwright-flavoured: `name=`, `type=`, `text=`, `testid=`, `role=`, `label=`, composed
 with `inside(...)`, `near(...)`, `first(...)`, `nth(n, ...)`, and `type=Button:has-text(Save)`.

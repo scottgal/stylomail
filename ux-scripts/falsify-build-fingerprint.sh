@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The record of the falsification, kept rather than run: it is evidence that
-# check-build-fingerprint.sh can go red, not a check to run in a loop.
+# check-build-fingerprint.sh, check-stop-host-bounded.sh and check-run-dir-refusal.sh
+# can go red, not a check to run in a loop.
 #
 # It lives here rather than in scratch because scratch is gitignored: evidence a
 # fresh checkout cannot read is not evidence, which this repo already learned once
@@ -110,8 +111,14 @@ pass() {
 
     rm -rf "$dir"
     mkdir -p "$dir"
+    # The runners come along for check-run-dir-refusal.sh, whose first case runs one
+    # end to end: with the copy missing them that case would redden on a missing
+    # file in every pass, including the ones with no mutation at all. Its fifth case
+    # globs them, so a partial copy would redden on the population count instead of
+    # on the property under test.
     cp "$REPO/ux-scripts/console-harness.sh" "$REPO/ux-scripts/check-build-fingerprint.sh" \
-       "$REPO/ux-scripts/check-stop-host-bounded.sh" "$dir/"
+       "$REPO/ux-scripts/check-stop-host-bounded.sh" "$REPO/ux-scripts/check-run-dir-refusal.sh" \
+       "$REPO"/ux-scripts/run-console-*.sh "$REPO/ux-scripts/probe-submission-route.sh" "$dir/"
 
     ( cd "$dir" && "$@" )
 
@@ -182,6 +189,47 @@ mutation_I() { perl -0777 -pi -e 's/    if ! : < \/dev\/null 2>\/dev\/null; then
 #    duplicate is what drifted, not the number, so the duplicate is what is gone.
 mutation_J() { perl -pi -e 's/^    if ! : < \/dev\/null 2>\/dev\/null; then$/    if true; then/' console-harness.sh; }
 
+# The replacement escapes `${` as `\${` because perl interpolates a variable there:
+# unescaped, it reads `${CONSOLE_REUSE_RUN:-}` as a variable whose name contains the
+# `:-`, and the line aborts with a syntax error instead of editing anything. The
+# `_applied` precondition below is what caught that: the pass reported <none> and the
+# mutation was a no-op that looked like a mutation that could not be caught.
+mutation_K() { perl -pi -e 's/^        if \[\[ "\$\{CONSOLE_REUSE_RUN:-\}" == "1" \]\]; then$/        if [[ "\${CONSOLE_REUSE_RUN:-}" != "1" ]]; then/' console-harness.sh; }
+mutation_L() { perl -pi -e 's/^    if \[\[ -n "\$CONSOLE_RUN_INHERITED" && "\$CONSOLE_RUN_INHERITED" != "\$default" \]\]; then$/    if false; then/' console-harness.sh; }
+mutation_M() { perl -pi -e 's/^(console_runner_run_dir "\$CONSOLE_RUN_DEFAULT" \|\| exit 2)$/$1\nrm -rf "\$CONSOLE_RUN"/' run-console-no-feed-smoke.sh; }
+mutation_N() { perl -0777 -pi -e 's/^console_runner_run_dir "\$CONSOLE_RUN_DEFAULT" \|\| exit 2\n//m; s/\z/\nconsole_runner_run_dir "\$CONSOLE_RUN_DEFAULT" || exit 2\n/' run-console-no-feed-smoke.sh; }
+mutation_O() { perl -pi -e 's{^CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-no-feed-ux"$}{CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-ux"}' run-console-no-feed-smoke.sh; }
+
+# K. The opt-in is MOVED: the test becomes "is it set to anything other than 1",
+#    so an unset variable takes the branch that the opt-in was there to gate. Cases
+#    1, 3 and 4 must go red. Case 1 reddens because a runner now adopts the caller's
+#    directory and clears it; case 4 reddens because it is that same call with the
+#    opt-in absent, and it is the control that says the VARIABLE is what moves the
+#    subject; case 3 reddens because a moved opt-in stops working in BOTH
+#    directions, and the second direction is the one a prediction gets wrong. This
+#    was measured before it was written down: the first run of this pass reddened 3
+#    as well and the expectation, not the mutation, was what changed. It shares its
+#    red set with L, and the two remain distinct mutations: they edit different
+#    lines, each with its own precondition, and the sets agree only in that both
+#    remove the refusal's effect on the opt-in path.
+# L. The refusal is removed, and the adoption branch goes with it: the function
+#    always takes the default it is given, so an inherited CONSOLE_RUN is neither
+#    refused nor honoured. Cases 1, 3 and 4 must go red. Case 1 reddens on the
+#    runner reaching the build rather than on the sentinels, which is the distinction
+#    that makes the child's dotnet stub worth having: without it this mutation would
+#    start a solution build to prove a point about not building.
+# M. One runner clears its own run directory again, which is the exact line this
+#    change removes from twelve files. Case 5 must go red. Case 1 stays green, which
+#    is the point: the refusal still fires there, so the two halves of the rule are
+#    measured separately.
+# N. One runner calls the function after its build instead of before it. Cases 1 and
+#    5 must go red: the order is the whole reason the call sits where it does, since
+#    console_build_all stamps into $CONSOLE_RUN.
+# O. One runner declares the main smoke's directory as its own default. Case 5 must
+#    go red. Nothing else moves, because the refusal still fires on the inherited
+#    path: a wrong-but-well-formed default is invisible until something checks that
+#    each runner names its own.
+#
 # A guard against the mutations themselves going stale: if a perl pattern stops
 # matching, the "mutation" is a no-op and the pass reports <none>, which is a
 # failure here rather than a quiet success.
@@ -194,8 +242,23 @@ mutation_F_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-st
 mutation_I_applied() { ! grep -qF ': < /dev/null 2>/dev/null' console-harness.sh; }
 mutation_J_applied() { grep -q '^    if true; then$' console-harness.sh; }
 
+# N's applied test is the property the mutation exists to break, rather than the
+# text it breaks it with: the call is still in the file, and it is still spelled the
+# same way, so a grep for its absence would report a no-op on a mutation that landed.
+mutation_N_applied() {
+    local call build
+    call="$(grep -n '^console_runner_run_dir "' run-console-no-feed-smoke.sh | head -1 | cut -d: -f1)"
+    build="$(grep -n '^console_build_all' run-console-no-feed-smoke.sh | head -1 | cut -d: -f1)"
+    [[ -n "$call" && -n "$build" ]] && (( call > build ))
+}
+mutation_K_applied() { grep -q 'CONSOLE_REUSE_RUN:-}" != "1"' console-harness.sh; }
+mutation_L_applied() { ! grep -qF '"$CONSOLE_RUN_INHERITED" != "$default"' console-harness.sh; }
+mutation_M_applied() { grep -qF 'rm -rf "$CONSOLE_RUN"' run-console-no-feed-smoke.sh; }
+mutation_O_applied() { grep -q '^CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-ux"$' run-console-no-feed-smoke.sh; }
+
 fingerprint=check-build-fingerprint.sh
 stop=check-stop-host-bounded.sh
+rundir=check-run-dir-refusal.sh
 
 failures=0
 passes_run=0
@@ -209,6 +272,11 @@ pass "G canonicaliser neutered" "8 "   "$fingerprint" mutation_G || failures=$((
 pass "H port validation dropped" "8 "  "$stop"        mutation_H || failures=$((failures + 1))
 pass "I allocation test removed" "9 "  "$stop"        mutation_I || failures=$((failures + 1))
 pass "J probe stuck on cannot tell" "4 6 9 " "$stop"   mutation_J || failures=$((failures + 1))
+pass "K opt-in moved" "1 3 4 "         "$rundir"      mutation_K || failures=$((failures + 1))
+pass "L refusal removed" "1 3 4 "      "$rundir"      mutation_L || failures=$((failures + 1))
+pass "M a runner clears its own run" "5 " "$rundir"   mutation_M || failures=$((failures + 1))
+pass "N call moved after the build" "1 5 " "$rundir"  mutation_N || failures=$((failures + 1))
+pass "O wrong own default" "5 "        "$rundir"      mutation_O || failures=$((failures + 1))
 
 # The preconditions, checked last so the reports above are printed either way.
 did_it_apply() {
@@ -227,6 +295,11 @@ did_it_apply "G canonicaliser neutered" mutation_G_applied
 did_it_apply "H port validation dropped" mutation_H_applied
 did_it_apply "I allocation test removed" mutation_I_applied
 did_it_apply "J probe stuck on cannot tell" mutation_J_applied
+did_it_apply "K opt-in moved" mutation_K_applied
+did_it_apply "L refusal removed" mutation_L_applied
+did_it_apply "M a runner clears its own run" mutation_M_applied
+did_it_apply "N call moved after the build" mutation_N_applied
+did_it_apply "O wrong own default" mutation_O_applied
 
 rm -rf "$scratch"
 

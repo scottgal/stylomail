@@ -19,7 +19,22 @@ set -uo pipefail
 
 CONSOLE_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONSOLE_HOST_APP="$CONSOLE_REPO/src/StyloMail.Host/bin/Debug/net10.0/StyloMail.Host"
-CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-ux}"
+
+# The run directory, and the two facts that one assignment cannot carry.
+#
+# `CONSOLE_RUN_INHERITED` records what the ENVIRONMENT asked for, captured before
+# the fallback below destroys the distinction: after `${CONSOLE_RUN:-x}` there is
+# no way to tell an environment that already held `x` from one that held nothing.
+# `console_runner_run_dir` needs exactly that difference, because a runner deletes
+# the directory it runs in, and an inherited value may be another run's.
+#
+# A RUNNER does not assign CONSOLE_RUN before sourcing this file any more. It
+# declares its own default and calls that function, which is where the refusal
+# lives. The value below is the default for the main smoke, whose run directory
+# this is, and for any script that declares none of its own.
+CONSOLE_RUN_INHERITED="${CONSOLE_RUN:-}"
+CONSOLE_RUN_DEFAULT_MAIN="/tmp/stylomail-console-ux"
+CONSOLE_RUN="${CONSOLE_RUN:-$CONSOLE_RUN_DEFAULT_MAIN}"
 
 # Deliberately not 5000 (macOS AirPlay Receiver listens there) and not the
 # value docs/running.md uses, so a harness run cannot be confused with a real
@@ -233,6 +248,73 @@ console_assert_run_dir_is_ours() {
     printf 'and its artifacts. Re-run it as:\n\n' >&2
     printf '  env -u CONSOLE_RUN %s\n\n' "$script" >&2
     return 1
+}
+
+# The run directory for a RUNNER, and the half the guard above cannot do.
+#
+# A runner's declared job includes clearing its run directory before it starts, and
+# every runner lives under /tmp on purpose (the run holds a per-run principal key,
+# and /tmp removes it on the way out; see the note in console_build_all). So the
+# rule above, "everything under this lane's scratch", cannot be used here: it would
+# refuse every smoke. What is refused instead is ADOPTION. The runner keeps its own
+# default; if the environment handed it a CONSOLE_RUN that is not that default, this
+# refuses rather than deleting a directory that belongs to another run, and
+# CONSOLE_REUSE_RUN=1 is how a caller says "yes, that one, I know it goes away".
+#
+# Measured 2026-10-01: eleven runners plus the main smoke carried `export
+# CONSOLE_RUN="${CONSOLE_RUN:-<own /tmp path>}"` followed by `rm -rf "$CONSOLE_RUN"`,
+# so `export CONSOLE_RUN=/tmp/run-a` and then any of them deleted run A, principal
+# key and artifacts together. Filed medium with two candidate shapes; `overview-`
+# ruled this one, and it is also what makes the main smoke stop depending on the
+# harness default.
+#
+# The CLEARING is here rather than at the twelve call sites for the reason this
+# repository keeps giving about two copies of a rule: it is the destructive half, and
+# twelve copies of it are twelve chances for one to drift. A runner calls this and no
+# longer rm's its run directory itself; the check `check-run-dir-refusal.sh` asserts
+# that, over all twelve.
+#
+# `CONSOLE_REUSE_KEYS` is a different switch and not an alias for this one: it says
+# "keep the keys a previous Host in THIS run left", and says nothing about whose
+# directory this is.
+#
+# Returns 0 when the directory is this run's and cleared, 2 when the caller must not
+# proceed. Callers do: `console_runner_run_dir "<own default>" || exit 2`.
+console_runner_run_dir() {
+    local default="${1:-}" script="${2:-$(basename "$0")}"
+
+    # The default is the caller's to state, because this function deletes what it is
+    # given and cannot work out whose directory is whose. An empty one is a bug in
+    # the caller, not a request for the current value.
+    if [[ -z "$default" ]]; then
+        echo "console_runner_run_dir: called with no default run directory" >&2
+        return 2
+    fi
+
+    if [[ -n "$CONSOLE_RUN_INHERITED" && "$CONSOLE_RUN_INHERITED" != "$default" ]]; then
+        if [[ "${CONSOLE_REUSE_RUN:-}" == "1" ]]; then
+            CONSOLE_RUN="$CONSOLE_RUN_INHERITED"
+        else
+            printf 'refusing to run: CONSOLE_RUN is set in the environment to\n\n  %s\n\n' \
+                "$CONSOLE_RUN_INHERITED" >&2
+            printf 'and %s clears the directory it runs in, so adopting an inherited value\n' \
+                "$script" >&2
+            printf 'would delete a run that is not this one: its principal key and its\n' >&2
+            printf 'artifacts. This script'"'"'s own run directory is\n\n  %s\n\n' "$default" >&2
+            printf 'Re-run it as:\n\n  env -u CONSOLE_RUN %s\n\n' "$script" >&2
+            printf 'or set CONSOLE_REUSE_RUN=1 to adopt the inherited directory deliberately.\n' >&2
+            printf 'That switch means the directory above is deleted first, so it is not a way to\n' >&2
+            printf 'read another run.\n' >&2
+            return 2
+        fi
+    else
+        CONSOLE_RUN="$default"
+    fi
+
+    rm -rf "$CONSOLE_RUN"
+    mkdir -p "$CONSOLE_RUN"
+    export CONSOLE_RUN
+    return 0
 }
 
 console_record_build_fingerprint() {

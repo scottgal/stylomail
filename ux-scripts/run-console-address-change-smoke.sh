@@ -30,10 +30,16 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Before the source, because console-harness.sh sets these itself and a
-# `${VAR:-...}` after it keeps the harness's value. See ux-scripts/README.md,
+# The port is set before the source because console-harness.sh assigns it itself,
+# and a `${CONSOLE_PORT:-...}` after the source keeps the harness's value rather than
+# this one.
+#
+# The run directory is the same shape now, with the adoption removed: it is this
+# script's own unless the caller exports one and sets CONSOLE_REUSE_RUN=1 to say so,
+# because this script clears the directory it runs in. See console_runner_run_dir,
+# called below the source and before the build. See also ux-scripts/README.md,
 # "Writing a script", step 3.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-address-change-ux}"
+CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-address-change-ux"
 export CONSOLE_PORT="${CONSOLE_PORT:-5391}"
 
 # shellcheck source=console-harness.sh
@@ -60,12 +66,16 @@ if [[ -n "$listening" ]]; then
     exit 1
 fi
 
+# Before the build: console_build_all stamps into $CONSOLE_RUN, so an inherited
+# directory has to be refused before it rather than after. See console_runner_run_dir.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
+
 console_build_all || exit 1
 
 # Its own output directory, because the harness clears nothing it wrote before:
 # two runners sharing one would leave whichever ran last as the only artifacts.
-rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
-mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
+rm -rf "$CONSOLE_RESULTS"
+mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE, address change without the key =="
 

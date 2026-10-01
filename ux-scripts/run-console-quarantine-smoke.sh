@@ -32,10 +32,14 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Before the source, because console-harness.sh assigns CONSOLE_RUN itself and a
-# `${CONSOLE_RUN:-...}` placed after it keeps the harness's value. See
-# ux-scripts/README.md, "Writing a script", step 3.
-export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-quarantine-ux}"
+# This script's own run directory, and it is no longer assigned here. It used to be
+# `export CONSOLE_RUN="${CONSOLE_RUN:-/tmp/stylomail-console-quarantine-ux}"` before
+# the source, and that is what made `export CONSOLE_RUN=<another run>` delete that
+# run: `${CONSOLE_RUN:-...}` keeps an inherited value. The default goes to
+# console_runner_run_dir below the source instead, which refuses an inherited
+# directory unless the caller sets CONSOLE_REUSE_RUN=1, and clears it otherwise.
+# See ux-scripts/README.md, "Writing a script", step 3.
+CONSOLE_RUN_DEFAULT="/tmp/stylomail-console-quarantine-ux"
 
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
@@ -58,13 +62,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Before the build: console_build_all stamps into $CONSOLE_RUN, so an inherited
+# directory has to be refused before it rather than after. See console_runner_run_dir.
+console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
+
 console_build_all || exit 1
 
 # Its own scratch and output directories. Each satellite run has its own
 # subdirectory because the harness clears nothing it wrote before, so sharing one
 # would leave whichever ran last as the only artifacts.
-rm -rf "$CONSOLE_RUN" "$CONSOLE_RESULTS"
-mkdir -p "$CONSOLE_RUN" "$CONSOLE_RESULTS"
+rm -rf "$CONSOLE_RESULTS"
+mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE with a working local assessor =="
 console_start_host || exit 1
