@@ -407,14 +407,73 @@ console_start_host() {
 # holds the key and is readable by anyone else. The umask is belt as well as
 # braces: it is what makes the window shut even if the chmod were removed.
 #
-# The caller passes the path it wants back, or nothing for the default. It lives
-# in the run's scratch directory, and console_stop_host removes it, so a run does
-# not leave a credential-bearing file behind. It is never echoed, and never named
-# in an error: the reader of a .err file should see a status code.
+# The caller may name the file, and only inside the run directory. It lives in
+# the run's scratch directory, and console_stop_host removes it, so a run does not
+# leave a credential-bearing file behind. It is never echoed, and never named in
+# an error: the reader of a .err file should see a status code.
+#
+# The destination is checked rather than trusted, and that is a fix for a real
+# file rather than a hardening exercise. Until `e19daf3` this was
+# `console_auth_headers(key [, path])` and the key came first; that commit
+# swapped the order so no caller holds a value. An invocation typed from habit,
+# or copied out of a note written before that commit, still passes the key first,
+# so the credential arrives as the *path* and this writes a file named by the key
+# into whatever directory the shell was in. Found 2026-10-01 by `overview-`, who
+# saw exactly that: a 48-hex-character filename at the repository root, mode 600,
+# untracked and not ignored, which is one `git add -A` from history.
+#
+# So the path is resolved (a `../` or a symlink would otherwise spell its way out
+# of the run directory) and refused unless it lands inside it. A filename that is
+# itself key-shaped is refused too, even inside the run directory, because no
+# legitimate caller names a file after its contents.
+#
+# The refusal deliberately does not print what it refused. On the stale-argument
+# case the offending string *is* the principal key, so naming it in an error
+# would be the leak this check exists to prevent. The reason is classified and
+# the run directory is named; the argument is never echoed.
+#
+# The default is the run directory and not `.styloagent/scratch/`: `/tmp` is
+# outside the repository by construction, which scratch is not, and
+# console_stop_host removes this file on the way out while a scratch directory
+# would keep a credential-bearing file indefinitely.
 console_auth_headers() {
-    local key file
+    local key file verdict
     key="$(cat "$CONSOLE_RUN/data/principal.key")"
     file="${1:-$CONSOLE_RUN/auth.headers}"
+
+    verdict="$(python3 - "$CONSOLE_RUN" "$file" <<'PYEOF'
+import os, re, sys
+
+run = os.path.realpath(sys.argv[1])
+given = sys.argv[2]
+path = os.path.realpath(given)
+
+if re.fullmatch(r"[0-9a-fA-F]{32,}", os.path.basename(given)):
+    print("key-shaped")
+elif path == run or not path.startswith(run + os.sep):
+    print("outside")
+else:
+    print("ok")
+PYEOF
+)"
+
+    case "$verdict" in
+        ok)
+            ;;
+        key-shaped)
+            echo "console_auth_headers: refusing a destination that is named like a key." >&2
+            echo "The first argument is a path (console-harness.sh), not a value, and this one is" >&2
+            echo "a long run of hex characters, which is what the principal key looks like. A call" >&2
+            echo "written for the pre-e19daf3 argument order (key first) lands here." >&2
+            return 1
+            ;;
+        *)
+            echo "console_auth_headers: refusing a destination outside the run directory." >&2
+            echo "The path is deliberately not printed: on the stale-argument case it is the" >&2
+            echo "principal key. Run directory in use: $CONSOLE_RUN" >&2
+            return 1
+            ;;
+    esac
 
     : > "$file"
     chmod 600 "$file"

@@ -23,6 +23,20 @@ appsettings.Local.json
 secrets.json
 local.settings.json
 
+# A file named by a long run of hex characters at the repository root.
+#
+# A backstop, not a fix, and the distinction matters: an ignored key file is
+# still a key file in a working copy, and this rule hides the symptom rather than
+# the mistake. It is here because the mistake happened. On 2026-10-01 a
+# principal key from the console harness's own scratch was found at the root
+# named by its own 48 hex characters, untracked and one `git add -A` from
+# history. No source file, config or document is named this way, so the pattern
+# costs nothing; `.gitignore` cannot count characters, so sixteen leading hex
+# characters followed by anything is as close to "a key-shaped name" as a
+# pattern gets. The fix is in `ux-scripts/console-harness.sh`, which now refuses
+# to write a key to a path outside its run directory.
+/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
+
 # =============================================================================
 # .NET
 # =============================================================================
