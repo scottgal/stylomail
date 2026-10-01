@@ -890,8 +890,13 @@ public static class HostServices
         // RAN AGAINST THE ENDPOINT DIRECTLY, not through the shipping adapter and assessor, so a
         // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
         // refutable form of the claim is that a 2500-character hexish body -- the FULL budget -- through
-        // the real pipeline evaluates about 43202 and is refused at 32768; that run is QUEUED and
-        // has not been taken, so the table describes arms, not the deployment.
+        // the real pipeline is **SHORTENED FIRST**, since `corpus-` measured 6 of 6 at that size with
+        // prose cut exactly like hex-ish, so it arrives at roughly `L - 512` characters and evaluates
+        // **BELOW** 43,202 rather than at it, with the cut reported on the row's reason attribute.
+        // **43202 answers a DIFFERENT question: what the server reads when the fit does not run**, which
+        // is why this arm's output is a PAIR -- the kept length and the resulting evaluation -- and not
+        // a token count on its own. That run is QUEUED and has not been taken, so the table describes
+        // arms, not the deployment.
         //
         // On the POPULATION, AND BOTH OF THE TEMPTING SENTENCES ARE FALSE. Each is refuted at source,
         // read at HEAD `3c6b08a`, and the second is the one that looked safe:
