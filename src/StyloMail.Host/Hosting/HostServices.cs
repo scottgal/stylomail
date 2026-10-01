@@ -893,6 +893,11 @@ public static class HostServices
         // the real pipeline is **SHORTENED FIRST**, since `corpus-` measured 6 of 6 at that size with
         // prose cut exactly like hex-ish, so it arrives at roughly `L - 512` characters and evaluates
         // **BELOW** 43,202 rather than at it, with the cut reported on the row's reason attribute.
+        // **AND `L - 512` IS NOT THE ONLY OUTCOME: `:407` `budget = budget > step ? budget - step : 0;`
+        // ZEROES the budget in one step when `excess + 512 >= budget`, so with `excess >= 1988` at the
+        // 2500 default BOTH fields are emptied and the reading is `kept = 0` (`queue-` derived this and
+        // simulated four cases, parameter-free).** A capture that sees 0 has not found an error; it has
+        // found the third outcome.
         // **43202 answers a DIFFERENT question: what the server reads when the fit does not run**, which
         // is why this arm's output is a PAIR -- the kept length and the resulting evaluation -- and not
         // a token count on its own. That run is QUEUED and has not been taken, so the table describes
