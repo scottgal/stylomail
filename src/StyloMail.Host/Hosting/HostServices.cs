@@ -741,6 +741,21 @@ public static class HostServices
         // floor and not a law, and an environment variable still overrides it. (46556 is higher but is
         // a THIRTEEN-question arm, which the dimension set cannot produce.)
         //
+        // AND THIS PIN'S DELIVERY DEPENDS ON THE LAUNCHER'S WORKING DIRECTORY, which is the precise
+        // form of it and NOT "the pin is inert". `WebApplication.CreateBuilder` and
+        // `Host.CreateApplicationBuilder` both default the content root to the CWD, so a Host started
+        // from a directory holding no `appsettings.json` read none. Measured as an A/B with one
+        // variable, same instrument, same machine, same committed file, same output directory:
+        //   cwd = the repo root   2026-10-02T00:25:37  `EffectiveNumCtx (unset, derived)`, applied 4096
+        //   cwd = the bin dir     2026-10-02T00:29:08  `EffectiveNumCtx 65536`, applied 65536
+        // The second is the first boot line that ever read 65536, and it appeared twenty-four seconds
+        // after the first was reported as proof that the pin did not work. **The file carried 65536 the
+        // whole time, so neither the VALUE nor the FILE was ever the problem, and an interim "the pin
+        // is inert" is as wrong as "the pin is in force" would have been without the pair.**
+        // `Program.cs` and `Cli/CliApplication.cs` now pin the content root to `AppContext.BaseDirectory`,
+        // which removes the cwd dependence rather than correcting one launcher; the launcher's own cwd
+        // is the second and now redundant half.
+        //
         // Unparseable or absent means the default, which is the same shape the two keys above use.
         var numCtx = configuration["StyloMail:Nimble:NumCtx"];
         var effectiveNumCtx = configuration["StyloMail:Nimble:EffectiveNumCtx"];
@@ -816,7 +831,8 @@ public static class HostServices
         //   request evaluating 20498 tokens, recorded in the adapter's own refusal reason.
         //   MEASURED REACHABLE at 32768. Five of six admissible BODY CONTENTS evaluate above 32768
         //   at a body size the adapter produces, which is WHY THE PIN BELOW IS 65536. At that landed
-        //   value no measured body is refused, and the cap that still binds is the BODY BUDGET.
+        //   value no measured body is refused, and the bound that still binds is the FIT's
+        //   request-size rule rather than the window (see the exposure paragraph below).
         //
         // The arithmetic that PREDICTED it, kept because the reasoning and the result belong on the
         // record together: at a FIXED byte cap a SMALLER bytes-per-token ratio means MORE tokens, so
@@ -906,12 +922,27 @@ public static class HostServices
         // AND THE PIN MOVES THIS EXPOSURE RATHER THAN REMOVING IT, which is the sentence to carry out
         // of tonight. At the landed `EffectiveNumCtx 65536` the largest evaluation any MEASURED
         // admissible body reaches is 43202, so dense content is NO LONGER REFUSED and the refusal is
-        // not the live case. What still binds is the BODY BUDGET, which the pin does not touch:
-        // `NimbleOptions.MaxBodyCharacters` (2500 -- note the OTHER `MaxBodyCharacters`, on
-        // `MailAssessorOptions`, defaults to 1_000_000 and is a different cap) shortens any body or
-        // quoted tail over it, and because the row stays `Available` that cut reaches a reader ONLY
-        // through the reason attribute. So the live failure is the SHORTENED READ rather than the
-        // refusal, which is `policy-`'s ruling and not a second mechanism.
+        // not the live case. What still binds is the FIT, which the pin does not touch: the fit loops
+        // on `total <= NumCtx` where `total` is the WHOLE SERIALIZED REQUEST in BYTES
+        // (`NimbleSemanticMailClassifier.cs:388`), so it shortens the body until the request fits, and
+        // the pin moved only the BACKSTOP at `:228`. **AND THE CUT OVERSHOOTS: it is the measured
+        // excess PLUS a margin, not the excess.** `:86` `PromptByteMargin = 512`; `:405`
+        // `var excess = total - _options.NumCtx;`; `:406` `var step = Math.Max(excess + 512, 64);`;
+        // `:407` `budget = budget > step ? budget - step : 0;`. So a body a hundred bytes over the line
+        // loses 612 characters, the floor is 64, and the loop can run more than once. **A body that
+        // barely oversteps is therefore cut well below the largest one that would have fitted**, and
+        // any estimate of `how much was cut` that assumes minimality is wrong by at least 512 per
+        // iteration. The state publishes the true figure: `body_text_characters_kept`
+        // (`NimbleMessageState.cs:96-97`), present only when the body was cut.
+        //
+        // **THE CUT IS A SIZE RULE, NOT A DENSITY RULE:
+        // measured at a CONSTANT 2500 characters, prose is shortened exactly like hex-ish.** SIZE
+        // drives the fit's cut; SHAPE drives the token expansion in the paragraph above. Two
+        // mechanisms, two variables, and they are easy to tangle. (`NimbleOptions.MaxBodyCharacters`,
+        // 2500, is a third cap and a smaller one; note that the OTHER `MaxBodyCharacters` on
+        // `MailAssessorOptions` defaults to 1_000_000, so the project has to be named.) Because the
+        // row stays `Available`, that cut reaches a reader ONLY through the reason attribute. So the
+        // live failure is the SHORTENED READ rather than the refusal, which is `policy-`'s ruling.
         //
         // What the table supports without either over-reach: FIVE OF SIX body contents evaluate above
         // 32768 and PLAIN PROSE IS THE EXCEPTION rather than the rule, so a reader must not take a
