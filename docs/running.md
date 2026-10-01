@@ -268,13 +268,13 @@ evaluation the deployment produces.
 
 **And that measurement is a warning, because content moves the evaluation far more than prose does.**
 Holding twelve questions and one state shape and varying only the body's content, with every request
-inside the fit's 8192-byte cap AND below the 2500-character body budget described below, the evaluation
-ran from **19574** tokens on prose to **42026** on a hexadecimal-looking body, an expansion of 2.87x to
-6.17x (`nimble-`, 2026-10-01T23:53, `.styloagent/scratch/nimble/expansion-shapes.json`, script
-`probe-expansion.py`; six shapes, all measured, all at 6810 request bytes except one at 6909: prose 19574,
-base64-ish 33278, mixed 34262, random-case 38570, punctuation-heavy 40094, hex-ish 42026). Reaching
-`32768` needs an expansion above **4.00x**, and **five of the six shapes exceed it**: only prose is safe,
-and the hex-ish arm clears the guard by 1.28x. So `EffectiveNumCtx` at `32768` **refuses a
+inside the fit's 8192-byte cap and every body AT its 2500-character budget, the evaluation ran from
+**19814** tokens on prose to **43202** on a hexadecimal-looking body, an expansion of 2.87x to 6.25x
+(`nimble-`, taking the full budget rather than a shorter body, `.styloagent/scratch/nimble/expansion-shapes-2500.json`,
+script `probe-expansion.py`; six shapes, all measured and all admissible, at 6910 request bytes except one
+at 7012: prose 19814, base64-ish 34106, mixed 35114, random-case 39602, punctuation-heavy 41138, hex-ish
+43202). Reaching `32768` needs an expansion above **4.00x**, and **five of the six shapes exceed it**:
+only prose is safe, and the hex-ish arm clears the guard by 1.32x. So `EffectiveNumCtx` at `32768` **refuses a
 twelve-question message whose body is dense, and does not refuse one whose body is prose**. What is
 measured is the body's content, and five of six bodies whose text is naturally dense come back
 `Unavailable` today: long hexadecimal, pasted base64 or JSON, log and diff output, heavy punctuation.
@@ -290,13 +290,13 @@ content class nobody had varied. Prose runs are unaffected and their results sta
 
 **And the defect is now a measured range rather than an argument.** The fit budgets **bytes** against
 `NumCtx`, while the number the guard compares is the SERVER's token count, which content scales by
-between 2.9x and 6.2x on these shapes. **A budget in bytes cannot bound a quantity that content scales
+between 2.9x and 6.3x on these shapes. **A budget in bytes cannot bound a quantity that content scales
 several-fold**, and the ratio moves with the REQUEST size too, so the fit's cap is a bound on the wrong
 quantity twice over. Four limits, stated rather than left for a reader: the six shapes were **chosen
-rather than sampled**, so a shape that fails bounds that shape and not all content; these arms were
-re-taken at a body size below the provider's own 2500-character budget, because an earlier run at 3600
-bytes was reachable as an HTTP request but **not as a state the adapter produces**, so its figures
-over-state what a message can reach; the six arms were taken against the ENDPOINT directly rather than
+rather than sampled**, so a shape that fails bounds that shape and not all content; these arms were taken
+at the full 2500-character body budget, and an earlier run at 3600-byte bodies was reachable as an HTTP
+request but **not as a state the adapter produces**, so its figures over-state what a message can reach;
+the six arms were taken against the ENDPOINT directly rather than
 through the shipping adapter and assessor, so a dense body on the real path is measured by neither run;
 and whether content denser than the hex-ish arm exists, or whether non-ASCII behaves differently, has not
 been measured. Size the setting against the largest evaluation
@@ -349,7 +349,7 @@ difference of 0.0003, with the one-question controls working at 0.9975 and 0.995
 a window of **at least 56210 tokens**, and it reads a **46556**-token dense prompt whole. **That is a
 reading of the SERVER and not a state a deployment sends**: thirteen questions is one more than the
 dimension set, so the largest evaluation an adapter-producible request has been measured to reach is
-**42026**, and the probe sits above it, which is the direction a safety reading should err in. INFERRED
+**43202**, and the probe sits above it, which is the direction a safety reading should err in. INFERRED
 rather than measured: that this server never silently truncates, which rests on requests being read whole
 at those sizes and on a loud refusal above the limit, rather than on a direct reading of the window.
 **The console consequence runs the opposite way to the one this section first implied:** on this
