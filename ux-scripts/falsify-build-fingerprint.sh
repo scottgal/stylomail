@@ -55,12 +55,51 @@ set -uo pipefail
 REPO="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 scratch="$REPO/.styloagent/scratch/desktop/test-build-fingerprint-is-load-bearing"
 
-# This script deletes its own scratch tree at the start, so it must be certain
-# that tree is the one it means. The same rule the check now enforces on itself.
-if [[ "$scratch" != "$REPO/.styloagent/scratch/desktop/"* || "$scratch" == *"/.."* ]]; then
-    echo "refusing to run: scratch resolves outside the lane's own scratch ($scratch)" >&2
+# Sourced for `console_canonical_path` alone, and from the ORIGINAL tree rather than
+# from the copy each pass runs: mutation G neuters the copy's canonicaliser, and a
+# guard that a mutation can switch off is not a guard.
+source "$REPO/ux-scripts/console-harness.sh"
+
+# This script deletes its own scratch tree, so it must be certain that tree is the one
+# it means. The test here used to be lexical: a literal prefix plus a `..` substring, so
+# a symlink at ANY component of the path matched the string while the `rm -rf` below
+# resolved somewhere else entirely. `nimble-` raised it from an automated review on
+# 1 Oct, and it is the same defect `console_assert_run_dir_is_ours` was already repaired
+# for: this file, which exists to prove that guard is load-bearing, had the weaker form.
+console_scratch_is_ours() {
+    local path="$1" base="$REPO/.styloagent/scratch/desktop"
+    local path_canon base_canon
+    path_canon="$(console_canonical_path "$path")" || path_canon=""
+    base_canon="$(console_canonical_path "$base")" || base_canon=""
+    [[ -n "$path_canon" && -n "$base_canon" && "$path_canon" == "$base_canon"/* ]]
+}
+
+if ! console_scratch_is_ours "$scratch"; then
+    echo "refusing to run: scratch does not resolve under the lane's own scratch" >&2
+    echo "  scratch: $scratch -> $(console_canonical_path "$scratch" || echo unreadable)" >&2
+    echo "  base:    .styloagent/scratch/desktop under $REPO" >&2
     exit 2
 fi
+
+# The guard's own control, in both directions, because a guard whose refusal has never
+# been exercised cannot be told apart from one that refuses everything: a symlink inside
+# the base that points OUT of it must be refused, and a plain path inside must be allowed.
+control_link="$REPO/.styloagent/scratch/desktop/.guard-control-outside"
+control_target="$REPO/.styloagent/scratch/desktop-guard-control-target"
+rm -rf "$control_link" "$control_target"
+mkdir -p "$control_target"
+ln -s "$control_target" "$control_link"
+if console_scratch_is_ours "$control_link/child"; then
+    echo "refusing to run: the scratch guard allowed a symlink out of the base, so it is decoration" >&2
+    rm -rf "$control_link" "$control_target"
+    exit 2
+fi
+if ! console_scratch_is_ours "$REPO/.styloagent/scratch/desktop/plain-dir"; then
+    echo "refusing to run: the scratch guard refused a path inside the base, so it refuses everything" >&2
+    rm -rf "$control_link" "$control_target"
+    exit 2
+fi
+rm -rf "$control_link" "$control_target"
 
 # Applies a mutation to the copy in the current directory, then runs the check
 # against it and prints the cases that went red, as "<case>: <first failure>".

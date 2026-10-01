@@ -145,7 +145,14 @@ and a bare "8" cannot be attributed to either. A case header inside a nested run
 a case header: the guard case embeds a whole child run in its failure message, and once a mutation let
 the child run, this parser attributed the outer case's later failure to the CHILD's case number, which
 moved when a case was added here. Both checks now indent embedded child output from its second line, so
-the parser cannot see it, and the failure that exposed it is mutation F's. Each pass also asserts its own pattern still matched:
+the parser cannot see it, and the failure that exposed it is mutation F's. Its own scratch guard was the
+weaker form of the one it exists to defend: a literal prefix plus a `..` substring, which a symlink at any
+component of the path satisfies while the `rm -rf` resolves elsewhere. It now canonicalises both sides
+with `console_canonical_path` (from the ORIGINAL harness, since mutation G neuters the copy's) and
+compares the resolved forms, and it carries a two-direction control that runs before the passes: a symlink
+inside the base pointing out of it must be refused, and a plain path inside must be allowed. Replacing the
+canonicalisation with the old lexical test makes that control exit 2, which is how the guard itself was
+falsified rather than assumed. Each pass also asserts its own pattern still matched:
 a mutation whose perl stops matching is a no-op, and in this session that no-op first read as a clean
 pass, then was reported as "applied" by a precondition that had copied the same stale pattern. H was
 written with one `]` where the source has two (`$ ]]; then`), and the precondition caught it as
