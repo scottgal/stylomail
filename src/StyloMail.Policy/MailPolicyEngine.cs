@@ -139,10 +139,14 @@ public sealed class MailPolicyEngine
         // fact about the message. That is also why no evaluability flag is needed here: an unattempted
         // question is simply a row that does not establish anything, not a clean bill of health.
         //
-        // Placed in tier 2 rather than in the risk path on purpose: tier 5 (recipient preference) can
-        // relax a preference-shaped hold, and it must never relax this one, so the decision is taken
-        // above it and returns before tier 5 runs. It does not feed the index either: the fact is a
-        // refusal, and the index's job is to grade, not to refuse.
+        // Placed in tier 2 rather than in the risk path on purpose: it is an established fact rather
+        // than a graded one, and it does not feed the index either, because the index's job is to
+        // grade, not to refuse. It is also one of the holds tier 5 (recipient preference) must never
+        // relax, and the protection there is the hold's SHAPE rather than its position: this Hold is
+        // not marked RelaxableByRecipientPreference, so tier 5 declines it wherever it was taken.
+        // Returning before tier 5 is true of this site but it is NOT the mechanism, and reading it as
+        // one is the mistake that left the semantic-blackout hold open. That hold is taken inside the
+        // risk path, so it does reach tier 5, and it is protected only because it too is unmarked.
         var refusing = input.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available
                 && e.Value is { } value
