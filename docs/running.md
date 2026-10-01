@@ -237,9 +237,10 @@ and prefer surfacing that evaluation in your own logs over inferring it from a s
 **The number the Host logs as `applied` is the PROVIDER's own figure and not the server's, and it
 follows `EffectiveNumCtx` by construction.** `AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`
 (`NimbleOptions.cs:192`), and the boot line prints exactly that field under the name `applied`
-(`HostServices.cs:754-759`, the window line the Host logs at every boot; it moved from `:733-740` when
-that file was edited the same night, so read it by content rather than by number). Measured from three
-boot lines at three settings, each read out of its own file: unset reads `applied 4096`, `16384` reads
+(the window line `HostServices.cs` logs at every boot, headed "StyloMail nimble window" and carrying all
+three numbers in its own text; that file was edited repeatedly the same night, so read it by content
+rather than by any line number). Measured from three boot lines at three settings, each read out of its
+own file: unset reads `applied 4096`, `16384` reads
 `applied 16384`, `32768` reads `applied 32768`
 (`.styloagent/scratch/ingress/host-probe/run-20261001T220049Z/host.log:4`,
 `run-20261001T220000Z/host.log:4`, `.styloagent/scratch/corpus/run-mailbox-full/host.log:4`). Those are
@@ -283,9 +284,9 @@ quoted-printable and base64 parts before the classifier sees any text
 `NimbleMessageState.Build` puts only metadata in the state for one, a file name, its declared and
 implied content types, a byte size and whether the content was available
 (`NimbleMessageState.cs:82-89`), so attachment content never reaches the prompt, and the dense text that
-can is `BodyText` and `QuotedText`, which share a single budget (`:62-64`). That is the failure the 503
-above records, still present for a content class nobody had varied. Prose runs are unaffected and their
-results stand.
+can is `BodyText` and `QuotedText`, each truncated to that same 2500-character budget separately rather
+than out of a shared pool (`:62-64`). That is the failure the 503 above records, still present for a
+content class nobody had varied. Prose runs are unaffected and their results stand.
 
 **And the defect is now a measured range rather than an argument.** The fit budgets **bytes** against
 `NumCtx`, while the number the guard compares is the SERVER's token count, which content scales by
