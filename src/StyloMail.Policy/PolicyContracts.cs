@@ -113,9 +113,19 @@ public sealed class PolicyOptions
     public TimeSpan MaxHoldDeadline { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Weights per semantic signal id for the composite index. Correlated dimensions are summed
-    /// with weights, never multiplied as though independent.
+    /// Weights per signal id for the composite index, semantic and deterministic alike. Correlated
+    /// dimensions are summed with weights, never multiplied as though independent.
     /// </summary>
+    /// <remarks>
+    /// The deterministic entries are the risk-shaped MIME findings declared in
+    /// <see cref="DeterministicFindings"/>, added because until they were here a checkable fact
+    /// could not move the index at all. Their weights are deliberately comparable to the semantic
+    /// ones rather than larger: the index is a weighted mean over the whole question set, so a
+    /// deterministic weight larger than the semantic backbone would let one checkable calm fact
+    /// erase a strong probabilistic signal, which is a regression rather than a repair. A count's
+    /// weight is charged at the step (see <see cref="DeterministicFindings.Normalise"/>), so a
+    /// weight here is the value of the finding being present, not of its magnitude.
+    /// </remarks>
     public Dictionary<string, double> DimensionWeights { get; set; } = new(StringComparer.Ordinal)
     {
         ["semantic.credential_request"] = 1.0,
@@ -130,5 +140,18 @@ public sealed class PolicyOptions
         ["semantic.unsolicited_solicitation"] = 0.3,
         ["semantic.transactional_character"] = 0.2,
         [SemanticDimensions.ConversationalContinuityId] = 0.5,
+
+        // Deterministic MIME findings (risk-shaped only; see DeterministicFindings for the
+        // criterion and the units). Ranked by how decisive the checkable fact is.
+        [DeterministicFindings.TrustedAuthenticationFailure] = 1.0,
+        [DeterministicFindings.LinkDisplayMismatch] = 1.0,
+        [DeterministicFindings.LinkIdnHomograph] = 1.0,
+        [DeterministicFindings.DisplayNameAddressMismatch] = 0.8,
+        [DeterministicFindings.AttachmentTypeMismatch] = 0.8,
+        [DeterministicFindings.HtmlTextDisagreement] = 0.8,
+        [DeterministicFindings.PaddingObfuscation] = 0.7,
+        [DeterministicFindings.ReplyToDivergence] = 0.6,
+        [DeterministicFindings.EnvelopeHeaderIdentity] = 0.6,
+        [DeterministicFindings.ThreadHeaderConsistency] = 0.4,
     };
 }

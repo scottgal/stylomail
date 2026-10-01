@@ -13,7 +13,8 @@ namespace StyloMail.Policy;
 ///
 /// <orderedlist>
 /// <item>Resource and authorisation controls (kill switch, hard quotas)</item>
-/// <item>Verified security rule violations</item>
+/// <item>Verified security rule violations, and the checkable facts that must refuse: a violation
+/// rejects, a refusing finding holds</item>
 /// <item>Suspected-compromise posture</item>
 /// <item>Behavioural and semantic risk</item>
 /// <item>Recipient preference, lowest, and never able to override 1–3</item>
@@ -24,8 +25,33 @@ namespace StyloMail.Policy;
 /// its true negative, and it arrives as a low value rather than a missing one, so it raises the
 /// covered fraction instead of lowering it and can satisfy both coverage guards. So the model's
 /// calm is not acted on without something the pipeline can check: measured, and for the reason to
-/// hold, agreeing. The two are not the same claim, and the difference is a filed gap rather than a
-/// detail, since the deterministic findings are unweighted and cannot yet move the index.
+/// hold, agreeing.
+///
+/// <para>
+/// The gate is kept beside the coverage floor rather than folded into it (decision 42). The floor
+/// answers "did we answer the questions we could ask"; it cannot answer "did a non-probabilistic
+/// check agree". A message whose deterministic questions are all inapplicable (plain text, no links,
+/// no attachments) has them removed from the denominator, so its coverage can be high on semantic
+/// answers alone, and without this gate it would allow on the model's word with no deterministic row
+/// measured at all, which is the hazard this tier exists to prevent.
+/// </para>
+///
+/// <para>
+/// The risk-shaped deterministic findings are now weighted and do move the index (decision 42), so
+/// the gate's "was something checkable measured" check is no longer the only route by which a
+/// deterministic fact can matter: a finding that objects contributes to the index beside it.
+/// </para>
+///
+/// <para>
+/// <b>A low index also requires the semantic layer to have answered, or never to have been asked.</b>
+/// Weighting the structural findings moved coverage in a direction that lets structure alone clear the
+/// allow floor, so the tier refuses a delivery while a semantic question was asked and left
+/// unanswered. This is the same asymmetry the gate above rests on: a hold queues a message for
+/// review and an allow delivers it, and the structural layer is the one an adversary satisfies by
+/// construction. The gate is absolute: it is not exempted by the allow floor, because a deployment
+/// whose floor is zero is the one configuration in which a full blackout would otherwise allow on
+/// local evidence alone.
+/// </para>
 /// </remarks>
 public sealed class MailPolicyEngine
 {
@@ -99,6 +125,50 @@ public sealed class MailPolicyEngine
                 decidedBy: "verified-rules");
         }
 
+        // Tier 2, continued. A checkable fact that must refuse, but as a Hold rather than a Reject:
+        // each is established rather than inferred, like a violation above, yet each has a
+        // legitimate-traffic population that a permanent verdict would destroy and a review can
+        // release (the membership and the mail each would hold are declared in
+        // DeterministicFindings.Refusing, in Policy rather than with the caller, because which facts
+        // can refuse an action is itself an action-shaped judgement).
+        //
+        // The rule reads the evidence, so it needs nobody to populate a second field and it reads the
+        // three states the wire already carries: Available with a normalised value of 1.0 is a finding
+        // that is PRESENT and refuses; Available with 0.0 is measured and clean; NotApplicable (never
+        // in question) and Unavailable (in question, unanswered) refuse nothing, because neither is a
+        // fact about the message. That is also why no evaluability flag is needed here: an unattempted
+        // question is simply a row that does not establish anything, not a clean bill of health.
+        //
+        // Placed in tier 2 rather than in the risk path on purpose: tier 5 (recipient preference) can
+        // relax a preference-shaped hold, and it must never relax this one, so the decision is taken
+        // above it and returns before tier 5 runs. It does not feed the index either: the fact is a
+        // refusal, and the index's job is to grade, not to refuse.
+        var refusing = input.Evidence
+            .Where(e => e.Availability == EvidenceAvailability.Available
+                && e.Value is { } value
+                && DeterministicFindings.Establishes(e.SignalId, value))
+            .Select(e => e.SignalId)
+            .ToList();
+
+        if (refusing.Count > 0)
+        {
+            return Hold(
+                input,
+                [
+                    new ReasonCode
+                    {
+                        Code = "policy.refusing_finding",
+                        Message =
+                            "A checkable fact that must refuse delivery was established: "
+                            + $"{string.Join(", ", refusing)}. Held for review rather than rejected, "
+                            + "because this signal has legitimate-traffic populations that a permanent "
+                            + "verdict would destroy.",
+                        EvidenceSignalIds = refusing,
+                    },
+                ],
+                decidedBy: "verified-rules");
+        }
+
         // Tier 3, suspected-compromise posture. An unresolved suspected outbound compromise stays
         // quarantined; it does not decay into delivery simply because nothing new arrived.
         if (input.Direction == MailDirection.Outbound
@@ -148,12 +218,37 @@ public sealed class MailPolicyEngine
 
         if (input.Risk.Masked.Count > 0)
         {
+            // A masked row is out of the arithmetic, and the reasons for that are not one: a row
+            // nothing was measured for, and a row excluded from the index by policy whichever way it
+            // answered (decision 32). The two are said plainly and separately rather than wrapped in
+            // one sentence: "not treated as zero" is true of the first and false of the second, and
+            // the top line is what a reader takes away even when a per-row reason disambiguates it.
+            var unmeasured = input.Risk.Masked.Count(m => m.Reason is null);
+            var excluded = input.Risk.Masked.Where(m => m.Reason is not null).ToList();
+
+            var clauses = new List<string>();
+            if (unmeasured > 0)
+            {
+                clauses.Add(
+                    $"{unmeasured} dimension(s) were not measured and are masked rather than counted "
+                    + "as zero: an absent answer is not a calm one.");
+            }
+
+            if (excluded.Count > 0)
+            {
+                clauses.Add(
+                    $"{excluded.Count} dimension(s) were excluded by policy and leave the index and "
+                    + "its denominator deliberately.");
+            }
+
             reasons.Add(new ReasonCode
             {
                 Code = "evidence.masked_dimensions",
                 Message =
-                    $"{input.Risk.Masked.Count} dimension(s) contributed no evidence and were masked, "
-                    + "not treated as zero.",
+                    string.Join(" ", clauses)
+                    + (excluded.Count == 0
+                        ? string.Empty
+                        : " " + string.Join("; ", excluded.Select(m => $"{m.SignalId}: {m.Reason}"))),
                 EvidenceSignalIds = input.Risk.Masked.Select(m => m.SignalId).ToList(),
             });
         }
@@ -239,14 +334,15 @@ public sealed class MailPolicyEngine
         // measured at all. An allow resting on nothing but a probabilistic answer is a hold.
         //
         // What this does NOT do, and the two are not the same claim: it requires that checkable
-        // evidence was measured, not that the checkable evidence agrees. Rows outside
-        // DimensionWeights (every deterministic finding, since those weights are semantic-only) do
-        // not contribute to the index, so a displayed-link mismatch at 1.0 cannot raise it and a
-        // benign row beside it satisfies this gate. Filed high as
-        // `unweighted-deterministic-findings-cannot-block-a`, and the repair is weights with
-        // declared units rather than a threshold test here, because the deterministic signals carry
-        // counts and ratios and bytes, and a bare "value above the hold threshold" rule would hold
-        // every message with a stored attachment. Pinned by a test in the policy suite.
+        // evidence was measured, not that the checkable evidence agrees. The two are now separate
+        // arms of one rule rather than two claims about different mechanisms, because the
+        // deterministic findings carry weight (decision 42): an objecting finding moves the index
+        // above on its own account, and this gate declines to act on a low index until something
+        // checkable was measured at all. The gate is kept rather than folded into the coverage
+        // floor, because the floor can be satisfied by a feature-poor message's semantic rows alone
+        // (its inapplicable deterministic questions have left the denominator), so the floor would
+        // let a plain-text message allow on the model's word with no deterministic row measured.
+        // Belt and braces, as ruled. Pinned by a test in the policy suite.
         var corroborating = input.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available
                 && e.Origin == EvidenceOrigin.Deterministic)
@@ -266,13 +362,62 @@ public sealed class MailPolicyEngine
             {
                 Code = "policy.allow_uncorroborated_by_deterministic_evidence",
                 Message =
-                    $"Risk index {index:0.00} is below the hold threshold, but no available "
-                    + "deterministic signal corroborates it. "
+                    $"Risk index {index:0.00} is below the hold threshold, but no deterministic "
+                    + "signal was measured to corroborate it. "
+                    // Both branches have to end in the same prohibition. The branch above used to
+                    // read "and a probabilistic negative may authorise delivery on its own", which
+                    // told the operator the reverse of the rule that had just held: the decision was
+                    // right and its explanation contradicted it, at exactly the point this gate
+                    // exists to be legible. `no` rather than `a` is the whole fix.
                     + (uncheckable.Count > 0
-                        ? $"The available evidence came from {string.Join(", ", uncheckable)}, and a "
+                        ? $"The available evidence came from {string.Join(", ", uncheckable)}, and no "
                         : "No evidence was available at all, and no ")
                     + "probabilistic negative may authorise delivery on its own.",
                 EvidenceSignalIds = input.Risk.ContributingSignalIds,
+            });
+
+            return Hold(input, reasons);
+        }
+
+        // A low index may not be turned into an allow by structure alone while the semantic layer was
+        // asked and did not answer. Decision 42 gave the structural findings enough weight that a
+        // blacked-out provider no longer empties the denominator: a message whose ten checkable
+        // questions are all answered calm reaches 7.7 / 15.0 = 0.513 and clears the allow floor with
+        // no semantic answer at all, where before those rows carried no weight and it held at 0.0. A
+        // semantic blackout convertible into a delivery by the layer an adversary satisfies by
+        // construction is the hazard this tier exists to prevent, so it is refused here.
+        //
+        // Askability follows configuration, and the configuration this build has is the semantic
+        // evidence itself: a deployment with no semantic layer never reaches policy at all (the
+        // unconfigured host's assessor throws before an assessment exists), so the only deployment
+        // that can decide without semantic answers is one with a configured provider that is in a
+        // runtime outage. The gate is therefore absolute and is not exempted by the allow floor: the
+        // floor at zero is the one configuration in which a full blackout would otherwise allow on
+        // local evidence alone, which is the hole this gate exists to close.
+        //
+        // The gate reads "asked and unanswered", not "not answered": a semantic row that is
+        // NotApplicable was never asked, and refusing on it would read a deployment's shape as an
+        // outage. It is deliberately stricter than the coverage floor for a partial outage, where
+        // some questions were answered and some were not; that direction can only produce more Holds,
+        // never more Allows.
+        var unanswered = input.Evidence
+            .Where(e => e.Origin == EvidenceOrigin.Semantic
+                && e.Availability == EvidenceAvailability.Unavailable)
+            .Select(e => e.SignalId)
+            .ToList();
+
+        if (unanswered.Count > 0)
+        {
+            reasons.Insert(0, new ReasonCode
+            {
+                Code = "policy.allow_without_a_semantic_answer",
+                Message =
+                    $"Risk index {index:0.00} is below the hold threshold and a checkable signal was "
+                    + "measured, but the semantic layer did not answer: "
+                    + $"{unanswered.Count} semantic dimension(s) were asked and are unavailable. A "
+                    + "semantic blackout is not convertible into a delivery on structural evidence "
+                    + "alone; held for bounded re-evaluation.",
+                EvidenceSignalIds = unanswered,
             });
 
             return Hold(input, reasons);
@@ -292,7 +437,7 @@ public sealed class MailPolicyEngine
     /// Bounded hold. The deadline is clamped to the absolute ceiling so a hold can never be
     /// extended indefinitely by configuration drift.
     /// </summary>
-    private PolicyDecision Hold(PolicyInput input, List<ReasonCode> reasons)
+    private PolicyDecision Hold(PolicyInput input, List<ReasonCode> reasons, string decidedBy = "risk")
     {
         var now = _time.GetUtcNow();
         var deadline = now + _options.HoldWindow;
@@ -303,7 +448,7 @@ public sealed class MailPolicyEngine
             deadline = ceiling;
         }
 
-        var decision = Decision(MailAction.Hold, input, reasons, decidedBy: "risk");
+        var decision = Decision(MailAction.Hold, input, reasons, decidedBy: decidedBy);
         return decision with { ReEvaluateBy = deadline };
     }
 
