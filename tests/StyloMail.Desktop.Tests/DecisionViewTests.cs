@@ -101,6 +101,14 @@ public sealed class DecisionViewTests
                     Name = "semantic",
                     Score = 0.0,
                     Availability = availability,
+
+                    // An unmeasured row says nothing about the arithmetic
+                    // either. These are not "false" and not "0": the row was
+                    // never scored, so whether it counted is a question that was
+                    // not reached, and null is the only honest answer.
+                    Weight = null,
+                    Counted = null,
+                    ExclusionReason = null,
                     EvidenceSignalIds = [],
                 },
             ],
@@ -524,5 +532,226 @@ public sealed class DecisionViewTests
         Assert.Equal("asm_0f4d2a", view.AssessmentId);
         Assert.NotEmpty(view.Reasons);
         Assert.NotEmpty(view.Evidence);
+    }
+
+    // ===================== the arithmetic behind the index =====================
+
+    /// <summary>
+    /// The index says what it was divided by, so an operator can check it.
+    /// </summary>
+    /// <remarks>
+    /// An index nobody can check from what is on screen is one they have to take
+    /// on trust, and the whole reason the denominator is served is that the check
+    /// is possible.
+    /// </remarks>
+    [Fact]
+    public void The_index_says_what_it_was_divided_by()
+    {
+        var view = DecisionView.From(Decision());
+
+        Assert.Contains("1.33", view.RiskIndexArithmetic, StringComparison.Ordinal);
+        Assert.Contains("divided by", view.RiskIndexArithmetic, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// <b>An unrecorded divisor is not a divisor of zero.</b>
+    /// </summary>
+    /// <remarks>
+    /// A decision taken before the arithmetic was served has no denominator at
+    /// all, and rendering that as <c>0</c> would report an index that cannot be
+    /// checked as an index that was divided by nothing. The two sentences have to
+    /// stay different, and the absent case has to be a sentence rather than a
+    /// blank, because a blank reads as a rendering fault.
+    /// </remarks>
+    [Fact]
+    public void An_unrecorded_divisor_is_not_a_divisor_of_zero()
+    {
+        var absent = DecisionView.From(Decision(Wire.DecisionWithoutOptionalMembers));
+        var zero = DecisionView.From(Decision() with { RiskIndexDenominator = 0.0 });
+
+        Assert.Contains("not recorded", absent.RiskIndexArithmetic, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not recorded", zero.RiskIndexArithmetic, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0", zero.RiskIndexArithmetic, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A row that entered the index says nothing extra about it.
+    /// </summary>
+    /// <remarks>
+    /// A marker on every row is one nobody reads, and the counted case is the
+    /// ordinary one.
+    /// </remarks>
+    [Fact]
+    public void A_counted_row_says_nothing_about_the_arithmetic()
+    {
+        var counted = DecisionView.From(Decision()).Dimensions
+            .Where(d => d.Counted == true)
+            .ToList();
+
+        Assert.NotEmpty(counted);
+        Assert.All(counted, d =>
+        {
+            Assert.False(d.HasContributionNote);
+            Assert.Empty(d.ContributionLabel);
+        });
+    }
+
+    /// <summary>
+    /// <b>A masked row names itself as masked, and says its weight stayed out.</b>
+    /// </summary>
+    /// <remarks>
+    /// This is the defect decision 37 rules on. A row that was measured and came
+    /// back 0.0 was counted and dilutes the index; a row decision 31 masked
+    /// contributed nothing. Both arrive as <c>score: 0, availability:
+    /// Available</c>, so without the flag an operator reconstructing the
+    /// arithmetic from the pane would add the masked row's weight back into the
+    /// divisor and get a number that agrees with a shape the system no longer has.
+    /// </remarks>
+    [Fact]
+    public void A_masked_row_names_its_reason_and_the_weight_that_stayed_out()
+    {
+        var masked = DecisionView.From(Decision()).Dimensions.Single(d => d.Name == "reputation");
+
+        Assert.False(masked.Counted);
+
+        // And it shows a number, which is why it has to say otherwise: this row
+        // is the one that would otherwise be added into the divisor.
+        Assert.True(masked.HasScore);
+        Assert.True(masked.HasContributionNote);
+
+        // The whole sentence, not a substring of it. The Host's reason is itself
+        // a sentence ending in a full stop, and the composed line renders that
+        // stop and then a second one if the composition does not look: this is
+        // exactly how "rule.. Its weight" reached the shipped fixture and the
+        // smoke's selector, which matches whole controls. Asserting pieces would
+        // pass over it.
+        Assert.Equal(
+            "Not counted towards the index: Masked by the trusted-history rule. "
+                + "Its weight of 0.25 is not in the divisor.",
+            masked.ContributionLabel);
+    }
+
+    /// <summary>
+    /// A row that was never measured needs no further note: it already says so.
+    /// </summary>
+    /// <remarks>
+    /// This is the main smoke's whole decision, where the semantic layer is down
+    /// and every dimension is unmasked-but-unmeasured. A sentence on each of
+    /// them would be the same line eleven times, and the marker would stop
+    /// meaning anything on the rows that need it.
+    /// </remarks>
+    [Fact]
+    public void An_unmeasured_row_that_did_not_count_needs_no_further_note()
+    {
+        var decision = Decision() with
+        {
+            RiskDimensions =
+            [
+                new RiskDimensionResponse
+                {
+                    Name = "semantic",
+                    Score = 0.0,
+                    Availability = EvidenceAvailability.Unavailable,
+                    Weight = 0.5,
+                    Counted = false,
+                    ExclusionReason = null,
+                    EvidenceSignalIds = [],
+                },
+            ],
+        };
+
+        var masked = DecisionView.From(decision).Dimensions.Single();
+
+        Assert.False(masked.Counted);
+        Assert.False(masked.HasScore);
+        Assert.False(masked.HasContributionNote);
+        Assert.Contains("not measured", masked.ScoreLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A masked row with a reason says the reason even if it shows no score.
+    /// </summary>
+    /// <remarks>
+    /// The Host only sets a reason where a row carried an answer and was
+    /// excluded anyway, so this pairs with the score path rather than replacing
+    /// it. It is asserted separately because a reason is the one thing a reader
+    /// cannot get from the availability, and losing it silently would leave the
+    /// exclusion unexplained.
+    /// </remarks>
+    [Theory]
+    [InlineData("Excluded by policy.")]
+    [InlineData("Excluded by policy")]
+    public void A_masked_row_with_a_reason_says_the_reason(string reason)
+    {
+        var decision = Decision() with
+        {
+            RiskDimensions =
+            [
+                new RiskDimensionResponse
+                {
+                    Name = "reputation",
+                    Score = 0.0,
+                    Availability = EvidenceAvailability.NotApplicable,
+                    Weight = 0.5,
+                    Counted = false,
+                    ExclusionReason = reason,
+                    EvidenceSignalIds = [],
+                },
+            ],
+        };
+
+        var masked = DecisionView.From(decision).Dimensions.Single();
+
+        // One stop, whether or not the Host wrote one. A reason handed over
+        // without its full stop is a clause in this sentence and gets one; a
+        // reason that has one keeps exactly one.
+        Assert.Equal(
+            "Not counted towards the index: Excluded by policy. "
+                + "Its weight of 0.5 is not in the divisor.",
+            masked.ContributionLabel);
+    }
+
+    /// <summary>
+    /// <b>A row that predates the arithmetic never reads as a row that did not
+    /// count.</b>
+    /// </summary>
+    /// <remarks>
+    /// Null is a third state, and it is said even on a row that shows no score.
+    /// The Host could have derived false from an older row's availability and
+    /// deliberately does not: with no weight behind the flag the arithmetic
+    /// still cannot be reproduced, and showing half of the pair invites a reader
+    /// to guess the other half. So this is the one case the note is never
+    /// suppressed, because two rows that both read "not measured" would
+    /// otherwise be indistinguishable.
+    /// </remarks>
+    [Theory]
+    [InlineData(EvidenceAvailability.Available, 0.5)]
+    [InlineData(EvidenceAvailability.Unavailable, 0.0)]
+    public void A_row_that_predates_the_arithmetic_says_so_rather_than_reading_as_false(
+        EvidenceAvailability availability, double score)
+    {
+        var decision = Decision() with
+        {
+            RiskDimensions =
+            [
+                new RiskDimensionResponse
+                {
+                    Name = "semantic",
+                    Score = score,
+                    Availability = availability,
+                    Weight = null,
+                    Counted = null,
+                    ExclusionReason = null,
+                    EvidenceSignalIds = [],
+                },
+            ],
+        };
+
+        var row = DecisionView.From(decision).Dimensions.Single();
+
+        Assert.Null(row.Counted);
+        Assert.True(row.HasContributionNote);
+        Assert.Contains("not recorded", row.ContributionLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not counted", row.ContributionLabel, StringComparison.OrdinalIgnoreCase);
     }
 }

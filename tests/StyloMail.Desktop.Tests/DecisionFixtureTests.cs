@@ -1,5 +1,6 @@
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
+using StyloMail.Desktop.Models;
 
 namespace StyloMail.Desktop.Tests;
 
@@ -85,6 +86,33 @@ public sealed class DecisionFixtureTests
 
         Assert.Equal(ChannelKind.Email, decision.Channel.Kind);
         Assert.Equal(DeliveryTiming.PreAcceptance, decision.DeliveryTiming);
+    }
+
+    /// <summary>
+    /// The fixture's masked row says it did not count, and names the weight
+    /// that stayed out of the divisor.
+    /// </summary>
+    /// <remarks>
+    /// The fixture carries a masked row precisely so the no-feed smoke can
+    /// assert this sentence on the shipped file. If the fixture stops saying it,
+    /// that smoke fails in front of an operator with a selector that matched
+    /// nothing, which reads as a rendering defect and is not one. Asserted here
+    /// so the fixture's own claim is checked where it can be read.
+    /// </remarks>
+    [Fact]
+    public async Task The_fixture_says_which_row_did_not_count_and_what_it_weighed()
+    {
+        var decision = await ReadShippedFixture();
+        var view = DecisionView.From(decision);
+
+        var masked = view.Dimensions.Single(dimension => dimension.Name == "reputation");
+
+        Assert.False(masked.Counted);
+        Assert.Equal(0.25, masked.Weight);
+        Assert.Equal(
+            "Not counted towards the index: Masked by the trusted-history rule. "
+                + "Its weight of 0.25 is not in the divisor.",
+            masked.ContributionLabel);
     }
 
     /// <summary>

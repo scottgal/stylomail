@@ -93,6 +93,27 @@ actions:
     matcher: IsVisible
     timeout: 15000
 
+  # What the index was divided by, and what one of its rows did to it. The
+  # fixture's `reputation` row is masked while still showing a score of 0, which
+  # is the one shape a reader would add back into the divisor: it says so, names
+  # why, and names the weight that stayed out. Asserted here rather than only in
+  # the unit suite because this is the shipped file, rendered by the shipped
+  # binary.
+  - type: Expect
+    target: "name=RiskIndexArithmeticText"
+    matcher: HasText
+    value: "Divided by a counted weight of 1.225: this index is the summed score of the rows that entered it."
+
+  # Quoted, because this harness's selector parser stops an unquoted `text=`
+  # value at the first space, and the fixture's reason carries no apostrophe
+  # because a quoted selector is delimited by one. Both were learned the hard
+  # way here: `text=Not counted ...` parses as a selector named `text=Not`
+  # followed by junk, and `text='...sender's...'` ends at the apostrophe.
+  - type: Expect
+    target: "text='Not counted towards the index: Masked by the trusted-history rule. Its weight of 0.25 is not in the divisor.'"
+    matcher: IsVisible
+    timeout: 15000
+
   - type: Screenshot
     value: "01-no-feed"
     description: "A connected console on a deployment whose Hub is not enabled"

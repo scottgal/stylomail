@@ -418,6 +418,17 @@ public sealed class ShellModel : ObservableObject
     /// <summary>What the last ledger listing produced, for the pane's empty state.</summary>
     private LedgerLookup _ledgerLookup = LedgerLookup.Unknown;
 
+    /// <summary>
+    /// How many rows the last ledger listing could not decode, or null when no
+    /// listing has been read.
+    /// </summary>
+    /// <remarks>
+    /// Null rather than zero before the first listing, because "no rows were
+    /// dropped" and "we have not asked" are different sentences and only one of
+    /// them is reassuring.
+    /// </remarks>
+    private int? _ledgerSkippedCount;
+
     /// <summary>Marks the ledger listing as in flight, over an empty pane.</summary>
     public void BeginLedgerLookup()
     {
@@ -493,6 +504,31 @@ public sealed class ShellModel : ObservableObject
 
         _ => "Nothing here.",
     };
+
+    /// <summary>
+    /// Says that the ledger page on screen is short by some number of rows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is not the empty state and is rendered beside the rows rather than
+    /// instead of them: a page can hold twenty readable decisions and one the
+    /// Host could not decode, and the reader of that page has to be told both
+    /// that the twenty are there and that the twenty-first is not.
+    /// </para>
+    /// <para>
+    /// Without it, a filtered page and a page with unreadable rows render
+    /// identically, and the operator concludes the ledger holds nothing matching
+    /// when it holds something the console could not show them. That is the one
+    /// conclusion this console exists to never let them reach.
+    /// </para>
+    /// </remarks>
+    public string? LedgerSkippedNote => _ledgerSkippedCount is > 0 and var skipped
+        ? $"{skipped} row{(skipped == 1 ? string.Empty : "s")} on this page could not be read by "
+            + "the Host and are not listed here. The page is short by that many."
+        : null;
+
+    /// <summary>Whether the ledger page has a skipped-row note to show.</summary>
+    public bool HasSkippedDecisions => LedgerSkippedNote is not null;
 
     /// <summary>
     /// Appended to every queue's empty text, because an empty queue has two causes.
@@ -1113,6 +1149,14 @@ public sealed class ShellModel : ObservableObject
 
         _ledgerLookup = LedgerLookup.Loaded;
 
+        // Taken from the listing rather than from the row count, because the
+        // whole point is that the two differ: this is the number of rows the
+        // Host had and could not decode, which is exactly what a reader cannot
+        // recover by counting what is on screen.
+        _ledgerSkippedCount = listing.SkippedCount;
+        Raise(nameof(LedgerSkippedNote));
+        Raise(nameof(HasSkippedDecisions));
+
         // The message list goes, for the reason above, and so does any decision
         // the detail pane was showing: a decision opened from a message, still
         // on screen under a ledger heading, would attribute one view's
@@ -1141,6 +1185,13 @@ public sealed class ShellModel : ObservableObject
     {
         Decisions.Clear();
         SelectedDecision = null;
+
+        // Cleared with the rows. A note about rows that are no longer on screen
+        // is a claim about a page the operator is not looking at, and it would
+        // survive into the next listing that dropped nothing.
+        _ledgerSkippedCount = null;
+        Raise(nameof(LedgerSkippedNote));
+        Raise(nameof(HasSkippedDecisions));
     }
 }
 

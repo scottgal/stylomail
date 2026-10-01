@@ -29,6 +29,19 @@ public sealed record DecisionListingResponse
 
     public required IReadOnlyList<DecisionSummaryResponse> Decisions { get; init; }
 
+    /// <summary>
+    /// How many rows on this page the Host could not decode and therefore did
+    /// not list.
+    /// </summary>
+    /// <remarks>
+    /// Required and always present, so zero is a served fact rather than an
+    /// absence. A non-zero value means the page is short by that many, which is
+    /// what keeps "nothing matched" and "something could not be read"
+    /// distinguishable: a listing that dropped rows silently would report a
+    /// filtered page and an unreadable one identically.
+    /// </remarks>
+    public required int SkippedCount { get; init; }
+
     /// <summary>Echo back unchanged for the next page; null when this is the last one.</summary>
     public string? NextCursor { get; init; }
 

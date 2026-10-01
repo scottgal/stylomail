@@ -197,6 +197,18 @@ actions:
     matcher: ContainsText
     value: "an index, not a probability"
 
+  # And what the index was divided by, on a real decision. The VALUE is
+  # deliberately not pinned: this decision's dimensions are seeded, and the
+  # counted weight came out 0 on one run and 3.1 on the next with nothing
+  # changed, so asserting the number here would be asserting the seed's
+  # timing rather than the pane. What is pinned is the branch: a served
+  # denominator renders as "divided by a counted weight of", which is what a
+  # pre-37 decision (whose divisor was never recorded) must never read as.
+  - type: Expect
+    target: "name=RiskIndexArithmeticText"
+    matcher: ContainsText
+    value: "Divided by a counted weight of"
+
   # The reason the pipeline declined, in its own words.
   - type: Expect
     target: "text=assessment.semantic_unavailable"
@@ -517,9 +529,21 @@ actions:
 
   # The risk index keeps its caveat on the row. A ledger is where the number is
   # most likely to be read on its own, and it is not a probability.
+  #
+  # Found by name rather than by its whole text, and that is the point of the
+  # name: the index it carries is policy's arithmetic, not the console's. It was
+  # pinned to "risk index 0" until 2026-10-01, when this decision began serving
+  # 0.323 over a counted weight of 3.1 while every semantic dimension was still
+  # unavailable - the same decision, the same Host settings, a different run.
+  # That movement is policy's to explain (raised to ingress-, whose in-flight
+  # change to the scorer was 2 minutes old when this ran); what this assertion
+  # owns is the caveat worded onto whatever number policy serves, so it asserts
+  # the caveat and the row it sits on.
   - type: Expect
-    target: "text='risk index 0 (an index, not a probability)'"
-    matcher: IsVisible
+    target: "testid=ledger-risk-index"
+    matcher: ContainsText
+    value: "an index, not a probability"
+    timeout: 15000
 
   # A decision resting on reduced coverage says so while scanning, which is why
   # the contract puts coverage on the summary rather than only in the detail.

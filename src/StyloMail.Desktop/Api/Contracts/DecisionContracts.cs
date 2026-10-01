@@ -50,6 +50,20 @@ public sealed record DecisionResponse
     /// </summary>
     public required double RiskIndex { get; init; }
 
+    /// <summary>
+    /// The summed weight of the counted dimensions: the denominator
+    /// <see cref="RiskIndex"/> was divided by.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null is not zero.</b> A served <c>0</c> is a measured empty
+    /// arithmetic, the decision whose every dimension went uncounted; a served
+    /// <c>null</c> is a decision made before the arithmetic was recorded, whose
+    /// weight is not recoverable from the rows. The pane says which of the two
+    /// it is looking at, because an index that cannot be checked from its own
+    /// response is not a record.
+    /// </remarks>
+    public required double? RiskIndexDenominator { get; init; }
+
     /// <summary>Ordered reason codes: the answer to "why", before any score is shown.</summary>
     public required IReadOnlyList<ReasonResponse> Reasons { get; init; }
 
@@ -94,6 +108,37 @@ public sealed record RiskDimensionResponse
     public required double Score { get; init; }
 
     public required EvidenceAvailability Availability { get; init; }
+
+    /// <summary>
+    /// This row's weight in the index, or null when the decision predates the
+    /// arithmetic being served.
+    /// </summary>
+    /// <remarks>
+    /// Required as well as nullable, deliberately: an optional member can be
+    /// dropped by a future projection without a compile error, and a row that
+    /// dropped it would stop being checkable while still looking complete.
+    /// </remarks>
+    public required double? Weight { get; init; }
+
+    /// <summary>
+    /// Whether this row entered the index's numerator and denominator alike, or
+    /// null when the decision predates the flag.
+    /// </summary>
+    /// <remarks>
+    /// <b>False is not a score of zero.</b> A row that was measured and came
+    /// back <c>0.0</c> was counted and dilutes the index; a row decision 31
+    /// masked contributed nothing at all. Both arrive as <c>score: 0,
+    /// availability: Available</c>, so the flag travels with the row rather than
+    /// being inferred from the score, and null is a third state that is not
+    /// derived for an older row.
+    /// </remarks>
+    public required bool? Counted { get; init; }
+
+    /// <summary>
+    /// Why this row was not counted, when its availability alone does not say
+    /// it. Null on a counted row and on the ordinary unavailable case.
+    /// </summary>
+    public string? ExclusionReason { get; init; }
 
     public required IReadOnlyList<string> EvidenceSignalIds { get; init; }
 }

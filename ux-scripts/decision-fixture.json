@@ -6,15 +6,16 @@
   "deliveryTiming": "PreAcceptance",
   "proposedActionInShadow": null,
   "riskIndex": 0.82,
+  "riskIndexDenominator": 1.225,
   "reasons": [
     { "code": "credential_request_high", "message": "Message requests credentials and the sender has no trusted history.", "evidenceSignalIds": ["sig_cred", "sig_hist"] },
     { "code": "link_display_mismatch", "message": "Displayed link text names one host and the target names another.", "evidenceSignalIds": ["sig_link"] },
     { "code": "identity_authority_claim", "message": "The message claims authority it cannot demonstrate.", "evidenceSignalIds": ["sig_cred", "sig_absent"] }
   ],
   "riskDimensions": [
-    { "name": "semantic", "score": 0.91, "availability": "Available", "evidenceSignalIds": ["sig_cred"] },
-    { "name": "behavioural", "score": 0.42, "availability": "ReducedCoverage", "evidenceSignalIds": ["sig_hist"] },
-    { "name": "reputation", "score": 0.0, "availability": "Unavailable", "evidenceSignalIds": [] }
+    { "name": "semantic", "score": 0.91, "availability": "Available", "weight": 1.0, "counted": true, "exclusionReason": null, "evidenceSignalIds": ["sig_cred"] },
+    { "name": "behavioural", "score": 0.42, "availability": "ReducedCoverage", "weight": 0.225, "counted": true, "exclusionReason": null, "evidenceSignalIds": ["sig_hist"] },
+    { "name": "reputation", "score": 0.0, "availability": "Available", "weight": 0.25, "counted": false, "exclusionReason": "Masked by the trusted-history rule.", "evidenceSignalIds": [] }
   ],
   "evidence": [
     { "signalId": "sig_cred", "origin": "Semantic", "availability": "Available", "value": 0.99, "confidence": null, "sampleSupport": null, "sourceVersion": "jev-1.13.0", "observedAt": "2026-09-22T10:00:00+00:00", "observedScope": null },

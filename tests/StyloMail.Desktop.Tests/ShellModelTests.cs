@@ -695,6 +695,86 @@ public sealed class ShellModelTests
         Assert.Contains(nameof(ShellModel.HasAnyRows), raised);
     }
 
+    /// <summary>
+    /// <b>A page the Host had to drop rows from says how many it dropped.</b>
+    /// </summary>
+    /// <remarks>
+    /// A listing that silently omits rows it could not decode reports a filtered
+    /// page and an unreadable one identically, and the operator's conclusion from
+    /// the first is "the ledger holds nothing matching". So the note is rendered
+    /// beside the rows rather than instead of them: a page can hold readable
+    /// decisions and an unreadable one at the same time, and both facts matter.
+    /// </remarks>
+    [Fact]
+    public void A_page_that_dropped_rows_says_how_many_it_dropped()
+    {
+        var model = ShellModel.CreateDefault();
+        var listing = Json.Read<DecisionListingResponse>(Wire.DecisionListing) with { SkippedCount = 3 };
+
+        model.ApplyDecisions(listing);
+
+        Assert.True(model.HasSkippedDecisions);
+        Assert.Contains("3 rows", model.LedgerSkippedNote, StringComparison.Ordinal);
+        Assert.Contains("short by that many", model.LedgerSkippedNote, StringComparison.Ordinal);
+
+        // And the rows it could read are still listed. The note is not the empty
+        // state and must not stand in place of the page.
+        Assert.Single(model.Decisions);
+        Assert.True(model.HasAnyRows);
+    }
+
+    /// <summary>One dropped row is one row, not "1 rows".</summary>
+    [Fact]
+    public void A_single_dropped_row_is_not_plural()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(
+            Json.Read<DecisionListingResponse>(Wire.DecisionListing) with { SkippedCount = 1 });
+
+        Assert.Contains("1 row ", model.LedgerSkippedNote + " ", StringComparison.Ordinal);
+        Assert.DoesNotContain("1 rows", model.LedgerSkippedNote, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A page that dropped nothing says nothing, because zero is the ordinary
+    /// answer and a note on every listing is one nobody reads.
+    /// </summary>
+    [Fact]
+    public void A_page_that_dropped_nothing_says_nothing()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+
+        Assert.False(model.HasSkippedDecisions);
+        Assert.Null(model.LedgerSkippedNote);
+    }
+
+    /// <summary>
+    /// The note goes when the ledger does, so it cannot survive onto the next
+    /// listing that dropped nothing.
+    /// </summary>
+    [Fact]
+    public void The_skipped_note_goes_when_the_ledger_does()
+    {
+        var model = ShellModel.CreateDefault();
+
+        model.ApplyDecisions(
+            Json.Read<DecisionListingResponse>(Wire.DecisionListing) with { SkippedCount = 2 });
+        Assert.True(model.HasSkippedDecisions);
+
+        model.ApplyMessages(Json.Read<MessageListingResponse>(Wire.MessageListing));
+
+        Assert.False(model.HasSkippedDecisions);
+        Assert.Null(model.LedgerSkippedNote);
+
+        // And the reader is told, because the pane is bound to it and a stale
+        // note would otherwise stay on screen.
+        model.ApplyDecisions(Json.Read<DecisionListingResponse>(Wire.DecisionListing));
+        Assert.False(model.HasSkippedDecisions);
+    }
+
     /// <summary>An unreadable ledger is not an empty one.</summary>
     /// <remarks>
     /// The ledger's emptiness is a claim about the whole system: it says

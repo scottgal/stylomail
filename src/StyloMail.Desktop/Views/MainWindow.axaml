@@ -288,6 +288,25 @@
                     <Border DockPanel.Dock="Top" Height="1" Classes="separator" />
 
                     <!--
+                        The page is short. A listing the Host had to drop rows
+                        out of is not an empty listing, and it is not a filtered
+                        one either: without this the operator reads a page of
+                        twenty as the whole answer when the twenty-first could
+                        not be decoded. Shown beside the rows, not instead of
+                        them, because both facts matter at once.
+                    -->
+                    <Border x:Name="LedgerSkippedBlock"
+                            DockPanel.Dock="Top"
+                            Classes="cardWarning"
+                            Margin="16,8,16,0"
+                            IsVisible="{Binding HasSkippedDecisions}">
+                        <TextBlock x:Name="LedgerSkippedText"
+                                   Classes="cardBody"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding LedgerSkippedNote}" />
+                    </Border>
+
+                    <!--
                         Shown when the pane has nothing to list, and says why.
 
                         Named on the container rather than only on the text
@@ -426,7 +445,17 @@
                                         </StackPanel>
                                     </Grid>
 
+                                    <!--
+                                        The one line in this row with an id of
+                                        its own. Every other line here is
+                                        asserted by its whole text, which works
+                                        while the text is the console's; this
+                                        one carries the Host's arithmetic, so
+                                        the smoke has to be able to find the
+                                        line without pinning the number on it.
+                                    -->
                                     <TextBlock Classes="rowSubtitle"
+                                               AutomationProperties.AutomationId="ledger-risk-index"
                                                Text="{Binding RiskIndexLabel}" />
 
                                     <TextBlock Classes="rowSubtitle"
@@ -562,6 +591,21 @@
                                    Text="{Binding RiskIndexLabel}" />
 
                         <!--
+                            What the index above was divided by. An index an
+                            operator cannot check from what is on screen is one
+                            they have to take on trust, and this says "not
+                            recorded" rather than nothing when the decision
+                            predates the arithmetic, because an unrecorded
+                            divisor and a divisor of zero would otherwise read
+                            the same.
+                        -->
+                        <TextBlock x:Name="RiskIndexArithmeticText"
+                                   Classes="paneDetail"
+                                   Margin="0,0,0,4"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding RiskIndexArithmetic}" />
+
+                        <!--
                             Seen after delivery. Every action this decision names
                             is post-hoc, and rendering it like any other would
                             tell an operator the system could have intervened when
@@ -664,6 +708,29 @@
                                             <TextBlock Classes="cardWarningText"
                                                        TextWrapping="Wrap"
                                                        Text="{Binding Qualifier}" />
+
+                                            <!--
+                                                What this row did to the index:
+                                                said only on a row that did not
+                                                enter it, and on a row whose
+                                                arithmetic was never recorded.
+
+                                                The distinction it exists for:
+                                                a dimension measured and come
+                                                back 0.0 was counted and dilutes
+                                                the index, while one masked by
+                                                decision 31 contributed nothing,
+                                                and both arrive with the same
+                                                score and the same availability.
+                                                A reader checking the divisor
+                                                would otherwise add the masked
+                                                row's weight back in.
+                                            -->
+                                            <TextBlock Classes="cardWarningText"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"
+                                                       IsVisible="{Binding HasContributionNote}"
+                                                       Text="{Binding ContributionLabel}" />
                                         </StackPanel>
                                         <!--
                                             ScoreLabel, never the raw score. A dimension

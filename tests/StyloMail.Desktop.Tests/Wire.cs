@@ -35,6 +35,7 @@ internal static class Wire
           "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.82,
+          "riskIndexDenominator": 1.33,
           "reasons": [
             {
               "code": "credential_request_high",
@@ -52,13 +53,28 @@ internal static class Wire
               "name": "semantic",
               "score": 0.91,
               "availability": "Available",
+              "weight": 0.91,
+              "counted": true,
+              "exclusionReason": null,
               "evidenceSignalIds": ["sig_cred"]
             },
             {
               "name": "behavioural",
               "score": 0.42,
               "availability": "ReducedCoverage",
+              "weight": 0.42,
+              "counted": true,
+              "exclusionReason": null,
               "evidenceSignalIds": ["sig_hist"]
+            },
+            {
+              "name": "reputation",
+              "score": 0.0,
+              "availability": "Available",
+              "weight": 0.25,
+              "counted": false,
+              "exclusionReason": "Masked by the trusted-history rule.",
+              "evidenceSignalIds": []
             }
           ],
           "evidence": [
@@ -137,6 +153,12 @@ internal static class Wire
     /// The same decision with the optional members absent, which is how a cache
     /// miss and a never-held message are represented.
     /// </summary>
+    /// <remarks>
+    /// <c>riskIndexDenominator</c> is null here, and that is the point of it
+    /// being on this fixture: a decision taken before the arithmetic was served
+    /// still has to bind, and the pane has to say the weight was not recorded
+    /// rather than divide by a zero it invented.
+    /// </remarks>
     public const string DecisionWithoutOptionalMembers = """
         {
           "assessmentId": "asm_0f4d2b",
@@ -146,6 +168,7 @@ internal static class Wire
           "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.04,
+          "riskIndexDenominator": null,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],
@@ -182,6 +205,7 @@ internal static class Wire
           "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": "Quarantine",
           "riskIndex": 0.77,
+          "riskIndexDenominator": 0.77,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],
@@ -327,6 +351,7 @@ internal static class Wire
               "assessedAt": "2026-09-22T10:00:00+00:00"
             }
           ],
+          "skippedCount": 0,
           "nextCursor": null,
           "hasMore": false
         }
@@ -412,6 +437,7 @@ internal static class Wire
               "assessedAt": "2026-09-22T10:05:00+00:00"
             }
           ],
+          "skippedCount": 0,
           "nextCursor": null,
           "hasMore": false
         }
@@ -427,6 +453,7 @@ internal static class Wire
           "tenantId": "smoke",
           "action": null,
           "decisions": [],
+          "skippedCount": 0,
           "nextCursor": null,
           "hasMore": false
         }
@@ -673,6 +700,7 @@ internal static class Wire
           "deliveryTiming": "PreAcceptance",
           "proposedActionInShadow": null,
           "riskIndex": 0.5,
+          "riskIndexDenominator": 0.5,
           "reasons": [],
           "riskDimensions": [],
           "evidence": [],

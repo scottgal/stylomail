@@ -70,6 +70,26 @@ public sealed class DecisionView
     /// </remarks>
     public required string RiskIndexLabel { get; init; }
 
+    /// <summary>
+    /// What the index was divided by, or that it was not recorded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Served beside the index rather than left to the reader. An index an
+    /// operator cannot check from what is on screen is one they have to take on
+    /// trust, and the check is the whole reason the denominator is on the wire.
+    /// </para>
+    /// <para>
+    /// <b>Always a sentence, including when the answer is "not recorded".</b>
+    /// Null and zero are different facts: a served <c>0</c> is a measured empty
+    /// arithmetic, a served <c>null</c> is a decision made before the
+    /// arithmetic was recorded. Rendering the second as the first would report
+    /// an unrecorded index as an empty one, so the absent case is said rather
+    /// than left blank.
+    /// </para>
+    /// </remarks>
+    public required string RiskIndexArithmetic { get; init; }
+
     public required IReadOnlyList<ReasonView> Reasons { get; init; }
 
     public required IReadOnlyList<DimensionView> Dimensions { get; init; }
@@ -136,6 +156,16 @@ public sealed class DecisionView
             RiskIndexLabel = string.Create(
                 CultureInfo.InvariantCulture,
                 $"risk index {decision.RiskIndex:0.###} (an index, not a probability)"),
+
+            // The denominator, said even when it is absent, because "not
+            // recorded" and "zero" are the two readings this field exists to
+            // keep apart.
+            RiskIndexArithmetic = decision.RiskIndexDenominator is { } denominator
+                ? "Divided by a counted weight of "
+                    + string.Create(CultureInfo.InvariantCulture, $"{denominator:0.###}")
+                    + ": this index is the summed score of the rows that entered it."
+                : "The weight this index was divided by was not recorded for this decision, so it "
+                    + "cannot be checked from what is here.",
             Reasons = [.. decision.Reasons.Select(reason => ReasonView.From(reason, bySignal))],
             Dimensions = [.. decision.RiskDimensions.Select(DimensionView.From)],
             Evidence = [.. decision.Evidence.Select(EvidenceView.From)],
@@ -233,6 +263,54 @@ public sealed class DimensionView
 
     public required string ScoreLabel { get; init; }
 
+    /// <summary>This row's weight in the index, when the Host recorded one.</summary>
+    public double? Weight { get; init; }
+
+    /// <summary>
+    /// Whether this row entered the index at all, or null when the decision
+    /// predates the flag.
+    /// </summary>
+    /// <remarks>
+    /// Kept raw as well as said in <see cref="ContributionLabel"/>, so the state
+    /// stays assertable without parsing a sentence back apart.
+    /// </remarks>
+    public bool? Counted { get; init; }
+
+    /// <summary>Why this row did not count, when the Host gave a reason.</summary>
+    public string? ExclusionReason { get; init; }
+
+    /// <summary>
+    /// What this row did to the index, when that is not already on the row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The distinction this row could not make without it.</b> A dimension
+    /// that was measured and came back 0.0 was counted, and it dilutes the
+    /// index; a dimension decision 31 masked contributed nothing. Both arrive
+    /// with the same score and the same availability, so both used to render as
+    /// the same "0", and a reader recomputing the arithmetic from the pane
+    /// would add the masked row's weight back in and get a number that agrees
+    /// with a shape the system no longer has.
+    /// </para>
+    /// <para>
+    /// Empty wherever saying it would only repeat what the row already says. A
+    /// counted row is the ordinary case and a marker on every row is one nobody
+    /// reads; and an unmasked-but-unmeasured row already reads "not measured",
+    /// which is not a contribution and cannot be mistaken for one. Suppressing
+    /// it there is what keeps the marker meaningful on the rows that need it:
+    /// the ones showing a number that did not enter the sum.
+    /// </para>
+    /// <para>
+    /// Null is a third state and is <b>never</b> suppressed, however the row
+    /// reads: a row whose share was not recorded cannot be shown as one that did
+    /// not count, and showing half of a pair invites a reader to guess the other
+    /// half.
+    /// </para>
+    /// </remarks>
+    public required string ContributionLabel { get; init; }
+
+    public bool HasContributionNote => ContributionLabel.Length > 0;
+
     /// <summary>Why the score is weaker than it looks, when it is.</summary>
     public required string Qualifier { get; init; }
 
@@ -247,6 +325,11 @@ public sealed class DimensionView
             Score = dimension.Score,
             Availability = dimension.Availability,
             HasScore = hasScore,
+            Weight = dimension.Weight,
+            Counted = dimension.Counted,
+            ExclusionReason = dimension.ExclusionReason,
+            ContributionLabel = Contribution(
+                dimension.Counted, dimension.Weight, dimension.ExclusionReason, hasScore),
             ScoreLabel = hasScore
                 ? dimension.Score.ToString("0.###", CultureInfo.InvariantCulture)
                 : $"not measured ({Describe(dimension.Availability)})",
@@ -261,6 +344,71 @@ public sealed class DimensionView
                 _ => string.Empty,
             },
         };
+    }
+
+    /// <summary>
+    /// What this row contributed, or why it contributed nothing.
+    /// </summary>
+    /// <remarks>
+    /// The weight is named on the rows that did NOT count, because that is the
+    /// number a reader would otherwise add back in. On a counted row the weight
+    /// is part of the denominator already stated above the list, and the row has
+    /// nothing to warn about.
+    /// </remarks>
+    private static string Contribution(
+        bool? counted, double? weight, string? exclusionReason, bool hasScore)
+    {
+        switch (counted)
+        {
+            // The ordinary case. A marker here would be on every row of every
+            // decision, which is how a marker stops being read.
+            case true:
+                return string.Empty;
+
+            // Masked, and the row shows a number anyway: this is the row a
+            // reader would add into the divisor, so it has to say otherwise.
+            // Where there is no score to show, the row already reads "not
+            // measured", which no contributor's row says, and repeating it as a
+            // sentence would put the same line on every row of a decision taken
+            // while the semantic layer was down.
+            case false when hasScore || !string.IsNullOrWhiteSpace(exclusionReason):
+            {
+                var reason = string.IsNullOrWhiteSpace(exclusionReason)
+                    ? "Not counted towards the index."
+                    : $"Not counted towards the index: {Sentence(exclusionReason)}";
+
+                return weight is { } excluded
+                    ? reason + string.Create(
+                        CultureInfo.InvariantCulture,
+                        $" Its weight of {excluded:0.###} is not in the divisor.")
+                    : reason;
+            }
+
+            case false:
+                return string.Empty;
+
+            // Never suppressed, however the row reads. The flag and the weight
+            // were served as a pair and only half of it is here, so the row says
+            // so rather than leaving a reader to conclude it did not count.
+            default:
+                return "This row's share of the index was not recorded for this decision.";
+        }
+    }
+
+    /// <summary>
+    /// Ends a clause the Host wrote, without giving it a second full stop.
+    /// </summary>
+    /// <remarks>
+    /// A Host reason is a sentence and ends in one. Appending another produced
+    /// "Masked by the trusted-history rule.." on the fixture, and this sentence's
+    /// whole value is that a reader checking the divisor reads it carefully: a
+    /// doubled stop reads as a typo and costs the line the trust it needs.
+    /// </remarks>
+    private static string Sentence(string clause)
+    {
+        var trimmed = clause.TrimEnd();
+
+        return trimmed.EndsWith('.') ? trimmed : trimmed + ".";
     }
 
     private static string Describe(EvidenceAvailability availability) => availability switch
