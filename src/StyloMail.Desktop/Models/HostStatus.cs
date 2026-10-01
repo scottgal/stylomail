@@ -7,11 +7,17 @@ namespace StyloMail.Desktop.Models;
 /// Which state the console is in with respect to its Host.
 /// </summary>
 /// <remarks>
-/// Six states rather than one "disconnected", because each has a different
-/// remedy and the remedy is the only reason to show this at all: set a key,
-/// correct a key, start the Host, point at the right address, upgrade the
-/// console, or act on whatever the Host refused. Collapsing them would leave
-/// the operator with a red dot and nothing to do about it.
+/// Eight states rather than one "disconnected", because the failures carry
+/// different remedies and the remedy is the only reason to show this at all:
+/// set a key, correct a key, start the Host, point at the right address,
+/// upgrade the console, or act on whatever the Host refused. Collapsing them
+/// would leave the operator with a red dot and nothing to do about it.
+///
+/// This said "six" until 2026-10-01. Six is the length of the remedy list, not
+/// of the enum: <see cref="HostStatusKind"/> has eight members, and Unknown,
+/// Ready and NotReady are states rather than problems to be cured. A count in
+/// prose is the kind of claim that goes stale without anything failing, so it
+/// is corrected here rather than left as an approximation.
 /// </remarks>
 public enum HostStatusKind
 {

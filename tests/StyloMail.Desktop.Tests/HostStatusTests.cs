@@ -10,9 +10,9 @@ namespace StyloMail.Desktop.Tests;
 /// </summary>
 /// <remarks>
 /// This is the first thing anyone sees and the thing they read when nothing
-/// works, so each state has to name a different remedy. A console that renders
-/// all six of these as "connection error" has taken the one screen whose whole
-/// job is diagnosis and made it useless.
+/// works, so the failures have to name different remedies. A console that
+/// renders all eight of these as "connection error" has taken the one screen
+/// whose whole job is diagnosis and made it useless.
 /// </remarks>
 public sealed class HostStatusTests
 {

@@ -17,7 +17,7 @@ description: >
 
   Asserted here:
     - the status line says the Host is reachable and refusing, rather than
-      unreachable, which is the distinction the console's six states exist for;
+      unreachable, which is the distinction the console's eight states exist for;
     - the failed-checks block is on screen, with the heading and the Host's own
       check name in it;
     - the empty queue pane points at that block, because a pointer to a list
