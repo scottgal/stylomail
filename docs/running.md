@@ -316,9 +316,9 @@ shortened while the window has nothing to do with it.
 says it did.** On this transport the request is not asking the server for a window at all: the
 `/api/generate` body used to carry `NumCtx` as `options.num_ctx`, and the SystemOne body has no
 `options` member, so the setting is a **client-side assumption** and the server applies whatever it
-applies (`NimbleOptions.cs:88-96`, and `NimbleSemanticMailClassifier.cs:319-323` marks the same change
-UNMEASURED, at `:297-301` when this section was written). A client cannot read the applied window back
-either: a truncated prompt returns
+applies (`NimbleOptions.cs:88-96`, and the remark in `NimbleSemanticMailClassifier.cs` headed
+"UNMEASURED, and new with this shape" marks the same change, at `:326-330` as this is written). A client
+cannot read the applied window back either: a truncated prompt returns
 `done_reason` "stop", no warning field, and a `prompt_eval_count` describing the shortened prompt, so
 the window is only knowable by saturating it (`NimbleOptions.cs:144-149`). The `llama-server` serving
 this endpoint was read at 2026-10-01T23:22 carrying `-c 8194` and `--context-shift` on its command
@@ -342,17 +342,19 @@ about the SERVER rather than about anything a deployment meets
 2026-10-01T23:33). **And the same probe was re-run over the dense shape, because `--context-shift` drops
 the OLDEST context first and a codeword at the START of the body is exactly what a shift would take**
 (`nimble-`, 2026-10-02T00:04, `.styloagent/scratch/nimble/probe-shift-dense.json`; hex-ish body at 2400
-characters, twelve questions): a start-of-body codeword is answered at **0.9987** at **46556** input
-tokens and an end-of-body one at **0.9984**, a difference of 0.0003, with the one-question controls
-working at 0.9975 and 0.9959. So the server applies a window of **at least 56210 tokens**, and it reads a
-**46556**-token dense prompt whole, which covers the whole of the dense range this section measures.
-INFERRED rather than measured: that this server never silently truncates, which rests on admissible
-requests being read whole at those sizes and on a loud refusal above the limit, rather than on a direct
-reading of the window. **The console consequence runs the opposite way to the one this section first
-implied:** on this transport the truncation backstop is not catching a server that shifts, it is the
-thing that refused a request the server would have answered, which is exactly the 503 above, and the
-number it should be set to is derived from the server's measured capacity rather than from a carried
-ratio.
+characters, and **thirteen** questions, which is twelve dimensions plus the probe's own): a start-of-body
+codeword is answered at **0.9987** at **46556** input tokens and an end-of-body one at **0.9984**, a
+difference of 0.0003, with the one-question controls working at 0.9975 and 0.9959. So the server applies
+a window of **at least 56210 tokens**, and it reads a **46556**-token dense prompt whole. **That is a
+reading of the SERVER and not a state a deployment sends**: thirteen questions is one more than the
+dimension set, so the largest evaluation an adapter-producible request has been measured to reach is
+**42026**, and the probe sits above it, which is the direction a safety reading should err in. INFERRED
+rather than measured: that this server never silently truncates, which rests on requests being read whole
+at those sizes and on a loud refusal above the limit, rather than on a direct reading of the window.
+**The console consequence runs the opposite way to the one this section first implied:** on this
+transport the truncation backstop is not catching a server that shifts, it is the thing that refused a
+request the server would have answered, which is exactly the 503 above, and the number it should be set
+to is derived from the server's measured capacity rather than from a carried ratio.
 
 #### Measured performance
 
