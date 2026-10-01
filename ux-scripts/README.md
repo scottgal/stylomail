@@ -369,9 +369,19 @@ as though it had would read as coverage. The command is the interface pinned wit
 --base-url <url> --key-file <path> --batch <dir>`, with the key read from a path rather than passed
 as an argument, which is why what the harness hands over is its own `principal.key` file. The CLI
 path defaults to `tools/corpus/corpus.py` and `CONSOLE_CORPUS_CLI` overrides it, so corpus-'s choice
-of entry point does not need an edit here. The switch is wired but **no committed runner calls it
-yet**, and it has never been exercised end to end under a smoke: which script seeds a batch, and what
-it then asserts, is the next step. A verified invocation is not a verified run.
+of entry point does not need an edit here.
+
+**`CONSOLE_CORPUS` is read by `console_seed_corpus`, and that function is a library: no runner is
+scaled to call it, and setting the variable alone does nothing.** The wiring is the runner's job:
+
+- `run-console-corpus-smoke.sh` generates a batch from a fixed seed, exports `CONSOLE_CORPUS` to it,
+  calls `console_seed_corpus`, runs the corpus's own `check`, and then drives
+  `console-corpus-smoke.yaml` over the Host that resulted. It was the switch's first caller, so the
+  seam above had been verified as an invocation and never as a run until 2026-10-01.
+
+`console_seed_corpus` also passes `seed --resolve-join`, so the manifest records each message's
+`internalMessageId` beside its queue id. Without the flag the manifest carries only the queue id, and
+the join key from a message row to its decision row would have to be re-derived by every consumer.
 
 Two things `corpus-` verified against this harness on 2026-10-01, so a future reader does not have to
 re-derive them:

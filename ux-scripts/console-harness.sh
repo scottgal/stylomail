@@ -1216,10 +1216,18 @@ console_seed_corpus() {
         runner=(python3 "$cli")
     fi
 
+    # --resolve-join is passed, and it is not decoration: without it the manifest
+    # records each message's queue id but NOT its internalMessageId, and that id
+    # is the join key from a message row to its decision row. A consumer that
+    # wanted to say "this ledger row is the decision for the message the corpus
+    # planted" would have to re-derive it, which is what the flag exists to
+    # avoid. It costs one GET per message, all of them to the loopback Host this
+    # harness just started.
     "${runner[@]}" seed \
         --base-url "$CONSOLE_BASE" \
         --key-file "$CONSOLE_RUN/data/principal.key" \
-        --batch "$CONSOLE_CORPUS" || return 1
+        --batch "$CONSOLE_CORPUS" \
+        --resolve-join || return 1
 
     echo "seeded the corpus batch at $CONSOLE_CORPUS"
 }

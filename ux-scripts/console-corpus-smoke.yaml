@@ -1,0 +1,150 @@
+name: console-corpus-smoke
+description: >
+  Drives the console over a Host that a real corpus batch was seeded into, and
+  reads one ledger row back to the fact the corpus planted in it.
+
+  Run it through ux-scripts/run-console-corpus-smoke.sh, not directly. That
+  script generates a batch from a fixed seed with tools/corpus/corpus.py, seeds
+  it through the Host's own authenticated routes, refuses to continue unless the
+  corpus's own checker reports every planted fact back, and only then drives
+  this script.
+
+  What this script adds to that is the console's half of a seam that had never
+  been run. The ledger row on the screen is the Host's row for a message the
+  corpus wrote, and the evidence under it is the fact the corpus planted. Until
+  this run, every message the Host had ever assessed was a fixture a person
+  wrote; this is the first one that carries a property a tool put there and can
+  check.
+
+  Why the needle is a signal id and not a reason code: a reason is policy's own
+  wording and moves when policy does (console-smoke.yaml learned that on
+  2026-10-01). `deterministic.link_display_mismatch` is the corpus's own fact id,
+  the pipeline reports it verbatim as an evidence row's signalId, and the
+  corpus's checker looks the planted fact up by exactly that key
+  (tools/corpus/corpus.py, fact_present), so this line and that check are
+  asserting the same object from two directions.
+
+  Why the batch is one profile: every message in a `quarantine` batch is built
+  by plan_quarantine, which plants the same MIME fact in each one. So the
+  assertion is about the fact rather than about row order, and opening whichever
+  row happens to be first is not a hidden dependency. A profile that varied its
+  facts per index would break that, and this paragraph is the line that says so.
+  The fact also has to be a MIME one: the two submission-borne facts need full
+  coverage, and this run does not control that.
+
+  The risk index is asserted for its caveat rather than its value, for the
+  reason console-smoke.yaml gives: the number is policy's arithmetic, and this
+  run does not control policy.
+
+  The runner sets CONSOLE_DECISION_FIXTURE=false, so the pane's content comes
+  from the message-to-decision round trip and never from a file. Without that,
+  the assertions below would pass with the join never having run.
+
+default_delay: 250
+
+actions:
+  # The window opens, checks the Host and loads the listings, so this is a round
+  # trip to a real process rather than a fixed sleep.
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=HostAddressText"
+    matcher: ContainsText
+    value: "127.0.0.1"
+
+  # ---- the ledger the seeded batch produced ---------------------------------
+
+  # The two listings share one cell, and only one of them is ever populated, so
+  # asking for the ledger is a step rather than an assumption. Without this the
+  # run fails on DecisionList being invisible and reads as "the corpus produced
+  # no decisions", which is what the first execution of this script actually did
+  # (2026-10-01): the seeded messages were all Held, the decisions were all
+  # there, and the console was showing the queue listing.
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  # The panel's own title and the route it names, so the destination on the
+  # screen and the call behind it are one statement rather than two that could
+  # drift. Same pair console-smoke.yaml asserts.
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=PaneDetailText"
+    matcher: HasText
+    value: "GET /v1/decisions"
+
+  # Asserted on the list itself, whose visibility binding is HasDecisions, and
+  # not on a row's text: "a decision is written when a message is assessed", so a
+  # visible list is the console reporting that the batch reached the assessor.
+  # For why the assertion sits on a named control rather than on a TextBlock,
+  # see console-quarantine-smoke.yaml: a locator matches controls that are not
+  # visible, so only a control the binding itself hides can carry this.
+  - type: Expect
+    target: "name=DecisionList"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Screenshot
+    value: "01-seeded-ledger"
+    description: "The ledger over a Host a corpus batch was seeded into"
+
+  # ---- a ledger row opens the full decision ---------------------------------
+  #
+  # The row's own control, not the row: the harness clicks by raising the
+  # control's Click event, and a ListBoxItem has no handler for one. A summary
+  # carries no evidence on purpose, so selecting a row is a second round trip to
+  # GET /v1/decisions/{id} and this is what proves it happened.
+  - type: Click
+    target: "type=Button:has-text(Open decision)"
+
+  # Asserted on the pane container rather than on a control inside it:
+  # Control.IsVisible is the control's own property, so a TextBlock in a hidden
+  # pane still reports true.
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+    timeout: 20000
+
+  # The caveat worded onto whatever number policy served, which is the half of
+  # that line this run owns.
+  - type: Expect
+    target: "name=RiskIndexText"
+    matcher: ContainsText
+    value: "an index, not a probability"
+    timeout: 20000
+
+  # ---- the planted fact, on the screen --------------------------------------
+
+  # The pane renders a signal id verbatim in two places, and this assertion
+  # deliberately does not depend on which: the evidence rows under a reason, each
+  # bound to SignalId, and the measured-dimensions list, whose rows are bound to
+  # Name (the dimension's own id, which for a deterministic finding is the signal
+  # id). On the first run of this script the line the matcher found was under
+  # Dimensions; a reason carrying it as evidence would satisfy the same
+  # assertion. What it establishes either way is that this string, which only an
+  # assessment of this corpus message can produce, is on the operator's screen,
+  # arrived at through the Host's assessment, the ledger, the row's detail fetch
+  # and the console's own rendering.
+  - type: Expect
+    target: "text=deterministic.link_display_mismatch"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Screenshot
+    value: "02-planted-fact-in-the-decision"
+    description: "The decision for a corpus-seeded message, carrying the planted signal id"
+
+  # No assertion is made here that the pane's missing-evidence line is absent.
+  # A locator that matches no control fails an Expect whichever polarity it has
+  # (README lesson 10), and in the passing case the line does not exist to be
+  # matched. The line above is meaningful without it: the runner loads no
+  # decision fixture, so a signal id can only be on that screen if the Host
+  # reported it for that message.
