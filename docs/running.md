@@ -237,6 +237,14 @@ follow, and only the first is the one the tier was asked for:
   decision 44 the semantic backbone sat in the denominator, so the same deterministic weight was
   measured against questions the deployment had never been asked, and the floor was clearable only
   by a message carrying a large share of the deterministic weight. A single measured row was not.
+  This consequence is **derived** from the scorer's arithmetic and **asserted through the engine** on a
+  fixture that carries one measured deterministic row
+  (`ANeverAskingDeploymentClearsTheAllowFloorOnAMeasuredDeterministicRowAlone`,
+  `tests/StyloMail.Assessment.Tests/MailAssessorTests.cs`). It has **not** been measured on a running
+  Host: the prebuilt assembly is the only build on disk and no earlier run recorded its build, so the
+  before/after pair a wire reading would need cannot be attributed to a build by anyone now. That
+  reading is pre-registered and staged separately, and the sentence above states what the arithmetic
+  says rather than what a Host has been observed to do.
 - **The same removal lifts the cap that sat above the allow floor.** Coverage can now rise past
   `MinimumCoverageForIrreversibleAction`, so a deployment whose semantic rows never arrive can
   quarantine on deterministic evidence alone. That path is measured on a real Host rather than
