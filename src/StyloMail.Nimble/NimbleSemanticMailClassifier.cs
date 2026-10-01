@@ -560,7 +560,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     {
         var evidence = new List<Evidence>(notApplicableEvidence);
         evidence.AddRange(askable.Select(d =>
-            UnavailableEvidence(d, EvidenceAvailability.Unavailable, now)));
+            UnavailableEvidence(d, EvidenceAvailability.Unavailable, now, reason: reason)));
 
         return new SemanticAssessment
         {
@@ -574,7 +574,8 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         SemanticDimension dimension,
         EvidenceAvailability availability,
         DateTimeOffset observedAt,
-        string sourceVersion = "none")
+        string sourceVersion = "none",
+        string? reason = null)
         => new()
         {
             SignalId = dimension.Id,
@@ -586,7 +587,18 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             SourceVersion = sourceVersion,
             ObservedAt = observedAt,
             ObservedScope = "message",
+
+            // THE REASON GOES WHERE THE OTHER ORIGINS PUT THEIRS. Every evidence row the pipeline persists
+            // carries `attributes`, and the rows other origins produce fill a `reason` attribute there; the
+            // semantic rows arrived null, so a refusal this adapter can name reached the cache key and
+            // nothing else. `Evidence.cs:63` is the field and `CampaignNearDuplicateDetector.cs:185-186` is
+            // the shape. Null stays null rather than becoming an empty string, so an unnamed refusal is
+            // still visible as unnamed.
+            Attributes = reason is null ? null : [Attribute("reason", reason)],
         };
+
+    /// <summary>One evidence attribute, matching how the other origins build theirs.</summary>
+    private static EvidenceAttribute Attribute(string name, string value) => new() { Name = name, Value = value };
 
     /// <summary>
     /// Cache provenance for a call that did not consult a cache. The key digest is still computed,

@@ -43,6 +43,39 @@ public sealed class NimbleLiveFactAttribute : FactAttribute
             ? configured
             : new NimbleOptions().Endpoint;
 
+    /// <summary>
+    /// The options a live measurement runs under, with the client's ceiling overridable from the
+    /// environment.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the only place the ceiling can be moved without a change in the Host.</b>
+    /// <c>AppliedContextWindow</c> is <c>EffectiveNumCtx ?? NumCtx / 2</c>, and <c>BuildNimbleOptions</c>
+    /// reads neither from configuration, so a test is the only caller that can set it. The
+    /// twelve-question request measures 12230 tokens against a 4096 applied window, so the experiment
+    /// that settles whether a raised ceiling unblocks it is a run with <c>NIMBLE_EFFECTIVE_NUM_CTX</c>
+    /// set above the request.
+    /// </para>
+    /// <para>
+    /// <b>The artifact records the window through this same property on purpose.</b> It used to read
+    /// <c>new NimbleOptions()</c>, so a run at a raised ceiling would have printed the default and read
+    /// as a run without one. Nothing here asserts the value is RIGHT; it asserts the value is the one
+    /// that ran.
+    /// </para>
+    /// </remarks>
+    internal static NimbleOptions Options()
+    {
+        var options = new NimbleOptions { Endpoint = Endpoint() };
+        if (Environment.GetEnvironmentVariable("NIMBLE_EFFECTIVE_NUM_CTX") is { Length: > 0 } configured
+            && int.TryParse(configured, NumberStyles.Integer, CultureInfo.InvariantCulture, out var window)
+            && window > 0)
+        {
+            options.EffectiveNumCtx = window;
+        }
+
+        return options;
+    }
+
     private static bool IsReachable(string endpoint)
     {
         // The root the version probe hangs off, taken from the endpoint's ORIGIN rather than by
@@ -112,7 +145,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Answers_every_dimension_of_every_corpus_case_in_one_request_each()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var recorder = new RecordingHandler { InnerHandler = new HttpClientHandler() };
         using var http = new HttpClient(recorder) { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
@@ -226,7 +259,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Records_whether_a_message_that_orders_the_reverse_answer_flips_the_real_model()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
@@ -331,7 +364,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Records_whether_the_continuity_answer_is_stable_when_a_window_is_supplied()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
@@ -557,7 +590,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 {
                     measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                     request_shape = NimbleQuestionSet.Version,
-                    num_ctx = new NimbleOptions().NumCtx,
+                    num_ctx = NimbleLiveFactAttribute.Options().NumCtx,
 
                     // Named `configured_`, not `applied_window`. Decision 26 separates the REQUESTED
                     // window from the MEASURED one, and decision 35 records the measured one as a band,
@@ -565,7 +598,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                     // NumCtx / 2 from AppliedContextWindow, a conservative bound derived from the
                     // configuration. Called `applied_window` it reads as the measurement, which is the
                     // exact confusion decision 26 exists to prevent.
-                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    configured_applied_window = NimbleLiveFactAttribute.Options().AppliedContextWindow,
                     result = payload,
                 },
                 IndentedJson),
@@ -660,7 +693,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Records_whether_the_restating_axis_survives_the_single_question_shape()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
@@ -835,8 +868,8 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 {
                     measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                     request_shape = NimbleQuestionSet.Version,
-                    num_ctx = new NimbleOptions().NumCtx,
-                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    num_ctx = NimbleLiveFactAttribute.Options().NumCtx,
+                    configured_applied_window = NimbleLiveFactAttribute.Options().AppliedContextWindow,
                     input_shape = "absent profile, no tagged context; one arm asks one question and one asks twelve",
                     result = payload,
                 },
@@ -935,7 +968,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Records_whether_the_continuity_answer_alone_holds_the_four_cells_letter()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
@@ -1093,8 +1126,8 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 {
                     measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                     request_shape = NimbleQuestionSet.Version,
-                    num_ctx = new NimbleOptions().NumCtx,
-                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    num_ctx = NimbleLiveFactAttribute.Options().NumCtx,
+                    configured_applied_window = NimbleLiveFactAttribute.Options().AppliedContextWindow,
                     input_shape = "absent profile, no tagged context; the four cells' own body and "
                         + "in-thread window, one arm, the continuity question asked alone",
                     result = payload,
@@ -1166,7 +1199,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     [NimbleLiveFact]
     public async Task Never_exceeds_the_window_the_server_actually_applies()
     {
-        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        var options = NimbleLiveFactAttribute.Options();
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         var classifier = new NimbleSemanticMailClassifier(http, options);
 
@@ -1251,7 +1284,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
                 measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                 request_shape = NimbleQuestionSet.Version,
                 question_schema = SemanticDimensions.QuestionSchemaVersion,
-                num_ctx = new NimbleOptions().NumCtx,
+                num_ctx = NimbleLiveFactAttribute.Options().NumCtx,
                 max_body_characters = new NimbleOptions().MaxBodyCharacters,
                 warmup_ms = warmupMilliseconds,
                 latency_ms = new
