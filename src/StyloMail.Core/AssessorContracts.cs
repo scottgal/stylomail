@@ -111,10 +111,46 @@ public interface ISemanticMailClassifier
 /// </summary>
 public interface IMailAssessor
 {
+    /// <summary>
+    /// Assesses one message.
+    /// </summary>
+    /// <param name="callerSuppliedRawMessage">
+    /// The original bytes, for a caller that holds them and whose envelope names no durable payload.
+    /// Null when the caller has no bytes to offer, which is not the same as offering none.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>The bytes are an option and the assessment is not a mode.</b> An implementation's first
+    /// source is the envelope's durable payload, and this parameter is read only when that resolves
+    /// to nothing. A caller supplying bytes is not asking a different question, it is supplying the
+    /// one input the assessor would otherwise have read for itself, so the evidence produced must be
+    /// the evidence the durable path would have produced.
+    /// </para>
+    /// <para>
+    /// <b>Precedence, in order.</b> The durable payload when it resolves; then these bytes; then the
+    /// existing "no original payload was available" branch, unchanged. That third branch stays
+    /// reachable on purpose. It is what makes an outage visible, and a caller that quietly covered
+    /// for a missing payload would turn a visible failure into an assessment no reader can tell was
+    /// made without the original.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is recorded for this and nothing is compared.</b> Supplied bytes are read and
+    /// dropped: an implementation must not spool them, must not treat them as a payload reference,
+    /// and must not assert that they agree with whatever a spool holds. Branch one never consults
+    /// this parameter, so the two sources are alternatives rather than a second opinion, and a check
+    /// that they match would be a new failure mode on the path this exists to make work.
+    /// </para>
+    /// <para>
+    /// Optional so that every existing call site keeps compiling, and trailing because a defaulted
+    /// parameter is only reachable through this interface: an implementor must still declare it,
+    /// which is deliberate, since a caller's need for it is a property of the caller.
+    /// </para>
+    /// </remarks>
     ValueTask<MailAssessment> AssessAsync(
         MailAnalysisInput input,
         AssessmentContext context,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte>? callerSuppliedRawMessage = null);
 }
 
 /// <summary>

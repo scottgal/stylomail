@@ -131,8 +131,9 @@ public sealed class ChatAssessor : IChatAssessor
             TenantId = context.TenantId,
             Channel = input.Channel,
             Evidence = evidence,
-            RiskDimensions = BuildRiskDimensions(risk, evidence),
+            RiskDimensions = BuildRiskDimensions(risk, evidence, _options.Policy.DimensionWeights),
             RiskIndex = risk.Index,
+            RiskIndexDenominator = risk.CoveredWeight,
 
             // No action was taken. The proposal is kept beside it so the audit trail can support a
             // decision about interventions later, without this path having performed one.
@@ -248,7 +249,8 @@ public sealed class ChatAssessor : IChatAssessor
     /// </remarks>
     private static IReadOnlyList<RiskDimension> BuildRiskDimensions(
         RiskIndexResult risk,
-        IReadOnlyList<Evidence> evidence)
+        IReadOnlyList<Evidence> evidence,
+        IReadOnlyDictionary<string, double> weights)
     {
         var dimensions = new List<RiskDimension>(risk.ContributingSignalIds.Count + risk.Masked.Count);
 
@@ -263,6 +265,12 @@ public sealed class ChatAssessor : IChatAssessor
                 Score = source?.Value ?? 0.0,
                 Availability = EvidenceAvailability.Available,
                 EvidenceSignalIds = [signalId],
+
+                // Same shape as the mail path, deliberately: the weight applied, and the fact that
+                // this row was counted. A chat decision's index has to be checkable too, and the
+                // cross-path drift test turns a divergence here into a failing test.
+                Weight = weights[signalId],
+                Counted = true,
             });
         }
 
@@ -274,6 +282,9 @@ public sealed class ChatAssessor : IChatAssessor
                 Score = 0.0,
                 Availability = masked.Availability,
                 EvidenceSignalIds = [],
+                Weight = weights[masked.SignalId],
+                Counted = false,
+                ExclusionReason = masked.Reason,
             });
         }
 
@@ -302,7 +313,12 @@ public sealed class ChatAssessor : IChatAssessor
         ParserLimitExceeded = false,
         ContentEncrypted = false,
         Truncated = false,
-        ConversationContextMissing = input.ConversationContext is null,
+        // Same predicate as the mail path (`BoundedMimeMessageAnalyzer`), because the flag answers
+        // one question for both channels: was a bounded conversation context available. An empty
+        // list means a store was consulted and had nothing to supply, which is still no context.
+        // The channels disagreed here (null-only on chat), so the same input produced opposite
+        // coverage depending on the channel. Measured 30 Sep 2026 by `conversation-`.
+        ConversationContextMissing = input.ConversationContext is null || input.ConversationContext.Count == 0,
     };
 
     private static string BuildAssessmentId(AssessmentContext context, ChatAnalysisInput input) =>

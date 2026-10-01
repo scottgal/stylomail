@@ -184,6 +184,98 @@ public sealed class MailAssessorTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Caller-supplied bytes: the second source, and the order between the two
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AByteSuppliedByTheCallerIsParsedWhenNoDurablePayloadResolves()
+    {
+        // The assessment-only route's case. It writes nothing durable, so its reference is ephemeral
+        // by design and resolves to nothing, and the bytes it has already decoded are the only input
+        // left. Without this the parse never happens and the tier reports extraction unavailable for
+        // every message the route ever assesses.
+        var harness = Build();
+        var message = Submittable(envelope: Builders.Envelope(payloadReference: PayloadReferences.Ephemeral));
+        byte[] supplied = "Subject: supplied\r\n\r\nbody"u8.ToArray();
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None,
+            supplied);
+
+        // Parsed once, and these were the bytes. The supply is not a mode and not a hint: it is the
+        // input the assessor would have read for itself, reaching the same component.
+        Assert.Equal(1, harness.Mime.CallCount);
+        Assert.Equal(supplied, harness.Mime.ParsedBytes.Single().ToArray());
+        Assert.Contains(assessment.Evidence, e => e.SignalId == harness.Mime.EvidenceSignalId);
+
+        // And the marker that says nothing was looked at is absent, which is the difference the
+        // whole change exists to make: "nothing was looked at" must not be reported about a message
+        // that was looked at.
+        Assert.DoesNotContain(assessment.Evidence, e =>
+            e.SignalId == AssessmentEvidenceIds.DeterministicExtractionUnavailable);
+    }
+
+    [Fact]
+    public async Task TheDurablePayloadIsParsedAndTheCallersBytesAreNeverRead()
+    {
+        // Precedence, at the only place it can be observed. Both sources are populated with
+        // different bytes, so which one the parser was handed is decidable; a test that read only
+        // the resulting evidence could not tell them apart, because the same component parses both.
+        var harness = Build();
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+        byte[] supplied = "Subject: supplied\r\n\r\nbody"u8.ToArray();
+
+        await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None,
+            supplied);
+
+        // One call, with the spool's bytes. A caller's bytes are an alternative to the durable
+        // payload rather than a second opinion on it: they are not merged, not preferred, and not
+        // compared, so a call that resolved its own payload spends nothing on the parameter.
+        Assert.Equal(1, harness.Mime.CallCount);
+        Assert.Equal(Builders.RawMessage, harness.Mime.ParsedBytes.Single().ToArray());
+        Assert.DoesNotContain(harness.Mime.ParsedBytes, bytes => bytes.Span.SequenceEqual(supplied));
+    }
+
+    [Fact]
+    public async Task SupplyingTheBytesReachesTheDecisionTheDurablePathWouldHaveMade()
+    {
+        // The consequence, one level below the route. AssessmentOnlyStillProducesAVerdictFromCurrent-
+        // Evidence pins the same message holding when there are no bytes; the identical message with
+        // the bytes supplied must not hold for that reason, or the route has gained a parameter it
+        // does not act on.
+        var harness = Build();
+        var message = Submittable(envelope: Builders.Envelope(payloadReference: PayloadReferences.Ephemeral));
+        byte[] supplied = "Subject: supplied\r\n\r\nbody"u8.ToArray();
+
+        var withoutBytes = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        var withBytes = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None,
+            supplied);
+
+        Assert.Equal(MailAction.Hold, withoutBytes.Action);
+
+        // The gate is what moves, and it moves because there is now a checkable row to corroborate
+        // the index with. Asserted on the reason rather than on the action, so this stays true if
+        // the verdict above the threshold changes for a reason of its own.
+        Assert.Contains(withoutBytes.Reasons, r =>
+            r.Code == "policy.allow_uncorroborated_by_deterministic_evidence");
+        Assert.DoesNotContain(withBytes.Reasons, r =>
+            r.Code == "policy.allow_uncorroborated_by_deterministic_evidence");
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Assessment-only
     // ---------------------------------------------------------------------------------------------
 
@@ -265,6 +357,91 @@ public sealed class MailAssessorTests
         // so does the model that answered.
         Assert.Equal("jev-1.13.0", assessment.Versions.ClassifierModelVersion);
         Assert.Equal(SemanticDimensions.QuestionSchemaVersion, assessment.Versions.QuestionSchemaVersion);
+    }
+
+    [Fact]
+    public async Task ADecisionCarriesTheInputsToItsOwnArithmetic()
+    {
+        // Decision 37. A decision publishes an index and a row per dimension, and the two extra
+        // facts exist so a consumer can check the first from the rest instead of reconstructing a
+        // different index from the same rows. That reconstruction is not hypothetical: while the
+        // denominator and the counted flag were missing it returned the pre-decision-31 value, and
+        // returned it with confidence, because a masked row and a measured zero rendered alike.
+        var harness = Build();
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        // `is true` rather than a bare read: the flag is nullable so that a decision stored before the
+        // arithmetic existed can say it was not recorded (decision 37). A decision this build just made
+        // always records it, so the difference is not exercised here, and reading through the nullable
+        // is what keeps the test compiling against a row shape it does produce.
+        var counted = assessment.RiskDimensions.Where(d => d.Counted is true).ToList();
+
+        // Non-vacuous: a test that asserted the sums over an empty set would pass on a decision
+        // whose index came from somewhere else entirely.
+        Assert.NotEmpty(counted);
+        Assert.True(assessment.RiskIndexDenominator > 0);
+
+        // A decision this build just made records the arithmetic on every row. Null would mean the
+        // assessor published a decision the index arithmetic was never written onto, which is this
+        // test's own defect rather than the legacy-row case the nullable exists for. Stated here so
+        // the reads below are of a shape that was checked, not forgiven.
+        Assert.NotNull(assessment.RiskIndexDenominator);
+        Assert.All(assessment.RiskDimensions, d =>
+        {
+            Assert.NotNull(d.Weight);
+            Assert.NotNull(d.Counted);
+        });
+
+        // The denominator is exactly the weight of the rows that were counted, so which rows are in
+        // the arithmetic is read from the response rather than guessed at.
+        Assert.Equal(
+            assessment.RiskIndexDenominator.Value,
+            counted.Sum(d => d.Weight!.Value),
+            precision: 12);
+
+        // And the index is what those rows produce, clamped the way the scorer clamps.
+        var numerator = counted.Sum(d => Math.Clamp(d.Score, 0.0, 1.0) * d.Weight!.Value);
+        Assert.Equal(
+            assessment.RiskIndex,
+            numerator / assessment.RiskIndexDenominator.Value,
+            precision: 12);
+
+        // Every row left out is left out for a stated reason: not measured, or measured and excluded
+        // on purpose. An Available row that was not counted and says nothing is the defect this test
+        // exists to catch, because no reader can tell it from a measured zero.
+        foreach (var excluded in assessment.RiskDimensions.Where(d => d.Counted is not true))
+        {
+            Assert.True(
+                excluded.Availability != EvidenceAvailability.Available || excluded.ExclusionReason is not null,
+                $"{excluded.Name} is Available, was not counted, and gives no reason.");
+        }
+    }
+
+    [Fact]
+    public async Task AnAssessmentThatMeasuredNothingPublishesAnEmptyArithmeticRatherThanAQuietOne()
+    {
+        // The outage shape, and the reason the denominator is published as a number rather than
+        // left implicit. Every weighted dimension is unmeasured, so the index is 0.0, and a reader
+        // that divides by the published denominator is dividing by zero rather than reading a calm
+        // message. The distinction only exists if the denominator travels.
+        var harness = Build(classifierUnavailable: true);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(assessment.RiskDimensions, d => d.Counted is true);
+        Assert.Equal(0.0, assessment.RiskIndexDenominator);
+        Assert.Equal(0.0, assessment.RiskIndex);
     }
 
     // ---------------------------------------------------------------------------------------------

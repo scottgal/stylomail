@@ -79,6 +79,17 @@ internal sealed class RecordingMimeAnalyzer : IMimeMessageAnalyzer
 
     public int CallCount { get; private set; }
 
+    /// <summary>
+    /// The bytes each call was handed, in order.
+    /// </summary>
+    /// <remarks>
+    /// Recorded because which source the pipeline parsed is the whole of the precedence between the
+    /// durable payload and the caller's bytes, and it is not observable from the result: both
+    /// sources produce the same evidence shape by design, so a test that only read the assessment
+    /// could not tell which one was read, or whether both were.
+    /// </remarks>
+    public List<ReadOnlyMemory<byte>> ParsedBytes { get; } = [];
+
     public string EvidenceSignalId { get; set; } = "mime.link.display_mismatch";
 
     public bool Reject { get; set; }
@@ -88,6 +99,7 @@ internal sealed class RecordingMimeAnalyzer : IMimeMessageAnalyzer
     public MimeAnalysisResult Analyze(MimeAnalysisRequest request)
     {
         CallCount++;
+        ParsedBytes.Add(request.RawMessage);
         _recorder.Record("mime");
 
         var evidence = new List<Evidence>

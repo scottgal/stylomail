@@ -239,7 +239,8 @@ public sealed class MailAssessor : IMailAssessor
     public async ValueTask<MailAssessment> AssessAsync(
         MailAnalysisInput input,
         AssessmentContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte>? callerSuppliedRawMessage = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(context);
@@ -259,7 +260,15 @@ public sealed class MailAssessor : IMailAssessor
         var violations = AssessmentValidation.Validate(input, context, _options);
 
         // ---- Step 2: parse an analysis copy and extract deterministic evidence.
-        var payload = await _rawMessages.TryGetAsync(envelope, cancellationToken).ConfigureAwait(false);
+        //
+        // The durable payload is the first source, and the order below is the whole of the
+        // precedence: a caller's bytes are an alternative to the spool and never a second opinion on
+        // it, so the two are never compared and neither overwrites the other's evidence. The second
+        // line is reachable only when the reference named nothing, which is why an assessment made
+        // from supplied bytes is indistinguishable downstream from one made from the spool: it is
+        // the same parse, on the same input, by the same component.
+        var payload = await _rawMessages.TryGetAsync(envelope, cancellationToken).ConfigureAwait(false)
+            ?? callerSuppliedRawMessage;
 
         if (payload is { } rawBytes)
         {
@@ -516,8 +525,9 @@ public sealed class MailAssessor : IMailAssessor
             TenantId = context.TenantId,
             Channel = analysis.Channel,
             Evidence = evidence,
-            RiskDimensions = BuildRiskDimensions(risk, evidence),
+            RiskDimensions = BuildRiskDimensions(risk, evidence, _options.Policy.DimensionWeights),
             RiskIndex = risk.Index,
+            RiskIndexDenominator = risk.CoveredWeight,
             Action = action,
             ProposedActionInShadow = proposedInShadow,
             DeliveryTiming = DeliveryTiming.PreAcceptance,
@@ -1249,7 +1259,8 @@ public sealed class MailAssessor : IMailAssessor
 
     private static IReadOnlyList<RiskDimension> BuildRiskDimensions(
         RiskIndexResult risk,
-        IReadOnlyList<Evidence> evidence)
+        IReadOnlyList<Evidence> evidence,
+        IReadOnlyDictionary<string, double> weights)
     {
         var dimensions = new List<RiskDimension>(risk.ContributingSignalIds.Count + risk.Masked.Count);
 
@@ -1266,6 +1277,12 @@ public sealed class MailAssessor : IMailAssessor
                 Score = source?.Value ?? 0.0,
                 Availability = EvidenceAvailability.Available,
                 EvidenceSignalIds = [signalId],
+
+                // The weight that was actually applied. Indexed rather than looked up leniently: a
+                // contributing row came from this dictionary, so a miss is a broken invariant and
+                // a default of 0.0 here would publish a weight the arithmetic never used.
+                Weight = weights[signalId],
+                Counted = true,
             });
         }
 
@@ -1279,6 +1296,14 @@ public sealed class MailAssessor : IMailAssessor
                 Score = 0.0,
                 Availability = masked.Availability,
                 EvidenceSignalIds = [],
+
+                // The weight the row would have carried, so the published denominator is
+                // reconstructible from the rows. Counted false is what separates this row from a
+                // measured zero, and the reason is carried only where the availability does not
+                // already say it (decision 31's one-sided exclusion).
+                Weight = weights[masked.SignalId],
+                Counted = false,
+                ExclusionReason = masked.Reason,
             });
         }
 

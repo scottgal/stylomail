@@ -21,6 +21,53 @@ public sealed record RiskDimension
 
     /// <summary>Signal ids that contributed, so a decision can be traced back to its inputs.</summary>
     public required IReadOnlyList<string> EvidenceSignalIds { get; init; }
+
+    /// <summary>
+    /// The configured weight this dimension carried when the assessment was made, or null when the
+    /// build that made the decision did not record one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Travelling with the row rather than left to the reader, because an index that cannot be
+    /// checked from its own response is not a record (decision 37). The weights are configuration
+    /// and configuration moves, so a response that omitted them would read differently after a
+    /// settings change while its own numbers stayed fixed.
+    /// </para>
+    /// <para>
+    /// <b>Nullable and still required, which is not a contradiction.</b> Required keeps the
+    /// compile-time teeth that stop a projection site dropping the member; nullable is how a row
+    /// written before the member existed says so. The two alternatives are both worse: zero would
+    /// serve a plausible number on a row that carried weight, and reconstructing the weight from
+    /// today's configuration would render a decision that reconciles and reconciles falsely.
+    /// </para>
+    /// </remarks>
+    public required double? Weight { get; init; }
+
+    /// <summary>
+    /// Whether this row entered the index's numerator and denominator alike, or null when the build
+    /// that made the decision did not record it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>False is not a score of zero.</b> A row that was measured and came back 0.0 is counted
+    /// and dilutes the index; a row that was masked contributes nothing at all. The two are
+    /// otherwise indistinguishable in a response, which is the defect decision 37 rules on, so the
+    /// flag travels with the row.
+    /// </para>
+    /// <para>
+    /// Null is deliberately not derived for a row that predates the flag, even though
+    /// <see cref="Availability"/> would suggest it: a counted flag with no weight behind it cannot
+    /// reproduce the arithmetic, and publishing half of a pair invites a reader to guess the other
+    /// half. A row from before the arithmetic says null here and null on <see cref="Weight"/>.
+    /// </para>
+    /// </remarks>
+    public required bool? Counted { get; init; }
+
+    /// <summary>
+    /// Why the row was not counted, when its availability alone does not say it. Null for the
+    /// ordinary cases, where "absent" or "unavailable" is the whole explanation.
+    /// </summary>
+    public string? ExclusionReason { get; init; }
 }
 
 /// <summary>
@@ -107,6 +154,27 @@ public sealed record MailAssessment
     /// they were independent likelihoods. It is not to be reported as a probability of anything.
     /// </remarks>
     public required double RiskIndex { get; init; }
+
+    /// <summary>
+    /// The summed weight of the dimensions that were counted: the denominator
+    /// <see cref="RiskIndex"/> was divided by. Null when the build that made the decision did not
+    /// record it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A documented index is only usable if a reader can check it, and checking it needs the
+    /// denominator as well as the rows. With this and the per-dimension weights, a consumer
+    /// verifies the published index instead of reconstructing a different one from the same rows,
+    /// which is what happened while both were missing (decision 37).
+    /// </para>
+    /// <para>
+    /// <b>Null is not zero, and the zero it would be confused with is real.</b> A denominator of
+    /// 0.0 is a measurement: nothing was counted, so there was no index to divide and
+    /// <see cref="RiskIndex"/> is 0.0 with it. Null means the decision predates the member. A
+    /// reader that merged the two would read an unrecorded arithmetic as an empty one.
+    /// </para>
+    /// </remarks>
+    public required double? RiskIndexDenominator { get; init; }
 
     public required MailAction Action { get; init; }
 

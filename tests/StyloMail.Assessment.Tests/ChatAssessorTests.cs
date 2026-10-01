@@ -250,6 +250,36 @@ public sealed class ChatAssessorTests
         Assert.All(store.Writes, w => Assert.Null(w.Observation.RecipientKeys));
     }
 
+    /// <summary>
+    /// The flag answers one question for both channels: was a bounded conversation context
+    /// available. The chat path tested only for null, so an empty list was "present" on chat and
+    /// "missing" on mail, and the same input produced opposite coverage depending on the channel.
+    /// Measured 30 Sep 2026 by `conversation-`.
+    /// </summary>
+    [Fact]
+    public async Task An_empty_conversation_context_is_missing_on_the_chat_path_too()
+    {
+        var assessment = await new ChatAssessor(new FakeProfileStore(new StepRecorder()), Builders.Options())
+            .AssessAsync(
+                Input() with { ConversationContext = [] },
+                Context(),
+                CancellationToken.None);
+
+        Assert.True(assessment.Coverage.ConversationContextMissing);
+    }
+
+    [Fact]
+    public async Task A_supplied_conversation_context_is_not_missing_on_the_chat_path()
+    {
+        var assessment = await new ChatAssessor(new FakeProfileStore(new StepRecorder()), Builders.Options())
+            .AssessAsync(
+                Input() with { ConversationContext = ["earlier message in the thread"] },
+                Context(),
+                CancellationToken.None);
+
+        Assert.False(assessment.Coverage.ConversationContextMissing);
+    }
+
     [Fact]
     public async Task A_direct_message_and_a_channel_post_do_not_accumulate_together()
     {
