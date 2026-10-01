@@ -323,7 +323,7 @@ A changed payment destination is not one fact. `overview-` ruled the `destinatio
 not exist anywhere in `src/`, and named the two things that do, by layer:
 
 - `semantic.payment_redirection`, a semantic dimension (`Core/SemanticDimension.cs:65`, weight 1.0 at
-  `Policy/PolicyContracts.cs:122`). A model's judgement, so it is not a planted fact and this corpus
+  `Policy/PolicyContracts.cs:132`). A model's judgement, so it is not a planted fact and this corpus
   does not declare it: the corpus plants what is really in the bytes, never what a model will say
   about them.
 - `payment.identifier`, a deterministic fingerprint component (`Assessment/Semantic/
@@ -388,11 +388,24 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   of this file stated it wrongly: the MIME analyser **does** run on both routes
   (`Hosting/MessageIngress.cs:98`, shared by both endpoints) and `Prepare` **discards** its evidence,
   returning only `result.Message` (`:118`). What differs is that `MailAssessor` resolves the original
-  bytes itself through `IRawMessageSource` (`MailAssessor.cs:262`), and when they resolve it adds the
-  parsed evidence (`:266-275`); when they do not, the else at `:292-295` adds
-  `assessment.deterministic_extraction` instead. `SpoolRawMessageSource.TryGetAsync` returns null for
-  any non-durable reference (`Assessment/Ports.cs:73-76`), and the assessment-only endpoint passes
-  `PayloadReferences.Ephemeral` (`Endpoints/AssessmentsEndpoints.cs:64`).
+  bytes itself through `IRawMessageSource` (`_rawMessages.TryGetAsync`, `Assessment/MailAssessor.cs:270`),
+  and when they resolve it adds the parsed evidence (`evidence.AddRange(parsed.Evidence)`, `:284`);
+  when they do not, `evidence.Add` at `:303` adds `assessment.deterministic_extraction` instead.
+  `SpoolRawMessageSource.TryGetAsync` returns null for any non-durable reference
+  (`Assessment/Ports.cs:73-76`), and the assessment-only endpoint passes
+  `PayloadReferences.Ephemeral` (`Endpoints/AssessmentsEndpoints.cs:79`).
+
+  **Re-read these line numbers rather than trusting them.** All thirteen `file:line` references in
+  this file were checked against HEAD `ef2f57b` and **five had drifted** from what an earlier reading
+  recorded, by up to eighteen lines, one of them landing on an unrelated statement
+  (`AssessmentsEndpoints.cs:64` is an assessor-unavailable guard, not the `Ephemeral` line it was
+  cited for). Each drifted reference is now paired with the symbol it points at, for the reason
+  `ingress-` gave about a message: a line number quoted without the commit it was read at cannot be
+  told apart from a wrong claim tomorrow. A file is not exempt from that.
+  (The count was first written as twelve, from a line-based scan that could not see the one reference
+  whose backtick pair spans a line break. It is thirteen: ten carrying a path, three written as a
+  bare `:NNN` continuation of a path named earlier in the same paragraph. Recorded because an audit
+  that miscounts its own scope is the thing it is auditing for.)
 
   So, stated properly: **the assessor's only route to the original bytes is the spool, and the
   assessment-only route deliberately does not spool. A planted MIME fact can therefore never appear
@@ -417,7 +430,13 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   `assessment.behavioural_context` is a row whose `Origin` is `Deterministic` and whose
   `Availability` is `Unavailable` (the `BehaviouralContextUnavailable` marker in
   `src/StyloMail.Assessment/MailAssessor.cs`), **and its source is the sender profile store, not the
-  message**. A filter on origin alone keeps it, so a whole-list comparison of two routes, two runs or
+  message**. The label is the sharper half of the problem: `EvidenceOrigin.Deterministic` is defined
+  in `src/StyloMail.Core/EvidenceAvailability.cs` as "Computed locally from the message and envelope,
+  reproducible, no provider involved", so this row carries the one origin whose own definition
+  excludes it, while the same enum holds `Behavioural`, "Derived from profile comparison and temporal
+  behaviour", which is the origin that describes it. That is an observation about the Assessment
+  lane's row, reported to them and not changed here.
+  A filter on origin alone keeps it, so a whole-list comparison of two routes, two runs or
   two call orders can show it moving and read that as a difference in the thing being compared.
   **The probe's call order is load-bearing for the same reason**: it posts `/v1/submissions` before
   `/v1/assessments` for each message, and only the submission route warms the store
