@@ -768,6 +768,255 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
         output.WriteLine($"wrote {path}");
     }
 
+    /// <summary>
+    /// The continuity question asked ALONE over the four cells' own body and in-thread window: four
+    /// calls, and the one reading that separates "the asking shape produced those Bs" from "B is what
+    /// this input gives".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this probe exists.</b> The four cells
+    /// (<c>.styloagent/scratch/nimble/continuity-cells.json</c>) took the committed
+    /// <c>reply-in-thread</c> body, varied only the window, and asked the twelve-question shape ten
+    /// times per cell: forty calls, every one of them B, including the two in-thread cells whose
+    /// window is this message's own conversation and the two unrelated ones. A constant across every
+    /// cell cannot separate "the message advances the state, so B is right" from "the asking shape
+    /// keeps this question at B for this fixture", and this lane has since measured a shape effect:
+    /// the pair above answered B for the restating body at one question and A for the same body over
+    /// the same window at twelve
+    /// (<c>.styloagent/scratch/nimble/axis-shape-one-lane.json</c>). So the shape explanation is live
+    /// for the four cells rather than hypothetical, and this is the four-call probe that closes it.
+    /// </para>
+    /// <para>
+    /// <b>What is held and what moves.</b> The body is the corpus body, unmodified. The window is the
+    /// four-cell probe's own <c>inThread</c> array at its three-turn size, copied verbatim from
+    /// <see cref="Records_whether_the_continuity_answer_is_stable_when_a_window_is_supplied"/> rather
+    /// than referenced, so this measurement cannot be changed by editing that one; the two-turn
+    /// in-thread cell differs from it only by dropping the last turn, and it too answered B at ten of
+    /// ten. The only thing that moves between this probe and the four cells is therefore the number of
+    /// dimensions asked, twelve against one, over the same body and the same window. That is the
+    /// isolation, and it is why the window is theirs rather than this lane's.
+    /// </para>
+    /// <para>
+    /// <b>Four calls, and the count is the grant.</b> One warmup of the arm's own input, which is the
+    /// request shape the three measured runs then repeat, plus three measured runs at
+    /// <c>NIMBLE_CONTINUITY_RUNS=3</c>. The warmup's own letter is carried out in the artifact beside
+    /// the three and is not part of the distribution, because a first call discarded from the count
+    /// and silently dropped from the evidence are different things. The probe is deliberately one arm
+    /// over one window: a second window would cost four more calls of a model this fleet shares, and
+    /// the pre-registered readings below are about the shape, not about the window.
+    /// </para>
+    /// <para>
+    /// <b>What each outcome means, recorded before the run rather than after it.</b> Accepted by
+    /// <c>overview-</c> verbatim. <b>Alone A</b> means the twelve-question shape produced the four
+    /// cells' forty Bs, so that result is a shape artefact and the containment axis is not what those
+    /// cells were reading. <b>Alone B</b> means B is what this input gives and the asking shape is not
+    /// the explanation for this cell: the pair's flip would then be a property of the pair's own body
+    /// and window rather than of the question count. <b>Anything else, including a cell that splits
+    /// within itself, is reported as it comes and settles nothing.</b>
+    /// </para>
+    /// <para>
+    /// <b>What it cannot decide, and the scope a reading carries.</b> It probes one of the four cells
+    /// and it probes it at the adapter-level absent-profile shape the four cells were measured at,
+    /// not end to end through the Host. <b>Alone B</b> therefore removes the shape explanation for
+    /// the in-thread cell it probes and for no other cell: the two unrelated cells, whose windows are
+    /// not this message's conversation at all, are not covered by it. <b>Alone A</b> is the larger
+    /// finding and would put the envelope question back at the centre, because then the four cells'
+    /// B would be a property of how this lane asks rather than of what it asks about.
+    /// </para>
+    /// <para>
+    /// <b>Status: RUN ONCE (2026-10-01), and the reading is ALONE B.</b> Artifact
+    /// <c>.styloagent/scratch/nimble/continuity-alone-in-thread.json</c>, <c>measured_at</c>
+    /// 2026-10-01T02:44:04Z, driver exit 0, four calls in eleven seconds, <c>unavailable_runs</c>
+    /// empty: <b>continuity alone B=3 of 3 measured</b>, at 648 prompt tokens, and the discarded
+    /// warmup answered B as well. Every row records <c>asked=1</c>, so the narrowed arm is what was
+    /// measured and not twelve questions the adapter filtered. By the pre-registration above this is
+    /// the second reading: B is what this input gives, and the asking shape is not the explanation
+    /// for this cell.
+    /// </para>
+    /// <para>
+    /// <b>What the pairing with the four cells says, inside one instrument.</b> The four cells'
+    /// three-turn in-thread cell asked this same body over this same window at twelve questions and
+    /// answered B at ten of ten for 1294 prompt tokens. Here the same body over the same window at
+    /// one question is B at three of three for 648. The twelve-question block is 646 prompt tokens
+    /// and it moves this letter not at all, and unlike the token counts this file warns against
+    /// comparing elsewhere, both sides of that are the shipping adapter over the same case and the
+    /// same window. So the four cells' B, for the one cell this probe covers, is not a property of
+    /// how many questions were asked.
+    /// </para>
+    /// <para>
+    /// <b>What it does not do to the pair above.</b> The pair's twelve-question arm and this probe's
+    /// cell carry the same body text and differ in the window, <c>conversation-</c>'s M6 against the
+    /// four cells' in-thread array, and they answer A and B. That is consistent with the containment
+    /// axis, whose claim is that the window must contain the body, and it is not a measurement of it:
+    /// two instruments at one arm each is an observation and it is recorded as one. The pair's own
+    /// isolation is untouched by this run, because it holds body, window and constructor fixed on
+    /// both sides while this probe varies none of them.
+    /// </para>
+    /// </remarks>
+    [NimbleLiveFact]
+    public async Task Records_whether_the_continuity_answer_alone_holds_the_four_cells_letter()
+    {
+        var options = new NimbleOptions { Endpoint = NimbleLiveFactAttribute.Endpoint() };
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        var classifier = new NimbleSemanticMailClassifier(http, options);
+
+        // The four-cell probe's own `inThread` array, three turns, copied verbatim. Copied rather
+        // than shared through a field on purpose: the four-cell artifact is committed evidence and
+        // lifting its literal into a shared member would edit a cited instrument for no measurement
+        // gain. If that array is ever changed, this probe's window does NOT follow it, and its
+        // artifact and this copy are what a reader compares.
+        var window = new[]
+        {
+            "From: orders@northwind.example\nSubject: Your order NW-4482 has shipped\n\n"
+            + "Order NW-4482 was dispatched today and should arrive within two working days.",
+            "From: alice@example.test\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Thanks, that timing works. I am at that address all week.",
+            "From: orders@northwind.example\nSubject: Re: Your order NW-4482 has shipped\n\n"
+            + "Noted. The courier will ask for a signature; the front desk can take it.",
+        };
+
+        var baseInput = NimbleCorpus.BuildInput("reply-in-thread");
+        var input = baseInput with
+        {
+            Message = baseInput.Message with { ConversationContext = window },
+            Dimensions = SemanticDimensions.All
+                .Where(d => d.Id == SemanticDimensions.ConversationalContinuityId)
+                .ToList(),
+        };
+
+        // The warmup is one call of the arm's OWN input rather than of the unmodified corpus case, so
+        // the three measured runs repeat a request the server has already seen at this shape. What it
+        // pays for is the first call after a context-window change, which is the reason every other
+        // probe in this file warms at all.
+        var warmClock = Stopwatch.StartNew();
+        var warm = await classifier.ClassifyAsync(input, CancellationToken.None);
+        warmClock.Stop();
+
+        var warmContinuity = warm.Evidence
+            .Single(e => e.SignalId == SemanticDimensions.ConversationalContinuityId);
+        var warmAvailable = warmContinuity.Availability == EvidenceAvailability.Available;
+
+        var answers = new List<string>();
+        var times = new List<long>();
+        var runs = new List<object>();
+        var unavailable = new List<string>();
+        int? promptTokens = null;
+
+        try
+        {
+            for (var run = 0; run < ContinuityRuns; run++)
+            {
+                var clock = Stopwatch.StartNew();
+                var result = await classifier.ClassifyAsync(input, CancellationToken.None);
+                clock.Stop();
+                times.Add(clock.ElapsedMilliseconds);
+                promptTokens = result.InputTokens;
+
+                var continuity = result.Evidence
+                    .Single(e => e.SignalId == SemanticDimensions.ConversationalContinuityId);
+
+                // The probe is only the probe if the narrowed arm really asks ONE question. An
+                // adapter that ignored the narrowed Dimensions and asked twelve would be measured as
+                // the thing it compares against, and the artifact's own `asked` column is where that
+                // shows rather than being inferred from the code.
+                var asked = result.Evidence.Count(e => e.Availability != EvidenceAvailability.NotApplicable);
+
+                var available = continuity.Availability == EvidenceAvailability.Available;
+                if (available)
+                {
+                    Assert.Contains(
+                        continuity.Value == 1.0 ? "A" : "B",
+                        NimbleQuestionSet.Codes,
+                        StringComparer.Ordinal);
+                    answers.Add(continuity.Value == 1.0 ? "A" : "B");
+                }
+                else
+                {
+                    unavailable.Add($"run {run}: {continuity.Availability}");
+                }
+
+                Assert.Equal(1, asked);
+
+                runs.Add(new
+                {
+                    run,
+                    availability = continuity.Availability.ToString(),
+                    answer = available ? (continuity.Value == 1.0 ? "A" : "B") : null,
+                    asked,
+                    elapsed_ms = clock.ElapsedMilliseconds,
+                    prompt_tokens = result.InputTokens,
+                });
+            }
+        }
+        finally
+        {
+            var distribution = answers
+                .GroupBy(a => a, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => $"{g.Key}={g.Count()}");
+
+            WriteContinuityAloneIfRequested(
+                new
+                {
+                    case_name = "reply-in-thread",
+                    arm = "continuity alone",
+                    dimensions = new[] { SemanticDimensions.ConversationalContinuityId },
+                    body = input.Message.BodyText,
+                    window_turns = window,
+                    window_source = "the four-cell probe's own inThread array at three turns, copied "
+                        + "verbatim from Records_whether_the_continuity_answer_is_stable_when_a_window_is_supplied; "
+                        + "the two-turn in-thread cell is this array minus its last turn",
+                    runs_per_arm = ContinuityRuns,
+                    warmup = new
+                    {
+                        availability = warmContinuity.Availability.ToString(),
+                        answer = warmAvailable ? (warmContinuity.Value == 1.0 ? "A" : "B") : null,
+                        elapsed_ms = warmClock.ElapsedMilliseconds,
+                        prompt_tokens = warm.InputTokens,
+                    },
+                    unavailable_runs = unavailable,
+                    distribution = string.Join(" ", distribution),
+                    runs,
+                },
+                output);
+
+            output.WriteLine(
+                $"continuity alone: {string.Join(" ", distribution)} of {answers.Count} "
+                + $"(warmup {warmClock.ElapsedMilliseconds} ms, prompt_tokens={promptTokens})");
+        }
+
+        Assert.True(
+            unavailable.Count == 0,
+            $"continuity was not Available on {unavailable.Count} run(s): {string.Join("; ", unavailable)}");
+    }
+
+    private static void WriteContinuityAloneIfRequested(object payload, ITestOutputHelper output)
+    {
+        if (Environment.GetEnvironmentVariable("NIMBLE_CONTINUITY_ALONE_OUT") is not { Length: > 0 } path)
+        {
+            return;
+        }
+
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(
+                new
+                {
+                    measured_at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                    request_shape = NimbleQuestionSet.Version,
+                    num_ctx = new NimbleOptions().NumCtx,
+                    configured_applied_window = new NimbleOptions().AppliedContextWindow,
+                    input_shape = "absent profile, no tagged context; the four cells' own body and "
+                        + "in-thread window, one arm, the continuity question asked alone",
+                    result = payload,
+                },
+                IndentedJson),
+            Utf8NoBom);
+
+        output.WriteLine($"wrote {path}");
+    }
+
     private static Dictionary<string, string> Codes(SemanticAssessment assessment)
         => assessment.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available)
