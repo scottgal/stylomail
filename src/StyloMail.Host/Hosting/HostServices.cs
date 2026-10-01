@@ -858,7 +858,7 @@ public static class HostServices
         //   NOT "quoted-printable bodies" either, which is the half that looked safe because the
         //   2500-character budget DOES cover `BodyText`. It does, and the transfer encoding is gone
         //   before the classifier sees anything: `BoundedMimeMessageAnalyzer.cs:379` reads
-        //   `quoted.NewText.Length > 0 ? quoted.NewText : effectivePlain`, and `:148-152` shows
+        //   `quoted.NewText.Length > 0 ? quoted.NewText : effectivePlain`, and `:146-151` shows
         //   `effectivePlain` is DECODED plain text (`collected.PlainBodies`, falling back to the
         //   visible HTML) with the quoted history split out. A quoted-printable body is PROSE by the
         //   time it arrives. The budget was the right object and the wrong question: it says how much
