@@ -707,9 +707,14 @@ public static class HostServices
         // side, where a valid message loses its decision and the row looks the same either way; that
         // is why the pin clears the measurement rather than meeting it. It does NOT follow that a high
         // pin is free: above the server's true ceiling the server's behaviour is not established here.
-        // `--context-shift` is on, so an over-long prompt may be continued over a shifted window and
-        // ANSWERED rather than refused, and that comes back Available -- a silent failure rather than
-        // a loud one. So the claim this pin supports is the narrow one, that 65536 clears every
+        // `--context-shift` is on (MEASURED, not assumed: read from the endpoint's own command line
+        // at 2026-10-01T23:22, recorded in `docs/running.md`), so an over-long prompt may be
+        // continued over a shifted window and ANSWERED rather than refused, and that comes back
+        // Available -- a silent failure rather than a loud one. The FLAG is a measurement; the step
+        // from it to an `Available` row is DERIVED from what the flag does, not measured on this
+        // deployment, and that is the same split the paragraph above keeps for the fit.
+        //
+        // So the claim this pin supports is the narrow one, that 65536 clears every
         // evaluation this repository has measured, and not the broad one that too-high is safe.
         // 42026 is the densest shape anyone has TRIED, so this is a floor and not a law, and an
         // environment variable still overrides it.
