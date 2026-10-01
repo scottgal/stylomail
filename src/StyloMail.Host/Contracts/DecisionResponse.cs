@@ -138,6 +138,7 @@ public sealed record DecisionResponse
             ObservedAt = e.ObservedAt,
             ObservedScope = e.ObservedScope,
             Window = WindowOf(e),
+            AvailabilityReasons = AvailabilityReasonsOf(e),
         })],
         Versions = VersionsResponse.From(assessment.Versions),
         Coverage = CoverageResponse.From(assessment.Coverage),
@@ -187,6 +188,32 @@ public sealed record DecisionResponse
         => (evidence.Attributes ?? [])
             .FirstOrDefault(attribute => string.Equals(attribute.Name, WindowAttribute, StringComparison.Ordinal))
             ?.Value;
+
+    private const string ReasonAttribute = "reason";
+
+    /// <summary>
+    /// EVERY reason a row carries for its availability, in order, or empty when it carries none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list, and deliberately not the single nullable value <see cref="Window"/> uses, because
+    /// <see cref="WindowAttribute"/>'s own remark names this case as the one a first-match reader
+    /// must not be copied into: it says other names are "genuinely multi-valued", and gives "several
+    /// reduced-coverage reasons" as the instance. A reader that took the first would silently drop
+    /// the rest, which for a refusal reason is the difference between naming the cause and naming
+    /// one of its causes.
+    /// </para>
+    /// <para>
+    /// Read by name rather than by widening the projection to <c>Attributes</c>, on the same terms
+    /// the sibling members use. Empty values are dropped rather than published as empty strings,
+    /// because a producer that writes the attribute with no value has said nothing.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> AvailabilityReasonsOf(Evidence evidence)
+        => [.. (evidence.Attributes ?? [])
+            .Where(attribute => string.Equals(attribute.Name, ReasonAttribute, StringComparison.Ordinal))
+            .Select(attribute => attribute.Value)
+            .Where(value => !string.IsNullOrEmpty(value))];
 }
 
 public sealed record ReasonResponse
@@ -321,6 +348,24 @@ public sealed record EvidenceResponse
     /// </para>
     /// </remarks>
     public string? Window { get; init; }
+
+    /// <summary>
+    /// Why this row has the availability it has, when its producer recorded a reason.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Empty for a row that carries none, which is not the same as a row that is available: the
+    /// twelve semantic rows on a refusal carried no reason here until the adapter began writing one,
+    /// and the producers that already did are the behavioural and campaign origins.
+    /// </para>
+    /// <para>
+    /// <b>Servable, unlike the raw <c>Attributes</c>.</b> The evidence projection is read by name so
+    /// that a later addition to the attribute list cannot reach a caller by default; this member is
+    /// therefore the deliberate exception for this name, and adding it is what makes a refusal's
+    /// cause visible to the console rather than only to whatever reads the ledger.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> AvailabilityReasons { get; init; } = [];
 }
 
 public sealed record VersionsResponse

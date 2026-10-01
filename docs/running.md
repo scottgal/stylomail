@@ -197,16 +197,42 @@ Two consequences worth knowing:
 | --- | --- | --- |
 | `Provider` | `Jev` | `Jev`, `Nimble` or `NeverAsks`. Matched by name, case-insensitively. |
 
-`Nimble` runs the local decision model instead of the hosted one. Two settings, both under
-`StyloMail:Nimble:`, and both announced in the log at every boot:
+`Nimble` runs the local decision model instead of the hosted one. Four settings, all under
+`StyloMail:Nimble:`, and the first two are announced in the log at every boot:
 
 | Key | Default | Notes |
 | --- | --- | --- |
 | `Endpoint` | `http://127.0.0.1:11435/v1/systemone` | A **non-loopback** endpoint logs a warning that says so. Staying on this machine is the property the local provider was chosen for, and an endpoint elsewhere gives it up while the assessments keep looking right. The port is part of the hazard too: the default is the `11435` path, and pointing this at `11434`, the older of the two servers, is unmeasured (`NimbleOptions.cs:56` and the remarks on it). |
 | `Model` | `nimble:latest` | Model reference to generate with. |
+| `NumCtx` | `8192` | The window the request ASKS for. The fit shortens the body until the serialized request's **UTF-8 byte count** fits this, which is a byte budget standing in for a token window (see below). |
+| `EffectiveNumCtx` | *(unset)* | The window the server is taken to APPLY. Unset means the provider derives `NumCtx / 2`, so the default applied window is **4096**. **Set it above the largest request the deployment sends**, because the guard refuses any answer the server evaluated at or above the applied window, so a request that fits the byte budget can still be refused. |
 
 Everything else the local provider has (its timeout, its circuit breaker, its prompt bounds) is at
-its own defaults; the two above are the only ones a Host deployment can currently set.
+its own defaults.
+
+**The two windows are this provider's hazard, and they are why the deployment value above exists.**
+`AppliedContextWindow` is `EffectiveNumCtx ?? NumCtx / 2`, and the fit and the guard are expressed
+against DIFFERENT numbers: the fit budgets a **byte count** against `NumCtx`, while the guard refuses a
+**token count** against `AppliedContextWindow`. A request can therefore satisfy the fit and still be
+refused, and the gap between the two is what a twelve-question request falls into. Measured on the
+reference machine: the Host asks all twelve questions, the request evaluated at **12230 tokens**, and
+against the derived 4096 every semantic row came back `Unavailable`, so `POST /v1/submissions`
+answered **503** and no message could be accepted. With `EffectiveNumCtx=16384` the same request is
+accepted, the submission answers **202**, and the semantic rows score.
+
+Setting that ceiling unblocks a deployment; it does not repair the comparison. The fit still budgets
+bytes against a token window, and the guard still compares a **sum across the questions** against a
+**per-request** window, so the honest ceiling is a function of the request rather than a number to
+guess. A deployment that asks fewer questions, or sends smaller messages, may need none of this: the
+number to set is the largest evaluation the deployment actually produces.
+
+**And `16384` is a worked example rather than a recommendation, because a real message overran it.**
+Measured on the reference machine against a three-turn conversation fixture: four calls at an applied
+window of `16384` were all refused with the adapter's own reason, `server evaluated 20498 prompt tokens
+at an applied window of 16384`, and the same four at `32768` were answered. So the probe's own
+message clears `16384` and a single real submission does not, and the margin a deployment needs
+depends on its mail rather than on either figure. Set this above the largest evaluation you measure,
+and prefer surfacing that evaluation in your own logs over inferring it from a size in bytes.
 
 #### Measured performance
 

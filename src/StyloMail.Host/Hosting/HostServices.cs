@@ -720,6 +720,25 @@ public static class HostServices
             options.Endpoint,
             options.Model);
 
+        // THE RESOLVED WINDOW, ON EVERY BOOT, and it is a separate line rather than more fields on
+        // the one above because it is the field that has been missing.
+        //
+        // `AppliedContextWindow` is DERIVED (`EffectiveNumCtx ?? NumCtx / 2`), so the two keys that
+        // reach this method do not show the number the guard actually refuses against, and a window
+        // that is SET BUT NOT APPLIED is indistinguishable in any log from one that is applied and
+        // exceeded. That ambiguity cost this lane two live experiments whose identical results were
+        // read as a negative, and it cost the fleet a build freeze when a second lane could not tell
+        // which of the two it was running under. A derived number that a guard depends on belongs
+        // where every run can read it.
+        logger.LogInformation(
+            "StyloMail nimble window: NumCtx {NumCtx}, EffectiveNumCtx {EffectiveNumCtx}, "
+            + "applied {AppliedContextWindow}. The truncation guard refuses any answer the server "
+            + "evaluated at or above the applied window, and the fit truncates against NumCtx, so a "
+            + "request can satisfy the fit and still be refused.",
+            options.NumCtx,
+            options.EffectiveNumCtx?.ToString() ?? "(unset, derived)",
+            options.AppliedContextWindow);
+
         if (!IsLoopback(options.Endpoint))
         {
             logger.LogWarning(

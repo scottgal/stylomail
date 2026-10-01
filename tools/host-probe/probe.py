@@ -436,6 +436,22 @@ def main() -> int:
         action = decision.get("action")
         decision_id = decision.get("assessmentId") or decision.get("decisionId") or decision.get("id")
         check("assess_action", bool(action), f"action={action}")
+
+        # THE ADAPTER'S OWN REASON, and it needs no adapter change because it is already a FIELD.
+        # `assessment.Cache.KeyDigest` reads `unavailable:{reason}` on a refusal, and the reason
+        # carries both numbers: conversation- read it as `unavailable:server evaluated 20498 prompt
+        # tokens at an applied window of 16384` from their own tool (`measure/Runner.cs:94-95`).
+        #
+        # THIS IS THE LINE WHOSE ABSENCE COST THE FLEET AN EVENING. My failing run at an applied 4096
+        # reported twelve `Unavailable` rows, a 503 and the window I had set, and NOT the evaluated
+        # count that refused them; three lanes then traded hypotheses about which ROUTE differed
+        # rather than reading which NUMBER did. The field was on the object every run already holds.
+        digest = (decision.get("cache") or {}).get("keyDigest") or ""
+        if digest.startswith("unavailable:"):
+            print(f"    adapter reason: {digest[len('unavailable:'):]}", flush=True)
+        elif digest:
+            print(f"    adapter cache key: {digest}", flush=True)
+
         if not decision_id:
             print(f"  OBSERVE assessment response keys: {sorted(decision)}", flush=True)
         else:
@@ -444,11 +460,20 @@ def main() -> int:
         evidence = decision.get("evidence") or []
         semantic = [row for row in evidence if row.get("origin") == "Semantic"]
         scored = [row for row in semantic if row.get("availability") == "Available" and row.get("value") is not None]
-        unanswered = [row for row in semantic if row.get("availability") != "Available"]
+        # NOT ONE BUCKET. Until 22:5x this counted `availability != "Available"` as "unanswered",
+        # which put a DESIGNED exclusion and a PROVIDER FAULT under one word: `conversational_
+        # continuity` is `NotApplicable` by decision 32, so the failure sentence I published off this
+        # line ("11 scored, 1 unanswered") described a gap that does not exist. A label that merges
+        # two causes is the class this lane has spent the evening on, and it was mine.
+        unavailable = [row for row in semantic if row.get("availability") == "Unavailable"]
+        not_applicable = [row for row in semantic if row.get("availability") == "NotApplicable"]
 
         check("semantic_rows_present", bool(semantic), f"{len(semantic)} semantic rows")
         check("semantic_value_from_the_live_model", bool(scored),
-              f"{len(scored)} scored, {len(unanswered)} unanswered")
+              f"{len(scored)} scored, {len(unavailable)} unavailable, "
+              f"{len(not_applicable)} not applicable"
+              + (f" ({', '.join(str(r.get('signalId')) for r in not_applicable)})"
+                 if not_applicable else ""))
         for row in semantic:
             print(f"    {row.get('signalId')}: {row.get('availability')} value={row.get('value')}", flush=True)
 
