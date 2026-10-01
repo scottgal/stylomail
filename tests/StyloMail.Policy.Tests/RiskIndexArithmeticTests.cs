@@ -277,8 +277,11 @@ public sealed class RiskIndexArithmeticTests
         Assert.Equal(EvidenceAvailability.NotApplicable, masked.Availability);
         Assert.Null(masked.Reason);
 
-        // The semantic row is not afforded the same treatment: unavailable still leaves it in the
-        // denominator, which is the bound the whole rule rests on.
+        // Unavailable is the other side of the same line, and origin does not decide it: a question
+        // that was asked and not answered stays in the denominator whichever layer produced it, so
+        // this is 0.0 rather than a comfortable 1.0 over an empty set. Ruling (i) gave a semantic row
+        // the same exit a deterministic one has, but only for NotApplicable; absence and
+        // unavailability are what stay.
         var semanticOnlyUnavailable = CompositeRiskScorer.Compute(
             [Scored("semantic.a", 0.0, EvidenceAvailability.Unavailable)],
             weights);
@@ -287,13 +290,92 @@ public sealed class RiskIndexArithmeticTests
     }
 
     /// <summary>
-    /// Decision 42(e)'s bound, measured: the denominator can never fall below the semantic backbone,
-    /// 7.3, because the semantic questions are asked whatever the message's features and are never
-    /// removed here. Without the bound a message crafted with as few askable features as possible
-    /// could shrink the denominator and clear a floor it should not.
+    /// Ruling (i): a semantic question the provider reports as <b>never asked</b> leaves the
+    /// denominator, exactly as a deterministic finding for a feature the message does not have
+    /// already does. Written to FAIL before that change and pass after it.
+    /// </summary>
+    /// <remarks>
+    /// The fixture is deliberately not continuity. Continuity is policy-excluded before this branch
+    /// is reached, so it never arrives here and a continuity fixture would be green twice over. The
+    /// id below is an ordinary non-excluded semantic dimension, so its availability is the only thing
+    /// deciding whether it is counted. The two runs differ in one row and nothing else, so the
+    /// difference between the denominators is that row's weight and neither assertion goes stale on a
+    /// reweight.
+    /// </remarks>
+    [Fact]
+    public void A_semantic_question_that_was_never_asked_leaves_the_denominator()
+    {
+        var weights = new Dictionary<string, double>
+        {
+            ["semantic.credential_request"] = 0.6,
+            ["semantic.urgency_pressure"] = 0.4,
+        };
+
+        var answerable = CompositeRiskScorer.Compute(
+            [
+                Scored("semantic.urgency_pressure", 0.0, EvidenceAvailability.Available),
+                Scored("semantic.credential_request", 0.0, EvidenceAvailability.Available),
+            ],
+            weights);
+
+        var neverAsked = CompositeRiskScorer.Compute(
+            [
+                Scored("semantic.urgency_pressure", 0.0, EvidenceAvailability.Available),
+                Scored("semantic.credential_request", 0.0, EvidenceAvailability.NotApplicable),
+            ],
+            weights);
+
+        // Both questions were put, so both weights are in the denominator.
+        Assert.Equal(1.0, DenominatorOf(answerable), precision: 12);
+
+        // The never-asked question was not part of this message's set, so it leaves the denominator
+        // as well as the numerator rather than sitting in it as a permanent shortfall.
+        Assert.Equal(0.4, DenominatorOf(neverAsked), precision: 12);
+
+        // It is still masked, and the availability is the whole explanation: "did not apply" must not
+        // read as "excluded by policy".
+        var masked = Assert.Single(neverAsked.Masked);
+        Assert.Equal("semantic.credential_request", masked.SignalId);
+        Assert.Equal(EvidenceAvailability.NotApplicable, masked.Availability);
+        Assert.Null(masked.Reason);
+
+        // The branch carries two shapes, so the publication is pinned for both. This half is the
+        // deterministic one: a question the message never raised has no row at all, and the row still
+        // leaves the denominator and is still published rather than silently dropped, which is what
+        // `RiskIndexResult.Masked` promises. A branch that removed a row from the arithmetic without
+        // listing it would make coverage fall for a reason no reader of the response could see.
+        var neverRaised = CompositeRiskScorer.Compute(
+            [
+                Scored("semantic.urgency_pressure", 0.0, EvidenceAvailability.Available),
+                Scored("semantic.credential_request", 0.0, EvidenceAvailability.Available),
+            ],
+            new Dictionary<string, double>
+            {
+                ["semantic.credential_request"] = 0.6,
+                ["semantic.urgency_pressure"] = 0.4,
+                [DeterministicFindings.LinkDisplayMismatch] = 0.8,
+            });
+
+        Assert.Equal(1.0, DenominatorOf(neverRaised), precision: 12);
+
+        var listed = Assert.Single(neverRaised.Masked);
+        Assert.Equal(DeterministicFindings.LinkDisplayMismatch, listed.SignalId);
+        Assert.Equal(EvidenceAvailability.Unavailable, listed.Availability);
+        Assert.Null(listed.Reason);
+    }
+
+    /// <summary>
+    /// The denominator when every semantic question was put and answered: the backbone, 7.3, with a
+    /// posed deterministic question growing it rather than diluting it.
+    /// <b>This is not a floor</b>, and it was read as one until ruling (i). A semantic row reported
+    /// <c>NotApplicable</c> now leaves the denominator exactly as a deterministic one for a missing
+    /// feature does, so the denominator can fall below the backbone. What guards a feature-poor
+    /// message from clearing the coverage <b>allow</b> floor is the engine's separate corroboration
+    /// gate, not this arithmetic; the claim that belonged here is pinned there. That gate does not
+    /// reach the irreversible path, so nothing in this test bounds quarantine either.
     /// </summary>
     [Fact]
-    public void The_denominator_can_never_fall_below_the_semantic_backbone()
+    public void The_denominator_is_the_full_backbone_when_every_semantic_question_was_answered()
     {
         var weights = new PolicyOptions().DimensionWeights;
 
@@ -324,20 +406,27 @@ public sealed class RiskIndexArithmeticTests
     }
 
     /// <summary>
-    /// Decision 42's bounds, as a range rather than as one instance, because the window is a formula:
-    /// the coverage is <c>c / T</c> and it scales with what the message asks. With no deterministic
-    /// question posed the denominator is the semantic backbone, 7.3; with every one of the ten posed
-    /// it is 7.3 + 7.7 = 15.0. So the denominator lives in <c>[7.3, 15.0]</c> and never below the
-    /// backbone, which is the bound that keeps a feature-poor message from clearing a floor it should
-    /// not.
+    /// Decision 42's range, as a range rather than one instance, because the window is a formula: the
+    /// coverage is <c>c / T</c> and it scales with what the message asks. With every semantic question
+    /// put and no deterministic one posed the denominator is the backbone, 7.3; with all ten
+    /// deterministic questions posed as well it is 7.3 + 7.7 = 15.0.
+    /// <b>These are the ends for a message that puts every question, not a floor.</b> Ruling (i)
+    /// removed the floor reading: a question reported as never asked leaves the denominator, so a
+    /// message that poses fewer questions has a smaller one, and the guard against a feature-poor
+    /// message clearing the coverage <b>allow</b> floor is the engine's corroboration gate, not this
+    /// arithmetic. That gate does not reach the irreversible path, where the same removal lifts the
+    /// cap and a never-asking deployment can now quarantine on deterministic rows alone.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The floor is a bound on the <b>denominator</b>, and it is equally the semantic rows' absolute
-    /// share of it: a semantic row adds its weight to the denominator whatever its availability, and
-    /// continuity adds nothing in either direction (decision 32), so the semantic contribution is a
-    /// constant 7.3. Read against the framing in which the continuity row is askable and not counted,
-    /// the askable total is this denominator plus 0.5, so <c>T</c> runs over <c>[7.8, 15.5]</c>.
+    /// For a message that puts every semantic question the denominator is at least the backbone: those
+    /// rows add their weight whatever their availability, and continuity adds nothing in either
+    /// direction (decision 32), so the semantic contribution is a constant 7.3 while every one of them
+    /// is asked. Ruling (i) is the exception, and it is why this is a range and not a floor: a row
+    /// reported <c>NotApplicable</c> was never asked, so it leaves, and a never-asking deployment's
+    /// denominator falls to the applicable deterministic weight alone. Read against the framing in
+    /// which the continuity row is askable and not counted, the askable total is this denominator plus
+    /// 0.5, so <c>T</c> runs over <c>[7.8, 15.5]</c> wherever every semantic question was put.
     /// </para>
     /// <para>
     /// The eight e2e corpus arms do not exercise any of this: <c>ingress-</c> measured all eleven
@@ -347,7 +436,7 @@ public sealed class RiskIndexArithmeticTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void The_denominator_is_bounded_by_the_semantic_backbone_and_the_full_question_set()
+    public void The_denominator_runs_from_the_backbone_to_the_full_question_set_when_every_question_is_put()
     {
         var weights = new PolicyOptions().DimensionWeights;
 

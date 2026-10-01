@@ -434,9 +434,13 @@ public sealed class MailPolicyEngine
         // above on its own account, and this gate declines to act on a low index until something
         // checkable was measured at all. The gate is kept rather than folded into the coverage
         // floor, because the floor can be satisfied by a feature-poor message's semantic rows alone
-        // (its inapplicable deterministic questions have left the denominator), so the floor would
-        // let a plain-text message allow on the model's word with no deterministic row measured.
-        // Belt and braces, as ruled. Pinned by a test in the policy suite.
+        // (its inapplicable questions have left the denominator: deterministic by decision 42, and
+        // semantic too under ruling (i), so the denominator can fall to the applicable deterministic
+        // weight), so the floor would let a plain-text message allow on the model's word with no
+        // deterministic row measured. Belt and braces, as ruled. Pinned by a test in the policy
+        // suite. This gate is about the low-index path and says nothing about the irreversible one,
+        // where lifting the denominator cap now lets a deployment that never asks reach quarantine
+        // on deterministic evidence alone; it is a bound on half the engine, not on the whole of it.
         var corroborating = input.Evidence
             .Where(e => e.Availability == EvidenceAvailability.Available
                 && e.Origin == EvidenceOrigin.Deterministic)

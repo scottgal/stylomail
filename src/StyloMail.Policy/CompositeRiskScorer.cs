@@ -83,12 +83,28 @@ public sealed record MaskedDimension
 /// </para>
 ///
 /// <para>
-/// <b>Deterministic findings are posed only when the message has the feature they are about, and a
-/// finding that is not posed leaves the denominator (decision 42).</b> A semantic question is asked
-/// whenever a provider is up, so it is the backbone that keeps coverage comparable across messages
-/// and it stays whatever its availability; a MIME finding about links is asked only of a message with
-/// links. The bound that makes the shrinking denominator safe is that the semantic backbone is never
-/// removed, so the denominator can never fall below its weight.
+/// <b>A question that was never asked leaves the denominator, semantic and deterministic alike
+/// (decision 42, extended uniformly by ruling (i)).</b> A MIME finding about links is asked only of a
+/// message with links, and a dimension the provider reports as <c>NotApplicable</c> was never put to
+/// it, so both are absent from this message's question set rather than left unanswered within it. An
+/// <em>absent</em> row is the other case and stays, counting against coverage, because there the
+/// question was asked and not answered. The denominator therefore falls to whatever was actually
+/// askable, with <b>no floor beneath it</b>.
+/// </para>
+///
+/// <para>
+/// <b>What the denominator was holding, beyond the floor, is the irreversible cap, and that is
+/// gone too.</b> The semantic backbone's fixed place in the denominator also capped coverage below
+/// <c>MinimumCoverageForIrreversibleAction</c> for a deployment whose semantic rows never arrive, so
+/// such a deployment could never quarantine and every high-index message held for review instead.
+/// Removing the backbone removes the cap: coverage now rises to whatever the applicable
+/// deterministic questions cover, and a deployment that declares it never asks can clear the
+/// irreversible threshold and quarantine on deterministic evidence alone. Measured on a real host
+/// over one fixture, identical in both runs at index 0.806: <c>Hold</c> before this change, with 30%
+/// of dimension weight covered, and <c>Quarantine</c> after it. The surviving bound on <em>Allow</em>
+/// is the corroboration gate in the engine, which refuses to act on a low index until a
+/// deterministic row was measured at all. <b>That gate says nothing about the irreversible path</b>,
+/// so it bounds half the engine and is not offered here as the replacement for what was removed.
 /// </para>
 /// </remarks>
 public static class CompositeRiskScorer
@@ -194,19 +210,35 @@ public static class CompositeRiskScorer
                 continue;
             }
 
-            // Applicability, for deterministic findings only (decision 42). A semantic question is
-            // posed whenever a provider is up, so it is the backbone that anchors coverage across
-            // messages and it stays in the denominator whatever its availability. A deterministic
-            // finding is posed only when the message has the feature it is about: a message with no
-            // links cannot be asked about link labels, so that finding is not in this message's
-            // question set and leaves the denominator as well as the numerator. An applicable but
-            // unanswered finding (present, Unavailable) stays and counts against coverage.
+            // Applicability, applied uniformly by ruling (i). A question that was never asked is not
+            // part of this message's question set, so it leaves the denominator as well as the
+            // numerator rather than sitting in it as a permanent shortfall. Two shapes reach this: a
+            // deterministic finding whose feature the message does not have (no links, so no question
+            // about link labels), and any row a provider reports as NotApplicable, semantic included.
+            // An ABSENT row is a different fact and is deliberately not this branch: the question was
+            // asked and not answered, so it stays in the denominator and counts against coverage,
+            // which is why the deterministic case tests the id while the reported case tests the
+            // availability.
             //
-            // The bound this depends on: the semantic backbone is never removed here, so the
-            // denominator can never fall below its weight (7.3 today), and no feature-poor message
-            // can shrink the denominator far enough to clear a floor it should not.
-            if (DeterministicFindings.IsDeterministic(signalId)
-                && (match is null || match.Availability == EvidenceAvailability.NotApplicable))
+            // The bound that used to be claimed here is GONE, and that is the ruling rather than an
+            // oversight. The semantic backbone is no longer never-removed: a never-asking
+            // deployment's semantic rows all leave, so the denominator can fall to the applicable
+            // deterministic weight, a feature-poor message can clear the coverage floor on its own
+            // rows, and the same removal lifts the cap that kept such a deployment below the
+            // irreversible-action floor, which is measured rather than reasoned: index 0.806, Hold
+            // with 30% coverage before, Quarantine after, on deterministic rows alone. The bound that
+            // survives is the corroboration gate in MailPolicyEngine.DecideByRisk, and it is a bound
+            // on the low-index allow path ONLY. It says nothing about the irreversible path, so it is
+            // not a replacement for what was removed and must not be read as one.
+            //
+            // Nothing leaves this branch without being listed: both shapes append to Masked before
+            // continuing, so a row that stops counting is still published, with the availability as
+            // the whole explanation and no policy-exclusion reason attached.
+            var neverAsked = match is null
+                ? DeterministicFindings.IsDeterministic(signalId)
+                : match.Availability == EvidenceAvailability.NotApplicable;
+
+            if (neverAsked)
             {
                 masked.Add(new MaskedDimension
                 {
