@@ -11,10 +11,18 @@
 # It builds nothing and starts no Host: it reads a directory that already exists.
 #
 # RUN IT, DO NOT SOURCE IT. The harness resolves the repo root from BASH_SOURCE[0],
-# which is unset under zsh, this host's default shell, so sourcing it there leaves
-# CONSOLE_REPO empty and the answer comes back "NOT RECORDED" for what looks like a
-# directory problem. The shebang below is what makes it work; `ingress-` measured the
-# failure and `overview-` broadcast the caveat.
+# which does not exist under zsh, this host's default shell. An earlier version of this
+# note said that left CONSOLE_REPO EMPTY, and that is wrong in the way that matters:
+# line 18's `set -u` is already in effect, so the parameter does not expand to empty at
+# all, it errors, the command substitution yields nothing, and CONSOLE_REPO settles at
+# `/`. Measured by `overview-` and `conversation-` at 05:34-05:39 on 2026-10-01, and it
+# is the same answer from the repo root, from ux-scripts/, from tools/ and from docs/:
+# `CONSOLE_HOST_APP=//src/StyloMail.Host/bin/Debug/net10.0/StyloMail.Host` every time.
+# So the failure is uniform and loud rather than a path that looks right from the wrong
+# directory, and the answer is "NOT RECORDED" for what reads like a directory problem.
+# The shebang below is what makes it work. If you must work under zsh, print the
+# resolved CONSOLE_REPO and assert it equals the repo root rather than trusting it,
+# which is the defence `overview-` asked to have copied because it holds in either shell.
 #
 # Usage:
 #   ux-scripts/stamp-host-build.sh [directory]
