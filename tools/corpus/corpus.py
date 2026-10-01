@@ -44,10 +44,12 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import email
 import hashlib
 import io
 import json
 import os
+import quopri
 import re
 import sys
 import urllib.error
@@ -73,7 +75,13 @@ REPO = Path(__file__).resolve().parents[2]
 # measured a window's size to attribute a provider refusal, would silently read the wrong thing under
 # the same number, which is why the number moved. It also added `turnCharacters` and
 # `windowCharacters` to every message.
-CORPUS_VERSION = 3
+# 4 (1 Oct 2026): the manifest records the DRAWN SHAPE of each message, per the approved desktop-harness
+# design rev 2 (`overview-` 07:56, operator approval 18:53). The first such field is `encoding`, drawn
+# from `--encoding-mix`; the size mix and the seed-recorded decision fields follow under the same
+# number. The number moves rather than staying because a version 3 consumer that switched on a shape
+# field would read a different thing under the same number: `encoding` is present on every message
+# here and absent from every version 3 message, so "absent" cannot be left to mean "plain".
+CORPUS_VERSION = 4
 
 # Every address this tool writes is under a reserved test domain (RFC 2606 / RFC 5737), so a batch
 # cannot accidentally name a real mailbox and nothing can be delivered anywhere even by mistake.
@@ -246,6 +254,90 @@ def message_id(seed: int, index: int) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
+# Shape axes
+# ---------------------------------------------------------------------------------------------
+#
+# An axis is a property of the MESSAGE, drawn from the seed rather than chosen per profile, and it is
+# recorded in the manifest so a consumer can select a fixture by the shape it claims. The values here
+# are the DRAWN ones; `mixed` is not a value but a rule for drawing, which is why it is a separate
+# constant from the set a message can carry.
+
+# How the leaf bodies are transferred, and whether the subject needs an encoded-word. Each value
+# changes WHICH BYTES carry a site, never WHETHER the site exists: every variant decodes back to the
+# same text, which is the constraint the design puts on this axis (§3.4). A variant that dropped or
+# reworded a planted fact would make the manifest describe a message the extractor never saw.
+ENCODING_MIXES = ("plain", "quoted-printable", "rfc2047")
+ENCODING_MIX_CHOICES = ENCODING_MIXES + ("mixed",)
+
+# The non-ASCII markers the `rfc2047` variant appends to a subject. A marker is needed rather than
+# merely decorative encoding: wrapping an ASCII subject in `=?utf-8?...?=` is legal and proves nothing,
+# because nothing forced the encoder to run. Measured in the lane's harness by asserting the decoded
+# subject IS non-ASCII, which a no-op implementation would fail.
+RFC2047_MARKERS = ("Réunion", "Zürich", "København", "señor")
+
+
+def draw_encoding(seed: int, index: int, mix: str) -> str:
+    """The encoding one message carries. `mixed` draws; anything else is taken literally."""
+    if mix == "mixed":
+        return pick(seed, index, "encoding", list(ENCODING_MIXES))
+    return mix
+
+
+# How large a message is, measured as the size of the parts that are NOT the model's turn.
+#
+# The target is a number of BYTES for each carrier part, and it is a TARGET, not a claim about the
+# Host: whether a given size trips the parser's `truncated` or `parser_limit_exceeded` flag is the
+# Host's threshold and is DERIVED in the design (section 3.1), to be measured in a window before any
+# harness asserts on it. What this axis promises is narrower and checkable: the message is this big,
+# and its turn is not.
+SIZE_MIXES = ("small", "medium", "large")
+SIZE_MIX_CHOICES = SIZE_MIXES + ("mixed",)
+SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
+
+
+def size_carriers_from(html: str | None, facts: list[str]) -> tuple[bool, bool]:
+    """(has html, has attachment): the parts that can carry size without touching the model's turn."""
+    return html is not None, "deterministic.attachment_type_mismatch" in facts
+
+
+def size_carriers(plan: MessagePlan) -> tuple[bool, bool]:
+    """The same predicate, reached from a plan.
+
+    ONE implementation with two entry points, deliberately: the refusal in `cmd_generate` and the
+    growth in `build_mime` must agree, and two copies of the condition would drift into letting
+    through exactly the message the refusal was written to stop.
+    """
+    return size_carriers_from(plan.html, plan.facts)
+
+
+def draw_size(seed: int, index: int, mix: str, can_carry: bool) -> str:
+    """The size one message carries.
+
+    A message with no carrier draws `small` even under `mixed`, rather than drawing a size it cannot
+    express and then reporting a failure: the manifest records what the message IS.
+    """
+    if mix == "mixed":
+        return pick(seed, index, "size", list(SIZE_MIXES) if can_carry else ["small"])
+    return mix
+
+
+def pad_html(html: str, size: str) -> str:
+    """Grow the html part toward the target WITHOUT adding word tokens.
+
+    The filler is an HTML comment filled with `=`. Two risks are being avoided at once, and both are
+    real rather than theoretical: padding with prose would move `deterministic.html_text_disagreement`,
+    whose whole question is how many tokens the text and html representations share, and padding with
+    a single long run of letters would move it too. A run of `=` contributes essentially nothing under
+    any tokenisation that splits on non-word characters.
+    """
+    target = SIZE_TARGETS[size]
+    if target <= len(html.encode("utf-8")):
+        return html
+    need = target - len(html.encode("utf-8"))
+    return html + "<!--" + "=" * max(need - 7, 0) + "-->"
+
+
+# ---------------------------------------------------------------------------------------------
 # MIME construction
 # ---------------------------------------------------------------------------------------------
 
@@ -259,41 +351,54 @@ def build_mime(
     facts: list[str],
     seed: int,
     index: int,
+    encoding: str = "plain",
+    size: str = "small",
 ) -> bytes:
-    """One raw MIME message. The shape follows the facts, never the other way round."""
+    """One raw MIME message. The shape follows the facts, never the other way round.
+
+    `encoding` is the drawn shape axis. It is applied to the LEAF BODIES and to the Subject header,
+    and to nothing else: the attachment keeps its own base64 transfer encoding, and no variant adds or
+    removes a part, so a fact planted in the bytes is carried by every variant.
+    """
     headers = [
         f"From: \"{sender_name}\" <{sender_address}>",
         f"To: {RECIPIENT}",
-        f"Subject: {subject}",
+        f"Subject: {_encoded_subject(subject, encoding, seed, index)}",
         "Date: Tue, 30 Sep 2026 09:00:00 +0000",
         f"Message-ID: <{message_id(seed, index)}@{SENDER_DOMAIN}>",
         "MIME-Version: 1.0",
     ]
 
-    want_attachment = "deterministic.attachment_type_mismatch" in facts
-    want_html = html is not None
+    want_html, want_attachment = size_carriers_from(html, facts)
+    # The html grows here rather than in `_alternative`, so the padding decision is made once and the
+    # two containers below cannot disagree about which part carries the bulk.
+    if want_html and html is not None:
+        html = pad_html(html, size)
 
     if not want_attachment and not want_html:
         headers.append('Content-Type: text/plain; charset="utf-8"')
-        return ("\r\n".join(headers) + "\r\n\r\n").encode("utf-8") + text.encode("utf-8")
+        cte, body = _encode_leaf(text, encoding)
+        if cte:
+            headers.append(cte)
+        return ("\r\n".join(headers) + "\r\n\r\n").encode("utf-8") + body
 
     # The body parts first, then the container, so the boundary is only chosen once the number of
     # parts is known. Declaring multipart/mixed with no parts was a mistake made in measurement and
     # it produced a message that declared link and attachment facts and carried neither.
     if want_html and want_attachment:
-        inner = _alternative("alt", text, html)
+        inner = _alternative("alt", text, html, encoding)
         parts = [
             ('Content-Type: multipart/alternative; boundary="alt"', inner),
-            (_attachment_headers(), _attachment_body()),
+            (_attachment_headers(), _attachment_body(size)),
         ]
         headers.append('Content-Type: multipart/mixed; boundary="mix"')
         body = _mixed("mix", parts)
     elif want_attachment:
         headers.append('Content-Type: multipart/mixed; boundary="mix"')
-        body = _mixed("mix", [(_attachment_headers(), _attachment_body())])
+        body = _mixed("mix", [(_attachment_headers(), _attachment_body(size))])
     else:
         headers.append('Content-Type: multipart/alternative; boundary="alt"')
-        body = _alternative("alt", text, html)
+        body = _alternative("alt", text, html, encoding)
 
     return ("\r\n".join(headers) + "\r\n\r\n").encode("utf-8") + body
 
@@ -305,12 +410,45 @@ def _mixed(boundary: str, parts: list[tuple[str, bytes]]) -> bytes:
     return out + f"--{boundary}--\r\n".encode("utf-8")
 
 
-def _alternative(boundary: str, text: str, html: str) -> bytes:
-    return (
-        f"--{boundary}\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\n{text}\r\n"
-        f"--{boundary}\r\nContent-Type: text/html; charset=\"utf-8\"\r\n\r\n{html}\r\n"
-        f"--{boundary}--\r\n"
-    ).encode("utf-8")
+def _alternative(boundary: str, text: str, html: str, encoding: str = "plain") -> bytes:
+    out = b""
+    for content_type, payload in (("text/plain", text), ("text/html", html)):
+        cte, body = _encode_leaf(payload, encoding)
+        header = f'Content-Type: {content_type}; charset="utf-8"'
+        if cte:
+            header = f"{header}\r\n{cte}"
+        out += f"--{boundary}\r\n{header}\r\n\r\n".encode("utf-8") + body + b"\r\n"
+    return out + f"--{boundary}--\r\n".encode("utf-8")
+
+
+def _encode_leaf(payload: str, encoding: str) -> tuple[str, bytes]:
+    """One leaf part's extra header line (empty when there is none) and its transfer-encoded body.
+
+    The invariant this must keep, and the reason it is one function rather than a branch per caller:
+    the DECODED bytes are identical across every variant, so a fact planted at a site is carried by
+    every variant and the manifest's claim survives the encoding.
+    """
+    if encoding == "quoted-printable":
+        encoded = quopri.encodestring(payload.encode("utf-8"), quotetabs=False)
+        # `quopri` emits bare LF. A body in this corpus is CRLF throughout, and a hand-rolled
+        # soft-line-break join has to match what the decoder will unfold.
+        return "Content-Transfer-Encoding: quoted-printable", encoded.replace(b"\n", b"\r\n")
+    return "", payload.encode("utf-8")
+
+
+def _encoded_subject(subject: str, encoding: str, seed: int, index: int) -> str:
+    """The Subject header value for this variant, encoded-word included rather than left to a writer.
+
+    The `rfc2047` variant appends a non-ASCII marker, because an ASCII subject wrapped in `=?utf-8?...?=`
+    is legal and proves nothing: nothing forced the encoder to run, so a no-op implementation would
+    pass the same check. The encoded-word is emitted whole and unfolded, because RFC 2047 forbids
+    splitting one across lines and a folding writer would make the wire form depend on the subject's
+    length.
+    """
+    if encoding != "rfc2047":
+        return subject
+    marked = f"{subject} [{pick(seed, index, 'rfc2047-marker', list(RFC2047_MARKERS))}]"
+    return "=?utf-8?B?" + base64.b64encode(marked.encode("utf-8")).decode("ascii") + "?="
 
 
 def _attachment_headers() -> str:
@@ -326,8 +464,19 @@ def _attachment_headers() -> str:
     )
 
 
-def _attachment_body() -> bytes:
-    return base64.encodebytes(b"This attachment is not a PDF, whatever the filename says.\r\n")
+def _attachment_body(size: str = "small") -> bytes:
+    """The attachment payload, grown toward the size target when one is asked for.
+
+    The attachment is the safest place for bulk: nothing reads it for tokens, so growing it cannot
+    move a text-comparison fact the way growing the body or the html can.
+    """
+    payload = b"This attachment is not a PDF, whatever the filename says.\r\n"
+    target = SIZE_TARGETS[size]
+    if target:
+        filler = b"-" * 76 + b"\r\n"
+        while len(payload) < target:
+            payload += filler
+    return base64.encodebytes(payload)
 
 
 def _long_enough(text: str) -> str:
@@ -954,6 +1103,32 @@ PROFILES = {
     "template-variant-control": [plan_template_variant_control],
 }
 
+# The `mailbox` profile (design section 3.5): a batch whose point is a POPULATED, VARIED ledger.
+#
+# The composition is positional and stated as data rather than derived, because the two client lists
+# see different populations and a reader has to be able to see which positions carry what. The counts
+# are TARGETS in the design's sense of the word and are deliberately not promises: decision 27 forbids
+# a planted fact from naming a tier, an action or an expected outcome, so this profile supplies
+# messages and the run MEASURES what each became. Nothing here, and no field in the manifest, says
+# "this message will be Held". A harness selects rows by `seeded.state`.
+#
+# The targets, per the design's table: 1 quarantine-shaped, 3 risk-shaped (the Hold candidates), 2
+# envelope violations (which populate no queue listing, so they are a control on the intake path),
+# and 18 benign, so the ledger has an Allow population to render.
+#
+# KNOWN LIMIT, and it is a consequence of the design's own constraint rather than a defect: the
+# envelope-violation builder emits a text-only message, and section 3.2 forbids growing the body, so
+# a text-only message has no part that can carry `medium` or `large`. `--profile mailbox --size-mix
+# large` is therefore REFUSED at that index rather than faked. `--size-mix mixed` draws `small`
+# there and works, which is the recommended pairing for this profile.
+MAILBOX_COMPOSITION = (
+    (plan_quarantine,)                  # 1, the quarantine target
+    + (plan_phishing,) * 3              # 3, the risk targets
+    + (plan_envelope_violation,) * 2    # 2, the intake-refusal targets
+    + (plan_benign,) * 18               # 18, the Allow population
+)
+PROFILES["mailbox"] = list(MAILBOX_COMPOSITION)
+
 
 # ---------------------------------------------------------------------------------------------
 # generate
@@ -1046,7 +1221,9 @@ def expected_predicate(fact_id: str, plan: MessagePlan) -> dict:
     return {"value": 1}
 
 
-def manifest_entry(plan: MessagePlan, raw: bytes, coverage: str) -> dict:
+def manifest_entry(
+    plan: MessagePlan, raw: bytes, coverage: str, encoding: str = "plain", size: str = "small"
+) -> dict:
     # The envelope is recorded in the manifest, not re-derived by `seed`. It has to be, because a
     # manifest that declared `envelope.no_recipients` while `seed` rebuilt a body with one recipient
     # would be a manifest that does not describe the message it is the manifest for. That happened,
@@ -1133,6 +1310,14 @@ def manifest_entry(plan: MessagePlan, raw: bytes, coverage: str) -> dict:
             if coverage == "reduced"
             else None
         ),
+        # The drawn shape, recorded rather than left for a consumer to infer from the bytes. Present on
+        # every message at corpusVersion 4, including the default: a consumer that has to tell "plain"
+        # from "the field is missing" would be reading a decision out of an absence.
+        "encoding": encoding,
+        # The drawn size, and it is what the message IS rather than what was asked for: a message with
+        # no html and no attachment cannot express medium or large, so it records `small` even under
+        # `mixed`. A consumer selecting a large fixture by this field is selecting a real one.
+        "size": size,
         "submission": envelope,
         "thresholdTargeted": plan.threshold_targeted,
         "turn": plan.turn,
@@ -1182,14 +1367,42 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print("refusing: --count must be at least 1", file=sys.stderr)
         return 2
 
+    # Every plan is built BEFORE anything is written, so the batch can be refused as a whole. A
+    # refusal discovered part-way through the loop would leave the messages already written on disk,
+    # and a directory holding some of a batch and no manifest is not a batch: anything globbing it
+    # finds files it cannot tell from a complete run. Building all the plans first costs nothing,
+    # because a plan is data and the MIME is built in the loop below, where a turn's window can be
+    # filled from the bytes of the message before it.
+    plans = [builders[index % len(builders)](args.seed, index) for index in range(args.count)]
+
+    # The size refusal, pre-flighted and keyed on the same predicate that does the growing. A message
+    # whose only writable part is the turn cannot be made large without breaking section 3.2's
+    # constraint, and reporting it as large while emitting a small one is the one outcome this lane
+    # must never produce: a manifest that does not describe its batch.
+    if args.size_mix not in ("small", "mixed"):
+        for index, plan in enumerate(plans):
+            if not any(size_carriers(plan)):
+                print(
+                    f"refusing: --size-mix {args.size_mix} at index {index} ({args.profile}). This "
+                    "message has no html part and no attachment, so the only part left to grow is the "
+                    "text body, and the adapter truncates a turn at 2,000 characters. Growing the body "
+                    "would surface as a provider refusal rather than as the size it claims, and adding "
+                    "a part that was not there would move a coverage flag as a side effect of length. "
+                    "Nothing has been written.",
+                    file=sys.stderr,
+                )
+                return 2
+
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     messages = []
     previous_raw: bytes | None = None
     for index in range(args.count):
-        builder = builders[index % len(builders)]
-        plan = builder(args.seed, index)
+        plan = plans[index]
+        encoding = draw_encoding(args.seed, index, args.encoding_mix)
+        has_html, has_attachment = size_carriers(plan)
+        size = draw_size(args.seed, index, args.size_mix, has_html or has_attachment)
         raw = build_mime(
             sender_name=plan.sender_name,
             sender_address=plan.sender_address,
@@ -1199,6 +1412,8 @@ def cmd_generate(args: argparse.Namespace) -> int:
             facts=plan.facts,
             seed=args.seed,
             index=index,
+            encoding=encoding,
+            size=size,
         )
         # A turn whose window is the preceding message takes that message's RAW bytes, exactly as the
         # Host received them, because that is the text a real prior turn would have arrived as. It is
@@ -1215,7 +1430,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 return 2
             plan.window = [previous_raw.decode("utf-8")]
         (out / f"{index:03d}.eml").write_bytes(raw)
-        messages.append(manifest_entry(plan, raw, args.coverage))
+        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size))
         previous_raw = raw
 
     manifest = {
@@ -1224,6 +1439,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
         "seed": args.seed,
         "profile": args.profile,
         "coverage": args.coverage,
+        # The REQUESTED axis value, beside the per-message drawn one. Both are needed to reproduce a
+        # batch: the drawn shape is not recoverable from the seed alone without also knowing which
+        # rule drew it, and `mixed` and `plain` are different rules that can agree on one message.
+        "encodingMix": args.encoding_mix,
+        "sizeMix": args.size_mix,
         # Stated rather than omitted: nothing here lets a model write the corpus it is measured on,
         # and a batch that did would have to say so here so it could be reported apart.
         "authoredByModel": False,
@@ -1243,7 +1463,14 @@ def cmd_generate(args: argparse.Namespace) -> int:
     counts: dict[str, int] = {}
     for message in messages:
         counts[message["coverage"]] = counts.get(message["coverage"], 0) + 1
+    encodings: dict[str, int] = {}
+    sizes: dict[str, int] = {}
+    for message in messages:
+        encodings[message["encoding"]] = encodings.get(message["encoding"], 0) + 1
+        sizes[message["size"]] = sizes.get(message["size"], 0) + 1
     print(f"wrote {len(messages)} message(s) to {out}  profile={args.profile} coverage={counts}")
+    print(f"encoding mix={args.encoding_mix}  drawn={encodings}")
+    print(f"size     mix={args.size_mix}  drawn={sizes}")
     print(f"manifest: {out / 'manifest.json'}  corpusVersion={CORPUS_VERSION}")
     return 0
 
@@ -1465,10 +1692,163 @@ def _error_code(body) -> str:
 # check
 # ---------------------------------------------------------------------------------------------
 
+def shapes_of(raw: bytes) -> dict:
+    """What the BYTES actually carry, as the shape fields claim it.
+
+    Measured from the message rather than recomputed from the plan, because the claim being checked is
+    "this batch's bytes carry this shape" and a plan is not the bytes. The html and attachment sizes
+    are of the DECODED payload, so a quoted-printable part is measured as the text it decodes to and
+    not as the bytes it happens to occupy on the wire.
+    """
+    msg = email.message_from_bytes(raw)
+    quoted_printable = 0
+    html_bytes = 0
+    attachment_bytes = 0
+    for part in msg.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        if (part.get("Content-Transfer-Encoding") or "").lower() == "quoted-printable":
+            quoted_printable += 1
+        payload = part.get_payload(decode=True) or b""
+        ctype = part.get_content_type()
+        if ctype == "text/html":
+            html_bytes += len(payload)
+        elif ctype == "application/pdf":
+            attachment_bytes += len(payload)
+    subject = msg.get("Subject") or ""
+    return {
+        "quotedPrintableParts": quoted_printable,
+        "htmlBytes": html_bytes,
+        "attachmentBytes": attachment_bytes,
+        # The RAW header value, undecoded, because the claim is about the wire form: `compat32` leaves
+        # `=?...?=` in place, which is exactly what is being asked about.
+        "subjectIsEncodedWord": "=?" in subject and "?=" in subject,
+    }
+
+
+def shape_failures(batch_dir: Path, manifest: dict) -> list[str]:
+    """Every message whose bytes do not carry the shape its manifest claims.
+
+    Gated on `corpusVersion`, and the gate is the whole reason this is a version check rather than an
+    absence check. A version 3 manifest makes no shape claim, so there is nothing to hold it to and it
+    is SKIPPED; a version 4 manifest makes the fields mandatory, so their absence is a defect. Reading
+    "the field is missing" as "the shape is plain" would let a truncated manifest pass by omission,
+    which is the failure mode this whole schema exists to prevent.
+
+    ALL failures are returned rather than the first, so one broken batch reports its whole defect list
+    instead of hiding every problem after the first behind a re-run.
+    """
+    # A manifest is a text file anyone can edit, so the version may not be a number. Refused rather
+    # than skipped, and refused rather than crashed: an unreadable version is not an OLD one, and a
+    # version this cannot be read is a manifest whose claims cannot be placed against any schema.
+    try:
+        version = int(manifest.get("corpusVersion", 0))
+    except (TypeError, ValueError):
+        return [
+            f"corpusVersion is {manifest.get('corpusVersion')!r}, which is not a number, so this "
+            "manifest's shape claims cannot be placed against a schema version"
+        ]
+    if version < 4:
+        return []
+
+    base = batch_dir.resolve()
+    failures: list[str] = []
+    for entry in manifest.get("messages", []):
+        path = batch_dir / entry["file"]
+        # CONTAINMENT BEFORE ANY READ. `entry["file"]` comes straight out of the manifest, and a
+        # manifest is a text file anyone can edit (`ingest` reconstitutes one from an operator dataset),
+        # so an entry such as `../secrets` would otherwise be read and judged as though it were part of
+        # the batch. `seed` has carried this guard since it was written; this pass was added later
+        # without it, which is the ordinary way a guard fails to travel.
+        #
+        # Refused as a FAILURE and not skipped: a `check` that quietly ignores an escaping entry
+        # reports a clean batch for a manifest it never fully read, which is the false-clearance
+        # shape rather than a tolerance.
+        if not path.resolve().is_relative_to(base):
+            failures.append(
+                f"{entry['file']}: path escapes the batch directory, so it was not read"
+            )
+            continue
+        if not path.exists():
+            failures.append(f"{entry['file']}: `check` cannot verify its shape: no such file")
+            continue
+        shapes = shapes_of(path.read_bytes())
+
+        claimed = entry.get("encoding")
+        if claimed is None:
+            failures.append(
+                f"{entry['file']}: corpusVersion 4 requires `encoding`, and this message has none, "
+                "so the shape it carries is unstated rather than plain"
+            )
+        elif claimed not in ENCODING_MIXES:
+            failures.append(f"{entry['file']}: `encoding` is {claimed!r}, which is not a known mix")
+        elif claimed == "plain":
+            if shapes["quotedPrintableParts"] or shapes["subjectIsEncodedWord"]:
+                failures.append(
+                    f"{entry['file']}: claims `plain` and its bytes are not: "
+                    f"{shapes['quotedPrintableParts']} quoted-printable part(s), "
+                    f"encoded-word subject={shapes['subjectIsEncodedWord']}"
+                )
+        elif claimed == "quoted-printable" and not shapes["quotedPrintableParts"]:
+            failures.append(
+                f"{entry['file']}: claims `quoted-printable` and no leaf part declares it"
+            )
+        elif claimed == "rfc2047" and not shapes["subjectIsEncodedWord"]:
+            failures.append(
+                f"{entry['file']}: claims `rfc2047` and the Subject is not an encoded-word"
+            )
+
+        size = entry.get("size")
+        if size is None:
+            failures.append(
+                f"{entry['file']}: corpusVersion 4 requires `size`, and this message has none"
+            )
+        elif size not in SIZE_MIXES:
+            failures.append(f"{entry['file']}: `size` is {size!r}, which is not a known size")
+        else:
+            # Each size names a BAND, and it is bounded on both ends. A lower bound alone would make
+            # `small` unfalsifiable in the direction that matters: a batch that secretly grew could
+            # still declare `small` and pass, and the claim would only ever be able to fail upward.
+            # A first version of this assertion was one-sided and a tampered manifest declared `small`
+            # over a 256 KiB attachment without a word from `check`.
+            biggest = max(shapes["htmlBytes"], shapes["attachmentBytes"])
+            lower = SIZE_TARGETS[size]
+            above = [name for name in SIZE_MIXES if SIZE_TARGETS[name] > lower]
+            upper = SIZE_TARGETS[min(above, key=lambda name: SIZE_TARGETS[name])] if above else None
+            if biggest < lower:
+                failures.append(
+                    f"{entry['file']}: claims `{size}` (at least {lower} bytes in its html or "
+                    f"attachment) and the larger of the two is {biggest}"
+                )
+            elif upper is not None and biggest >= upper:
+                failures.append(
+                    f"{entry['file']}: claims `{size}` (under {upper} bytes in its html or "
+                    f"attachment) and the larger of the two is {biggest}"
+                )
+    return failures
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     key = read_key_file(args.key_file)
-    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    manifest_path = Path(args.manifest)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     base = args.base_url.rstrip("/")
+
+    # The shape pass runs FIRST and is local: it needs no ledger, so a batch whose manifest does not
+    # describe its own bytes is reported as that, rather than as a connection error from a Host that
+    # was never worth asking. It returns before any request, because nothing downstream of a false
+    # manifest can be trusted to mean what it says.
+    shape = shape_failures(manifest_path.parent, manifest)
+    if shape:
+        print(f"\nSHAPE: {len(shape)} message(s) do not carry the shape they claim", file=sys.stderr)
+        for line in shape:
+            print(f"  SHAPE: {line}", file=sys.stderr)
+        print(
+            "\nA shape claim is about the BYTES. A batch whose manifest disagrees with its own files "
+            "has not been checked against the pipeline, it has been checked against nothing.",
+            file=sys.stderr,
+        )
+        return 1
 
     missing: list[str] = []
     unseeded: list[str] = []
@@ -1818,6 +2198,15 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                     "will not synthesise them, because doing so would assert the dataset's own "
                     "derived columns back to the pipeline"
                 ),
+                # The shape fields, and they are recorded rather than left out because the claim is
+                # TRUE of these bytes: `build_mime` was called at its defaults, so the message really
+                # is plain, and it has no html and no attachment, so there is no carrier part and the
+                # `small` band holds by construction. Leaving them out while the manifest says
+                # `corpusVersion` 4 would make `check` fail every message of every reconstituted
+                # batch, which is a false failure in a correct batch and the worst kind here: it is
+                # how a real defect gets ignored later.
+                "encoding": "plain",
+                "size": "small",
                 "thresholdTargeted": False,
                 # Recorded here as well, for the same reason the generated path records it: `seed`
                 # replays what the manifest says, and a manifest with no envelope would make `seed`
@@ -1851,6 +2240,13 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         "seed": args.seed,
         "profile": "reconstituted",
         "coverage": "reduced",
+        # `null`, not "plain"/"small": no axis was DRAWN here, because this verb has no mix flags and
+        # reconstitution applies none. The per-message values above are what the builder defaulted to
+        # and are verifiable from the bytes; these two say that nothing was chosen. `generate` always
+        # writes a real value in both, so a null mix and a null `source` cannot both be true of a
+        # batch this tool built.
+        "encodingMix": None,
+        "sizeMix": None,
         "authoredByModel": False,
         "source": {"name": args.source_archive, "sha256": digest, "member": member},
         "batchNote": (
@@ -1884,6 +2280,25 @@ def main() -> int:
         default="full",
         choices=list(COVERAGE),
         help="full carries authentication provenance and a connecting IP; reduced omits both on purpose",
+    )
+    gen.add_argument(
+        "--size-mix",
+        default="small",
+        choices=list(SIZE_MIX_CHOICES),
+        help=(
+            "how large each message is, carried by its html part and its attachment and never by the "
+            "text body; `mixed` draws one of " + ", ".join(SIZE_MIXES) + " per message from the seed"
+        ),
+    )
+    gen.add_argument(
+        "--encoding-mix",
+        default="plain",
+        choices=list(ENCODING_MIX_CHOICES),
+        help=(
+            "how each message's leaf bodies and Subject are transferred; `mixed` draws one of "
+            + ", ".join(ENCODING_MIXES)
+            + " per message from the seed"
+        ),
     )
     gen.set_defaults(func=cmd_generate)
 

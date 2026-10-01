@@ -20,6 +20,10 @@ directory you name.
 # 1. write a batch: NNN.eml files plus manifest.json
 python3 tools/corpus/corpus.py generate --seed 1234 --count 20 --out scratch/batch --profile mixed
 
+# a populated, varied ledger for the console: 24 messages, both shape axes drawn per message
+python3 tools/corpus/corpus.py generate --seed 1234 --count 24 --out scratch/mailbox \
+    --profile mailbox --coverage full --encoding-mix mixed --size-mix mixed
+
 # 2. post it through the Host's authenticated routes and record what each message became
 python3 tools/corpus/corpus.py seed \
     --base-url http://127.0.0.1:5271 \
@@ -62,11 +66,54 @@ detector's gate, so `pair` reaches `campaign.near_duplicate` and **never**
 `campaign.security_bearing_variant`. `template-variant`'s second turn **reuses** its first, which is
 the shape that reaches the variant. See "The two layers a changed destination can reach" below.
 
+A third profile is the one a console harness actually runs:
+
+- `mailbox` (recommended count 24). A batch whose point is a **populated, varied ledger**: 1
+  quarantine-shaped message, 3 risk-shaped, 2 envelope violations and 18 benign. The composition is
+  positional and stated as data in `MAILBOX_COMPOSITION`. The counts are TARGETS, not promises, and
+  the word matters: decision 27 forbids a planted fact from naming a tier, an action or an expected
+  outcome, so this profile supplies messages and the run **measures** what each became. Nothing in the
+  manifest says "this message will be Held"; a harness selects rows by `seeded.state`. That absence is
+  asserted in the lane's harness over a non-empty manifest, because an absence over an empty one
+  would be free.
+
 `--coverage full` supplies authentication provenance and a connecting IP; `reduced` omits both on
 purpose. There is no third value: a batch whose coverage was an accident cannot be told from one
 whose coverage was planted, and only one of those is checkable, so `generate` refuses to default it.
 
-## The manifest schema, version 3
+### The two shape axes: `--encoding-mix` and `--size-mix`
+
+Each axis is drawn **per message** from `(seed, index, purpose)`, and the drawn value is recorded in
+the manifest, so a harness can select a fixture by the shape it claims without re-deriving it from
+the bytes. `mixed` is a rule for drawing rather than a value a message can carry.
+
+| axis | values | what it changes | what it must never change |
+|---|---|---|---|
+| `--encoding-mix` | `plain` (default), `quoted-printable`, `rfc2047`, `mixed` | which transfer encoding a leaf body uses, and whether the Subject is an encoded-word | the DECODED bytes. Every variant decodes back to the same text, so a planted fact is carried by every variant |
+| `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, which is the model's turn and is truncated by the adapter at 2,000 characters |
+
+Two constraints on the size axis are load-bearing rather than stylistic:
+
+- **Bulk rides the html part and the attachment, never the body.** The adapter truncates a turn at
+  2,000 characters and refuses an over-long rendered prompt outright, so a fixture grown through the
+  body surfaces as a *provider refusal* rather than as the size it claims. `check` asserts this
+  directly: no message in a batch may have `turnCharacters >= 2000`.
+- **A message with no html and no attachment is REFUSED, not faked.** `pair`, `template-variant` and
+  the envelope-violation messages are text-only, so there is no part to grow that is not the turn, and
+  silently attaching a file would move `has_attachments` as a side effect of *length*, which is what
+  a coverage flag must never be. The tool refuses the whole batch, naming the index, and writes
+  nothing at all. Under `mixed` such a message draws `small`, so the manifest records what the message
+  IS.
+
+The html padding is an HTML comment filled with `=`. That is deliberate: padding with prose, or with a
+long run of letters, would move `deterministic.html_text_disagreement`, whose whole question is how
+many tokens the text and html representations share.
+
+**`size` is a band, not a floor.** A message declaring `small` is also asserted to be *under* the
+medium target. A one-sided bound would let a batch that secretly grew keep declaring `small` and pass,
+so the claim could only ever fail upward.
+
+## The manifest schema, version 4
 
 This is the interface. It is versioned because a consumer that reads `corpusVersion` can refuse a
 shape it does not know rather than reading the fields it recognises and missing the ones it does not.
@@ -99,13 +146,53 @@ The same version added a per-message `notPlanted` list, the fifth shape of claim
 manifest that does not make an absence claim, so a version 3 manifest without it reads exactly as it
 did before the field existed.
 
+### Version 4: the drawn shape, and why this one is a bump
+
+Version 4 adds **`encoding` and `size` to every message**, plus `encodingMix` and `sizeMix` at the top
+level beside `profile` and `coverage`. See "The two shape axes" above for what each value means.
+
+This is a version bump and not an additive field, and the difference is worth stating because the
+section above just argued the opposite for two other changes. `notPlanted` is **absent** from a
+manifest that makes no absence claim, so its absence is information. `encoding` is present on **every**
+version 4 message including the default, so a consumer that has to tell "plain" from "the field is
+missing" would be reading a decision out of an absence. Under the old number that decision is silently
+wrong; under a new one it is a version it can refuse.
+
+`check` enforces the same distinction, and the gate is the reason it is a version test rather than an
+absence test:
+
+- a **version 3** manifest makes no shape claim, so the shape pass is **skipped** rather than failed. A
+  check that demanded the new fields of an old batch would call a correct batch broken;
+- a **version 4** manifest makes them mandatory, so a message **missing** `encoding` or `size` is
+  reported as a defect. Skipping it would let a truncated manifest pass by omission.
+
+The shape pass runs **before any network call** and reports **every** mismatch rather than the first,
+so a batch whose manifest does not describe its own bytes is reported as that rather than as a
+connection error from a Host that was never worth asking.
+
+**The reconstituted path is covered too, and it is the case that nearly broke.** `ingest` writes
+`corpusVersion: 4` like everything else, so its messages must carry the shape fields or `check` fails
+every one of them. It records `encoding: "plain"` and `size: "small"`, which are **true of the bytes
+it wrote** (it calls the builder at its defaults, and a reconstituted message has no html and no
+attachment, so the `small` band holds by construction), and it sets `encodingMix` and `sizeMix` to
+**`null`** at the top level, which says that no axis was *drawn*: that verb has no mix flags and
+reconstitution applies none. A generated batch always writes a real value in both, so a null mix and a
+null `source` cannot both be true of a batch this tool built.
+
+That asymmetry is worth stating because it is where a check goes wrong: a gate that demanded the new
+fields of an old batch would call a correct batch broken, and a gate that skipped them for a
+reconstituted one would let the claim go unverified. Both are avoided by making the values real
+rather than by loosening the gate.
+
 ```json
 {
-  "corpusVersion": 3,
+  "corpusVersion": 4,
   "generatedBy": "tools/corpus/corpus.py",
   "seed": 1234,
   "profile": "mixed",
   "coverage": "full",
+  "encodingMix": "plain",
+  "sizeMix": "small",
   "authoredByModel": false,
   "source": null,
   "batchNote": "…",
@@ -116,6 +203,8 @@ did before the field existed.
       "sha256": "…",
       "coverage": "full",
       "coverageReason": null,
+      "encoding": "plain",
+      "size": "small",
       "submission": {
         "direction": "Inbound",
         "mailFrom": "colleague@example.test",
@@ -551,9 +640,22 @@ short-text control, reported with its dropped-row count.
 
 Built 30 Sep 2026 against the manifest shape confirmed by `overview-`; **corpusVersion 2** and its
 measurements on 1 Oct 2026, superseded the same day by **corpusVersion 3** (window content and the
-two character counts; see the changelog above). The `corpusVersion` here versions this tool's
-manifest and what a conversation window contains. It is not the decision-ledger schema version,
-which moves independently and is owned by the Host.
+two character counts; see the changelog above), and then by **corpusVersion 4** the same evening (the
+two shape axes and the `mailbox` profile, from the desktop-harness design the operator approved at
+18:53). The `corpusVersion` here versions this tool's manifest and what a conversation window
+contains. It is not the decision-ledger schema version, which moves independently and is owned by the
+Host.
+
+**What the version 4 work has and has not been held to, stated apart because the difference matters.**
+The DEFAULT path is byte-identical to version 3: `HEAD`'s `corpus.py` was extracted and run beside the
+new one for six profiles, and every `.eml` is unchanged by `diff -r`, so the state table below still
+describes those batches and their bytes exactly. Everything NEW is verified **offline** and not
+against a Host: the shape claims are asserted about the BYTES by `check`, determinism is re-verified
+across processes per axis, and the size axis's 2,000-character turn constraint is asserted directly.
+What has **not** happened is a seeded run of the `mailbox` profile or of any non-default axis, so
+**its state targets are targets and nothing here has measured them**. The two runtime items the design
+flags (section 4.7: that the assessor path is really taken for a seeded message, and that the queue
+round-trip returns the joined id) are in the same position and want a build window.
 
 - `generate`, `seed`, `check` and `ingest` are implemented. Determinism is verified across separate
   processes: two runs into two directories are byte-identical, `manifest.json` included, re-verified
