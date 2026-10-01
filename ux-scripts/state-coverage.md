@@ -83,14 +83,26 @@ whether the assessor could produce semantic evidence at all, not which provider 
 reading in the paragraph above stands on both providers, and "an empty queue on a Host that cannot
 assess" is correct on both.
 
-It does **not** reproduce `ingress-`'s 202-with-a-`Defer`-decision, and that is now a question for
-their lane rather than an open row here: I have the switch, they have the observation, and the
-difference is worth settling because a `Defer` decision on an accepted message would put deferred rows
-in the queue. Asked directly, with this exact reproduction. Two candidates worth their checking, since
-both would produce it and neither is reachable from this switch: a *partial* semantic failure (some
-dimensions answered before the provider died, so evidence is not entirely unavailable and the
-corroboration gate defers rather than refuses), and a different Host commit. Artifact:
-`.styloagent/scratch/desktop/probe-nimble-selected-endpoint-unreachable.log`.
+It does **not** reproduce the 202-with-a-`Defer`-decision that this file had carried as an open row
+against `ingress-`, and **that row is now struck, by them, for a better reason than a failed
+reproduction.** Asked which model failure theirs was and which commit, they retracted the claim: it was
+never a run. Their message of 2026-09-30 carried three facts they had measured live and a fourth
+offered "as reasoning rather than as a measurement of my own"; the caveat stayed in the body while the
+subject said "measured live", so the fourth arrived here as one of a list. They then checked the code
+that decides it and it forbids the shape outright: the submission route answers `202` only when
+`assessment.SubmissionId` is present (`SubmissionsEndpoints.MapOutcome:238`) and maps `MailAction.Defer`
+to `503` (`:268`); `MailAssessor.AcceptAsync:1026` returns `NotAttempted` for `Defer` or `Reject`, so
+acceptance is never attempted for the two actions that decline responsibility; and nothing can record a
+`Defer` on an accepted message later, because a declined message never leaves the assessor
+(`QueueStore.cs:150`) and the queue "owns delivery state and nothing else"
+(`QueueContracts.cs:233`). A partial semantic failure does not rescue it either: coverage under the
+minimum returns `Defer`, which takes the same branch.
+
+So **the two shapes this lane could measure were one shape and the third was never real**: a Host that
+cannot assess refuses with `503` and leaves the queue empty, whichever provider is composed. The
+detour was not wasted, because it produced the `CONSOLE_NIMBLE_ENDPOINT` switch, which is how the
+refusal is startable rather than asserted, and a measured refusal is worth more than two lanes agreeing.
+Artifact: `.styloagent/scratch/desktop/probe-nimble-selected-endpoint-unreachable.log`.
 
 **The assessment route cannot carry a planted deterministic fact.** `POST /v1/assessments` hands the
 pipeline `PayloadReferences.Ephemeral` (`AssessmentsEndpoints.cs:64`, `PayloadReferences.cs:51`), so the
@@ -205,9 +217,10 @@ both were found by reading the instrument rather than the result.
    headline. The longer outage, past SignalR's ~42 second retry budget, is now item 7 below.
 5. ~~The "provider selected, model down" shape~~ **Done** 2026-10-01: `CONSOLE_NIMBLE_ENDPOINT` makes
    it startable and one `probe-submission-route.sh` run settled it. The route refuses, with the same
-   `503 deferred` body the Jev shape returns, so the provider is not the variable. It does not
-   reproduce `ingress-`'s 202-with-a-`Defer`-decision, and that disagreement is a question put to
-   them rather than a gap left in this lane (see "What was measured").
+   `503 deferred` body the Jev shape returns, so the provider is not the variable. The contrary
+   reading in this file has since been **retracted at its source**: it was never a measurement, and
+   the code makes it unreachable (`MailAssessor.AcceptAsync:1026` never attempts acceptance for a
+   `Defer`). The row is struck rather than open (see "What was measured").
 6. The traffic hub's absent consumer, which `overview-` placed on this lane: the console must work with
    the Hub absent and say so rather than look quiet, and must not read "the Hub is not there" as
    "nothing is happening". Behind the conversation graph.
