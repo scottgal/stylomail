@@ -7,8 +7,8 @@ checkout); the constraint this file depends on is restated below so the file sta
 
 Section 3.2's hard constraint, which is the assertion that carries this file: **large must be carried
 by the attachment and the HTML part, never by the text body**, because the text body is what the model
-is asked about and this corpus caps a turn at 2,000 characters by its own rule (the adapter's body
-budget is `NimbleOptions.MaxBodyCharacters` 2500; see the README correction). A fixture grown through the body
+is asked about and the adapter's body budget is `NimbleOptions.MaxBodyCharacters` 2500, which this
+corpus now uses as its own limit rather than the 2000 it asserted before that was measured. A fixture grown through the body
 is a corpus defect that surfaces as a provider refusal.
 
 Section 3.2 also forbids the tempting shortcut of adding a part that does not already exist: a size
@@ -33,10 +33,29 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parents[3]
 CORPUS = REPO / "tools" / "corpus" / "corpus.py"
 
-# The adapter's per-turn truncation. Asserted as `turnCharacters < TURN_LIMIT` on every message of a
-# large batch: the manifest already carries the count, so a fixture that grew through the body is
-# attributable rather than guessed.
-TURN_LIMIT = 2000
+# The adapter's body budget, READ FROM THE CODE rather than copied into this file.
+#
+# A local `TURN_LIMIT = 2000` lived here and went stale the moment the real limit moved to 2500
+# (`NimbleOptions.MaxBodyCharacters`, `NimbleOptions.cs:229`): the assertion still PASSED, because a
+# stricter bound is satisfied too, so this file kept measuring a boundary the implementation no longer
+# had. That is the silent-staleness class, and importing the constant is what stops it recurring.
+def _corpus_constant(name: str):
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location("corpus_under_test", CORPUS)
+    module = importlib.util.module_from_spec(spec)
+    # REGISTERED BEFORE IT IS EXECUTED, and this line is load-bearing rather than tidy: `corpus.py`
+    # defines `@dataclass` types under `from __future__ import annotations`, and `dataclasses` resolves
+    # a string annotation by looking its module up in `sys.modules`. Executing an unregistered module
+    # raises `AttributeError: 'NoneType' object has no attribute '__dict__'` from inside the stdlib,
+    # which reads as a defect in the import rather than in the registration.
+    _sys.modules["corpus_under_test"] = module
+    spec.loader.exec_module(module)
+    return getattr(module, name)
+
+
+TURN_LIMIT = _corpus_constant("TURN_LIMIT")
 
 FAILURES: list[str] = []
 
@@ -111,7 +130,7 @@ def test_large_rides_the_html_and_never_the_body(root: pathlib.Path) -> None:
         return
 
     msgs = manifest_of(large)["messages"]
-    over = [m["index"] for m in msgs if m["turnCharacters"] >= TURN_LIMIT]
+    over = [m["index"] for m in msgs if m["turnCharacters"] > TURN_LIMIT]
     check("no message's turn reaches the truncation limit", not over, f"indices {over}")
 
     grew_html = 0

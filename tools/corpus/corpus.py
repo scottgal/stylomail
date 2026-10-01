@@ -294,13 +294,23 @@ SIZE_MIXES = ("small", "medium", "large")
 SIZE_MIX_CHOICES = SIZE_MIXES + ("mixed",)
 SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
 
-# THIS CORPUS'S OWN MARGIN, AND NOT THE ADAPTER'S BOUND. An earlier version of this comment said the
-# adapter truncates a turn at 2,000 characters. MEASURED, it does not: the classifier's body budget is
-# `NimbleOptions.MaxBodyCharacters` 2500 (NimbleOptions.cs:229), the parser's per-body limit is
-# `MimeParseLimits.MaxBodyChars` 2 MiB (MimeParseLimits.cs:46), and the ONLY 2,000 in the measurement
-# path is `Truncate(m, 2_000)` over `message.ConversationContext` (NimbleMessageState.cs:155), which
-# bounds a WINDOW entry and not the body. The value stays 2000 as a margin that keeps no fixture near a
-# shortening boundary; the attribution was the part that was wrong.
+# THE ADAPTER'S OWN BODY BUDGET, and the value is now a measurement rather than a guess. An earlier
+# version of this comment said the adapter truncates a turn at 2,000 characters. MEASURED, it does not:
+# the classifier's body budget is `NimbleOptions.MaxBodyCharacters` **2500** (NimbleOptions.cs:229); the
+# parser's per-body limit is `MimeParseLimits.MaxBodyChars` 2 MiB (MimeParseLimits.cs:46); and the ONLY
+# 2,000 in the measurement path is `Truncate(m, 2_000)` over `message.ConversationContext`
+# (NimbleMessageState.cs:155), which bounds a WINDOW entry and not the body.
+#
+# SO 2000 WAS THIS LANE'S OWN MARGIN AND NOT THE ADAPTER'S BOUND, and it was wrong in the direction
+# that costs: it made every dense fixture 500 characters SHORTER than the adapter allows while the
+# expansion FALLS with body size, so it made the family's arms weaker than they had to be. `nimble-`
+# then measured the arm at the real budget -- a 2500-character hexish body evaluates **43202** tokens,
+# 6.252x, the largest adapter-producible evaluation anyone has measured -- and the pin at 65536 clears
+# it by about 1.52x.
+#
+# `>` AND NOT `>=`, because 2500 is the budget ITSELF: a body exactly at the budget is not over it. A
+# turn ABOVE this is one the fit must shorten, and a shortened body is not the fixture the manifest
+# describes.
 #
 # The README has said since the size axis landed that "`check` asserts this directly: no message in a
 # batch may have `turnCharacters >= 2000`", and it did not: `turnCharacters` appeared in this file only
@@ -309,7 +319,7 @@ SIZE_TARGETS = {"small": 0, "medium": 32 * 1024, "large": 256 * 1024}
 #
 # STILL OWED, and named here so it is not lost: the bound that is REAL is per window entry and
 # `windowCharacters` is a SUM, so no assertion about it is possible from the manifest as it stands.
-TURN_LIMIT = 2000
+TURN_LIMIT = 2500
 
 # -------------------------------------------------------------------------------------------------
 # The dense body-shape axis: density that SURVIVES DECODING, which is the author's density
@@ -351,10 +361,10 @@ SHAPE_UNITS = {
     "mixed": "Re: invoice INV-2026-0917 (ref: a,b.c;d) <https://x.example/p?a=1&b=2> 12,345.67 USD ",
 }
 
-# ONE CHARACTER UNDER THE CEILING, not at it: `check` refuses `turnCharacters >= TURN_LIMIT`, so the
-# largest body this corpus may declare is 1999. Written as an expression rather than as a literal so
-# that a future change to the limit moves the body with it instead of silently going over.
-SHAPE_BODY_CHARACTERS = TURN_LIMIT - 1
+# AT THE CEILING rather than one character under it: `check` refuses `turnCharacters > TURN_LIMIT`, so
+# a body of exactly `TURN_LIMIT` is the largest this corpus may declare, and it is exactly the adapter's
+# own budget. Expressed as the limit rather than as a literal so a future change moves the body with it.
+SHAPE_BODY_CHARACTERS = TURN_LIMIT
 
 
 def draw_body_shape(index: int, mix: str) -> str | None:
@@ -1528,7 +1538,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 print(
                     f"refusing: --size-mix {args.size_mix} at index {index} ({args.profile}). This "
                     "message has no html part and no attachment, so the only part left to grow is the "
-                    "text body, and this corpus caps a turn at 2,000 characters. Growing the body "
+                    "text body, and the adapter's own body budget is 2,500 characters. Growing the body "
                     "would surface as a provider refusal rather than as the size it claims, and adding "
                     "a part that was not there would move a coverage flag as a side effect of length. "
                     "Nothing has been written.",
@@ -1951,11 +1961,11 @@ def shape_failures(batch_dir: Path, manifest: dict) -> list[str]:
         # read off the entry; a body at or over the limit is a fixture defect the adapter turns into
         # a provider refusal, which is exactly the failure the size axis is built to avoid.
         turn = entry.get("turnCharacters")
-        if isinstance(turn, int) and turn >= TURN_LIMIT:
+        if isinstance(turn, int) and turn > TURN_LIMIT:
             failures.append(
-                f"{entry['file']}: the turn is {turn} characters, at or over the adapter's limit of "
-                f"{TURN_LIMIT}, so this message would be truncated or refused by the provider rather "
-                "than measured as the fixture it claims to be"
+                f"{entry['file']}: the turn is {turn} characters, over the adapter's body budget of "
+                f"{TURN_LIMIT} (`NimbleOptions.MaxBodyCharacters`), so the fit must shorten it before "
+                "the classifier sees it and this message is not the fixture it claims to be"
             )
 
         claimed = entry.get("encoding")

@@ -91,15 +91,15 @@ the bytes. `mixed` is a rule for drawing rather than a value a message can carry
 | axis | values | what it changes | what it must never change |
 |---|---|---|---|
 | `--encoding-mix` | `plain` (default), `quoted-printable`, `rfc2047`, `mixed` | which transfer encoding a leaf body uses, and whether the Subject is an encoded-word | the DECODED bytes. Every variant decodes back to the same text, so a planted fact is carried by every variant |
-| `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, the model's turn. **The 2,000-character cap on it is THIS CORPUS's rule, not the adapter's** -- see the correction below the constraints |
+| `--size-mix` | `small` (default), `medium`, `large`, `mixed` | the size of the **html part and the attachment** | the text body, the model's turn, which `check` refuses above the adapter's own 2500-character body budget |
 | `--body-shapes` | `off` (default), `all`, or one of the six names | the **density of the author's text**, which is the one thing content-driven expansion turns on | the message's size, its encoding, and every planted fact |
 
 Two constraints on the size axis are load-bearing rather than stylistic:
 
 - **Bulk rides the html part and the attachment, never the body.** `check` asserts this directly: no
-  message in a batch may have `turnCharacters >= 2000`. **But the 2,000 is THIS CORPUS's rule and not
-  the adapter's bound** -- an earlier version of this bullet said otherwise and was wrong. See the
-  correction below the size-axis constraints.
+  message in a batch may have `turnCharacters > 2500`, which is the adapter's own
+  `MaxBodyCharacters`. **The limit was 2000 until it was measured**, and an earlier version of this
+  bullet called 2,000 the adapter's bound; see the correction below the size-axis constraints.
 - **A message with no html and no attachment is REFUSED, not faked.** `pair`, `template-variant` and
   the envelope-violation messages are text-only, so there is no part to grow that is not the turn, and
   silently attaching a file would move `has_attachments` as a side effect of *length*, which is what
@@ -125,10 +125,11 @@ turn at 2,000 characters*. **It does not, and I measured the path rather than tr
 So **the only 2,000 in the measurement path is on the WINDOW**, and `turnCharacters` is not the field
 it bounds. Two consequences, stated rather than buried:
 
-- **`TURN_LIMIT` is this corpus's own rule and not the adapter's bound.** The value is left at 2000 and
-  is now described as a margin rather than as a truncation point: it keeps a turn well under the
-  adapter's 2500 so that no fixture sits near a shortening boundary. The rule is defensible; the
-  attribution was not.
+- **`TURN_LIMIT` is now the adapter's budget itself: 2500 characters, and `check` refuses a turn
+  strictly ABOVE it.** `>` rather than `>=`, because 2500 is the budget and a body exactly at it is not
+  over it. The old 2000 was this lane's own margin presented as the adapter's bound, and it was wrong in
+  the direction that costs: it made every dense fixture 500 characters shorter than the adapter allows,
+  and the expansion FALLS with body size, so a shorter body is a **weaker** arm.
 - **`check` therefore asserts the right thing for the wrong reason, and asserts nothing about the field
   that genuinely truncates.** A window entry over 2,000 characters IS cut by the adapter, and
   `windowCharacters` is recorded as a SUM rather than per entry, so no assertion about it is currently
@@ -176,17 +177,25 @@ changes no invocation that exists today. `all` is deterministic so that a six-me
 the whole table -- a random draw would sample the range, and a batch that claims to show six shapes has
 to contain six shapes for the claim to be checkable.
 
-**The body is 1999 characters: one character under this corpus's own turn limit.** `check` refuses
-`turnCharacters >= 2000` and `turnCharacters` is `len(plan.text)`, so 1999 is the largest body this
-corpus may declare. The transform is applied to the **plan** rather than to the finished MIME because
-the recorded length must be the length that is sent.
+**The body is 2500 characters: exactly the adapter's own budget.** `check` refuses
+`turnCharacters > TURN_LIMIT` and `turnCharacters` is `len(plan.text)`, so 2500 is the largest body this
+corpus may declare and it is `NimbleOptions.MaxBodyCharacters` itself (`NimbleOptions.cs:229`). The
+transform is applied to the **plan** rather than to the finished MIME because the recorded length must
+be the length that is sent.
 
-**AND THIS IS DELIBERATELY CONSERVATIVE, by 500 characters.** The adapter's own body budget is
-`MaxBodyCharacters` **2500** (`NimbleOptions.cs:229`), not 2000; the 2000 is this corpus's margin. So
-the family draws 500 characters shorter than the adapter would accept, and since the expansion FALLS
-with body size that makes every arm here **weaker** than it could be. Raising the ceiling to the
-adapter's own bound is a decision about `TURN_LIMIT` and is deliberately **not** taken in the same
-change that introduced the axis.
+**AND THE BODY SIZE IS THE DIRECTION THAT MATTERS HERE, which is why it moved from 1999 to 2500.** The
+expansion **falls** with body size, so a shorter dense body is a **weaker** arm; `nimble-` measured a
+2500-character `hexish` body at **43202 tokens (6.252x)**, the largest adapter-producible evaluation
+measured, and against the pinned `EffectiveNumCtx` 65536 that clears by about **1.52x**. So the family
+draws at the budget rather than under it.
+
+**THE RESIDUAL RISK, named because it is real and it is not silent:** 2500 is the fit's **character**
+budget, and the fit separately shortens to meet `NumCtx` **bytes**, so a body at this ceiling can still
+be shortened. `nimble-` measured a 12-question request at this size at **6910 bytes against 8192**, so
+at twelve questions there is headroom; at a different question count there may not be. **A shortened
+body is REPORTED** (the row carries the reason attribute and the digest is keyed on it), so a run can
+tell rather than being misled, and the check that would close this is a byte-side bound which this
+corpus does not yet assert.
 
 **A profile must opt in, and the default is the safe direction.** The axis rewrites the turn, so it may
 only run on a plan whose planted facts do **not** live in that text: `phishing` and its siblings carry
@@ -207,10 +216,13 @@ a text-only replacement would ship a message whose parts disagree at `html_text_
   without a body over the ceiling, and it is deliberately a later increment rather than a second new
   thing behind one verification.
 - **The pin is what it bounds.** `src/StyloMail.Host/appsettings.json` pins `EffectiveNumCtx` at 65536,
-  chosen above the largest evaluation measured anywhere at the time (56210). Measured against that:
-  a 2000-character `hexish` body evaluates **37298** and a 2400-byte one **42026**, both below the pin.
-  So at the landed pin this family is **admissible** and is not by itself a refused message; its value
-  is that it **bounds the pin from inside the corpus**, which a scratch probe cannot do.
+  chosen above the largest evaluation measured anywhere at the time (56210). Measured against that, and
+  at THIS family's ceiling: a 2500-character `hexish` body evaluates **43202** (6.252x, `nimble-`'s
+  measurement), and the other five at the same size are prose 19814, base64ish 34106, mixed 35114,
+  randomcase 39602, punct 41138. **43202 is the largest adapter-producible evaluation anyone has
+  measured and the pin clears it by about 1.52x.** So at the landed pin this family is **admissible**
+  and is not by itself a refused message; its value is that it **bounds the pin from inside the
+  corpus**, which a scratch probe cannot do.
 
 ## Tests
 
@@ -489,7 +501,7 @@ provider refusal is attributable to the **fixture** rather than to the pipeline.
 and they have three different bounds: a **window entry** over 2,000 characters is cut by the adapter
 (`NimbleMessageState.cs:155`, over `ConversationContext`); a **body** is bounded by the classifier's own
 `MaxBodyCharacters` 2500 (`NimbleOptions.cs:229`) and further shortened by the fit to meet the byte
-budget; and this corpus additionally caps a turn at 2,000 by its own rule. The rendered prompt is
+budget; and this corpus refuses a turn strictly above that budget. The rendered prompt is
 checked against `NumCtx` as UTF-8 bytes and refused outright rather than truncated, so an over-long
 fixture is a corpus defect and has to be visible in the manifest.
 
@@ -792,7 +804,8 @@ The DEFAULT path is byte-identical to version 3: `HEAD`'s `corpus.py` was extrac
 new one for six profiles, and every `.eml` is unchanged by `diff -r`, so the state table below still
 describes those batches and their bytes exactly. Everything NEW is verified **offline** and not
 against a Host: the shape claims are asserted about the BYTES by `check`, determinism is re-verified
-across processes per axis, and the size axis's 2,000-character turn constraint is asserted directly.
+across processes per axis, and the size axis's turn constraint is asserted directly (against the
+adapter's own 2500-character budget).
 What has **not** happened is a seeded run of the `mailbox` profile or of any non-default axis, so
 **its state targets are targets and nothing here has measured them**. The two runtime items the design
 flags (section 4.7: that the assessor path is really taken for a seeded message, and that the queue

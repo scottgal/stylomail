@@ -44,9 +44,12 @@ SHAPES = ("prose", "base64ish", "mixed", "randomcase", "punct", "hexish")
 HEXISH_ALPHABET = re.compile(r"\A[0-9a-f ]*\Z")
 BASE64_ALPHABET = re.compile(r"\A[A-Za-z0-9+/=]*\Z")
 
-# A shape is a 1999-character body: `check` refuses `turnCharacters >= 2000` and `turnCharacters` is
-# `len(plan.text)`, so one character under is the largest body this corpus may declare.
-EXPECTED_BODY_CHARACTERS = 1999
+# A shape is a 2500-character body: `check` refuses `turnCharacters > TURN_LIMIT` and `turnCharacters`
+# is `len(plan.text)`, so the body sits exactly AT the adapter's own budget (`MaxBodyCharacters` 2500,
+# `NimbleOptions.cs:229`). It was 1999 until `nimble-` measured that the 2,000 was this lane's own
+# margin and not an adapter limit, and that the expansion FALLS with body size, so a shorter body is a
+# WEAKER arm than this one.
+EXPECTED_BODY_CHARACTERS = 2500
 
 # The report marker `check` emits for a shape failure, and a URL nothing listens on so `check` gets
 # past the local shape pass and then fails on the ledger. No Host is started, so this is not a take.
