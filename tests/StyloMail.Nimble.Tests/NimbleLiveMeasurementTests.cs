@@ -556,8 +556,8 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// the arm rather than replacing it. What is new is the pair, and it is the isolation
     /// <c>overview-</c> ruled owed: <b>restating at twelve questions A with restating at one question
     /// B</b> isolates the asking shape, because the body, the window, the constructor and the profile
-    /// are the same object in both arms, and it confirms the fleet-level rule within one lane instead
-    /// of across two. <b>B at both shapes</b> means the asking shape is not the variable for this
+    /// are the same object in both arms, and it is the controlled instance of the instrument rule
+    /// within one lane rather than across two. <b>B at both shapes</b> means the asking shape is not the variable for this
     /// input at all, so the twelve-question A lives in the other lane's constructor and envelope
     /// rather than in the question count, which would be the bigger finding and would put the envelope
     /// question back at the centre. Anything else, including a cell that splits within itself, is
@@ -570,15 +570,27 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// the containment axis reaches this shape as well.
     /// </para>
     /// <para>
-    /// <b>Status: BUILT, STUB-CHECKED, AND NOT RUN, because a different instrument answered the
-    /// question first.</b> <c>overview-</c> replaced this pair with the survey's own controlled cell
-    /// pointed at continuity (<c>.styloagent/scratch/nimble/continuity-shape-cell.json</c>), which
-    /// answered B under BOTH shapes on the flagship body, so the case for the shape effect as a
-    /// property of the asking shape is not there. The pair is kept rather than deleted because it
-    /// differs from that cell in one way that matters: the cell sends the survey's delimited body,
-    /// while this runs the shipping adapter, so an A at twelve questions here would be evidence about
-    /// the deployment that the cell cannot give. No artifact exists for it and no letter from it may
-    /// be quoted; its last check was the stub, which answers A to everything and reads nothing.
+    /// <b>Status: RUN ONCE (2026-10-01), and the reading is the first of the two above.</b> Artifact
+    /// <c>.styloagent/scratch/nimble/axis-shape-one-lane.json</c>, <c>measured_at</c>
+    /// 2026-10-01T02:27:10Z, driver exit 0, 1 m 21 s, nine rows all Available, <c>unavailable_runs</c>
+    /// empty: <b>restating at one question B=3 of 3</b> (prompt_tokens 672), <b>restating at twelve
+    /// questions A=3 of 3</b> (1318), <b>advancing at one question B=3 of 3</b> (669). The third arm is
+    /// the control and it held, so the flip is not "anything asked twelve times reads A".
+    /// </para>
+    /// <para>
+    /// Arms 1 and 2 differ in exactly one thing, the number of questions, and they split. So within one
+    /// lane, with the body, the window, the constructor and the profile held constant, the asking shape
+    /// decides this answer, and <c>conversation-</c>'s A2-bare-reply A is reproduced from this lane's
+    /// constructor rather than being an artefact of theirs. The readings above were pre-registered to
+    /// <c>overview-</c> <i>before</i> the run and are not written beside their own result; the driver
+    /// gated on an idle endpoint for eight minutes and started at 03:25:48.
+    /// </para>
+    /// <para>
+    /// <b>What it does not make it.</b> Not a fleet-level law, and not a claim that batching moves
+    /// continuity: the survey cell (<c>.styloagent/scratch/nimble/continuity-shape-cell.json</c>) has
+    /// this same dimension B under <i>both</i> shapes on the flagship body, so the flip is a property of
+    /// the instrument and the input together. The token counts here carry the window and the request
+    /// scaffolding and are not comparable with that cell's 216 and 858, which are delimited bodies.
     /// </para>
     /// </remarks>
     [NimbleLiveFact]
