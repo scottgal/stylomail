@@ -461,7 +461,7 @@ instead of being retried. Two further consequences of the same wedge:
   `lsof` call, so the sentence and the code cannot drift apart again.
 
 Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
-three cases against a child that ignores SIGTERM and takes seconds, and the old body was run beside
+six cases in seconds, the first two against a child that ignores SIGTERM, and the old body was run beside
 the new one to show that it still blocks where the new one returns
 (`.styloagent/scratch/desktop/test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
 comparison rather than as a check to run). The stand-in waits for a flag file before anything signals
