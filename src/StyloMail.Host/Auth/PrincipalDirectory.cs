@@ -23,7 +23,7 @@ namespace StyloMail.Host.Auth;
 /// resolves and the configuration entry does not.
 /// </para>
 /// <para>
-/// <b>Wholesale is the load-bearing word.</b> Merging the two would union privileges and union keys,
+/// <b>The replacement is wholesale, and that is the part to keep.</b> Merging the two would union privileges and union keys,
 /// and a union is how a configuration entry silently re-widens a privilege an operator deliberately
 /// narrowed when they minted its replacement. So an environment entry whose name the store has
 /// claimed does not authenticate at all, with any key, and the claim stands even after the minted key

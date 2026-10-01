@@ -260,7 +260,7 @@ public sealed class NimbleLiveMeasurementTests(ITestOutputHelper output)
     /// <para>
     /// <b>This dimension has never answered for real.</b> Nothing in the shipped wiring supplies
     /// conversation context, so <c>semantic.conversational_continuity</c> has been reported
-    /// NotApplicable since it was written. Conversation modelling makes it load-bearing, and the
+    /// NotApplicable since it was written. Conversation modelling gives it something to answer, and the
     /// question that has to be settled first is whether the local model's answer is reproducible at
     /// all, because a dimension that flips between runs is noise carrying a weight of 0.5.
     /// </para>

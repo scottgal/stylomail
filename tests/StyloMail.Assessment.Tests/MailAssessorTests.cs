@@ -324,9 +324,10 @@ public sealed class MailAssessorTests
     public async Task AssessmentOnlyIsKeptOutOfAcceptanceEvenWhenItCouldHaveBeenAccepted()
     {
         // The dangerous shape, and the reason the earlier test is not enough on its own: a durable
-        // reference and real bytes mean *nothing else* stands between this message and the queue,         // RequireDurable passes, the payload check passes, and only the assessment-only guard keeps
+        // reference and real bytes mean *nothing else* stands between this message and the queue,
+        // RequireDurable passes, the payload check passes, and only the assessment-only guard keeps
         // it out. With an ephemeral reference the durability assert would refuse it anyway, and the
-        // guard would never be shown to be load-bearing.
+        // guard's necessity would never be demonstrated.
         var harness = Build(queueThrowsIfReached: true);
         var message = Submittable();
 

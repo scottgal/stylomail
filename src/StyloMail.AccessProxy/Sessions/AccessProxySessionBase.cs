@@ -60,8 +60,9 @@ public enum SessionOutcome
 /// happen exactly once, here, rather than once per protocol with three chances to get one wrong.
 ///
 /// <para>
-/// <b>The order of the last two steps is the load-bearing decision.</b> The backend is connected and
-/// authenticated <em>before</em> the client is told its login succeeded. The tempting alternative, /// say yes immediately, then connect, reads as friendlier and is wrong twice over: a client told
+/// <b>The order of the last two steps is not stylistic: it is what makes the sequence fail closed.</b> The backend is connected and
+/// authenticated <em>before</em> the client is told its login succeeded. The tempting alternative,
+/// say yes immediately, then connect, reads as friendlier and is wrong twice over: a client told
 /// "OK" proceeds to issue real commands that then go nowhere, and a revoked backend credential
 /// would surface as a mysteriously dead session rather than as an authentication failure. Spec §9.5
 /// risk 4 requires a revoked credential to <em>fail closed and surface as an authentication

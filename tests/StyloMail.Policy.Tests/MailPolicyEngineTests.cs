@@ -1512,7 +1512,7 @@ public sealed class MailPolicyEngineTests
     /// model's calm.
     /// </summary>
     /// <remarks>
-    /// The two clauses are not the same claim and the distinction is load-bearing: deterministic
+    /// The two clauses are not the same claim and the distinction decides the outcome: deterministic
     /// origin is a producer's stamp ("a fact, not a model opinion"), while corroboration needs a
     /// measurement. Where the two come apart the availability decides, which is what the gate reads,
     /// and <see cref="A_deterministic_row_that_is_unavailable_does_not_corroborate"/> pins it.

@@ -217,7 +217,7 @@ public sealed class SmtpSessionTests
     [Fact]
     public async Task AConnectionLostBeforeTheTerminatorIsReached_IsAFailureNotInDoubt()
     {
-        // Nothing was committed, so retrying cannot duplicate. The 4 MB body is load-bearing: it
+        // Nothing was committed, so retrying cannot duplicate. The 4 MB body is deliberate: it
         // overflows the socket buffer so the write itself fails. Shrinking it to a few kilobytes
         // changes which failure the client observes and this assertion stops testing what it says.
         await using var server = FakeSmtpServer.Start(new FakeSmtpBehaviour { CloseAfterDataCommand = true });

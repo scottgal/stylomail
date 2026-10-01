@@ -29,7 +29,7 @@
 #   E. The guard's pattern loses its trailing slash, so
 #      `.styloagent/scratch/desktop-decoy` matches the lane's scratch prefix. Case
 #      8 must go red for the same reason. This is the mutation that says whether
-#      the slash is load-bearing or decoration.
+#      the slash does work or is decoration.
 #
 #   G. The canonicaliser returns its argument unchanged, leaving only the string
 #      comparison. Case 8 must go red on the symlink assertion.
@@ -66,7 +66,7 @@ source "$REPO/ux-scripts/console-harness.sh"
 # a symlink at ANY component of the path matched the string while the `rm -rf` below
 # resolved somewhere else entirely. `nimble-` raised it from an automated review on
 # 1 Oct, and it is the same defect `console_assert_run_dir_is_ours` was already repaired
-# for: this file, which exists to prove that guard is load-bearing, had the weaker form.
+# for: this file, which exists to prove that guard holds, had the weaker form.
 console_scratch_is_ours() {
     local path="$1" base="$REPO/.styloagent/scratch/desktop"
     local path_canon base_canon

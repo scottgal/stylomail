@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <!--
-    DELIBERATELY EMPTY of ProjectReferences, and that is the load-bearing part
+    DELIBERATELY EMPTY of ProjectReferences, and that emptiness is the point
     of this file rather than an omission.
 
     Spec 10.1 decides that this console talks to the Host's HTTP API and

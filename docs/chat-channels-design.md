@@ -38,7 +38,7 @@ point at which the message is held. So:
 - **Anything claiming pre-delivery requires a different product.** If the bot is the only thing that
   can post, you own the client. That is not this.
 
-Two consequences fall out of it and both are load-bearing:
+Two consequences fall out of it, and both constrain everything below:
 
 **There is no queue and no delivery worker for chat.** The queue exists to own the durability
 contract for something we then deliver. Chat has no delivery responsibility, so the queue's role does

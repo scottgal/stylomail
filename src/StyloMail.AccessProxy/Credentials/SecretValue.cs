@@ -70,7 +70,7 @@ public sealed class SecretValue : IDisposable
         }
     }
 
-    /// <summary>Always a redaction marker. See the type remarks for why this is load-bearing.</summary>
+    /// <summary>Always a redaction marker. See the type remarks for why the marker must not be omitted.</summary>
     public override string ToString() => "[redacted]";
 
     /// <summary>

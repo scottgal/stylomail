@@ -14,7 +14,7 @@ namespace StyloMail.AccessProxy.Tests.Support;
 /// no Google account is involved anywhere in this test project.
 ///
 /// <para>
-/// <see cref="OpenCount"/> is the load-bearing member. "A revoked credential fails closed rather
+/// <see cref="OpenCount"/> is the member the claim rests on. "A revoked credential fails closed rather
 /// than retrying silently" is a claim about <em>how many times</em> we attempted, and it can only be
 /// asserted if the fake counts. A fake that simply refused would let a retry loop pass.
 /// </para>

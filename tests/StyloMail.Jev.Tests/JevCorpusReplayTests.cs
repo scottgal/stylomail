@@ -10,7 +10,7 @@ namespace StyloMail.Jev.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This is the half that makes the corpus load-bearing.</b> A recording nobody asserts on is
+/// <b>This is the half that keeps the corpus honest.</b> A recording nobody asserts on is
 /// documentation that rots, so every committed case is replayed and its dimensions, availability and
 /// values are checked against what the recording itself carries.
 /// </para>

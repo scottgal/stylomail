@@ -48,8 +48,8 @@ public sealed class HostAuthOptions
     /// <para>
     /// <b>This is a guard against a future edit, not against the world.</b> The counter is the
     /// mechanism and it is incremented in the same transaction as every change, so a missed bump is
-    /// a code defect rather than a runtime condition this value exists to survive. Do not read it as
-    /// load-bearing and weaken, skip or batch the counter on the strength of it; that would leave
+    /// a code defect rather than a runtime condition this value exists to survive. Do not treat it as
+    /// a guarantee and weaken, skip or batch the counter on the strength of it; that would leave
     /// revocation resting on a timer, which is the defect the counter was introduced to remove.
     /// </para>
     /// </remarks>

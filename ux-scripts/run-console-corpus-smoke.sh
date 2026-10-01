@@ -77,7 +77,7 @@ trap cleanup EXIT INT TERM
 console_runner_run_dir "$CONSOLE_RUN_DEFAULT" || exit 2
 
 # Everything derived from $CONSOLE_RUN is computed BELOW that call and not above
-# it, and that is load-bearing rather than tidy. The harness falls back to the
+# it, and that ordering decides the result rather than being tidy. The harness falls back to the
 # main smoke's run directory at source time, so a path built before this point is
 # built from the wrong directory: the first version of this script put its batch
 # in /tmp/stylomail-console-ux and, worse, handed the checker that run's

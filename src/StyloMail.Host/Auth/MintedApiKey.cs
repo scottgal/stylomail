@@ -94,7 +94,7 @@ public static class MintedApiKey
 
     public static Material Mint()
     {
-        // Hex, not base64url, and that is load-bearing rather than stylistic. The id is separated
+        // Hex, not base64url, and that is a correctness choice rather than a stylistic one. The id is separated
         // from the secret by an underscore, and base64url's alphabet contains an underscore: an id
         // encoded that way would contain the separator about 30% of the time, the parser would read
         // the id as everything before the first one, and that key would never resolve. A credential

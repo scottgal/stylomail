@@ -14,7 +14,7 @@ namespace StyloMail.Desktop.Tests;
 /// <c>src/StyloMail.Host/Contracts/</c> and from <c>HostJson.Options</c>, which
 /// sets <see cref="System.Text.Json.JsonSerializerDefaults.Web"/> plus
 /// <c>JsonStringEnumConverter</c>. Two properties follow from that and both are
-/// load-bearing: keys are camelCase, and enums are names rather than numbers.
+/// asserted here: keys are camelCase, and enums are names rather than numbers.
 ///
 /// The enums are expected to drift loudly. If the Host renames one, these
 /// fixtures fail here, in a test named after the contract, rather than at

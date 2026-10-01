@@ -178,7 +178,7 @@ public static class ClassifierInputCanonicalizer
         canonical.Int(profile.DistinctRecipientsLast30Days);
         // Whether that count is a floor rather than a measurement. A truncated count and an exact one
         // are different observations even when the number is the same, so they are different
-        // questions and must not share a key: the flag is as load-bearing as the value.
+        // questions and must not share a key: the flag carries as much as the value does.
         canonical.Flag(profile.RecipientDistinctnessIsFloor);
         canonical.Int(profile.RecipientsNovelToSender);
         canonical.Int(profile.MessagesLastHour);

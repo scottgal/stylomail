@@ -446,7 +446,7 @@ fi
 # elsewhere, and a caller that acts on that decision deletes a directory the guard
 # exists to protect. Measured on this host before the fix: the guard allowed it and
 # the delete landed outside. An automated review routed by article- raised it;
-# mutation G in the falsification is what keeps the canonicalisation load-bearing.
+# mutation G in the falsification is what shows the canonicalisation does the work.
 escape="$REPO/.styloagent/scratch/desktop-escape-target"
 mkdir -p "$escape"
 ln -sfn "$escape" "$REPO/.styloagent/scratch/desktop/case-8-symlink"

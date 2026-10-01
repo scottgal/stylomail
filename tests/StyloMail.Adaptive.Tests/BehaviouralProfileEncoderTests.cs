@@ -15,7 +15,7 @@ namespace StyloMail.Adaptive.Tests;
 /// yesterday that is fanning out to strangers. The text is identical; the relationship is not.
 ///
 /// <para>
-/// Two properties are load-bearing and are asserted rather than described. The encoding carries
+/// Two properties carry the encoding's whole meaning, and both are asserted rather than described. The encoding carries
 /// <b>observations and their support, never verdicts</b>: a profile arriving pre-judged would make
 /// the classifier's answers a restatement of our own flags. And <b>a cold profile is a distinct
 /// state</b>, not a quiet-looking one: "we do not know this sender" is not "this sender looks

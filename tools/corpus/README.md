@@ -431,7 +431,7 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   and `probe-gate/result.json`): the same benign message is `Allow` on `/v1/submissions` with 14
   deterministic `Available` rows, and `Hold` on `/v1/assessments` with
   `policy.allow_uncorroborated_by_deterministic_evidence` and **zero deterministic `Available`
-  rows**. The qualifier is load-bearing, and this is not the same claim as "the list holds no row of
+  rows**. The qualifier is the claim, and this is not the same as "the list holds no row of
   deterministic origin". Origin and availability are separate fields and give separate answers:
   `assessment.behavioural_context` is a row whose `Origin` is `Deterministic` and whose
   `Availability` is `Unavailable` (the `BehaviouralContextUnavailable` marker in
@@ -444,7 +444,7 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   lane's row, reported to them and not changed here.
   A filter on origin alone keeps it, so a whole-list comparison of two routes, two runs or
   two call orders can show it moving and read that as a difference in the thing being compared.
-  **The probe's call order is load-bearing for the same reason**: it posts `/v1/submissions` before
+  **The probe's call order decides the answer for the same reason**: it posts `/v1/submissions` before
   `/v1/assessments` for each message, and only the submission route warms the store
   (`UpdateObservedState` returns early on `context.AssessmentOnly`). Submit-first suppresses that
   marker on the assessment that follows; an assess-first order emits it, and the assessment list then
@@ -469,7 +469,7 @@ the interface between this lane and the console is the `seed` CLI, not the file.
   **What the value does changed at version 3, and it is recorded as a change, not as a correction.**
   Under version 2 the window was turn 1's body text and both arms reported `0`. Under version 3 the
   window is turn 1's raw message as received, and the arms are no longer the same: the changed pair
-  reports `0`, the control reports `1`. So the window's **content is load-bearing for the answer**,
+  reports `0`, the control reports `1`. So the window's **content decides the answer**,
   which is itself the result worth having, and a consumer comparing continuity values across corpus
   versions is comparing answers to different questions.
   **The mapping, supplied by the lane that owns it (1 Oct), not guessed here.** `conversation-`

@@ -1047,7 +1047,7 @@ def expected_predicate(fact_id: str, plan: MessagePlan) -> dict:
 
 
 def manifest_entry(plan: MessagePlan, raw: bytes, coverage: str) -> dict:
-    # The envelope is recorded in the manifest, not re-derived by `seed`. This is load-bearing: a
+    # The envelope is recorded in the manifest, not re-derived by `seed`. It has to be, because a
     # manifest that declared `envelope.no_recipients` while `seed` rebuilt a body with one recipient
     # would be a manifest that does not describe the message it is the manifest for. That happened,
     # `check` caught it, and the fix is to make the manifest the complete description it claims to
@@ -1346,9 +1346,10 @@ def cmd_seed(args: argparse.Namespace) -> int:
     base = args.base_url.rstrip("/")
     limit = args.limit if args.limit is not None else len(manifest["messages"])
 
-    # The durable route, and this is load-bearing. POST /v1/assessments is assessment-only: it hands
-    # the pipeline an ephemeral payload, so the MIME adapter never runs and a planted MIME fact can
-    # never appear as a finding. Measured; the first measurement run was reduced to that one row.
+    # The durable route, and the choice decides what can be seen. POST /v1/assessments is
+    # assessment-only: it hands the pipeline an ephemeral payload, so the MIME adapter never runs and
+    # a planted MIME fact can never appear as a finding. Measured; the first measurement run was
+    # reduced to that one row.
     accepted, replayed, refused, unreachable = 0, 0, 0, 0
     for message in manifest["messages"][:limit]:
         raw_path = batch_file(batch, message)

@@ -15,7 +15,8 @@ namespace StyloMail.Assessment.Semantic;
 /// produces <em>campaign evidence</em> and is never consulted here.
 ///
 /// <para>
-/// The key is the composition of five things, and all five are load-bearing:
+/// The key is the composition of five things, and dropping any one of them merges two different
+/// questions into one entry:
 /// </para>
 /// <list type="number">
 /// <item><b>Tenant</b>, the same bytes in two tenants are two different questions, and a shared

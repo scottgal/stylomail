@@ -13,7 +13,7 @@ namespace StyloMail.Nimble;
 /// order identical is what makes one corpus answer two questions.
 /// </para>
 /// <para>
-/// Field order is load-bearing in a second way: the state is serialised straight into the prompt and
+/// Field order carries a second consequence: the state is serialised straight into the prompt and
 /// hashed into the cache key, and both must be stable for a given input.
 /// </para>
 /// <para>

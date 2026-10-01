@@ -677,8 +677,8 @@ public sealed class SqliteAdaptiveProfileStore
     /// <b>Known limitation, deliberately left.</b> This restores with
     /// <see cref="RecipientHistory.DefaultCapacity"/> and <see cref="RecipientHistory.DefaultWindow"/>
     /// rather than the host's <c>AdaptiveOptions</c>, because <c>Load</c> is not given the options:
-    /// consistent with the rest of this store, but now load-bearing for a bound rather than
-    /// cosmetic. A host configured with a smaller capacity would restore into a history that
+    /// consistent with the rest of this store, but now it decides a bound rather than a cosmetic
+    /// detail. A host configured with a smaller capacity would restore into a history that
     /// saturates sooner.
     /// </para>
     ///

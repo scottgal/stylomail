@@ -990,7 +990,7 @@ def run(mode: str, suite: str, port: int, run_dir: Path, repeat_count: int = 8) 
                 "authenticationResults": case["request"].get("authenticationResults", []),
             }
 
-            # The durable route FIRST, and this ordering is load-bearing rather than tidy.
+            # The durable route FIRST, and this ordering decides the result rather than being tidy.
             #
             # POST /v1/assessments is assessment-only: it hands the pipeline an ephemeral payload
             # reference, so `MailAssessor` step 2 finds no original bytes, records

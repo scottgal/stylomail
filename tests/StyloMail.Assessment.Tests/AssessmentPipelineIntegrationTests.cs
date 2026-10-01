@@ -303,7 +303,7 @@ public sealed class AssessmentPipelineIntegrationTests : IDisposable
         Assert.Equal(total, final!.Observed.Attempts);
         Assert.Equal(total, final.Observed.Recipients);
 
-        // The two assertions that make this test load-bearing rather than merely passing. Asserting
+        // The two assertions that make this test test what it says rather than merely passing. Asserting
         // only that everything landed is not enough: the compare-and-swap retry is quite capable of
         // absorbing this burst on its own, and it did, a version of this test without the gate
         // passed in isolation and failed only under full-suite load, which is the least useful kind

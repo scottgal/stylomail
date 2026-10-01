@@ -59,7 +59,7 @@ public sealed class SignalRTrafficEvents : ITrafficEvents
     /// <b>Public because the guarantee is the contract, and a guarantee a test cannot observe is a
     /// comment.</b> The fire-and-forget form above hides whether the body faulted, which is exactly
     /// the property that must not be taken on trust: awaiting this task under a hub that throws is
-    /// how the test in this lane proves the catch is load-bearing rather than decorative. Callers
+    /// how the test in this lane proves the catch is doing work rather than sitting there for show. Callers
     /// inside the host use <see cref="Publish"/>.
     /// </para>
     /// <para>

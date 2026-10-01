@@ -3,10 +3,10 @@
 **Why this record exists.** The mutation harness runs from a working directory outside version control,
 with its lane definitions beside it. So the harness, the coverage numbers every lane quotes from it,
 and the reasoning behind its verdict rules are
-all invisible to a reader who clones this repository. A repair to a load-bearing instrument with no
-versioned home is the same class of gap the instrument exists to find. This file is that home: the
-rules, why each one is there, and the evidence that each guard works. The script itself stays
-unversioned by design, because it mutates source and must never be part of a build.
+all invisible to a reader who clones this repository. A repair to the instrument the whole sweep
+rests on, with no versioned home, is the same class of gap the instrument exists to find. This file
+is that home: the rules, why each one is there, and the evidence that each guard works. The script
+itself stays unversioned by design, because it mutates source and must never be part of a build.
 
 **How it works, in one paragraph.** A lane file declares mutations: a target file, an anchor string
 that must appear exactly once, a replacement, and optionally the name of the test expected to catch it.
@@ -86,8 +86,8 @@ coverage claims among the casualties, lost to a filename. A missing target is no
 ### 5. A renamed test was reported as someone else catching it
 
 The harness decides CLAIMED with `elif claims and claims in failed`: the claiming test name, a string
-from the lane file, is compared against the test names the suite reported failing. That string is
-load-bearing at run time. So when a test is renamed, the claim stops matching while the mutation stays
+from the lane file, is compared against the test names the suite reported failing. That string decides
+the verdict at run time. So when a test is renamed, the claim stops matching while the mutation stays
 covered: the renamed test still goes red, and the harness prints `ELSEWHERE, '<old name>' did NOT go
 red; caught by:`, listing the renamed test as a different test that caught it. ELSEWHERE goes into the
 gap list. **A rename therefore converts a clean CLAIMED into a false statement about the code: "this

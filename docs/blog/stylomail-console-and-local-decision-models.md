@@ -29,7 +29,7 @@ A worked instance, because the distinction sounds abstract until it is not. The 
 
 ## The console is an API client and nothing else
 
-The load-bearing decision is in the project file, in a comment, before any code: the console has **no project references at all**. It does not reference the Host, and it does not reference Core.
+The decision the rest of the design follows from is in the project file, in a comment, before any code: the console has **no project references at all**. It does not reference the Host, and it does not reference Core.
 
 That is deliberate and it costs something. Referencing the Host would let the two agree at build time and disagree at runtime, which is the failure this is meant to catch. Worse, the contract tests would be the Host tested against itself. So the wire contracts are **mirrored by hand**: enums, request and response types, field for field, against fixtures transcribed from the Host's own contract types. The intent is written in the fixtures: if the Host renames a field or an enum member, they should fail here, in a test named after the contract, rather than at runtime in front of an operator. Drift is expected to be loud.
 

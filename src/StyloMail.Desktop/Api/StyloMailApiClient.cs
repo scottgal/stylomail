@@ -42,7 +42,7 @@ public sealed class StyloMailApiClient
     /// <remarks>
     /// Web defaults give camelCase property names; the enum converter makes
     /// enums travel as names. Both are deliberate on the Host's side and both
-    /// are load-bearing here: a stored enum ordinal would change meaning the
+    /// are mirrored here: a stored enum ordinal would change meaning the
     /// day a member is inserted above it, which is the Host's own stated reason
     /// for writing names.
     ///

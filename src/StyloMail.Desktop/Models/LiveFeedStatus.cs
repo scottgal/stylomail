@@ -14,7 +14,7 @@ namespace StyloMail.Desktop.Models;
 /// with no display and no dispatcher.
 /// </para>
 /// <para>
-/// <b>The load-bearing rule is that "not live" and "possibly out of date" are
+/// <b>The rule this type exists to hold is that "not live" and "possibly out of date" are
 /// different claims, and that the second belongs to this console's history
 /// rather than to the state the last attempt happened to produce.</b> A console
 /// that has never followed anything read every screen when it was opened, so

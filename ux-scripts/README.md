@@ -615,10 +615,10 @@ instead of being retried. Two further consequences of the same wedge:
   more: it names the value as the problem and says where to move the assignment, which a generic
   "cannot tell" cannot. The sibling's case 8 asserts
   the refusal, that the message says "not a port number", and that it does **not** say "already in
-  use". Mutation H keeps that case load-bearing, and mutations I and J keep the third value itself
-  load-bearing: I deletes the allocation test and J sticks the probe on "cannot tell", the arm that
+  use". Mutation H keeps that case tested, and mutations I and J keep the third value itself under
+  test: I deletes the allocation test and J sticks the probe on "cannot tell", the arm that
   would otherwise satisfy case 9's refusal assertion while answering nothing about any port. P and Q
-  keep the argument path load-bearing: P removes the numeric arm, so a port that is not a number falls
+  keep the argument path under test: P removes the numeric arm, so a port that is not a number falls
   through to the connect and reads as free, and Q spells the default so that an explicit empty argument
   falls back to `CONSOLE_PORT`, which is the bug that separating the unset and empty cases exists to
   prevent.
