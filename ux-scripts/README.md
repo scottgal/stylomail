@@ -425,13 +425,14 @@ instead of being retried. Two further consequences of the same wedge:
   connect answers that without a tool that can itself wedge. Diagnostics that name a pid work with
   `ps`.
 
-Both behaviours are checked without a Host or a build: `.styloagent/scratch/desktop/test-stop-host-bounded.sh`
-runs three cases against a child that ignores SIGTERM, and `test-stop-host-bounded-is-load-bearing.py`
-runs the old body beside the new one to show the old one still blocks where the new one returns. The
-stand-in waits for a flag file before anything signals it, and that handshake is the whole difference
-between a test and a coin toss: `trap "" TERM` takes effect only once the child has run it, so a signal
-in the first milliseconds kills a child that was supposed to be unstoppable. Two drafts of that probe
-reported a false failure for exactly that reason.
+Both behaviours are checked without a Host or a build: `./ux-scripts/check-stop-host-bounded.sh` runs
+three cases against a child that ignores SIGTERM and takes seconds, and the old body was run beside
+the new one to show that it still blocks where the new one returns
+(`.styloagent/scratch/desktop/test-stop-host-bounded-is-load-bearing.py`, kept as the record of that
+comparison rather than as a check to run). The stand-in waits for a flag file before anything signals
+it, and that handshake is the whole difference between a check and a coin toss: `trap "" TERM` takes
+effect only once the child has run it, so a signal in the first milliseconds kills a child that was
+supposed to be unstoppable. Two drafts of that probe reported a false failure for exactly that reason.
 
 ## Nothing works without a Host
 
