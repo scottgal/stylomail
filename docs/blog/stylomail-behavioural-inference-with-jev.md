@@ -49,6 +49,72 @@ In [Stylo.Bot's behavioural model](/blog/stylobot-fingerprint), the useful evide
 
 We don't need to claim we have read the sender's mind. We need enough evidence to decide whether this particular request deserves more scrutiny.
 
+## What is a decision model?
+
+A **decision model** is a learned model for judging an input against outcomes the application defines. You supply the information to consider, ask a specific question, and define the allowed form of the answer. The model returns a judgement the code can use, including probabilities where the interface supports them.
+
+For example, give it an email and ask whether the sender requests new payment details. The model interprets the language, including wording it may not have seen before. Your application receives the probability of that condition being present. It can keep that value as evidence, compare it with other observations, or apply a threshold you have evaluated.
+
+This is more flexible than searching for a phrase such as “bank details”. It is also a narrower job than asking a chatbot to read an email and recommend what to do. The application chooses the questions and owns the consequences.
+
+[Jev](https://docs.typesafe.ai/introduction) is TypeSafe's hosted model for this style of decision-making. [Nimble](https://ollama.com/library/nimble) is a separate model from Bespoke Labs that can run locally through Ollama. Nimble is fine-tuned from Qwen3.5-9B, so a decision model can use a language model as its foundation. The distinction concerns its specialised task and how it supplies answers to the application; it doesn't imply that language modelling has disappeared underneath.
+
+### State, questions and criteria
+
+The interface has three concepts:
+
+- **State** is the information to judge: the message, plus any relevant facts the application supplies. It isn't memory the model maintains for you.
+- **Questions** specify what you want to know. “Does this request change the payment destination?” is a more focused question than “Is this email bad?”
+- **Criteria** define what the possible answers mean. For a payment question, they can distinguish a request for a new account from a routine reminder to pay the existing one.
+
+The Jev-style API supports three answer forms:
+
+| Form | Example mail question | What the application receives |
+| --- | --- | --- |
+| [Noul](https://docs.typesafe.ai/primitives/noul) | Does this message ask for credentials? | A number from 0 to 1 estimating the probability of “yes”. |
+| [Choice](https://docs.typesafe.ai/primitives/choice) | Is this a receipt, a sales enquiry or a personal message? | A selected option and probabilities over the options. |
+| [Score](https://docs.typesafe.ai/primitives/score) | How much time pressure does this message apply? | A score against described levels, with probabilities over those levels. |
+
+A Score uses a *rubric*: descriptions of what each level means, such as “no deadline”, “a normal deadline” and “pressure to act immediately”. A Noul answers a different question. A high probability of urgency doesn't tell you how severe that urgency is.
+
+### A small mail example
+
+Here is a single Noul question in the request shape. The criteria describe the condition we want the model to recognise; they don't tell it to block the message:
+
+```json
+{
+  "model": "jev-latest",
+  "state": "Please use the updated account details for this month's payment. I need this processed today.",
+  "questions": {
+    "payment_redirection": {
+      "type": "noul",
+      "instructions": "Does the message ask to change where a payment is sent?",
+      "criteria": {
+        "true": "Requests a new bank account or other payment destination.",
+        "false": "Does not request a change to the payment destination."
+      }
+    }
+  }
+}
+```
+
+An illustrative answer excerpt could look like this. The number is invented to explain the response, not a measured result:
+
+```json
+{
+  "answers": {
+    "payment_redirection": {
+      "type": "noul",
+      "noul": 0.94
+    }
+  }
+}
+```
+
+The `0.94` concerns the question we asked: whether the message requests a different payment destination. It is **not** a 94% probability that the sender is a fraudster, and it is not an instruction to reject the mail. Recognising a request and deciding whether it is suspicious are separate jobs. [TypeSafe's Noul documentation](https://docs.typesafe.ai/primitives/noul) explains this probability-returning contract.
+
+Several independent questions can use the same state. They don't form a conversation in which one answer automatically becomes another question's context. The application combines their results. Jev's documentation describes parallel evaluation; the local runtime's cost and batching behaviour need their own measurement, as I explore in [Part 2 with Nimble](/blog/stylomail-using-nimble-from-csharp).
+
 ## Why Jev rather than a normal LLM?
 
 A general-purpose LLM can already [classify](https://developers.google.com/machine-learning/glossary#classification-model) an email: predict which category it belongs to. Give it the message, specify some categories, ask for a result. Modern LLM APIs also support [schema-constrained output](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), where generation is restricted to a specified structure and allowed values. So this comparison needs to get past “sometimes the JSON is broken”. We can constrain that shape already.
@@ -60,14 +126,6 @@ A little machine learning (ML) terminology helps here. [Training](https://develo
 [Calibration](https://scikit-learn.org/stable/modules/calibration.html) asks whether the probabilities match observed outcomes. Among many questions answered with roughly `0.8`, about 80% should really have a “yes” answer if those predictions are well calibrated. That is something to measure across examples, not a guarantee about one message.
 
 For this experiment, that's an appealing trade. I need a judgement about a specific property of the message. I don't need a paragraph about it on every call.
-
-The API gives that job three forms:
-
-- [Choice](https://docs.typesafe.ai/primitives/choice) selects from options you define, such as “receipt”, “sales enquiry” or “personal message”.
-- [Score](https://docs.typesafe.ai/primitives/score) evaluates against descriptions of ordered levels, such as “no urgency”, “some urgency” and “strong urgency”. Those descriptions are the *rubric*: you define what the scale means.
-- [Noul](https://docs.typesafe.ai/primitives/noul) gives the probability that a yes/no statement is true, such as “this message asks for credentials”.
-
-Several questions can share the same state and run in parallel. [TypeSafe's introduction](https://docs.typesafe.ai/introduction) describes the contract.
 
 There are two separate benefits to investigate here. One is practical: whether a specialised model makes these judgements quickly and cheaply enough to use routinely. The other is architectural: its natural interface encourages small questions whose answers the application composes itself.
 
@@ -512,4 +570,14 @@ What makes Jev interesting to me is how naturally its interface fits this line o
 
 That's what I'm on the Jev bandwagon to find out. Build the idea, play with it, measure what changes, and decide whether the next chunk of time is worth spending.
 
+Continue with [Part 2: Using Nimble from C#](/blog/stylomail-using-nimble-from-csharp), where I try local alternatives to the hosted decision service and consider how they could fit into a layered mail classifier.
+
 [StyloMail source](https://github.com/scottgal/stylomail)
+
+> **StyloMail series**
+>
+> - **Part 1:** [Behavioural inference with Jev](/blog/stylomail-behavioural-inference-with-jev), the mail system, semantic evidence and explicit policy.
+> - **Part 1.5:** [Conversation analysis with specialists (research)](/blog/conversationresearch), the proposed layers, profiles and specialist question banks.
+> - **Part 2:** [Using Nimble from C#](/blog/stylomail-using-nimble-from-csharp), local decision models, a C# example and the trade-offs of a layered classifier.
+>
+> **Coming soon:** the Avalonia console and management API write-up, once screenshots and client testing are ready.

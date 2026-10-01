@@ -1,4 +1,7 @@
-# Using Nimble from C#: local alternatives to Jev and a layered mail classifier
+# Using Nimble from C# (Part 2): local alternatives to Jev and a layered mail classifier
+
+<!-- category -- AI,Architecture,Behavioural Inference,Jev,Nimble,StyloMail,.NET,Ollama,Decision Models,Patterns -->
+<datetime class="hidden">2026-10-01T22:00</datetime>
 
 In [my first StyloMail article](/blog/stylomail-behavioural-inference-with-jev), I used Jev to ask specific questions about email and get typed answers back. Now there are local models for that kind of work too. I can try the same idea without sending the mail context to a hosted decision service.
 
@@ -6,11 +9,13 @@ In [my first StyloMail article](/blog/stylomail-behavioural-inference-with-jev),
 
 For example, “does this message ask for new payment details?” is a useful question. It doesn't settle whether the message is fraudulent. A supplier can legitimately change banks. The sender's history, the conversation and the other observations still matter.
 
-The interesting change is that I can now choose where that semantic judgement runs, which model does it, and how much work each layer should take on. That's particularly useful for the multi-layer approach planned for 1.5: give each stage a bounded job, and spend more on a message when the available evidence justifies it.
+The interesting change is that I can now choose where that semantic judgement runs, which model does it, and how much work each layer should take on. That's particularly useful for the multi-layer approach proposed in [Part 1.5's conversation research](/blog/conversationresearch): give each stage a bounded job, and spend more on a message when the available evidence justifies it.
 
 This is still a research project. I'll show a complete C# call, compare the local options with the hosted approach, and explain how they could fit into that layered design. The standalone example uses the documented API; the full StyloMail integration has some unresolved work, which I'll cover too.
 
 [TOC]
+
+---
 
 ## What a decision model gives us
 
@@ -112,7 +117,7 @@ public sealed record NoulAnswer(
     [property: JsonPropertyName("noul")] double? Noul);
 ```
 
-Run it with `dotnet run`. The percentage is the model's estimate for this question; the exact value will vary. It is not a spam verdict. A legitimate supplier can request new bank details too.
+The example has been compiled, but this exact client has not yet been tested against a live endpoint. Once Ollama and the model are ready, run it with `dotnet run`. The percentage is the model's estimate for this question; the exact value will vary. It is not a spam verdict. A legitimate supplier can request new bank details too.
 
 The `@true` and `@false` names escape C# keywords; JSON serialisation writes them as `"true"` and `"false"`. `state` is a JSON string here to match the StyloMail adapter's measured contract. The endpoint also accepts structured state, as shown in Ollama's example.
 
@@ -141,9 +146,19 @@ I wouldn't claim that local is automatically faster. A warm model on suitable ha
 
 That question count deserves attention. One HTTP request can contain several questions, but that doesn't mean the model does one shared pass for all of them. [Nimble's documentation](https://ollama.com/library/nimble) describes scoring the prompt for each question. Batching simplifies the call; its runtime cost still needs measuring.
 
-## Where this fits in the planned 1.5 layers
+## Where local models fit into the Part 1.5 proposal
 
-The attraction of local options is being able to assign different jobs to different stages. A cheap stage can handle a narrow, well-tested question. A more capable stage can examine messages that need additional interpretation. Explicit policy can then use the combined evidence.
+The attraction of local options is being able to assign bounded work to different stages. [The Part 1.5 research proposal](/blog/conversationresearch) makes those stages concrete:
+
+| Layer | Proposed job |
+| --- | --- |
+| L0: profiles and reuse | Read prior sender, receiver and relationship state; verify whether existing evidence can be reused. |
+| L1: orientation | Ask twelve broad questions when fresh semantic assessment is needed, selecting overlapping specialist routes. |
+| L2: specialists | Ask focused questions about phishing and business email compromise, grooming and coercion, relationship and financial scams, or harassment and pile-ons. |
+| L3: behavioural update | Record conversation events and update decayed sender, receiver and relationship observations. |
+| L4: policy and review | Apply explicit evidence requirements, choose review priority and authorise an action. |
+
+A specialist here is a question bank with a particular evidence view. It need not be a separate model. The same Nimble instance could answer orientation and specialist questions, while a smaller local model is another option to evaluate for a narrow task. Those are deployment choices to test, rather than measured advantages of the proposal.
 
 This section describes the planned direction, rather than a model cascade already implemented in the current adapter.
 
@@ -239,4 +254,12 @@ I want to measure legitimate mail incorrectly flagged, abusive mail missed, answ
 
 The [testing discussion in the Stylo.Bot series](/blog/stylobot-release-nondeterministic-testing) is relevant here too. Tests of JSON parsing and boundary arithmetic are useful, but they don't establish how a live model behaves. Report clearly whether the live comparison ran, which model it used and what workload it covered.
 
-The reason to pursue this is practical: the semantic part of the system now has local choices. We can try different models behind a small C# boundary, keep mail context within our chosen deployment, and explore the 1.5 layers without making every interpretation a hosted call. The work is to establish which jobs each model can perform well enough, then make that evidence useful to the rest of StyloMail.
+The reason to pursue this is practical: the semantic part of the system now has local choices. We can try different models behind a small C# boundary, keep mail context within our chosen deployment, and explore the layers proposed in Part 1.5 without making every interpretation a hosted call. The work is to establish which jobs each model can perform well enough, then make that evidence useful to the rest of StyloMail.
+
+> **StyloMail series**
+>
+> - **Part 1:** [Behavioural inference with Jev](/blog/stylomail-behavioural-inference-with-jev), the mail system, semantic evidence and explicit policy.
+> - **Part 1.5:** [Conversation analysis with specialists (research)](/blog/conversationresearch), the proposed layers, profiles and specialist question banks.
+> - **Part 2:** [Using Nimble from C#](/blog/stylomail-using-nimble-from-csharp), local decision models, a C# example and the trade-offs of a layered classifier.
+>
+> **Coming soon:** the Avalonia console and management API write-up, once screenshots and client testing are ready.

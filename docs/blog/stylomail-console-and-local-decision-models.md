@@ -3,6 +3,8 @@
 <!-- category -- AI,Architecture,Avalonia,StyloMail,.NET,Ollama,Decision Models,Patterns -->
 <datetime class="hidden">2026-09-30T22:00</datetime>
 
+**Draft held for screenshots and client testing.**
+
 In the [last piece](/blog/stylomail-behavioural-inference-with-jev) I built up the inference side of StyloMail: a small set of typed semantic questions, some ordinary code that counts and compares, and explicit policy deciding what any of it justifies. What it did not have was a surface. There was no way for a person to look at a decision, agree or disagree with it, or change anything about the sender it concerned.
 
 So this one is about giving it a face, and about a second answer to the question the inference side depends on. The brief was to make the **Avalonia console** and the **REST management API** work, and to add **Ollama's local decision models** as an option beside Jev rather than a replacement for it. To be plain about the motivation: the decision-shaped questions StyloMail asks are the same shape as the ones you meet in ticket triage, model routing and content moderation. Being able to ask them of a model running on the machine in front of you is worth finding out about.
@@ -214,3 +216,11 @@ There is one more rule the corpus work produced, and it is the best worked examp
 The invariant from the first piece survives all of this. Probabilistic components produce evidence. Only deterministic policy authorises a side effect. The console is downstream of the policy, not a second place where decisions get made, which is why it can be rebuilt, replaced or thrown away without touching the thing being tested.
 
 A local decision model does not change that either. It is a second implementation of the same port, answering the same question set in the same three shapes, and the interesting property is precisely that swapping it should change the answer and not the architecture. Same questions, same evidence, same policy, different model. What has changed is that the swap is now a runnable question rather than a design question: the adapter is built and selectable, so the sentence I want to be able to write is the one where a deployment reading its mail locally holds a message the hosted model would have let through, or does not. I cannot write that sentence yet, and I would rather leave this piece ending on the version of it that is true.
+
+> **StyloMail series**
+>
+> - **Part 1:** [Behavioural inference with Jev](/blog/stylomail-behavioural-inference-with-jev), the mail system, semantic evidence and explicit policy.
+> - **Part 1.5:** [Conversation analysis with specialists (research)](/blog/conversationresearch), the proposed layers, profiles and specialist question banks.
+> - **Part 2:** [Using Nimble from C#](/blog/stylomail-using-nimble-from-csharp), local decision models, a C# example and the trade-offs of a layered classifier.
+>
+> **Coming soon:** the Avalonia console and management API write-up, once screenshots and client testing are ready.
