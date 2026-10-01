@@ -932,8 +932,16 @@ public static class HostServices
         // loses 612 characters, the floor is 64, and the loop can run more than once. **A body that
         // barely oversteps is therefore cut well below the largest one that would have fitted**, and
         // any estimate of `how much was cut` that assumes minimality is wrong by at least 512 per
-        // iteration. The state publishes the true figure: `body_text_characters_kept`
-        // (`NimbleMessageState.cs:96-97`), present only when the body was cut.
+        // iteration. **AND THE SIZE IS NOT READABLE FROM A SERVED DECISION, which I measured rather than
+        // assumed.** `body_text_characters_kept` is written into the state that goes to the MODEL
+        // (`NimbleMessageState.cs:96-97`) and `Built` carries only the BOOLEAN across the method
+        // boundary (`:38`, `internal sealed record Built(Dictionary<string, object?> State, bool
+        // BodyShortened)`), so a caller cannot report it. Measured on a real served document
+        // (`run-benign-full-20261001T232851Z/decisions/004.eml.json`): `availabilityReasons` appears
+        // 46 times and `body_text_characters_kept` and `body_text_shortened_for_prompt` appear ZERO
+        // times, so the state does not travel with the decision. **What a reader can see is the reason
+        // and not the size, which is why `nimble-` proposes putting the kept and original lengths into
+        // the reason string itself.**
         //
         // **THE CUT IS A SIZE RULE, NOT A DENSITY RULE:
         // measured at a CONSTANT 2500 characters, prose is shortened exactly like hex-ish.** SIZE
@@ -943,6 +951,21 @@ public static class HostServices
         // `MailAssessorOptions` defaults to 1_000_000, so the project has to be named.) Because the
         // row stays `Available`, that cut reaches a reader ONLY through the reason attribute. So the
         // live failure is the SHORTENED READ rather than the refusal, which is `policy-`'s ruling.
+        //
+        // AND IT IS THE NORMAL CASE RATHER THAN AN EDGE ONE, on `nimble-`'s body-room arithmetic: the
+        // twelve-question object is 3,825 bytes and a 2,500-byte-body request is 6,910, so the non-body
+        // overhead is 4,410 and **the body room in a MINIMAL state is 8192 - 4410 = 3782 bytes. Their
+        // arm used 2,500 of that 3,782 and had 1,282 bytes to spare that a real message does not have**,
+        // because the real builder also adds `BuildBehaviourProfile` (`:120`), `conversation_context`
+        // (`:151`), `context` (`:159`), links up to `MaxLinks` 40 and attachments up to
+        // `MaxAttachments` 20, every byte of it out of the same `NumCtx` 8192. **So `MaxBodyCharacters`
+        // 2500 is a CEILING SET ABOVE WHAT A REAL REQUEST CAN CARRY, the fit reduces the body on
+        // essentially every real message, and the reason attribute is not an exception marker but a
+        // report on nearly every row** -- which is why it appears eleven times in one served document.
+        // **AND IT MAKES 43202 NOT A SHIPPING-PATH FIGURE FOR A SECOND, INDEPENDENT REASON: it is
+        // endpoint-direct (the fit never ran) AND it was measured under a state the adapter does not
+        // build.** The second survives a future arm that runs through the pipeline with the same
+        // probe-shaped state, which is why it is the stronger of the two.
         //
         // What the table supports without either over-reach: FIVE OF SIX body contents evaluate above
         // 32768 and PLAIN PROSE IS THE EXCEPTION rather than the rule, so a reader must not take a
