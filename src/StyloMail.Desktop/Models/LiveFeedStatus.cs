@@ -15,19 +15,17 @@ namespace StyloMail.Desktop.Models;
 /// </para>
 /// <para>
 /// <b>The load-bearing rule is that "not live" and "possibly out of date" are
-/// different claims.</b> A deployment with no feed has never followed anything,
-/// and every screen in it was read when it was opened, so nothing there is
-/// stale and saying otherwise would train an operator to ignore the warning. A
-/// console whose feed <em>stopped</em> is the opposite situation: the operator
-/// was watching something that was following the Host a moment ago, and the
-/// screen is now the last thing it said. That is what <see cref="ScreenMayBeStale"/>
-/// exists to distinguish, and it is the reason this type is not just a mapping
-/// from <see cref="TrafficFeedState"/>.
-/// </para>
-/// <para>
-/// The second rule follows from the first and was learned the hard way: the
-/// claim about staleness belongs to the console's history, not to whichever
-/// state the last attempt produced. <see cref="From"/> states it once.
+/// different claims, and that the second belongs to this console's history
+/// rather than to the state the last attempt happened to produce.</b> A console
+/// that has never followed anything read every screen when it was opened, so
+/// nothing on it is stale; a console that was following the Host and then
+/// stopped is the opposite situation, and what is on its screen is the last
+/// thing the feed said. The state cannot tell those two apart. An operator's own
+/// Reconnect after an outage lands in exactly the state a deployment with no
+/// feed produces, which is the reachable path that made the state exemption this
+/// type used to carry wrong. What separates them is whether this console was
+/// ever live and has not re-read since, and that is what
+/// <see cref="ScreenMayBeStale"/> records.
 /// </para>
 /// </remarks>
 public sealed record LiveFeedStatus
@@ -124,24 +122,36 @@ public sealed record LiveFeedStatus
     /// <param name="retry">The retry in flight, if an operator's connect is running.</param>
     /// <remarks>
     /// <b>The flag, not the state, decides whether the stale sentence is
-    /// rendered.</b> Which failure the feed settled in is a fact about the last
-    /// attempt; whether the screen can be trusted is a fact about this
-    /// console's history, and after a live feed the second is true whatever the
-    /// first says. Gating it on <see cref="TrafficFeedState.Dropped"/> was
-    /// wrong in the one case that matters: an operator's own Reconnect during
-    /// an outage settles in <see cref="TrafficFeedState.Unreachable"/>, and the
-    /// warning used to disappear at the moment the console most needed to keep
-    /// saying it.
+    /// rendered, and no state is exempt from that.</b> Which failure the feed
+    /// settled in is a fact about the last attempt; whether the screen can be
+    /// trusted is a fact about this console's history, and after a live feed the
+    /// second is true whatever the first says. Gating it on
+    /// <see cref="TrafficFeedState.Dropped"/> was wrong in the one case that
+    /// matters: an operator's own Reconnect during an outage settles in
+    /// <see cref="TrafficFeedState.Unreachable"/>, and the warning used to
+    /// disappear at the moment the console most needed to keep saying it.
+    /// Exempting <see cref="TrafficFeedState.NoFeed"/> was the same mistake one
+    /// state over, and the same operator action reaches it: a Reconnect against
+    /// a Host that has since stopped mapping the hub route answers 404, so the
+    /// sequence ends in <c>NoFeed</c> with the flag still set and nothing
+    /// re-read. Every pane keeps showing the read from before the change, and
+    /// the console has to keep saying so.
     /// </remarks>
     public static LiveFeedStatus From(
         TrafficFeedState state,
         bool screenMayBeStale,
         FeedRetry? retry = null)
     {
-        // One state is exempt, and it is a rule rather than an oversight: a
-        // deployment with no feed has never followed anything, so a console
-        // meeting one is not behind, whatever a previous subscription knew.
-        var stale = screenMayBeStale && state is not TrafficFeedState.NoFeed;
+        // The flag alone, with no state exempt from it. A console that never
+        // followed anything has it false by construction, since it is set only
+        // in the handlers of a connection that started; and a console that has
+        // re-read the visible surface since going live has it false too, because
+        // SurfaceIsCurrent is the only thing that clears it. Those are exactly
+        // the two cases where "not stale" is the truthful answer, so a state
+        // clause here can only ever remove a warning that is owed: NoFeed is
+        // reachable from Live, through a Reconnect that answers 404, with the
+        // flag still true and every open pane still holding the old read.
+        var stale = screenMayBeStale;
 
         var (headline, detail) = state switch
         {
@@ -153,14 +163,21 @@ public sealed record LiveFeedStatus
                 "Connecting",
                 "Asking this Host for its live feed."),
 
-            // A finished answer, not a fault, and not stale. The Host maps this
-            // route only when the deployment asked for a feed, so its absence
-            // is a deployment that does not have one, which is a complete
-            // configuration and not a broken console.
+            // A finished answer rather than a fault: the Host maps this route
+            // only when the deployment asked for a feed, so its absence is a
+            // deployment that does not have one, which is a complete
+            // configuration.
+            //
+            // What this sentence must not do is rule on staleness. "There was
+            // never a feed to fall behind" is a claim about the console, and it
+            // is false for one that was live until a Reconnect answered 404: the
+            // headline beside this tooltip says that console may be out of date
+            // and is right. So this says what the deployment is and how screens
+            // are read, and leaves the console's own history to the headline.
             TrafficFeedState.NoFeed => (
                 "No live feed",
-                "This deployment does not offer one. Screens are read from the Host when you open them, "
-                + "so nothing here is out of date: there was never a feed to fall behind."),
+                "This deployment does not offer one, which is a configuration rather than a fault. "
+                + "Screens are read from the Host when you open them."),
 
             TrafficFeedState.Refused => (
                 "Live feed not authorised",
