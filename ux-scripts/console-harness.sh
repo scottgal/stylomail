@@ -176,11 +176,40 @@ console_newest_mtime() {
 # `.styloagent/scratch/desktop-decoy` starts with the string
 # `.styloagent/scratch/desktop` while being a different directory, so the pattern
 # carries the slash.
+#
+# THE COMPARISON IS OVER CANONICAL PATHS, NOT OVER THE STRING. As first landed it
+# compared the literal text, and a symlink inside the allowed base defeated it: the
+# string `.styloagent/scratch/desktop/escape/victim` starts with the prefix while
+# resolving to `scratch/desktop-escape-target/victim`, outside it, and a caller acting
+# on that decision deletes a directory the guard exists to protect. Measured on this
+# host 2026-10-01, before and after, with a marker file. An automated review routed by
+# `article-` raised it and is credited; its suggested `realpath -m` is not available
+# here, because macOS `/bin/realpath` rejects `-m` outright, so this uses the same
+# python3 the harness already requires for its port preflight.
+#
+# Fails CLOSED: if no tool can resolve the path, the answer is refusal, because a
+# guard whose failure mode is "allow" is not a guard.
+console_canonical_path() {
+    local path="$1"
+    if [[ -e "$path" ]] && command -v realpath >/dev/null 2>&1; then
+        realpath "$path" 2>/dev/null && return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$path" 2>/dev/null && return 0
+    fi
+    return 1
+}
+
 console_assert_run_dir_is_ours() {
     local script="$1" effect="${2:-writes into}" allowed="$CONSOLE_REPO/.styloagent/scratch/desktop"
+    local run_canon="" allowed_canon=""
 
-    if [[ -n "${CONSOLE_RUN:-}" && ( "$CONSOLE_RUN" == "$allowed"/* && "$CONSOLE_RUN" != *"/.."* ) ]]; then
-        return 0
+    if [[ -n "${CONSOLE_RUN:-}" ]]; then
+        run_canon="$(console_canonical_path "$CONSOLE_RUN")" || run_canon=""
+        allowed_canon="$(console_canonical_path "$allowed")" || allowed_canon=""
+        if [[ -n "$run_canon" && -n "$allowed_canon" && "$run_canon" == "$allowed_canon"/* ]]; then
+            return 0
+        fi
     fi
 
     # The consequence is the CALLER's to state, because the three callers do not do
@@ -188,8 +217,18 @@ console_assert_run_dir_is_ours() {
     # for all of them, and that became false the moment stamp-host-build.sh, which
     # deletes nothing, called it. A warning that describes a hazard the reader does
     # not face is how a real one gets discounted.
-    printf 'refusing to run: CONSOLE_RUN is set to\n\n  %s\n\n' "$CONSOLE_RUN" >&2
-    printf 'which is not under this lane scratch (%s/). This script %s its run\n' "$allowed" "$effect" >&2
+    printf 'refusing to run: CONSOLE_RUN is set to\n\n  %s\n\n' "${CONSOLE_RUN:-<unset>}" >&2
+    if [[ -n "$run_canon" ]]; then
+        printf 'which resolves to\n\n  %s\n\nand is not under this lane scratch (%s/). This script %s its run\n' \
+            "$run_canon" "$allowed" "$effect" >&2
+    else
+        # Distinguished from the line above on purpose: a refusal because the path
+        # could not be resolved is a different problem from one because it resolved
+        # elsewhere, and an operator reading "not under" for the first case would go
+        # looking at the path instead of at the missing tool.
+        printf 'and nothing on this machine could resolve it to a canonical path, so it cannot be\nshown to be under this lane scratch (%s/). This script %s its run\n' \
+            "$allowed" "$effect" >&2
+    fi
     printf 'directory, so an inherited value would act on a live run: its principal key\n' >&2
     printf 'and its artifacts. Re-run it as:\n\n' >&2
     printf '  env -u CONSOLE_RUN %s\n\n' "$script" >&2

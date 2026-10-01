@@ -441,6 +441,28 @@ else
     fail "a directory under the lane's own scratch was refused too, exit $status"
 fi
 
+# And the escape the string test could not see. A symlink INSIDE the allowed base
+# pointing outside it makes the path text start with the prefix while resolving
+# elsewhere, and a caller that acts on that decision deletes a directory the guard
+# exists to protect. Measured on this host before the fix: the guard allowed it and
+# the delete landed outside. An automated review routed by article- raised it;
+# mutation G in the falsification is what keeps the canonicalisation load-bearing.
+escape="$REPO/.styloagent/scratch/desktop-escape-target"
+mkdir -p "$escape"
+ln -sfn "$escape" "$REPO/.styloagent/scratch/desktop/case-8-symlink"
+env CONSOLE_RUN="$REPO/.styloagent/scratch/desktop/case-8-symlink/victim" \
+    bash -c 'source "$1"; console_assert_run_dir_is_ours "$2"' _ "$HERE/console-harness.sh" "$0" >/dev/null 2>&1
+status=$?
+
+if (( status != 0 )); then
+    pass "a path that resolves through a symlink out of the base is refused"
+else
+    fail "a path through a symlink resolving outside the base was allowed"
+fi
+
+rm -f "$REPO/.styloagent/scratch/desktop/case-8-symlink"
+rm -rf "$escape"
+
 rm -rf "$decoy" "$ours"
 fi
 

@@ -10,6 +10,12 @@
 #
 # It builds nothing and starts no Host: it reads a directory that already exists.
 #
+# RUN IT, DO NOT SOURCE IT. The harness resolves the repo root from BASH_SOURCE[0],
+# which is unset under zsh, this host's default shell, so sourcing it there leaves
+# CONSOLE_REPO empty and the answer comes back "NOT RECORDED" for what looks like a
+# directory problem. The shebang below is what makes it work; `ingress-` measured the
+# failure and `overview-` broadcast the caveat.
+#
 # Usage:
 #   ux-scripts/stamp-host-build.sh [directory]
 #

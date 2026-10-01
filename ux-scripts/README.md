@@ -122,11 +122,21 @@ call and the sharper first move: it writes a placeholder OVER `auth.headers`, wh
 principal key. Each of the three scripts asserts the refusal in its own cases, because what has to be true
 is that *this* file calls the guard, not that the guard works.
 
+**The guard compares canonical paths, not strings.** As first landed it compared the literal text, and a
+symlink inside the allowed base defeated it: `.styloagent/scratch/desktop/escape-probe/victim` starts with
+the prefix while resolving to `scratch/desktop-probe-outside/victim`, outside it, and a caller acting on
+that decision deletes a directory the guard exists to protect. Measured on this host with a marker file
+before the fix and after it. An automated review routed by `article-` raised it and is credited, with one
+correction back: its suggested `realpath -m` is not available here, because macOS `/bin/realpath` rejects
+`-m` outright, so the resolution uses the same `python3` the harness already needs for the port preflight.
+It fails closed, so a machine that can resolve nothing refuses everything rather than allowing everything.
+
 The falsification is kept at `./ux-scripts/falsify-build-fingerprint.sh` and mutates copies in scratch,
-never the shared tree. Six mutations, one per pass, each with the exact set of
+never the shared tree. Seven mutations, one per pass, each with the exact set of
 cases it must redden: A names-only identity (case 2), B no clearing on absence (4, 5, 6), C header
 dropped (1, 7), D the guard call dropped (8), E the guard's pattern losing its trailing slash (8), F the
-sibling's guard call dropped (7). One per pass because two of them target case 8, and a red that two
+sibling's guard call dropped (7), G the canonicaliser returning its argument unchanged (8). One per pass
+because several of them target case 8, and a red that two
 mutations could have caused names neither property. Each pass also asserts its own pattern still matched:
 a mutation whose perl stops matching is a no-op, and in this session that no-op first read as a clean
 pass, then was reported as "applied" by a precondition that had copied the same stale pattern.

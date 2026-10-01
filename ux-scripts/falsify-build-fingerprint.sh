@@ -30,6 +30,9 @@
 #      8 must go red for the same reason. This is the mutation that says whether
 #      the slash is load-bearing or decoration.
 #
+#   G. The canonicaliser returns its argument unchanged, leaving only the string
+#      comparison. Case 8 must go red on the symlink assertion.
+#
 # Measured 2026-10-01: each mutation reddens exactly the cases named above.
 
 set -uo pipefail
@@ -90,18 +93,24 @@ mutation_A() { perl -pi -e 's/identity\+="\$digest  \$name"\$'"'"'\\n'"'"'/ident
 mutation_B() { perl -pi -e 's/^    rm -f "\$CONSOLE_RUN\/host-build\.id" "\$manifest"$/# removed for the falsification/' console-harness.sh; }
 mutation_C() { perl -pi -e 's/^    printf .# \%s\\n. "\$\{out_dir\#\"\$CONSOLE_REPO\"\/\}".*$/# removed for the falsification/' console-harness.sh; }
 mutation_D() { perl -0777 -pi -e 's/if ! console_assert_run_dir_is_ours "\$0"[^;]*; then\n    exit 2\nfi\n//' check-build-fingerprint.sh; }
-mutation_E() { perl -pi -e 's/\$CONSOLE_RUN" == "\$allowed"\/\*/\$CONSOLE_RUN" == "\$allowed"*/' console-harness.sh; }
+mutation_E() { perl -pi -e 's/"\$run_canon" == "\$allowed_canon"\/\*/"\$run_canon" == "\$allowed_canon"*/' console-harness.sh; }
 # F. The sibling check loses its call to the same guard. Its case 7 must go red:
 #    what is under test there is that check-stop-host-bounded.sh CALLS the guard,
 #    and before this mutation existed nothing went red when that call was removed.
 mutation_F() { perl -0777 -pi -e 's/if ! console_assert_run_dir_is_ours "\$0"[^;]*; then\n    exit 2\nfi\n//' check-stop-host-bounded.sh; }
+
+# G. The canonicaliser returns its argument unchanged. Case 8's symlink assertion must
+#    go red: with no resolution, a path through a symlink inside the base reads as
+#    being inside the base.
+mutation_G() { perl -pi -e 's/^    local path="\$1"$/    local path="\$1"; printf "%s\\n" "\$path"; return 0/' console-harness.sh; }
 
 # A guard against the mutations themselves going stale: if a perl pattern stops
 # matching, the "mutation" is a no-op and the pass reports <none>, which is a
 # failure here rather than a quiet success.
 mutation_A_applied() { ! grep -q 'identity+="\$digest' console-harness.sh; }
 mutation_D_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-build-fingerprint.sh; }
-mutation_E_applied() { grep -q '"\$allowed"\*' console-harness.sh; }
+mutation_E_applied() { grep -q '"\$allowed_canon"\*' console-harness.sh; }
+mutation_G_applied() { grep -q 'printf "%s\\n" "\$path"; return 0' console-harness.sh; }
 mutation_F_applied() { ! grep -qF 'console_assert_run_dir_is_ours "$0"' check-stop-host-bounded.sh; }
 
 fingerprint=check-build-fingerprint.sh
@@ -115,6 +124,7 @@ pass "C header dropped" "1 7 "         "$fingerprint" mutation_C || failures=$((
 pass "D guard call dropped" "8 "       "$fingerprint" mutation_D || failures=$((failures + 1))
 pass "E slash dropped" "8 "            "$fingerprint" mutation_E || failures=$((failures + 1))
 pass "F sibling guard dropped" "7 "    "$stop"        mutation_F || failures=$((failures + 1))
+pass "G canonicaliser neutered" "8 "   "$fingerprint" mutation_G || failures=$((failures + 1))
 
 # The preconditions, checked last so the reports above are printed either way.
 did_it_apply() {
@@ -129,6 +139,7 @@ did_it_apply "A names-only identity" mutation_A_applied
 did_it_apply "D guard call dropped" mutation_D_applied
 did_it_apply "E slash dropped" mutation_E_applied
 did_it_apply "F sibling guard dropped" mutation_F_applied
+did_it_apply "G canonicaliser neutered" mutation_G_applied
 
 rm -rf "$scratch"
 
