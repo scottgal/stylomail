@@ -336,7 +336,7 @@ Both cuts land on `BodyText` and `QuotedText`. **While something of the body sur
 (`NimbleSemanticMailClassifier.cs:591`), so **availability alone does not tell a reader whether the
 read was whole** and anything consuming these rows has to look at the reason rather than the state.
 **An emptied body still takes that path when the request fits**: the fit returns the zero-body state
-at `:388-395`, before its own `budget == 0` check at `:397-400`, so a message whose body was cut to
+at `:388-395`, before its own `budget == 0` check at `:398-400`, so a message whose body was cut to
 nothing is sent whenever the rest of the state fits the window. What comes back `Unavailable` is the
 other terminal case, where nothing fits at all and the state alone exceeds `NumCtx`: the fit returns
 nothing, and every askable row is answered with "question set and message state exceed the configured
