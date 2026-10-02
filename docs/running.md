@@ -393,8 +393,11 @@ once the state is embedded in the request (their assembled cost is 88 bytes with
 against the measurement, so 105 is the reading and 88 the estimate). For the message the three-point
 bisect pins, `O0` is 8192 - 2160 = **6032**. **The two regimes CROSS, so a total on its own identifies no
 body**: an un-cut 2092-byte body and a cut 2161-byte one both total 8124, and one of those is a measured
-arm. Across these fixtures the band of body lengths whose outcome depends on which message carries them
-is **340 wide**, which is the reason a fixture has to declare where it sits rather than quote a boundary.
+arm. **The cut form holds while the second pass still leaves the request above `NumCtx`**, which for the
+bisected message means a body of **2093** or more; a shorter body sends the loop round again and takes
+whatever total it lands on. Across these fixtures the band of body lengths whose outcome depends on which
+message carries them is **340 wide**, which is the reason a fixture has to declare where it sits rather
+than quote a boundary.
 
 #### Measured performance
 
