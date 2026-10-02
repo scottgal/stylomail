@@ -139,6 +139,7 @@ public sealed record DecisionResponse
             ObservedScope = e.ObservedScope,
             Window = WindowOf(e),
             AvailabilityReasons = AvailabilityReasonsOf(e),
+            CascadeEscalation = AttributeOf(e, CascadeEscalationAttribute),
         })],
         Versions = VersionsResponse.From(assessment.Versions),
         Coverage = CoverageResponse.From(assessment.Coverage),
@@ -184,9 +185,28 @@ public sealed record DecisionResponse
     /// dimension ids. A reader that wants one of those must not stop at the first, and must not
     /// mistake this helper for the general case.
     /// </remarks>
-    private static string? WindowOf(Evidence evidence)
+    private static string? WindowOf(Evidence evidence) => AttributeOf(evidence, WindowAttribute);
+
+    /// <summary>
+    /// The attribute name the cascade writes on a row it asked a second model for.
+    /// </summary>
+    /// <remarks>
+    /// Written out here rather than shared with the producer, which publishes it as an attribute name
+    /// rather than as a contract, on the same terms <see cref="WindowAttribute"/> is. The cost of the
+    /// two drifting is that a console shows null where an escalation belongs, which is why the
+    /// listing test asserts the value rather than the field's presence.
+    /// </remarks>
+    private const string CascadeEscalationAttribute = "cascade.escalation";
+
+    /// <summary>One attribute's value, read by name, or null when the row does not carry it.</summary>
+    /// <remarks>
+    /// First match wins, which is right for the two names read here and not a pattern to copy
+    /// elsewhere: both are written once per row, unlike the genuinely multi-valued names
+    /// <see cref="AvailabilityReasonsOf"/> is written for.
+    /// </remarks>
+    private static string? AttributeOf(Evidence evidence, string name)
         => (evidence.Attributes ?? [])
-            .FirstOrDefault(attribute => string.Equals(attribute.Name, WindowAttribute, StringComparison.Ordinal))
+            .FirstOrDefault(attribute => string.Equals(attribute.Name, name, StringComparison.Ordinal))
             ?.Value;
 
     private const string ReasonAttribute = "reason";
@@ -366,6 +386,34 @@ public sealed record EvidenceResponse
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> AvailabilityReasons { get; init; } = [];
+
+    /// <summary>
+    /// Why the cascade asked a second model for this row, and whether that ask was answered, or null
+    /// when no cascade is in use or the row was not escalated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the "why" half of the cascade's site; the "which model" half is already here.</b>
+    /// A row the second arm answered carries that arm's own producer in
+    /// <see cref="SourceVersion"/>, so a client can tell which arm answered each row without new
+    /// fields. What it could not tell was WHY one was asked, and that is this member: the fired
+    /// conditions, comma separated, with <c>hosted:unavailable</c> appended when the second arm was
+    /// asked and produced nothing usable.
+    /// </para>
+    /// <para>
+    /// <b>Null means no cascade or no escalation, and the two are not distinguished here</b> because
+    /// the versions block already says which provider the deployment selected. Absence is the normal
+    /// path: a row that says "kept" on every message would be noise on a decision nobody has to
+    /// explain.
+    /// </para>
+    /// <para>
+    /// Read by name, on the same terms as <see cref="Window"/> and
+    /// <see cref="AvailabilityReasons"/>, and deliberately NOT under the name <c>reason</c>: that
+    /// list answers "why is this value weaker", and a second-model call answers a different question.
+    /// Merging them would put an escalation inside a list a reader consults to judge a value.
+    /// </para>
+    /// </remarks>
+    public string? CascadeEscalation { get; init; }
 }
 
 public sealed record VersionsResponse

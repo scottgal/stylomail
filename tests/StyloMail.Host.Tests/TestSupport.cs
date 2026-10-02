@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using StyloMail.Adaptive.Profiles;
 using StyloMail.Assessment;
+using StyloMail.Cascade;
 using StyloMail.Transport.Cloudflare;
 using StyloMail.Transport.Ingress;
 using StyloMail.Core;
@@ -18,6 +19,7 @@ using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
 using StyloMail.Jev;
 using StyloMail.Mime;
+using StyloMail.Nimble;
 using StyloMail.Persistence;
 using StyloMail.Queue;
 
@@ -200,6 +202,82 @@ internal sealed class TestHost : WebApplicationFactory<Program>
                         ProfileKeyHasher = new ProfileKeyHasher(
                             Encoding.UTF8.GetBytes("0123456789abcdef0123456789abcdef")),
                     },
+                    sp.GetRequiredService<QueueOptions>(),
+                    policyContext: new HostPolicyContextSource(
+                        sp.GetRequiredService<IEmergencyKillSwitch>()));
+            });
+        });
+    }
+
+    /// <summary>
+    /// Composes the real cascade the way the host composes it, against two providers that cannot be
+    /// reached.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both arms refused is the interesting arm here, not a degenerate one.</b> The local arm
+    /// answering nothing is exactly the state that must escalate rather than pass through, so this
+    /// composition exercises the cascade's own rule, its assembly of the returned rows, and the site
+    /// it writes onto them, through the real pipeline and the real decision projection. With a live
+    /// endpoint instead, the rows would depend on what a model happened to answer and the assertion
+    /// would be about the model.
+    /// </para>
+    /// <para>
+    /// The weights are the policy engine's own table, taken from the options this pipeline is built
+    /// with, on the same terms the production arm takes them: a copy here would let this test pass
+    /// while the shipped composition narrowed on a stale table.
+    /// </para>
+    /// </remarks>
+    public TestHost WithRealCascadeAssessor()
+    {
+        _installFakeAssessor = false;
+
+        return Override(services =>
+        {
+            RemoveAll<IMailAssessor>(services);
+
+            services.AddSingleton<IMailAssessor>(sp =>
+            {
+                var clock = sp.GetRequiredService<TimeProvider>();
+                var http = sp.GetRequiredService<HttpClient>();
+
+                var localArm = new NimbleOptions
+                {
+                    Endpoint = UnreachableProvider,
+                    Model = "nimble:latest",
+                    EffectiveNumCtx = 65_536,
+                };
+
+                var secondArm = new JevOptions
+                {
+                    ApiKey = "a-placeholder-key-that-never-leaves-this-process",
+                    Endpoint = UnreachableProvider,
+                };
+
+                var options = new MailAssessorOptions
+                {
+                    // A fixture key, not a secret: it pseudonymises profile identifiers inside this
+                    // process only, and nothing here is persisted beyond the test's own root.
+                    ProfileKeyHasher = new ProfileKeyHasher(
+                        Encoding.UTF8.GetBytes("0123456789abcdef0123456789abcdef")),
+                };
+
+                return AssessmentPipeline.Create(
+                    sp.GetRequiredService<IMimeMessageAnalyzer>(),
+                    new CascadeSemanticClassifier(
+                        new NimbleSemanticMailClassifier(http, localArm, clock),
+                        new CredentialAwareSemanticClassifier(
+                            new JevSemanticMailClassifier(http, secondArm, clock),
+                            sp.GetRequiredService<ProviderCredentialHealth>(),
+                            clock),
+                        new CascadeOptions
+                        {
+                            ClassifierVersion = HostServices.CascadeClassifierVersion(localArm, secondArm),
+                            DimensionWeights = options.Policy.DimensionWeights,
+                        }),
+                    sp.GetRequiredService<SqliteConnectionFactory>(),
+                    sp.GetRequiredService<SpoolStore>(),
+                    options,
                     sp.GetRequiredService<QueueOptions>(),
                     policyContext: new HostPolicyContextSource(
                         sp.GetRequiredService<IEmergencyKillSwitch>()));

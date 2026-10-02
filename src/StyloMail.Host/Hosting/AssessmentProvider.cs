@@ -77,6 +77,35 @@ public enum AssessmentProvider
     /// </para>
     /// </remarks>
     NeverAsks,
+
+    /// <summary>
+    /// Both models, in order: a local decision model first, and a second opinion only where a
+    /// deterministic rule says the local answer cannot be taken.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not a third adapter: a composition of the two that already exist.</b> The local arm is the
+    /// one <see cref="Nimble"/> constructs, the second arm is the one <see cref="Jev"/> constructs,
+    /// and the cascade is a decorator over the provider port that asks the second only for the
+    /// dimensions the rule names. So everything the two members above say about their adapters is
+    /// true here of one arm each, and the cascade adds exactly one thing: which arm answered a given
+    /// row, recorded on that row.
+    /// </para>
+    /// <para>
+    /// <b>It needs the hosted provider's secrets, and that is the point rather than an
+    /// inconvenience.</b> A cascade whose second arm holds no credential is not a cascade; it is the
+    /// local provider with a rule that can never be satisfied, so it is refused at startup exactly as
+    /// <see cref="Jev"/> is, naming the missing variable. The failure this prevents is a deployment
+    /// that selected a cascade, lost its key, and went on assessing every message on the local arm
+    /// while its evidence looked complete.
+    /// </para>
+    /// <para>
+    /// <b>The default stays <see cref="Jev"/>.</b> A deployment that has asked for nothing keeps the
+    /// behaviour it had, and no existing deployment is moved onto a composition it did not choose.
+    /// </para>
+    /// </remarks>
+    /// <seealso cref="StyloMail.Cascade.CascadeEscalationRule"/>
+    Cascade,
 }
 
 /// <summary>
