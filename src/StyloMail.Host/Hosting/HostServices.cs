@@ -914,10 +914,15 @@ public static class HostServices
         // **AND THAT IS THE BOUNDARY FOR A SUBMISSION WITH NO PROFILE, WHICH IS THE WORST CASE, AND
         // THE SPREAD HAS A DIRECTION.** Measured, in submission order, the same fixture at the SAME
         // 7785 wire total each time:
-        //   index  kept   O-nought+M   O-nought   L      profile
-        //     0    1648      6137        6032     2160    available False, 15 of 18 fields null
-        //     1    1659      6126        6021     2171    available True, 1 message observed
-        //     2    1664      6121        6016     2176    available True, 2 messages observed
+        //   index  kept   O-nought+M   O-nought        L      profile
+        //     0    1648      6137     6032 MEASURED   2160    available False, 15 of 18 fields null
+        //     1    1659      6126     6021 derived    2171    available True, 1 message observed
+        //     2    1664      6121     6016 derived    2176    available True, 2 messages observed
+        // **AND ONLY THE FIRST `O-nought` IS A READING.** 6032 comes off the two UNCUT arms, which both
+        // give it; **6021 and 6016 are `6126 - 105` and `6121 - 105`** -- three numbers, two of them a
+        // subtraction presented beside one that is not. **Marking which is which is the whole of the
+        // fix, because a DERIVED value printed beside a MEASURED one reads as measured**, and three
+        // lanes have now quoted one of my derived figures as though it were a reading.
         // **Overhead falls monotonically and `L` rises with it. AND THE SPREAD IS `O-nought`, NOT `M`:
         // `M` HOLDS AT 105 across all three arms while `O-nought` moves 6032 -> 6016**, which is the
         // right way round for a reason worth the line -- **`M` is two fixed key lines and SHOULD be
@@ -944,9 +949,13 @@ public static class HostServices
         // **AND THE SYMMETRIC HALF IS `policy-`'s, AND THE TWO ARE DIFFERENT FREEDOMS: the CUT arms are
         // `O-nought`-FREE for the TOTAL.** A one-step cut gives `total = O-nought + M + L + (CAP -
         // MARGIN) - body`, and since `O-nought + L = NumCtx`, that is **`NumCtx + M + CAP - MARGIN -
-        // body` = 10285 - body at these values -- so `body` is RECOVERABLE from the wire total** with no
-        // `O-nought`, no kept value and no flag. **An uncut arm cannot do that, for the same reason it
-        // is form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
+        // body` = 10285 - min(body, CAP) at these values -- so `min(body, CAP)` is RECOVERABLE from the
+        // wire total** with no `O-nought`, no kept value and no flag. **AND THE `min` IS LOAD-BEARING:
+        // for a body AT OR ABOVE the cap it is not the emitted length**, because the cap discards the
+        // excess BEFORE the fit measures it, **so every at-or-above-cap body writes the same total and
+        // the emitted length is gone from every artifact on the path** -- the inversion is injective
+        // exactly where `min` is, and a capped body is not recoverable from ANY request size. **An uncut
+        // arm cannot do this at all, for the same reason it is form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
         // `O-nought`-free for `total`** -- and a reader who takes those for ONE property will look for
         // the body's length in the uncut arms and find it only in the cut ones.
         //
