@@ -244,6 +244,12 @@ public sealed class CascadeLocalMeasurementTests
                 ["turnCharacters"] = Number(entry, "turnCharacters"),
                 ["windowCharacters"] = Number(entry, "windowCharacters"),
 
+                // CONDITIONAL members: the generator emits these only when the batch was made with
+                // the flag, so they are absent on most batches rather than empty. Read with the
+                // accessor that treats a shape it does not recognise as absent instead of fatal.
+                ["bodyShape"] = Text(entry, "bodyShape"),
+                ["quotedTailCharacters"] = Number(entry, "quotedTailCharacters"),
+
                 // `intent` is an object with a label and a note, not a string. Reading it as one
                 // threw, which is the sort of thing a manifest reader does when it assumes a shape
                 // instead of looking at one.
@@ -337,16 +343,37 @@ public sealed class CascadeLocalMeasurementTests
         };
     }
 
-    private static NimbleOptions NimbleOptionsFor(string endpoint) => new()
-    {
-        Endpoint = endpoint,
+    /// <summary>The variable that moves the client's assumed window, so the misconfiguration is measurable.</summary>
+    /// <remarks>
+    /// The same name the local adapter's own live tests read, deliberately: one variable, one meaning.
+    /// A run that leaves it unset measures the deployment whose settings never reached the options,
+    /// which is a state both this lane and `nimble-` have measured on real boots.
+    /// </remarks>
+    internal const string WindowVariable = "NIMBLE_EFFECTIVE_NUM_CTX";
 
-        // The client's assumed window, which the Host pins through configuration. Unset it derives
-        // NumCtx / 2 and refuses ordinary twelve-question mail, so a measurement that left it out
-        // would report every dimension unavailable for a client-side reason and read as a model
-        // result.
-        EffectiveNumCtx = 65_536,
-    };
+    private static NimbleOptions NimbleOptionsFor(string endpoint)
+    {
+        var options = new NimbleOptions
+        {
+            Endpoint = endpoint,
+
+            // The client's assumed window, which the Host pins through configuration. Unset it derives
+            // NumCtx / 2 and refuses ordinary twelve-question mail, so a measurement that left it out
+            // would report every dimension unavailable for a client-side reason and read as a model
+            // result.
+            EffectiveNumCtx = 65_536,
+        };
+
+        if (Environment.GetEnvironmentVariable(WindowVariable) is { Length: > 0 } configured
+            && int.TryParse(configured, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var window)
+            && window > 0)
+        {
+            options.EffectiveNumCtx = window;
+        }
+
+        return options;
+    }
 
     private static ISemanticMailClassifier? TryBuildHostedArm()
     {
