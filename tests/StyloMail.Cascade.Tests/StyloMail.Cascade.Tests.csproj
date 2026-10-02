@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StyloMail.Cascade\StyloMail.Cascade.csproj" />
+
+    <!--
+      The local adapter is referenced so the partial-read condition can be pinned against a row the
+      REAL producer writes, not only against a row this suite imagines. The condition reads another
+      component's attribute by NAME, and a double shaped like that component proves the rule and not
+      the coupling.
+    -->
+    <ProjectReference Include="..\..\src\StyloMail.Nimble\StyloMail.Nimble.csproj" />
+
+    <!--
+      The measurement composes the Host's own adapter and analyzer over a corpus batch, and injects
+      the policy engine's weight table rather than copying it.
+    -->
+    <ProjectReference Include="..\..\src\StyloMail.Mime\StyloMail.Mime.csproj" />
+    <ProjectReference Include="..\..\src\StyloMail.Policy\StyloMail.Policy.csproj" />
+    <ProjectReference Include="..\..\src\StyloMail.Jev\StyloMail.Jev.csproj" />
+  </ItemGroup>
+
+</Project>
