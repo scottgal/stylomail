@@ -952,10 +952,20 @@ public static class HostServices
         // body` = 10285 - min(body, CAP) at these values -- so `min(body, CAP)` is RECOVERABLE from the
         // wire total** with no `O-nought`, no kept value and no flag. **AND THE `min` IS LOAD-BEARING:
         // for a body AT OR ABOVE the cap it is not the emitted length**, because the cap discards the
-        // excess BEFORE the fit measures it, **so every at-or-above-cap body writes the same total and
-        // the emitted length is gone from every artifact on the path** -- the inversion is injective
-        // exactly where `min` is, and a capped body is not recoverable from ANY request size. **An uncut
-        // arm cannot do this at all, for the same reason it is form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
+        // excess BEFORE the fit measures it, **so 2500, 2570, 3000 and 9999 all write the SAME total and
+        // what is lost above the cap is an IDENTITY rather than a quantity.** **AND `desktop-`'S FORM IS
+        // THE PRECISE ONE: BOTH INVERSIONS ARE TOTAL.** `min` clamps, so `L = kept + min(emitted, CAP) -
+        // (CAP - MARGIN)` is total and `min(emitted, CAP) = 10285 - total` is total for the same reason --
+        // **so the wire determines `min(emitted, CAP)` exactly IN EVERY REGIME** (`total - O-nought`
+        // uncut, `10285 - total` cut). **AND TOTAL IS NOT INFORMATIVE, which is the complement that
+        // finishes it: `total -> min(emitted, CAP)` is informative only STRICTLY BELOW the cap and
+        // CONSTANT at or above it -- it confirms the cap and says nothing about the body -- while
+        // `kept -> L` is informative AT OR ABOVE it**, because there `min` is `CAP` by construction and
+        // `kept = L - MARGIN` recovers `L`. **The two routes are informative on OPPOSITE SIDES of the
+        // cap and their union covers every regime, so no single route carries information
+        // everywhere** -- totality on one side is bought by degeneracy on the other, and a route's
+        // DOMAIN and its INFORMATIVENESS are two different properties. **An uncut arm cannot recover
+        // `min(emitted, CAP)` at all, which is the same fact as its being form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
         // `O-nought`-free for `total`** -- and a reader who takes those for ONE property will look for
         // the body's length in the uncut arms and find it only in the cut ones.
         //
