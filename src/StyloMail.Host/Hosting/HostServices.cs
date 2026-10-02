@@ -897,8 +897,29 @@ public static class HostServices
         // DERIVED** (`corpus-`, 2026-10-02, through the shipping adapter at the pinned 65536, on a
         // 2500-character hex-ish body): **`body_text_shortened_for_prompt` True,
         // `body_text_characters_kept` = 1648, the state's own body length 1648, 7785 request bytes on
-        // the wire.** So **`L = kept + MARGIN = 2160`**, which is inside `corpus-`'s bracket (2000,
-        // 2500) and is the first independent confirmation of it. **THE `1488` THIS PARAGRAPH CARRIED
+        // the wire.** So `L = kept + MARGIN = 2160`, which is inside `corpus-`'s bracket (2000, 2500),
+        // **AND THAT SENTENCE WAS CIRCULAR, WHICH `nimble-` CAUGHT; THE FLAG BISECT THEN BRACKETED
+        // RATHER THAN PINNED IT; AND A THIRD READING CLOSED IT.** It called `L = 2160` the "first
+        // independent confirmation" while taking `L` FROM the form. The first bisect tested 2159 and
+        // 2161 and **never looked between them**, which is why what I wrote next -- "two candidates,
+        // one bit of freedom" -- was right about that EVIDENCE and wrong about the QUANTITY.
+        // **The omitted arm settles it:**
+        //   2159 -> flag ABSENT (uncut)   wire 8191
+        //   2160 -> flag ABSENT (uncut)   wire 8192   <- the arm the first bisect skipped
+        //   2161 -> flag PRESENT (cut)    wire 8124
+        // **so `L` = 2160 exactly, with no integer between 2160 and 2161.** And the boundary arm lands
+        // on **8192 = `NumCtx` EXACTLY**, which is the mechanism showing itself: the fit exits on
+        // `total <= NumCtx`, so the largest uncut body sits precisely at the limit.
+        //
+        // **AND THE FORM-FREE PROPERTY IS WHAT MAKES THAT A MEASUREMENT RATHER THAN AN ARGUMENT: the
+        // UNCUT readings are the ones that do not enter `L` as the form's own parameter, and the 2160
+        // arm is one of them.** Both cut readings (2161 -> 1987, 2500 -> 1648) constrain `L` only
+        // through the relation that defines it, so they are the form agreeing with itself at a
+        // different body length.
+        //
+        // What is still unexplained is how the 105 splits between `M` and `F` (the wire's pair leaves
+        // 105 beyond `O-nought + kept`), which `queue-` showed does not enter `L` at all. The proxy
+        // de-chunks (`capture-proxy.py:63-76`), so `F` is not chunk framing. **THE `1488` THIS PARAGRAPH CARRIED
         // WAS A PLACEHOLDER, NOT A MEASUREMENT**: it came from substituting the bracket's LOWER end
         // (2000) for `L`, so the FORM was right and the value was the bracket's edge rather than the
         // boundary. **And `body - MARGIN` is refuted by the same reading** -- it predicts 1988 where
