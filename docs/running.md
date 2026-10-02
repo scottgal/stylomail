@@ -389,8 +389,12 @@ to is derived from the server's measured capacity rather than from a carried rat
 **The terms the cut arithmetic is made of, since the captures are read rather than the derivation.** The
 un-cut regime totals `O-nought + body` and the cut regime `O-nought + 105 + kept`, where **`O-nought` is the request's
 overhead with no marker and no body**, 8192 - `L`, and the **105** is what the two marker fields cost
-once the state is embedded in the request (their assembled cost is 88 bytes with a 17-byte residual
-against the measurement, so 105 is the reading and 88 the estimate). For the message the three-point
+once the state is embedded in the request. **It reads as 105 BYTES and is larger than the fields' own
+text, because embedding escapes them**: the separator, escaped newline and indent twice, the keys, and
+the digits of the kept length account for the difference (`conversation-`, 2026-10-02T06:32 decomposes it
+to the byte). **That 105 is the four-digit case**: a `kept` of one digit makes the same marker **102 bytes**,
+measured by removing it from a captured request whose body was emptied, so **`M` moves with the digits of
+the kept length and is not a constant** - which the threshold below inherits. For the message the three-point
 bisect pins, `O-nought` is 8192 - 2160 = **6032**. **The two regimes CROSS, so a total on its own identifies no
 body**: an un-cut 2092-byte body and a cut 2161-byte one both total 8124, and one of those is a measured
 arm. **The cut form holds while the second pass still leaves the request above `NumCtx`**, which for the
