@@ -891,8 +891,23 @@ public static class HostServices
         // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
         // refutable form of the claim is that a 2500-character hexish body -- the FULL budget -- through
         // the real pipeline is **SHORTENED FIRST**, since `corpus-` measured 6 of 6 at that size with
-        // prose cut exactly like hex-ish, so it arrives at roughly `L - 512` characters and evaluates
+        // prose cut exactly like hex-ish, so it arrives at about `L - 512` characters and evaluates
         // **BELOW** 43,202 rather than at it, with the cut reported on the row's reason attribute.
+        // **AND THAT FIGURE IS EXACT AT THE CAP AND ONLY THERE**, which `corpus-` established by
+        // replicating the loop (`L` = 2000, `O` = 6192): a body of 2001 keeps **1987**, 2200 keeps
+        // **1788**, and only a body of **2500 -- `MaxBodyCharacters` itself -- keeps the 1488 that
+        // `L - 512` names.** So the kept length FALLS as the body grows and rises above the bound for
+        // a body just over the boundary; `kept = L - 512` is the value at the cap and not the general
+        // form. **AND THE GENERAL FORM EXISTS, so a reader should not conclude the quantity is
+        // relationless: `kept + body - L = 1988` EXACTLY**, because the step subtracts an excess that
+        // is itself `body - L`, so `body` appears on both sides and cancels. **So the interval is
+        // `kept` in `(3988 - body, 1988)`: OVER `L`, the UPPER end is the constant and the LOWER one is
+        // what moves, and the dead band's width is `body - 1988` (212 at body 2200, 412 at 2400, 512
+        // at 2500). OVER THE BODY it is the other way: the whole interval shifts DOWN and the kept
+        // length falls as the body grows.** WHICH END MOVES IS DECIDED BY WHICH PARAMETER YOU VARY,
+        // and stating only one axis is how two lanes wrote "the upper end moves" and "the lower end
+        // moves" about the same arithmetic within the hour. **The body named above is a cap-sized body, which is why the point form is right here
+        // -- `3988 - 2500 = 1488` -- and it would be wrong for any smaller one.**
         // **AND `L - 512` IS NOT THE ONLY OUTCOME: `:407` `budget = budget > step ? budget - step : 0;`
         // ZEROES the budget in one step when `excess + 512 >= budget`, so with `excess >= 1988` at the
         // 2500 default BOTH fields are emptied and the reading is `kept = 0` (`queue-` derived this and
