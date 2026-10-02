@@ -769,10 +769,32 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     };
 
     /// <summary>
-    /// Digest over everything that could change the answer: model, the question text's version, this
-    /// adapter's request-shape version, the context window, and the canonical request state.
+    /// The server identity of the configured endpoint: its authority (host and port), so a change of
+    /// scheme or path does not fragment the cache while a different server does not share an entry.
     /// </summary>
     /// <remarks>
+    /// Falls back to the endpoint string unchanged when it does not parse as an absolute URI, because an
+    /// unreadable endpoint has to key to itself rather than to every other unreadable one.
+    /// </remarks>
+    private static string EndpointAuthority(string endpoint)
+        => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Authority : endpoint;
+
+    /// <summary>
+    /// Digest over everything that could change the answer: model, the server serving it, the question
+    /// text's version, this adapter's request-shape version, the context window, and the canonical
+    /// request state.
+    /// </summary>
+    /// <remarks>
+    /// <b>The endpoint belongs here because the model term cannot identify the server that answered.</b>
+    /// <see cref="NimbleOptions.Model"/> is a moving tag, and the remark that says why it cannot be
+    /// pinned is the reason this term is load-bearing: <c>/v1/systemone</c> echoes the name it was given
+    /// and reports no resolved id, so two servers both answer <c>nimble:latest</c> and both report that
+    /// name back. The endpoint is the only term that separates them, and it is a term that can move one
+    /// already in this key: <see cref="NimbleOptions.NumCtx"/> records it as UNMEASURED what window the
+    /// endpoint applies, so two servers applying different windows would otherwise share an entry. The
+    /// authority (host and port) is keyed rather than the whole URL, so a scheme or path change does not
+    /// fragment the cache while a different host or port does not share an entry.
+    /// <para>
     /// <b>The shape version and the window belong here, not just the two model-and-question terms the
     /// hosted adapter keys on.</b> Both were measured to move an answer on this provider: the window
     /// because changing it reloads the model, and the shape because batching changed three of twelve
@@ -781,6 +803,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// and has not been re-taken under <c>/2</c>.</b> It is the reason the shape term is in the key at
     /// all, and it is a fact about the A/B letter rendering rather than about the shape that ships; see
     /// <see cref="NimbleQuestionSet"/> for the full status.
+    /// </para>
     /// <para>
     /// <b>Both windows are keyed, not only the requested one.</b> <see cref="NimbleOptions.NumCtx"/> is
     /// what is sent, but <see cref="NimbleOptions.AppliedContextWindow"/> is what truncation actually
@@ -802,6 +825,7 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             new
             {
                 model = modelVersion ?? _options.Model,
+                endpoint = EndpointAuthority(_options.Endpoint),
                 schema = SemanticDimensions.QuestionSchemaVersion,
                 request_shape = NimbleQuestionSet.Version,
                 num_ctx = _options.NumCtx,

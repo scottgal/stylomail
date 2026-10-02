@@ -22,13 +22,20 @@ mutate three properties that repair created, and they are separately pinnable on
   N3  the per-field state KEYS, each pair written only for its own field. N3 restores the OR, so a
       quoted-only cut writes the body's marker again.
 
+N4 was added later, by a different finding: the cache key did not vary with the SERVER, so a caller
+moved from one endpoint to another could be served an assessment taken against the first. It keys the
+endpoint's authority now, and N4 makes that term a constant.
+
 EXPECTED VERDICTS, written before the first sweep so the result is a reading rather than a retrofit.
 N1 and N2 are CLAIMED, and they were MEASURED as such by hand before this file existed: this lane's
 red-first build applied exactly these two mutations, under a filter naming their two tests, and got
 `Failed: 2, Passed: 0, Skipped: 0, Total: 2`, each test failing for the property its mutation broke
 with nothing else failing. N3 is NOT verified by hand, and it is the entry this sweep is for: it
 should be CLAIMED by `Marks_a_shortened_quoted_tail_without_claiming_the_body_was_cut`, and if the
-sweep returns GAP or ELSEWHERE then that test does not hold the half its name claims.
+sweep returns GAP or ELSEWHERE then that test does not hold the half its name claims. N4 is CLAIMED by
+`Changes_the_cache_key_when_anything_that_changes_an_answer_changes`, whose endpoint pair was added with
+the fix; if N4 returns ELSEWHERE then some other test is holding the endpoint difference and the named
+one is not, and if it returns GAP the new assertions do not run.
 
 AND ONE ORDERING NOTE, READ FROM THE HARNESS RATHER THAN ASSUMED. It builds its isolated copy with
 `shutil.copytree(SOURCE_ROOT, ...)`, which is a copy of the WORKING TREE and not of `HEAD`, so a
@@ -80,4 +87,17 @@ MUTATIONS = [
      """        if (bodyCut || quotedCut)
         {""",
      "Marks_a_shortened_quoted_tail_without_claiming_the_body_was_cut"),
+
+    # --- the ENDPOINT term: the key stops varying with the server --------------------------------
+    # `ComputeCacheKeyDigest` keys the endpoint's authority because the model term cannot identify
+    # the server: `/v1/systemone` echoes the name it was given and reports no resolved id, so two
+    # servers both answer `nimble:latest`. N4 makes the term a constant, so the key is identical
+    # across servers again. The call site keeps calling the helper with a fixed argument rather than
+    # dropping the line, so the mutation cannot turn an unused-method analyzer warning into a build
+    # failure that would redden every test and read as ELSEWHERE instead of CLAIMED.
+    ("N4: the cache key stops distinguishing the endpoint that answered",
+     SRC / "NimbleSemanticMailClassifier.cs",
+     """                endpoint = EndpointAuthority(_options.Endpoint),""",
+     """                endpoint = EndpointAuthority("http://constant.invalid:1"),""",
+     "Changes_the_cache_key_when_anything_that_changes_an_answer_changes"),
 ]

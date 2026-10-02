@@ -709,6 +709,21 @@ public sealed class NimbleSemanticMailClassifierTests
         var sameApplied = await NimbleTestDoubles.Create(handler, new NimbleOptions { NumCtx = 8192, EffectiveNumCtx = 4_096 })
             .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
         Assert.Equal(baseline.Cache.KeyDigest, sameApplied.Cache.KeyDigest);
+
+        // And the server, which the model term cannot identify. `/v1/systemone` echoes the name it was
+        // given and reports no resolved id, so two servers both answer `nimble:latest` and both report
+        // that name back; the endpoint is the only term that separates them. A caller moved from one
+        // server to another must not be served an assessment taken against the first.
+        var otherEndpoint = await NimbleTestDoubles.Create(handler, new NimbleOptions { Endpoint = "http://192.168.0.15:11434/v1/systemone" })
+            .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+        Assert.NotEqual(baseline.Cache.KeyDigest, otherEndpoint.Cache.KeyDigest);
+
+        // And the converse again, so the term is precise rather than merely different: the same server
+        // named with a different scheme or path is the same request, because only the authority is
+        // keyed. A scheme or path edit must not fragment the cache.
+        var sameEndpoint = await NimbleTestDoubles.Create(handler, new NimbleOptions { Endpoint = "http://127.0.0.1:11435/other/path" })
+            .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
+        Assert.Equal(baseline.Cache.KeyDigest, sameEndpoint.Cache.KeyDigest);
     }
 
     [Fact]
