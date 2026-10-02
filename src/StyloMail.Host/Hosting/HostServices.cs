@@ -973,13 +973,23 @@ public static class HostServices
         // **SO "340 DISTINCT TOTALS" WITHOUT ITS `L` STATES HALF OF AN IDENTITY**, and the figure to
         // quote for a BATCH is the width informative at EVERY index, which is **324**.
         //
-        // **AND THE TOP OF THE WINDOW IS SHARED WITH THE REGIME ABOVE IT, WHICH IS A SECOND COUNT.**
-        // `total = 7785` iff `min(body, CAP) = CAP` iff **`body >= CAP`**, so **7785 is what every
-        // over-cap body writes as well**, and the total IDENTIFIES a body only on **`(L, CAP)` -- 339
-        // bodies, 2161..2499, totals 7786..8124.** The interval is `(L, CAP]` for INJECTIVITY (340
-        // distinct bodies to 340 distinct totals, 7785 among them) and `(L, CAP)` for IDENTIFICATION,
-        // **and the one-body difference is exactly the boundary value shared with the other regime.**
-        // A reading of 7785 therefore says "the body is at least the cap" and nothing more.
+        // **AND THE TOP OF THE WINDOW IS SHARED ONLY WITH A BODY THE CAP CANNOT PRODUCE, WHICH IS WHY
+        // THE COUNT IS 340 AND NOT 339.** `total = 7785` iff `min(body, CAP) = CAP` iff `body >= CAP`
+        // -- **and `body = 2501` is truncated to the cap BEFORE the fit measures it, so it is OUTSIDE
+        // the instrument's DOMAIN.** Within the domain the total is injective at all 340 points
+        // including the cap, and 339 is the width of "bodies strictly below the cap", which is the
+        // width of no property here.
+        //
+        // **AND THE REAL COLLISION IS ACROSS REGIMES, WHICH FALSIFIES A CLAIM THIS PARAGRAPH MADE.**
+        // An UNCUT body writes `O-nought + B`; a CUT one writes `O-nought + M + kept`. Those are two
+        // lines and **they CROSS inside the window**: uncut 2092 -> 8124 with cut 2161 -> 8124, and
+        // uncut 2000 -> 8032 with cut 2253 -> 8032. **Every cut body B2 in 2161..2500 has an UNCUT
+        // shadow at `B1 = 4253 - B2` (1753..2092), so 340 of 340 collide.** **So the wire total does
+        // NOT by itself determine `min(emitted, CAP)`, and my earlier "the wire determines it exactly
+        // in every regime" was false as stated.** What determines it is the total TOGETHER WITH THE
+        // REGIME -- and the regime is on the wire too, as the shortened flag or the kept field.
+        // **Given the regime the total determines the length within it; the regime is a SECOND
+        // READING rather than something derivable from the total.**
         //
         // **AND TWO CLAUSES THAT DECIDE HOW THE WINDOW MAY BE USED.** First, **THE UPPER EDGE IS `CAP`
         // IDENTICALLY AT EVERY INDEX** (that is what `L + width = CAP` says), **so a cap-sized body sits
