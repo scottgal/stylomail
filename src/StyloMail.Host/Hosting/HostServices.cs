@@ -891,23 +891,44 @@ public static class HostServices
         // dense body on the REAL path is UNMEASURED and this table must not stand in for it. The
         // refutable form of the claim is that a 2500-character hexish body -- the FULL budget -- through
         // the real pipeline is **SHORTENED FIRST**, since `corpus-` measured 6 of 6 at that size with
-        // prose cut exactly like hex-ish, so it arrives at about `L - 512` characters and evaluates
+        // prose cut exactly like hex-ish, so it arrives at about `L - MARGIN` characters and evaluates
         // **BELOW** 43,202 rather than at it, with the cut reported on the row's reason attribute.
-        // **AND THAT FIGURE IS EXACT AT THE CAP AND ONLY THERE**, which `corpus-` established by
-        // replicating the loop (`L` = 2000, `O` = 6192): a body of 2001 keeps **1987**, 2200 keeps
-        // **1788**, and only a body of **2500 -- `MaxBodyCharacters` itself -- keeps the 1488 that
-        // `L - 512` names.** So the kept length FALLS as the body grows and rises above the bound for
-        // a body just over the boundary; `kept = L - 512` is the value at the cap and not the general
-        // form. **AND THE GENERAL FORM EXISTS, so a reader should not conclude the quantity is
-        // relationless: `kept + body - L = 1988` EXACTLY**, because the step subtracts an excess that
-        // is itself `body - L`, so `body` appears on both sides and cancels. **So the interval is
-        // `kept` in `(3988 - body, 1988)`: OVER `L`, the UPPER end is the constant and the LOWER one is
-        // what moves, and the dead band's width is `body - 1988` (212 at body 2200, 412 at 2400, 512
-        // at 2500). OVER THE BODY it is the other way: the whole interval shifts DOWN and the kept
-        // length falls as the body grows.** WHICH END MOVES IS DECIDED BY WHICH PARAMETER YOU VARY,
-        // and stating only one axis is how two lanes wrote "the upper end moves" and "the lower end
-        // moves" about the same arithmetic within the hour. **The body named above is a cap-sized body, which is why the point form is right here
-        // -- `3988 - 2500 = 1488` -- and it would be wrong for any smaller one.**
+        // **AND THAT FIGURE IS EXACT AT THE CAP AND ONLY THERE, and it has now been READ RATHER THAN
+        // DERIVED** (`corpus-`, 2026-10-02, through the shipping adapter at the pinned 65536, on a
+        // 2500-character hex-ish body): **`body_text_shortened_for_prompt` True,
+        // `body_text_characters_kept` = 1648, the state's own body length 1648, 7785 request bytes on
+        // the wire.** So **`L = kept + MARGIN = 2160`**, which is inside `corpus-`'s bracket (2000,
+        // 2500) and is the first independent confirmation of it. **THE `1488` THIS PARAGRAPH CARRIED
+        // WAS A PLACEHOLDER, NOT A MEASUREMENT**: it came from substituting the bracket's LOWER end
+        // (2000) for `L`, so the FORM was right and the value was the bracket's edge rather than the
+        // boundary. **And `body - MARGIN` is refuted by the same reading** -- it predicts 1988 where
+        // the wire says 1648, 340 out and in the direction that would have made a correct arm report a
+        // failure. The kept length still FALLS as the body grows; `kept = L - MARGIN` is the value at
+        // the cap and not the general form. **AND THE GENERAL FORM EXISTS, so a reader should not conclude the quantity is
+        // relationless: `kept + body - L = CAP - MARGIN` -- `1988` at the 2500 cap -- EXACTLY**,
+        // because the step subtracts an excess that is itself `body - L`, so `body` appears on both
+        // sides and cancels. **STATED WITH `CAP` AND `MARGIN` EXPLICIT RATHER THAN FOLDED INTO `1988`**,
+        // on `policy-`'s clause: the folded number is identical only at `CAP = 2500` and would part
+        // company at any other cap, so a sentence keyed on the folded value goes silently stale the
+        // moment `MaxBodyCharacters` moves. **The interval is `kept` in `(3988 - body, 1988)` -- and
+        // `3988` folds in the bracket's lower `L` bound (2000) as well as the margin, so BOTH folded
+        // figures move if either input does.** OVER `L`, the UPPER end is the constant and the LOWER
+        // one is what moves. **AND THE DEAD BAND IS A SECOND INTERVAL, NOT THAT ONE'S WIDTH**: it is
+        // the gap between the cut interval's upper end and the UNCUT value, `(1988, body)`, so its
+        // width is `body - 1988` (212 at body 2200, 412 at 2400, 512 at 2500) while the cut interval's
+        // own width is `body - 2000`. Two intervals, two widths, and running them together is how a
+        // reader gets 200 where the gap is 212. OVER THE BODY it is the other way: the interval shifts DOWN and
+        // the kept length falls as the body grows. WHICH END MOVES IS DECIDED BY WHICH PARAMETER YOU
+        // VARY, and stating only one axis is how two lanes wrote "the upper end moves" and "the lower
+        // end moves" about the same arithmetic within the hour.
+        //
+        // **AND BOTH FOLDED CONSTANTS IN THAT INTERVAL ARE NOW STALE, WHICH I AM MARKING RATHER THAN
+        // SILENTLY RE-DERIVING.** `3988` and `1988` were computed from the bracket's lower `L` bound
+        // (2000), and the capture has replaced that with the measured **`L` = 2160**. So the interval's
+        // ends move with `L` exactly as the closed form says, and its numbers as written are the
+        // bracket-EDGE case rather than the measured one. **The FORM is confirmed by the capture; the
+        // constants inside it need the measured `L` put back**, and I am leaving that arithmetic named
+        // rather than doing it hurriedly at the end of a long thread.
         // **AND `L - 512` IS NOT THE ONLY OUTCOME: `:407` `budget = budget > step ? budget - step : 0;`
         // ZEROES the budget in one step when `excess + 512 >= budget`, so with `excess >= 1988` at the
         // 2500 default BOTH fields are emptied and the reading is `kept = 0` (`queue-` derived this and
