@@ -43,7 +43,7 @@ LOCK="$TOOLS/.mutation-sweep.lock"
 INVOCATION="$0 $*"
 
 usage() {
-    sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
     exit 2
 }
 
@@ -109,7 +109,50 @@ LOCKFILE
 }
 
 release() {
-    rm -f "$LOCK"
+    # WHO MAY UNLINK. Added 2026-10-02 by queue-. `release` was `rm -f "$LOCK"` with no check at
+    # all, so ANY lane running it unlinked the lock of a sweep it did not hold: the one writer of
+    # this path that never consulted the holder the header already names. A lock any non-holder can
+    # unlink is a rumour that a sweep ended, not a report that one did.
+    #
+    # There is exactly ONE arm below that removes the lock, and it is the arm that positively proves
+    # the holder is gone. Everything else refuses, including an unreadable header and a probe that
+    # could not run, because reading an unusable instrument as "gone" turns a dead probe into a
+    # release.
+    if [ ! -e "$LOCK" ]; then
+        echo "no lock at $LOCK; nothing to release"
+        return 0
+    fi
+
+    # The holder's own pid, which `acquire` wrote as `$$` in this same shell. Tested FIRST because
+    # `with` calls this from its EXIT trap while it IS the holder: without this arm the guard would
+    # refuse to remove the lock its own process is holding, and `with` would leak it every run.
+    held=$(sed -n 's/^pid:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$LOCK" | head -1)
+    if [ -z "$held" ]; then
+        echo "!!! refusing to release: $LOCK carries no readable 'pid:' line." >&2
+        echo "    An unreadable holder counts as IN USE, not as gone. The lock reads:" >&2
+        sed -n '1,6p' "$LOCK" >&2
+        echo "    If you can see it is a leftover, remove it deliberately: rm -f $LOCK" >&2
+        exit 1
+    fi
+    if [ "$held" = "$$" ]; then
+        rm -f "$LOCK"
+        return 0
+    fi
+
+    probe=$(ps -p "$held" -o pid= 2>/dev/null) && probe_rc=0 || probe_rc=$?
+    if [ "$probe_rc" -eq 1 ] && [ -z "$probe" ]; then
+        rm -f "$LOCK"
+        return 0
+    fi
+    if [ "$probe_rc" -eq 0 ]; then
+        echo "!!! refusing to release: the lock's holder pid $held is ALIVE." >&2
+    else
+        echo "!!! refusing to release: the liveness probe could not run (ps rc=$probe_rc)." >&2
+    fi
+    sed -n '1,6p' "$LOCK" >&2
+    echo "    A live or unprobeable holder counts as IN USE. Wait for it to finish: two" >&2
+    echo "    concurrent sweeps interleave mutations and attribute each other's failures." >&2
+    exit 1
 }
 
 case "${1:-}" in
