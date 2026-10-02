@@ -333,16 +333,16 @@ At the expansion arms' own minimal state the room is larger still (6910-byte req
 2500-byte body, so 4410 bytes of overhead under the 8192-byte cap), which is why nothing was cut there.
 Both cuts land on `BodyText` and `QuotedText`. **While something of the body survives, the row stays
 `Available`** and carries a `reason` attribute naming WHICH field was cut
-(`NimbleSemanticMailClassifier.cs:660-662` at `35ff5d0`), so **availability alone does not tell a reader whether the
+(`NimbleSemanticMailClassifier.cs:667-669` at `b12781a`), so **availability alone does not tell a reader whether the
 read was whole** and anything consuming these rows has to look at the reason rather than the state.
 **The attribute NAME on its own is not enough either**: `UnavailableEvidence` writes the same `reason`
-name at `:728` for a row that produced no value at all, so a consumer has to select on the name AND
+name at `:735` at `b12781a` for a row that produced no value at all, so a consumer has to select on the name AND
 the row's availability - the shortening reason sits on a row that answered, the unavailability reason
 on a row that did not, under one key.
 **A body cut to NOTHING is a refusal and not a weaker read** - the state is still sent, because the
 fit returns the zero-body state at `:432-440` before its own `budget == 0` check at `:442-445`, but
 **the row comes back `Unavailable` anyway**: with the body gone there is no content for a value to be
-about, so that arm is the only one here that **leaves the covered set** (`:629-641`, whose own comment
+about, so that arm is the only one here that **leaves the covered set** (`:629-648` at `b12781a`, whose own comment
 says it is the ruling). **That is the state to know about**, because leaving the covered set lowers the
 coverage fraction rather than raising it, and **an `Unavailable` semantic row is what Policy's unanswered
 gate refuses on** (`MailPolicyEngine.cs:512-533`) - so the emptied body is a refusal on two independent
