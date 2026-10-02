@@ -714,7 +714,12 @@ public sealed class NimbleSemanticMailClassifierTests
         // given and reports no resolved id, so two servers both answer `nimble:latest` and both report
         // that name back; the endpoint is the only term that separates them. A caller moved from one
         // server to another must not be served an assessment taken against the first.
-        var otherEndpoint = await NimbleTestDoubles.Create(handler, new NimbleOptions { Endpoint = "http://192.168.0.15:11434/v1/systemone" })
+        //
+        // The address is `192.0.2.0/24`, reserved for documentation, because the only property under
+        // test is that the AUTHORITY differs: this fixture must not name a real host. It did until
+        // 2026-10-02, when the fleet's push published an internal address from a test that never
+        // needed one.
+        var otherEndpoint = await NimbleTestDoubles.Create(handler, new NimbleOptions { Endpoint = "http://192.0.2.15:11434/v1/systemone" })
             .ClassifyAsync(NimbleTestMessage.Input(), CancellationToken.None);
         Assert.NotEqual(baseline.Cache.KeyDigest, otherEndpoint.Cache.KeyDigest);
 
