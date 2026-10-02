@@ -683,8 +683,14 @@ public static class HostServices
     /// <para>
     /// <b>The host belongs in the string.</b> Measured 2026-10-02 by the cascade lane: the same model
     /// at the same tag and digest on two hosts, given byte-identical requests, produced different
-    /// answers on every one of 352 dimension-instances, up to an absolute difference of 3.977e-02,
-    /// and no instance agreed exactly. The semantic cache serves an entry only when the reported
+    /// answers on every measured instance and no instance agreed exactly. The figures and their
+    /// populations, because a maximum is only readable with its denominator: over the mailbox and
+    /// mixed batches together, <b>352</b> asked instances, maximum absolute difference
+    /// <b>2.966e-02</b>; over those plus the shaped batch, <b>440</b> instances and 40 distinct
+    /// messages, maximum <b>3.977e-02</b> (semantic.link_lure). The second population contains the
+    /// first, so 3.977e-02 is the larger and the later figure and the one to quote; it does NOT
+    /// supersede the other as a measurement of anything different, because a maximum grows with the
+    /// number of instances compared. The semantic cache serves an entry only when the reported
     /// version equals this configured one, and the cache key covers this value rather than any inner
     /// endpoint, so a string naming models alone would serve an entry taken under a replaced host.
     /// </para>
