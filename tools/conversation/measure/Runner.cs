@@ -30,6 +30,26 @@ internal sealed record CallResult
     /// <summary>True when the prompt carried the marker saying the body was cut to make room.</summary>
     public required bool BodyShortened { get; init; }
 
+    /// <summary>True when the state carried the marker saying the QUOTED field was cut.</summary>
+    /// <remarks>
+    /// Read from the same payload as <see cref="BodyShortened"/> and separate from it, because the
+    /// repair writes ONE FLAG AND ONE KEPT LENGTH PER FIELD. A state that names the cut field cannot
+    /// name the other one, so on a quoted-only cut the BODY KEY'S ABSENCE is the assertion and this
+    /// flag is what says the quoted one fired.
+    /// </remarks>
+    public required bool QuotedShortened { get; init; }
+
+    /// <summary>The body's kept length from the payload, or null when the key is absent.</summary>
+    public required int? BodyCharactersKept { get; init; }
+
+    /// <summary>The quoted field's kept length from the payload, or null when the key is absent.</summary>
+    /// <remarks>
+    /// On a quoted cut this value IS the fit's landing budget, because the binding field is the one
+    /// truncated to it - so an arm reads the budget off the wire instead of deriving it, and a
+    /// predicted landing that disagrees with this is wrong whatever the arithmetic says.
+    /// </remarks>
+    public required int? QuotedCharactersKept { get; init; }
+
     /// <summary>The adapter's own reason when it produced no answer at all.</summary>
     public string? UnavailableReason { get; init; }
 
@@ -81,6 +101,14 @@ internal sealed class Runner(
         var shortened = sent is not null
             && sent.Contains("body_text_shortened_for_prompt", StringComparison.Ordinal);
 
+        // And the same read for the other field, because the repair writes one flag and one kept
+        // length PER FIELD. The two keys are not substrings of one another, so a name match is a
+        // key match, and the absence of one is a statement about the other.
+        var quotedShortened = sent is not null
+            && sent.Contains("quoted_text_shortened_for_prompt", StringComparison.Ordinal);
+        var bodyKept = StateInt(sent, "body_text_characters_kept");
+        var quotedKept = StateInt(sent, "quoted_text_characters_kept");
+
         return new CallResult
         {
             Codes = codes,
@@ -91,12 +119,57 @@ internal sealed class Runner(
             OutputTokens = assessment.OutputTokens,
             ElapsedMs = clock.ElapsedMilliseconds,
             BodyShortened = shortened,
+            QuotedShortened = quotedShortened,
+            BodyCharactersKept = bodyKept,
+            QuotedCharactersKept = quotedKept,
             UnavailableReason = assessment.Cache.KeyDigest?.StartsWith("unavailable:", StringComparison.Ordinal) == true
                 ? assessment.Cache.KeyDigest["unavailable:".Length..]
                 : null,
             Model = assessment.ResolvedModelVersion,
             KeyDigest = assessment.Cache.KeyDigest,
         };
+    }
+
+    /// <summary>The integer a state key carries in the sent request, or null when the key is absent.</summary>
+    /// <remarks>
+    /// The state travels as an ESCAPED nested JSON string, so a key's own QUOTES arrive as characters
+    /// rather than as quotes - measured on a captured request, an escaped quote is six characters. The
+    /// NAME does not, which is why this finds the name and then reads the digits after the next colon
+    /// rather than matching a quoted key. It also means the read does not depend on the escaping
+    /// convention, which is an implementation detail this arm has no reason to encode.
+    /// </remarks>
+    private static int? StateInt(string? body, string key)
+    {
+        if (body is null)
+        {
+            return null;
+        }
+
+        var at = body.IndexOf(key, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+
+        var colon = body.IndexOf(':', at);
+        if (colon < 0)
+        {
+            return null;
+        }
+
+        var i = colon + 1;
+        while (i < body.Length && body[i] == ' ')
+        {
+            i++;
+        }
+
+        var start = i;
+        while (i < body.Length && body[i] is >= '0' and <= '9')
+        {
+            i++;
+        }
+
+        return i > start && int.TryParse(body[start..i], out var value) ? value : null;
     }
 
     private static string Describe(Evidence? evidence)

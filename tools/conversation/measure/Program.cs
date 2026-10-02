@@ -192,7 +192,7 @@ internal static class Program
         // three do reach it and consult no model: `mime` and `arms-current` are input assembly, and
         // `site-participants-dry` prints the rewrite it would make without asking anyone about it.
         var modelFree = which is "mime" or "arms-current" or "site-participants-dry"
-            or "participants-sharp-dry" or "host-guard-dry" or "letters";
+            or "participants-sharp-dry" or "host-guard-dry" or "letters" or "quoted-tail-arm";
 
         if (modelFree)
         {
@@ -209,6 +209,37 @@ internal static class Program
         }
 
         var ran = new List<string>();
+
+        // The arm for the quoted half of the shortening flag. The repair writes ONE FLAG AND ONE KEPT
+        // LENGTH PER FIELD, so on a body-whole quoted-cut message the quoted keys are PRESENT and the
+        // body's key is ABSENT - and the absence is the assertion, because a state that names the cut
+        // field cannot name the other one. This reads the captured REQUEST, so it answers what the
+        // request said rather than what the decision did with it; the reason string is the decision
+        // route and is not asserted here.
+        //
+        // It makes no model call: the point is the state the classifier built, and a poisoned
+        // endpoint leaves the state and the recorded body untouched.
+        if (which is "quoted-tail-arm")
+        {
+            var caseName = args.Length > 1 ? args[1] : "quoted-tail";
+            var result = await runner.CallAsync(Corpus.Input(caseName, null), CancellationToken.None);
+
+            var flagViaQuoted = result.QuotedShortened;
+            var bodyKeyAbsent = result.BodyCharactersKept is null;
+
+            Console.WriteLine($"== quoted-tail arm: {caseName} ==");
+            Console.WriteLine();
+            Console.WriteLine($"  flag via the QUOTED field   : {(flagViaQuoted ? "PRESENT" : "ABSENT")}"
+                + $"    (body flag {(result.BodyShortened ? "PRESENT" : "ABSENT")})");
+            Console.WriteLine($"  body key ABSENT             : {(bodyKeyAbsent ? "yes" : $"NO, it reads {result.BodyCharactersKept}")}");
+            Console.WriteLine($"  quoted key = landing budget : {result.QuotedCharactersKept?.ToString(CultureInfo.InvariantCulture) ?? "(absent)"}");
+            Console.WriteLine();
+            Console.WriteLine(flagViaQuoted && bodyKeyAbsent
+                ? "PASS: the flag fired naming the QUOTED field, and the body's key is absent."
+                : "FAIL: the state does not separate the two fields.");
+
+            ran.Add("quoted-tail-arm");
+        }
 
         if (which is "all" or "mime")
         {
@@ -787,7 +818,10 @@ internal static class Program
                     + $"evaluated_tokens={evaluated?.ToString(CultureInfo.InvariantCulture) ?? "-",-6} "
                     + (saturated ? "AT-CEILING/NOT-A-DATA-POINT " : refused ? "REFUSED/NOT-A-DATA-POINT " : "")
                     + $"continuity={result.Continuity,-16} "
-                    + $"answered={result.Answered}/{result.Asked} body_shortened={result.BodyShortened}");
+                    + $"answered={result.Answered}/{result.Asked} body_shortened={result.BodyShortened} "
+                    + $"quoted_shortened={result.QuotedShortened} "
+                    + $"kept={result.BodyCharactersKept?.ToString(CultureInfo.InvariantCulture) ?? "-"}/"
+                    + $"{result.QuotedCharactersKept?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
 
                 rows.Add(new
                 {
@@ -806,6 +840,9 @@ internal static class Program
                     answered = result.Answered,
                     asked = result.Asked,
                     body_shortened = result.BodyShortened,
+                    quoted_shortened = result.QuotedShortened,
+                    body_characters_kept = result.BodyCharactersKept,
+                    quoted_characters_kept = result.QuotedCharactersKept,
                     elapsed_ms = result.ElapsedMs,
                     unavailable_reason = result.UnavailableReason,
                 });
