@@ -43,6 +43,14 @@ Two consequences of that choice are worth writing down.
 
 **Evidence is not deleted to tidy a display.** The decision pane renders the evidence rows the Host sends, and one evening it met a response carrying the same signal id twice, one row per trend window. The pane was assembling a lookup keyed on the signal id, which throws on a duplicate key, and the whole pane went down. Every unit test passed, because every fixture had unique ids. The fix keeps both rows, and the comment in the code says why: dropping one would be the console editing the Host's answer. The better repair turned out to live on the other side. The Host now names the window as a field of its own on the row, so two rows in one scope can be told apart without anything having to disappear. That is the shape I want in a review surface: when the display and the data disagree, fix whichever of the two is wrong rather than deleting evidence.
 
+**And the pane waits to be asked, which is a property rather than an accident.** Both frames below come from one run of `ux-scripts/run-console-nimble-smoke.sh`, which starts a throwaway Host on loopback and holds a real message through the write path, so they are evidence rather than a mockup. The first has the message listed and the decision pane empty; the second is the decision opened from that row. A single image of the open decision could not show the gap between them, and the gap is the point: the listing does not populate the pane.
+
+![A held message listed in the queue, with the decision pane reading No decision open](../../ux-scripts/console-state4-pane-empty.png)
+
+![The decision opened from that row, showing its risk index and its named evidence rows](../../ux-scripts/console-state4-decision-open.png)
+
+**Two things about that second frame are worth reading off it rather than around it.** The index it shows is **a reading and not a fixed number**: the same line has read 0.575, then 0.566, then 0.565 as the model and the applied window moved, which is why the smoke run asserts the **shape** of that line rather than its value, and why the window itself says "an index, not a probability" rather than leaving a reader to infer it. And the rows underneath are **fifteen named pieces of evidence**, seven deterministic and eight semantic, which is what makes the index arguable by a person rather than merely quotable.
+
 The same instinct shows in smaller places. The mapping from an unreadable live-feed notice to a behaviour used to be a switch inside the window, where no test could reach it. It now lives in a type of its own, and the result it returns carries no kind, no id and no state, so a caller holding one has nothing it could wrongly render.
 
 ## The API's shape: the tenant comes from the principal
