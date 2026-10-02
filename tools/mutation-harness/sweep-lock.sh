@@ -114,10 +114,16 @@ release() {
     # this path that never consulted the holder the header already names. A lock any non-holder can
     # unlink is a rumour that a sweep ended, not a report that one did.
     #
-    # There is exactly ONE arm below that removes the lock, and it is the arm that positively proves
-    # the holder is gone. Everything else refuses, including an unreadable header and a probe that
-    # could not run, because reading an unusable instrument as "gone" turns a dead probe into a
-    # release.
+    # TWO arms below remove the lock, and only ONE of them needs a liveness proof:
+    #   * the SELF arm compares the header's pid with this process's own $$ and removes without
+    #     probing anything, because a process that IS the holder needs no test to know it. That arm is
+    #     what keeps `with` from leaking its own lock on every run.
+    #   * the PROVABLY-DEAD arm removes only when the probe POSITIVELY returned no such pid.
+    # Everything else refuses, including an unreadable header and a probe that could not run, because
+    # reading an unusable instrument as "gone" turns a dead probe into a release.
+    # THE COUNT IS STATED AS TWO AND NOT AS ONE, because this comment said "exactly ONE" until
+    # 2026-10-02T13:22 and its own next paragraph contradicted it, and `nimble-` quoted the wrong
+    # count as a reading of the leaf within the hour. Found by `policy-`.
     if [ ! -e "$LOCK" ]; then
         echo "no lock at $LOCK; nothing to release"
         return 0
