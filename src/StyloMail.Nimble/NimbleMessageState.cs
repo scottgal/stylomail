@@ -23,19 +23,31 @@ namespace StyloMail.Nimble;
 /// field, that test goes red and names this file.
 /// </para>
 /// <para>
-/// <b>The one deliberate difference is a pair of keys that appear only when the body had to be
-/// shortened to fit the context window.</b> They are absent otherwise, so the "identical unless we
-/// shortened something" claim is exactly true and exactly testable.
+/// <b>The one deliberate difference is two pairs of keys, one pair per long text field, that appear
+/// only when THAT field had to be shortened to fit the context window.</b> Each pair is absent
+/// otherwise, so the "identical unless we shortened something" claim is exactly true and exactly
+/// testable, and a cut quoted tail can no longer read as a cut body.
 /// </para>
 /// </remarks>
 internal static class NimbleMessageState
 {
-    /// <summary>The state, and whether feeding it into the prompt cost part of the message body.</summary>
+    /// <summary>
+    /// The state, and which of the two long text fields feeding it into the prompt had to be cut.
+    /// </summary>
     /// <remarks>
-    /// The flag is returned rather than re-derived by comparing string lengths at the call site, so
+    /// <b>One flag per FIELD rather than one flag for both.</b> The single flag this replaced meant
+    /// "the body or the quoted tail was cut", so a reply whose quoted tail was cut and whose body was
+    /// whole was reported as a shortened BODY, with the body's uncut length written beside it as the
+    /// number kept. Every reader of the state saw that, the model included. The cuts and the kept
+    /// lengths are returned rather than re-derived by comparing string lengths at the call site, so
     /// the knowledge lives with the code that made the decision.
     /// </remarks>
-    internal sealed record Built(Dictionary<string, object?> State, bool BodyShortened);
+    internal sealed record Built(
+        Dictionary<string, object?> State,
+        bool BodyCut,
+        bool QuotedCut,
+        int BodyCharactersKept,
+        int QuotedCharactersKept);
 
     /// <summary>
     /// Builds the state, capping each long text field at <paramref name="bodyCharacterBudget"/>.
@@ -61,7 +73,8 @@ internal static class NimbleMessageState
 
         var body = Truncate(message.BodyText, bodyCharacterBudget);
         var quoted = Truncate(message.QuotedText, bodyCharacterBudget);
-        var shortened = Shortened(message.BodyText, body) || Shortened(message.QuotedText, quoted);
+        var bodyCut = Shortened(message.BodyText, body);
+        var quotedCut = Shortened(message.QuotedText, quoted);
 
         var messageState = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -89,12 +102,21 @@ internal static class NimbleMessageState
             }).ToList(),
         };
 
-        if (shortened)
+        if (bodyCut)
         {
-            // Present only when the body was cut. A reader of the request (and the model reading it)
-            // can then tell a short message from the front of a long one.
+            // Written only when the BODY was cut. A reader of the request (and the model reading it)
+            // can then tell a short message from the front of a long one, and cannot mistake a cut
+            // quoted tail for a cut body.
             messageState["body_text_shortened_for_prompt"] = true;
-            messageState["body_text_characters_kept"] = body?.Length ?? 0;
+            messageState["body_text_characters_kept"] = body!.Length;
+        }
+
+        if (quotedCut)
+        {
+            // The quoted tail's own pair, under its own key: a reply whose quoted history was cut is
+            // not a reply whose body was cut, and one flag could not say which had happened.
+            messageState["quoted_text_shortened_for_prompt"] = true;
+            messageState["quoted_text_characters_kept"] = quoted!.Length;
         }
 
         var envelope = message.Envelope;
@@ -161,7 +183,12 @@ internal static class NimbleMessageState
             state["context"] = taggedContext;
         }
 
-        return new Built(state, shortened);
+        return new Built(
+            state,
+            bodyCut,
+            quotedCut,
+            body?.Length ?? 0,
+            quoted?.Length ?? 0);
     }
 
     /// <summary>

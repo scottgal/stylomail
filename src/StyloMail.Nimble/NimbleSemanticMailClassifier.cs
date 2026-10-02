@@ -86,8 +86,18 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     private const int PromptByteMargin = 512;
 
     /// <summary>
-    /// Recorded on a semantic row whose prompt was shortened, so the row explains the weaker value
-    /// it carries without leaving the covered set.
+    /// The BODY-only reason, kept under its original name and its original text because other lanes
+    /// quote both: <c>AvailabilityReasonsTests</c>, <c>ShortenedReadTests</c> and the Desktop tests'
+    /// wire fixture each carry this literal, and the first two also name this constant in their
+    /// remarks. It is now one arm of <see cref="ShorteningReason"/> beside the quoted-history reason,
+    /// which is new, and the body-cut text is deliberately unchanged so those three keep holding.
+    /// </summary>
+    private const string PromptShortenedReason =
+        "the client shortened the message body to fit the context window";
+
+    /// <summary>
+    /// Recorded on a semantic row whose prompt was shortened, so the row explains the weaker value it
+    /// carries without leaving the covered set. It names WHICH field the adapter cut.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -95,17 +105,41 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// security check reads this lane's ids by availability and reads the covered weight beside it,
     /// so reporting a shortened read as <c>ReducedCoverage</c> would take the row out of both at
     /// once on every message whose body exceeds the character budget. The reason is the channel that
-    /// survives that ruling, and it is the one a console can render beside the availability.
+    /// survives that ruling, and it is the one a console can render beside the availability. The one
+    /// exception, where the row is NOT <c>Available</c>, is a body cut to nothing: there is no content
+    /// left for a value to be about, so <see cref="EmptyBodyShortenedReason"/> goes on an
+    /// <c>Unavailable</c> row instead, and that arm lives in <c>MapAnswers</c>.
     /// </para>
     /// <para>
-    /// <b>Scoped to the CLIENT deliberately.</b> This adapter can see that it cut the body itself;
+    /// <b>Scoped to the CLIENT deliberately.</b> This adapter can see that it cut the text itself;
     /// it cannot see what the server then did with the request, because the request carries no
     /// window and the response reports no window either. A reason that claimed the message was read
     /// over less than it contains, without saying by whose hand, would be read as covering both.
     /// </para>
+    /// <para>
+    /// <b>And it names the FIELD, because one flag for two fields was this lane's conflation.</b> The
+    /// body and the quoted history are cut independently and a reply usually carries both, so the old
+    /// single text, "the message body", was false on a quoted-only cut. These three are the only
+    /// reasons this method can return, and it throws for a call that is not a shortening rather than
+    /// inventing a fourth.
+    /// </para>
     /// </remarks>
-    private const string PromptShortenedReason =
-        "the client shortened the message body to fit the context window";
+    private static string ShorteningReason(bool bodyCut, bool quotedCut)
+        => (bodyCut, quotedCut) switch
+        {
+            (true, true) => "the client shortened the message body and the quoted history to fit the context window",
+            (true, false) => PromptShortenedReason,
+            (false, true) => "the client shortened the quoted history to fit the context window",
+            (false, false) => throw new InvalidOperationException(
+                "a shortening reason was asked for on a prompt where neither field was cut"),
+        };
+
+    /// <summary>
+    /// Recorded instead of a reason on a row whose body was cut to nothing, which is a refusal rather
+    /// than a weaker read.
+    /// </summary>
+    private const string EmptyBodyShortenedReason =
+        "the client shortened the message body to nothing, so the answer was produced over an empty body";
 
     private readonly HttpClient _http;
     private readonly NimbleOptions _options;
@@ -239,7 +273,13 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         _breaker.RecordSuccess();
 
         var evidence = notApplicableEvidence;
-        evidence.AddRange(MapAnswers(askable, response, now, fitted.Value.BodyShortened));
+        evidence.AddRange(MapAnswers(
+            askable,
+            response,
+            now,
+            fitted.Value.Built.BodyCut,
+            fitted.Value.Built.QuotedCut,
+            fitted.Value.Built.BodyCharactersKept));
 
         return new SemanticAssessment
         {
@@ -345,13 +385,17 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// rather than to send something that will be cut.
     /// </para>
     /// <para>
-    /// <b>The shortening is recorded in the state, not in a return value.</b> The request itself says
-    /// the body is partial, which is where the model and any reader of the request need to see it, and
-    /// the state is hashed into the cache key, so a shortened assessment is never reused for the
-    /// complete message.
+    /// <b>The shortening is recorded in the state, not only in a return value.</b> The request itself
+    /// says which field is partial, which is where the model and any reader of the request need to see
+    /// it. And a shortened assessment is never reused for the complete message, <b>because the fit is
+    /// deterministic inside a store's lifetime</b>: the same canonical input and the same window always
+    /// produce the same cut, so one key cannot carry two prompts. It is NOT because the state is hashed
+    /// into the key that decides reuse: that key is <c>SemanticCacheKey.Digest</c> over the canonical
+    /// input and carries no state at all, while this state reaches only the provenance digest this
+    /// adapter reports.
     /// </para>
     /// </remarks>
-    private (string State, bool BodyShortened)? FitState(
+    private (string State, NimbleMessageState.Built Built)? FitState(
         SemanticMailInput input,
         IReadOnlyDictionary<string, NimbleQuestion> questions)
     {
@@ -387,12 +431,12 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
 
             if (total <= _options.NumCtx)
             {
-                // The flag travels out with the state rather than being re-derived by the caller.
-                // The loop's exit is the only place that knows whether the body was cut, and a
-                // caller comparing budgets afterwards would be reconstructing a fact it was just
-                // handed. It is the same flag the state already carries for the model, which is why
+                // The cuts travel out with the state rather than being re-derived by the caller. The
+                // loop's exit is the only place that knows which field was cut and how much survived,
+                // and a caller comparing budgets afterwards would be reconstructing a fact it was just
+                // handed. They are the same facts the state already carries for the model, which is why
                 // nothing new is computed here.
-                return (state, built.BodyShortened);
+                return (state, built);
             }
 
             if (budget == 0)
@@ -531,22 +575,32 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
     /// </para>
     /// <para>
     /// <b>An answered row is not always a FULL one, and it says so without leaving the covered
-    /// set.</b> Where <paramref name="bodyShortened"/> is set the answer was produced over a body
-    /// this adapter cut to make the request fit, and the row carries a reason naming that. It stays
-    /// <see cref="EvidenceAvailability.Available"/> deliberately rather than being downgraded: these
-    /// are the eight ids the policy engine's security check reads <em>by availability</em>, so a
-    /// downgrade to <see cref="EvidenceAvailability.ReducedCoverage"/> would take the row out of that
-    /// check and out of the covered weight at once, on every message whose body or quoted text
-    /// exceeds the character budget. The reason is what makes the shortening visible where a fraction
-    /// cannot, and it is the same principle the state already applies to the model one step out: the
-    /// request tells the model the body is partial, and this tells the consumer the same.
+    /// set.</b> Where <paramref name="bodyCut"/> or <paramref name="quotedCut"/> is set the answer was
+    /// produced over text this adapter cut to make the request fit, and the row carries a reason naming
+    /// WHICH field was cut. It stays <see cref="EvidenceAvailability.Available"/> deliberately rather
+    /// than being downgraded: these are the eight ids the policy engine's security check reads
+    /// <em>by availability</em>, so a downgrade to <see cref="EvidenceAvailability.ReducedCoverage"/>
+    /// would take the row out of that check and out of the covered weight at once, on every message
+    /// whose body or quoted text exceeds the character budget. The reason is what makes the shortening
+    /// visible where a fraction cannot, and it is the same principle the state already applies to the
+    /// model one step out: the request tells the model the text is partial, and this tells the consumer
+    /// the same.
+    /// </para>
+    /// <para>
+    /// <b>The one exception is a body cut to NOTHING, and it is a refusal rather than a weaker read.</b>
+    /// Where <paramref name="bodyCharactersKept"/> is zero the model answered over an empty body, so
+    /// there is no content for a value to be about and the row is <c>Unavailable</c> with its own
+    /// reason rather than <c>Available</c> with an explanation. That is the ruling this signature
+    /// exists to carry out, and it is the only case here that leaves the covered set.
     /// </para>
     /// </remarks>
     private static List<Evidence> MapAnswers(
         IReadOnlyList<SemanticDimension> askable,
         NimbleSystemOneResponse response,
         DateTimeOffset observedAt,
-        bool bodyShortened)
+        bool bodyCut,
+        bool quotedCut,
+        int bodyCharactersKept)
     {
         var evidence = new List<Evidence>(askable.Count);
         var modelVersion = response.Model ?? "unknown";
@@ -572,12 +626,26 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 continue;
             }
 
-            // A shortened read stays Available and carries a REASON, rather than being downgraded.
-            // The ruling is that it must stay COUNTED: these are the same eight ids the policy
-            // engine's elevated-security check reads by availability, and it reads them together with
-            // the covered weight, so a downgrade would drop a row out of both at once for any message
-            // whose body or quoted text exceeds the character budget. The reason is what makes the
-            // shortening visible instead, and it names the CLIENT's hand, because that is the only
+            // A body cut to NOTHING is a refusal and not a weaker read: the model answered over an
+            // empty body, so there is no content for the value to be about. This arm is the ruling,
+            // and it is the only path here that leaves the covered set.
+            if (bodyCut && bodyCharactersKept == 0)
+            {
+                evidence.Add(UnavailableEvidence(
+                    dimension,
+                    EvidenceAvailability.Unavailable,
+                    observedAt,
+                    modelVersion,
+                    EmptyBodyShortenedReason));
+                continue;
+            }
+
+            // Every other shortened read stays Available and carries a REASON, rather than being
+            // downgraded. The ruling is that it must stay COUNTED: these are the same eight ids the
+            // policy engine's elevated-security check reads by availability, and it reads them together
+            // with the covered weight, so a downgrade would drop a row out of both at once for any
+            // message whose body or quoted text exceeds the character budget. The reason is what makes
+            // the shortening visible instead, and it names the CLIENT's hand, because that is the only
             // one this adapter can see.
             evidence.Add(new Evidence
             {
@@ -586,9 +654,12 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
                 Availability = EvidenceAvailability.Available,
                 Value = value,
 
-                // Present only when the client cut the body, so a reader can tell a full read from a
-                // partial one without inferring it from the state.
-                Attributes = bodyShortened ? [Attribute("reason", PromptShortenedReason)] : null,
+                // Present only when the client cut something, so a reader can tell a full read from a
+                // partial one without inferring it from the state, and can tell WHICH field was cut
+                // without inferring that either.
+                Attributes = (bodyCut || quotedCut)
+                    ? [Attribute("reason", ShorteningReason(bodyCut, quotedCut))]
+                    : null,
 
                 // Left null deliberately, as the hosted adapter leaves it. The model reports no
                 // confidence, and defaulting one would fabricate certainty it never expressed. This

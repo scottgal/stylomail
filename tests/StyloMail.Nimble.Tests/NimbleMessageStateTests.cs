@@ -142,17 +142,54 @@ public sealed class NimbleMessageStateTests
         var shortened = NimbleMessageState.Build(
             NimbleTestMessage.With(m => m with { BodyText = longBody }).Message, null, null, 100, 40, 20);
 
-        Assert.True(shortened.BodyShortened);
+        Assert.True(shortened.BodyCut);
+        Assert.False(shortened.QuotedCut);
         var shortenedMessage = (Dictionary<string, object?>)shortened.State["message"]!;
         Assert.Equal(true, shortenedMessage["body_text_shortened_for_prompt"]);
         Assert.Equal(100, shortenedMessage["body_text_characters_kept"]);
 
+        // And the QUOTED pair is absent on a body-only cut, which is the mirror of the control below:
+        // one flag spanning both fields would have written it here.
+        Assert.False(shortenedMessage.ContainsKey("quoted_text_shortened_for_prompt"));
+
         var intact = NimbleMessageState.Build(
             NimbleTestMessage.Input().Message, null, null, 2_500, 40, 20);
 
-        Assert.False(intact.BodyShortened);
+        Assert.False(intact.BodyCut);
+        Assert.False(intact.QuotedCut);
         Assert.False(((Dictionary<string, object?>)intact.State["message"]!)
             .ContainsKey("body_text_shortened_for_prompt"));
+    }
+
+    [Fact]
+    public void Marks_a_shortened_quoted_tail_without_claiming_the_body_was_cut()
+    {
+        // THE RED CONTROL FOR THE PER-FIELD KEYS, and it fails against the code that shipped before this
+        // change, which is the only thing that makes it evidence rather than decoration.
+        //
+        // The fixture is the intact one from the test above with a quoted tail longer than the budget
+        // added, so the BODY is whole and only the QUOTED tail is cut. That is the ordinary reply shape
+        // rather than an edge: BoundedMimeMessageAnalyzer fills QuotedText on any reply with a quoted
+        // tail. The single flag this class used to build could not tell the two apart, so it wrote the
+        // body's marker on a body it had never touched.
+        var message = NimbleTestMessage.With(m => m with { QuotedText = new string('y', 3_000) }).Message;
+
+        var state = NimbleMessageState.Build(message, null, null, 2_500, 40, 20);
+
+        Assert.False(state.BodyCut);
+        Assert.True(state.QuotedCut);
+
+        var messageState = (Dictionary<string, object?>)state.State["message"]!;
+
+        // The control on the control: the body must be WHOLE in the state, so an absent marker below is
+        // absent because it was not written, and not because the body was dropped or cut to nothing.
+        Assert.Equal(message.BodyText, messageState["body_text"]);
+
+        Assert.True(messageState.ContainsKey("quoted_text_shortened_for_prompt"));
+        Assert.Equal(2_500, messageState["quoted_text_characters_kept"]);
+
+        Assert.False(messageState.ContainsKey("body_text_shortened_for_prompt"));
+        Assert.False(messageState.ContainsKey("body_text_characters_kept"));
     }
 
     private static BehaviouralProfile Profile() => new()
