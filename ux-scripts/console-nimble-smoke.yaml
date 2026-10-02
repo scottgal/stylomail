@@ -116,6 +116,17 @@ actions:
     matcher: Not.IsVisible
     description: "Nothing has been opened yet, so the pane is empty"
 
+  # AND THIS MOMENT IS PHOTOGRAPHED BECAUSE THE ASSERTION ALONE CANNOT BE SHOWN,
+  # and it is the half of the article's point a picture of the open decision cannot
+  # make: the row is listed while the decision pane is EMPTY, so the pane waits to
+  # be asked rather than filling itself from the listing. Taken AFTER the emptiness
+  # assertion and not before it, so a run that failed that assertion leaves no image
+  # claiming a state it did not establish - a screenshot from a passing run read as
+  # evidence about a failing one is the trap README's lesson 7 is about.
+  - type: Screenshot
+    value: "02b-held-pane-empty"
+    description: "The held message listed with the decision pane still empty, before the row is opened"
+
   # The row's own control, not the row: the harness clicks by raising the
   # control's Click event, and a ListBoxItem has no handler for one, so a click
   # on the row itself selects nothing while reporting success.
