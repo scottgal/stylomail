@@ -808,7 +808,17 @@ console_start_host() {
     # overwriting the first. A restart whose log had been replaced is a run
     # nobody can diagnose, and the restart is the interesting start.
     local host_log="${CONSOLE_HOST_LOG:-$CONSOLE_RUN/host.log}"
-    "$CONSOLE_HOST_APP" serve > "$host_log" 2>&1 &
+    # Run the Host FROM ITS OWN DIRECTORY, so the `appsettings.json` beside the
+    # binary is the one it reads. Configuration is resolved against the process's
+    # working directory, so a Host started from the caller's directory silently
+    # loses whatever that file sets, and a value that is present there is then
+    # absent in force. Nothing else here depends on the cwd: the spool root, the
+    # database and the principal key are all absolute or env-driven above.
+    #
+    # `exec` inside the subshell replaces it with the Host, so `$!` still records
+    # the Host's own pid rather than a shell in between, which is the property the
+    # note above about `dotnet run` was protecting.
+    ( cd "$(dirname "$CONSOLE_HOST_APP")" && exec "$CONSOLE_HOST_APP" serve ) > "$host_log" 2>&1 &
     CONSOLE_HOST_PID=$!
 
     for _ in $(seq 1 90); do

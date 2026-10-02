@@ -75,6 +75,58 @@ public sealed class DecisionContractTests
     }
 
     /// <summary>
+    /// The reason list survives the trip, because the pane has no other channel for it.
+    /// </summary>
+    /// <remarks>
+    /// The Host's own remark for the coverage block says the rule: a distinction the wire declines to
+    /// carry is carried by the reason code instead. So the shortening of a body reaches an operator
+    /// here and nowhere else, and a member missing from this type is a member the pane cannot draw.
+    /// The second assertion is the default's control: a row the producer explained nothing about
+    /// binds an empty list rather than a null, so the pane tests one thing and not two.
+    /// </remarks>
+    [Fact]
+    public async Task Evidence_binds_the_reasons_that_explain_a_row()
+    {
+        var decision = await ReadDecision(Wire.Decision);
+
+        var semantic = Assert.Single(decision.Evidence, e => e.SignalId == "sig_cred");
+
+        Assert.Equal(
+            [
+                "the client shortened the message body to fit the context window",
+                "no behavioural profile was available to the classifier",
+            ],
+            semantic.AvailabilityReasons);
+
+        Assert.Empty(Assert.Single(decision.Evidence, e => e.SignalId == "sig_hist").AvailabilityReasons);
+    }
+
+    /// <summary>
+    /// The availability enum still has exactly the four members this client renders.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the guard a switch expression cannot be.</b> C# reports a switch over an enum as
+    /// non-exhaustive for UNNAMED values, so every such switch needs a discard arm whether or not
+    /// every member is handled, and a discard says nothing when a member is added. Asserting the
+    /// NAMES catches an addition and a rename together: a FIFTH member would otherwise render
+    /// "not produced" over a value that means something.
+    /// </para>
+    /// <para>
+    /// The names are asserted rather than a count, because a count survives a rename. And this
+    /// guards the HAND-MIRRORED type, which is the copy that can drift without a compile error;
+    /// the producer's own enum is unreachable from this project by design.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_availability_enum_still_has_the_members_this_client_renders()
+    {
+        Assert.Equal(
+            ["Available", "NotApplicable", "ReducedCoverage", "Unavailable"],
+            Enum.GetNames<EvidenceAvailability>().Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// The measured fact from the live Jev run on 2026-09-22: a Noul answer
     /// carries a probability and <b>no confidence field at all</b>. A null here
     /// is the documented shape, not an absence a retry might fill, and the pane

@@ -353,8 +353,7 @@ public sealed class DimensionView
 
     internal static DimensionView From(RiskDimensionResponse dimension)
     {
-        var hasScore = dimension.Availability is EvidenceAvailability.Available
-            or EvidenceAvailability.ReducedCoverage;
+        var hasScore = AvailabilityFacts.Produces(dimension.Availability);
 
         return new DimensionView
         {
@@ -448,10 +447,23 @@ public sealed class DimensionView
         return trimmed.EndsWith('.') ? trimmed : trimmed + ".";
     }
 
+    /// <summary>
+    /// The label a row's availability renders as.
+    /// </summary>
+    /// <remarks>
+    /// The four members are named because the compiler will not require it: C# reports a switch over
+    /// an enum as non-exhaustive for UNNAMED values, so this cannot be written without a discard arm
+    /// and the discard cannot be a guard. The guard is
+    /// <c>DecisionContractTests.The_availability_enum_still_has_the_members_this_client_renders</c>
+    /// instead. The two produced arms spell out what the fallback already produced, so nothing here
+    /// renders differently than it did.
+    /// </remarks>
     private static string Describe(EvidenceAvailability availability) => availability switch
     {
         EvidenceAvailability.Unavailable => "unavailable",
         EvidenceAvailability.NotApplicable => "not applicable",
+        EvidenceAvailability.Available => "available",
+        EvidenceAvailability.ReducedCoverage => "reducedcoverage",
         _ => availability.ToString().ToLowerInvariant(),
     };
 }
@@ -526,6 +538,27 @@ public sealed class EvidenceView
     /// </remarks>
     public string? ScopeLabel { get; init; }
 
+    /// <summary>
+    /// Why the row reads the way it does, in the producer's own words, or null when it needs no
+    /// explanation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The only place a cut or a refusal can reach an operator.</b> The Host's coverage remark says
+    /// the rule: a distinction the wire declines to carry is carried by the reason code. The fit's kept
+    /// length never appears on this wire, and the coverage flag answers a different question, so a row
+    /// shortened to fit and a row the classifier declined to answer at all are distinguishable here and
+    /// nowhere else. Drawing the value alone rendered them identically.
+    /// </para>
+    /// <para>
+    /// <b>Null when the row carries no reason, and null is a fact rather than a gap.</b> Most rows are
+    /// explained by their own availability, so the row renders nothing instead of the word "unknown". A
+    /// qualifier claiming a gap where there is none is the same mistake as rendering an unavailable
+    /// dimension as zero.
+    /// </para>
+    /// </remarks>
+    public string? ReasonLabel { get; init; }
+
     public required string ValueLabel { get; init; }
 
     public required string ConfidenceLabel { get; init; }
@@ -554,8 +587,8 @@ public sealed class EvidenceView
         ObservedScope = evidence.ObservedScope,
         Window = evidence.Window,
         ScopeLabel = Qualifier(evidence.ObservedScope, evidence.Window),
-        ValueLabel = evidence.Availability is EvidenceAvailability.Available
-            or EvidenceAvailability.ReducedCoverage
+        ReasonLabel = Reasons(evidence.AvailabilityReasons),
+        ValueLabel = AvailabilityFacts.Produces(evidence.Availability)
             ? evidence.Value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "no value"
             : "not produced",
         ConfidenceLabel = evidence.Confidence is { } confidence
@@ -589,6 +622,73 @@ public sealed class EvidenceView
 
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// Composes the row's reason, or null when the producer gave none.
+    /// </summary>
+    /// <remarks>
+    /// Blank counts as absent for the same reason it does above: a whitespace reason is the producer
+    /// having nothing to say. The reasons are full sentences, so they are joined with a semicolon
+    /// rather than with the scope's mid-dot, and they are joined at all because they answer one
+    /// question, why this row reads the way it does.
+    /// </remarks>
+    private static string? Reasons(IReadOnlyList<string> reasons)
+    {
+        var parts = new List<string>(reasons.Count);
+
+        foreach (var reason in reasons)
+        {
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                parts.Add(reason);
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+}
+
+/// <summary>
+/// The availability predicate this pane renders by, in one place.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A shared type rather than a copy per view, because the same question is asked in two classes and
+/// two answers to it is how a dimension and its evidence come to disagree.
+/// </para>
+/// <para>
+/// <b>A switch over this enum cannot be the guard, and the compiler is the one that says so.</b>
+/// Dropping the discard arm to make a FIFTH member fail the build was tried and fails a different
+/// way: C# reports the switch as non-exhaustive for UNNAMED values, so escalating warnings rejects
+/// EVERY such switch rather than only a stale one, and a discard is mandatory. With one, a fifth
+/// member falls into it silently. The guard is a TEST over the enum's members instead, which is the
+/// only instrument that can see an addition.
+/// </para>
+/// <para>
+/// The two true arms are the enum's own words. <c>Available</c> is "the signal was produced and its
+/// value is meaningful". <c>ReducedCoverage</c> is "Produced, but over reduced input coverage ...
+/// The value is real but weaker". The other two produce nothing to render, and the enum's remarks
+/// are explicit that a consumer must mask them rather than fill them.
+/// </para>
+/// </remarks>
+internal static class AvailabilityFacts
+{
+    /// <summary>
+    /// Whether an availability is one the enum documents as produced, so its value is a value.
+    /// </summary>
+    /// <remarks>
+    /// Keep the discard arm: removing it does not sharpen this predicate, it stops the file
+    /// compiling, for the reason above.
+    /// </remarks>
+    internal static bool Produces(EvidenceAvailability availability) => availability switch
+    {
+        EvidenceAvailability.Available => true,
+        EvidenceAvailability.ReducedCoverage => true,
+        EvidenceAvailability.Unavailable => false,
+        EvidenceAvailability.NotApplicable => false,
+        _ => false,
+    };
 }
 
 /// <summary>One coverage flag that was true, which qualifies every number above it.</summary>

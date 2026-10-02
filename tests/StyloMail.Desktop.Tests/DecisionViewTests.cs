@@ -196,6 +196,93 @@ public sealed class DecisionViewTests
         Assert.Contains("0.6", behavioural.ConfidenceLabel, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A reason the wire carries reaches the row, joined when there is more than one.
+    /// </summary>
+    /// <remarks>
+    /// The value alone cannot carry this. The fit's kept length never reaches this wire and the
+    /// coverage flag answers a different question, so a row the model answered over a shortened body
+    /// renders exactly like a row it answered whole unless the reason is on the row. Joined rather
+    /// than shown one per line because the reasons answer one question, why this row reads the way
+    /// it does.
+    /// </remarks>
+    [Fact]
+    public void A_reason_the_wire_carries_reaches_the_row()
+    {
+        var semantic = DecisionView.From(Decision()).Evidence.Single(e => e.SignalId == "sig_cred");
+
+        Assert.Equal(
+            "the client shortened the message body to fit the context window"
+                + "; no behavioural profile was available to the classifier",
+            semantic.ReasonLabel);
+    }
+
+    /// <summary>
+    /// A row the producer explained nothing about renders nothing, not the word "unknown".
+    /// </summary>
+    /// <remarks>
+    /// This asserts an absence, so the test above it is its firing control: without that one a null
+    /// here would read the same whether the mechanism works or the member was never bound. A
+    /// qualifier claiming a gap where there is none is the same mistake as rendering an unavailable
+    /// dimension as zero, which is the rule the scope label already follows.
+    /// </remarks>
+    [Fact]
+    public void A_row_with_no_reason_renders_nothing()
+    {
+        var behavioural = DecisionView.From(Decision()).Evidence.Single(e => e.SignalId == "sig_hist");
+
+        Assert.Null(behavioural.ReasonLabel);
+    }
+
+    /// <summary>
+    /// A REFUSAL reaches the row: a reason on an Unavailable row is rendered, not filtered away.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the case the member exists for. Its own remark calls <c>AvailabilityReasons</c> "the only
+    /// channel that carries a cut or a refusal", and the producer emits it on an <c>Unavailable</c> row
+    /// when a body is cut to nothing. <c>ReasonLabel</c> is deliberately UNFILTERED on availability, and
+    /// that is the property a consistency edit would remove, because <c>AvailabilityFacts.Produces</c>
+    /// gates the sibling <c>ValueLabel</c> on the same row.
+    /// </para>
+    /// <para>
+    /// The row is constructed rather than read from the wire fixture: the fixture carries no
+    /// <c>Unavailable</c> evidence row, and adding one would move every other test that reads it. The
+    /// reason text is the producer's <c>EmptyBodyShortenedReason</c>, copied by hand because this project
+    /// references no Nimble assembly by design.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_refusal_reason_reaches_the_row_even_though_the_row_is_unavailable()
+    {
+        var decision = Decision() with
+        {
+            Evidence =
+            [
+                new EvidenceResponse
+                {
+                    SignalId = "sig_refused",
+                    Origin = EvidenceOrigin.Semantic,
+                    Availability = EvidenceAvailability.Unavailable,
+                    SourceVersion = "jev-1.13.0",
+                    ObservedAt = DateTimeOffset.UnixEpoch,
+                    AvailabilityReasons =
+                    [
+                        "the client shortened the message body to nothing, so the answer was produced over an empty body",
+                    ],
+                },
+            ],
+        };
+
+        var refused = Assert.Single(DecisionView.From(decision).Evidence);
+
+        // The contrast is the point: the row shows no value, and still says why.
+        Assert.Equal("not produced", refused.ValueLabel);
+        Assert.Equal(
+            "the client shortened the message body to nothing, so the answer was produced over an empty body",
+            refused.ReasonLabel);
+    }
+
     // ===================== the aggregate =====================
 
     /// <summary>

@@ -88,7 +88,11 @@ internal static class Wire
               "sampleSupport": null,
               "sourceVersion": "jev-1.13.0",
               "observedAt": "2026-09-22T10:00:00+00:00",
-              "observedScope": null
+              "observedScope": null,
+              "availabilityReasons": [
+                "the client shortened the message body to fit the context window",
+                "no behavioural profile was available to the classifier"
+              ]
             },
             {
               "signalId": "sig_hist",

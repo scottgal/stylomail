@@ -668,7 +668,9 @@
                                             <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,8,0,0">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto"
+                                                              RowDefinitions="Auto,Auto"
+                                                              Margin="0,2">
                                                             <TextBlock Grid.Column="0"
                                                                        Classes="signalId"
                                                                        Text="{Binding SignalId}" />
@@ -695,6 +697,23 @@
                                                             <TextBlock Grid.Column="2"
                                                                        Classes="signalValue"
                                                                        Text="{Binding ValueLabel}" />
+
+                                                            <!-- Why the row reads the way it does, in
+                                                                 the producer's own words. The only place a
+                                                                 cut or a refusal reaches an operator: the
+                                                                 fit's kept length never appears on this wire,
+                                                                 and the coverage flag answers another
+                                                                 question, so a shortened row and a declined
+                                                                 one draw identically without this. Absent
+                                                                 when there is nothing to say, which is most
+                                                                 rows, rather than saying "unknown". -->
+                                                            <TextBlock Grid.Row="1"
+                                                                       Grid.ColumnSpan="3"
+                                                                       Classes="signalReason"
+                                                                       Margin="0,2,0,0"
+                                                                       TextWrapping="Wrap"
+                                                                       IsVisible="{Binding ReasonLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                                       Text="{Binding ReasonLabel}" />
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

@@ -219,6 +219,26 @@ public sealed record EvidenceResponse
     /// </para>
     /// </remarks>
     public string? Window { get; init; }
+
+    /// <summary>
+    /// Why this row reads the way it does, in the producer's own words. Empty when the row needs no
+    /// explanation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the only channel that carries a cut or a refusal, and the console must render it.</b>
+    /// The Host's own remark for the coverage block says the rule outright: a distinction the wire
+    /// declines to carry is carried by the reason code instead. So the shortening of a body, and the
+    /// refusal to answer at all, reach an operator HERE and nowhere else. <see cref="CoverageResponse.Truncated"/>
+    /// is a different fact (parser coverage, not the fit), and the fit's kept length is request-side
+    /// only and never appears on this wire at all.
+    /// </para>
+    /// <para>
+    /// Mirrored rather than referenced, like every type in this file. A list because the wire's field
+    /// is one, and because a row can be explained by more than one condition.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> AvailabilityReasons { get; init; } = [];
 }
 
 /// <summary>Which versions produced this decision. The ledger entry is meaningless without them.</summary>
