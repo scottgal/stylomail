@@ -43,14 +43,6 @@ Two consequences of that choice are worth writing down.
 
 **Evidence is not deleted to tidy a display.** The decision pane renders the evidence rows the Host sends, and one evening it met a response carrying the same signal id twice, one row per trend window. The pane was assembling a lookup keyed on the signal id, which throws on a duplicate key, and the whole pane went down. Every unit test passed, because every fixture had unique ids. The fix keeps both rows, and the comment in the code says why: dropping one would be the console editing the Host's answer. The better repair turned out to live on the other side. The Host now names the window as a field of its own on the row, so two rows in one scope can be told apart without anything having to disappear. That is the shape I want in a review surface: when the display and the data disagree, fix whichever of the two is wrong rather than deleting evidence.
 
-**And the pane waits to be asked, which is a property rather than an accident.** Both frames below come from one run of `ux-scripts/run-console-nimble-smoke.sh`, which starts a throwaway Host on loopback and holds a real message through the write path, so they are evidence rather than a mockup. The first has the message listed and the decision pane empty; the second is the decision opened from that row. A single image of the open decision could not show the gap between them, and the gap is the point: the listing does not populate the pane.
-
-![A held message listed in the queue, with the decision pane reading No decision open](../../ux-scripts/console-state4-pane-empty.png)
-
-![The decision opened from that row, showing its risk index and its named evidence rows](../../ux-scripts/console-state4-decision-open.png)
-
-**Two things about that second frame are worth reading off it rather than around it.** The index it shows is **a reading and not a fixed number**: the same line has read 0.575, then 0.566, then 0.565 as the model and the applied window moved, which is why the smoke run asserts the **shape** of that line rather than its value, and why the window itself says "an index, not a probability" rather than leaving a reader to infer it. And the rows underneath are **fifteen named pieces of evidence**, seven deterministic and eight semantic, which is what makes the index arguable by a person rather than merely quotable.
-
 The same instinct shows in smaller places. The mapping from an unreadable live-feed notice to a behaviour used to be a switch inside the window, where no test could reach it. It now lives in a type of its own, and the result it returns carries no kind, no id and no state, so a caller holding one has nothing it could wrongly render.
 
 ## The API's shape: the tenant comes from the principal
@@ -154,6 +146,14 @@ The same expression is still sitting in an earlier harness, in a spike that comp
 The rule this lane keeps re-learning is one sentence long, and it applies far past parsers. **Count what came back against what was asked.** A number with no reproduction is not a measurement. This is the stronger version: a number with a reproduction is not a measurement either, if the instrument is quietly dropping one of the things you asked about.
 
 There is a version of this that is not about parsers at all, and it turned up while I was checking a number in this piece rather than while I was writing it. `dotnet test` prints its summary line, `Failed: 0, Passed: N`, for however many tests finished. Only after that does it print `Test Run Aborted.` if the test host process died. So a suite that crashed partway through still reports a clean zero failures. The Host suite does exactly that today: an unhandled exception on a queue worker's drain timer takes the whole process down from a thread-pool thread, its owner measured three full runs aborting at three different points, and my own run aborted the same way, with a `Failed: 0` style summary sitting above the crash. It is not that the suite is broken, it is that it is unreliable in a particular direction: it aborts about half the time and completes the rest, and a reader with only the summary line cannot tell which kind of run they are holding. That is the same failure as the regex wearing different clothes, and it is worse, because a build server reads the summary line and believes it. The check is the same check. Count what came back against what was asked, and when the two disagree, believe the count of things you asked for.
+
+**The console states that rule in its own words, and the two frames below are the line doing it.** Both come from one run of `ux-scripts/run-console-nimble-smoke.sh`, which starts a throwaway Host on loopback and holds a real message through the write path, so they are evidence rather than a mockup.
+
+![The console with a held message listed and no decision open. The pane waits to be asked rather than filling itself from the listing.](images/console-state4-pane-empty.png)
+
+![The same window a moment later, with the decision opened from that row: the aggregate risk index as the console renders it, the counted weight it was divided by, the policy reason that held the message, and the evidence rows that entered it.](images/console-state4-decision-open.png)
+
+**The second frame's arithmetic line is this section's sentence in the console's voice** - "Of the weight this decision asked about, **1 was counted**", beside the divisor it was divided by - and the index above it is **a reading and not a fixed number**: the same line has read 0.575, then 0.566, then 0.565 as the model and the applied window moved, which is why the smoke run asserts the **shape** of that line rather than its value, and why the window says "an index, not a probability" instead of leaving a reader to infer it.
 
 ## What is not proven
 
