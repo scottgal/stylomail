@@ -145,11 +145,14 @@ ux-screenshots/
 # here, so untracking this took them out of the repository with everything else. They
 # belong in docs/ if the design should be public.
 #
-# WHAT DEPENDS ON THE LINE BELOW, because the coupling is invisible from the line itself: this
-# single entry is the ONLY rule keeping the directory out - check-ignore resolves every path
-# under it to this rule, and there is no global fallback - and 0 files under it are tracked.
-# The bus, the checkpoints, the logs and the scratch carry internal detail (host addresses,
-# measurements, drafts) that is not meant to be published, and a push is append-only once it
-# goes out. Removing or narrowing this line does not fail loudly; it silently makes that
-# material publishable at the next push.
+# WHAT DEPENDS ON THE LINE BELOW, because the coupling is invisible from the line itself:
+# nothing else in this file matches the directory, so this entry is what stands AT THE EDIT -
+# sampled paths (a tool file, a channel message) resolve to this rule, and 0 files under it are
+# tracked. The bus, the checkpoints, the logs and the scratch carry internal detail (host
+# addresses, measurements, drafts) that is not meant to be published, and a push is append-only
+# once it goes out. Removing or narrowing this line does not fail loudly; it silently makes that
+# material ELIGIBLE for the next push. What catches the rest is at push time, not here: the
+# pre-push pass counts .styloagent/ paths in the range, and it sweeps the private-address
+# classes over the range, which covers a carrier copied out to a tracked path - not an edit to
+# this rule. So the line is the rail at the edit and the push checks are the rail at the exit.
 .styloagent/
