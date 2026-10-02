@@ -38,8 +38,8 @@ public sealed class HostAddressPolicyTests
     /// </summary>
     [Theory]
     [InlineData("http://stylomail.example.test")]
-    [InlineData("http://10.0.0.5:5000")]
-    [InlineData("http://mail.internal:8080")]
+    [InlineData("http://192.0.2.5:5000")]
+    [InlineData("http://mail.example.test:8080")]
     public void Plain_http_to_another_machine_is_refused(string address)
     {
         Assert.False(Accepts(address));
