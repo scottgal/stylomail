@@ -48,7 +48,11 @@ usage() {
 }
 
 acquire() {
-    if [ -e "$LOCK" ]; then
+    # The type check comes FIRST: for a symlink pointing at a regular file, `-e` is true and the old
+    # code reported "a sweep already holds the lock" and told the reader to go and read six lines of a
+    # file that is not a lock. `_require_regular_lock` exits with the real reason instead.
+    if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
+        _require_regular_lock
         echo "!!! a sweep already holds the lock: $LOCK" >&2
         echo "    Read its first six lines: they name the holder, the PID and the UTC start" >&2
         echo "    time, which is what tells a running sweep from a leftover lock." >&2
@@ -108,6 +112,32 @@ LOCKFILE
     } > "$LOCK"
 }
 
+# A LOCK PATH THAT IS NOT A REGULAR FILE IS NOT OUR LOCK. Added 2026-10-02, after `corpus-`, `nimble-`
+# and `policy-` each read this leaf and `policy-` located both dump sites and confirmed there was no
+# type check before the reads. `sed` FOLLOWS A SYMLINK, so a symlink planted at the lock path had its
+# target's first six lines echoed to stderr by this file's own diagnostics; and `write_text` in
+# `acquire()` would follow a DANGLING one into a file this guard does not own. The bound `policy-`
+# measured is that the path is owner-writable only, by the single uid that already runs every lane, so
+# no privilege is gained; what it does gain is TRANSCRIPTION, because this fleet pipes command output
+# into logs, so content reaches a reader who can see the log and not the filesystem.
+# This refuses BEFORE any read or write and fails CLOSED, which is the same rule the guard already
+# applies to an unreadable header and to a probe that could not run.
+_require_regular_lock() {
+    if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
+        return 0
+    fi
+    echo "!!! refusing: $LOCK is not a regular file, so it is not a sweep lock." >&2
+    if [ -L "$LOCK" ]; then
+        echo "    it is a SYMLINK. This guard neither reads nor writes through it." >&2
+    else
+        echo "    it is not a regular file. This guard neither reads nor writes it." >&2
+    fi
+    echo "    Inspect it with: ls -l $LOCK" >&2
+    echo "    Then remove it deliberately if it is a leftover: rm -f $LOCK" >&2
+    exit 1
+}
+
+
 release() {
     # WHO MAY UNLINK. Added 2026-10-02 by queue-. `release` was `rm -f "$LOCK"` with no check at
     # all, so ANY lane running it unlinked the lock of a sweep it did not hold: the one writer of
@@ -124,10 +154,13 @@ release() {
     # THE COUNT IS STATED AS TWO AND NOT AS ONE, because this comment said "exactly ONE" until
     # 2026-10-02T13:22 and its own next paragraph contradicted it, and `nimble-` quoted the wrong
     # count as a reading of the leaf within the hour. Found by `policy-`.
-    if [ ! -e "$LOCK" ]; then
+    # `-L` as well as `-e`, because a DANGLING symlink makes `-e` false and would otherwise be
+    # reported as "nothing to release" while the path is left in place for the next sweep to trip on.
+    if [ ! -e "$LOCK" ] && [ ! -L "$LOCK" ]; then
         echo "no lock at $LOCK; nothing to release"
         return 0
     fi
+    _require_regular_lock
 
     # The holder's own pid, which `acquire` wrote as `$$` in this same shell. Tested FIRST because
     # `with` calls this from its EXIT trap while it IS the holder: without this arm the guard would
@@ -135,8 +168,8 @@ release() {
     held=$(sed -n 's/^pid:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$LOCK" | head -1)
     if [ -z "$held" ]; then
         echo "!!! refusing to release: $LOCK carries no readable 'pid:' line." >&2
-        echo "    An unreadable holder counts as IN USE, not as gone. The lock reads:" >&2
-        sed -n '1,6p' "$LOCK" >&2
+        echo "    An unreadable holder counts as IN USE, not as gone." >&2
+        echo "    This guard does NOT echo the lock's text: read it yourself, at $LOCK" >&2
         echo "    If you can see it is a leftover, remove it deliberately: rm -f $LOCK" >&2
         exit 1
     fi
@@ -155,7 +188,7 @@ release() {
     else
         echo "!!! refusing to release: the liveness probe could not run (ps rc=$probe_rc)." >&2
     fi
-    sed -n '1,6p' "$LOCK" >&2
+    echo "    holder pid: ${held:-unreadable}   (read the lock yourself for its text: $LOCK)" >&2
     echo "    A live or unprobeable holder counts as IN USE. Wait for it to finish: two" >&2
     echo "    concurrent sweeps interleave mutations and attribute each other's failures." >&2
     exit 1
