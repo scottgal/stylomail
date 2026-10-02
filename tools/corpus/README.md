@@ -303,9 +303,11 @@ and it ZEROES rather than sliding when `step >= budget`). So:
 `reply-in-thread.eml`, which **is** a reply: running the splitter's own markers over its text, the first
 to fire is the `on ... wrote:` attribution at character 49, leaving **164** characters of quoted text --
 so the corpus **has** a reply and what it lacked was one **sized** above the budget. This option is for
-that case. (A neighbouring lane reads **162** from the same file with its own instrument; the two differ
-by where the split's boundary lands, and neither figure is anywhere near the budget, so nothing turns on
-which is quoted.)
+that case. (A neighbouring lane reads **162** from the same file with its own instrument, and **the
+difference cannot be characters against bytes**: the fixture is pure ASCII -- 557 bytes, zero non-ASCII
+-- so one character is one byte throughout. **Having eliminated the units, the split's boundary is the
+only explanation left**, and neither figure is anywhere near the budget, so nothing turns on which gets
+quoted.)
 
 **The marker is the splitter's own, not one of this corpus's invention**: `QuotedHistory.cs:38-39` looks
 for a line beginning `>`, and `:34-35` for an `on ... wrote:` attribution. A tail appended without them

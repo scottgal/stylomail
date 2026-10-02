@@ -1406,6 +1406,7 @@ def manifest_entry(
     size: str = "small",
     shape: str | None = None,
     quoted_tail: int = 0,
+    quoted_tail_characters: int = 0,
 ) -> dict:
     # The envelope is recorded in the manifest, not re-derived by `seed`. It has to be, because a
     # manifest that declared `envelope.no_recipients` while `seed` rebuilt a body with one recipient
@@ -1530,6 +1531,11 @@ def manifest_entry(
         # The appended quoted tail's requested size, present only when the option was used. Additive
         # on the same argument as `bodyShape`: absence means "no tail was appended", not "a tail of 0".
         **({"quotedTail": quoted_tail} if quoted_tail > 0 else {}),
+        # THE ACTUAL APPENDED LENGTH, not the requested one: the tail tiles a unit to at least the
+        # requested size, so the two differ by up to one unit. The check needs the real figure
+        # because the tail is a SEPARATE FIELD with its own budget and the turn is legitimately
+        # longer than the body by exactly this much.
+        **({"quotedTailCharacters": quoted_tail_characters} if quoted_tail > 0 else {}),
         # A change that is real in the bytes but that no pipeline signal can yet be asked about.
         # Recorded rather than declared: `planted` is a list of claims `check` will hold the pipeline
         # to, and putting an unassertable one there would make a correct pipeline fail. Field present
@@ -1660,8 +1666,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
         # THE TAIL IS APPENDED AFTER THE SHAPE, so a message can carry a dense body AND a quoted tail
         # and the two fields are independently sized. The html moves with the text for the same reason
         # it does in the shape transform: a text-only append would leave the parts disagreeing.
-        if args.quoted_tail > 0:
-            tailed = plan.text + quoted_tail(args.quoted_tail)
+        appended = quoted_tail(args.quoted_tail) if args.quoted_tail > 0 else ""
+        if appended:
+            tailed = plan.text + appended
             plan = replace(
                 plan,
                 text=tailed,
@@ -1697,7 +1704,10 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 return 2
             plan.window = [previous_raw.decode("utf-8")]
         (out / f"{index:03d}.eml").write_bytes(raw)
-        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size, shape, args.quoted_tail))
+        messages.append(
+            manifest_entry(plan, raw, args.coverage, encoding, size, shape, args.quoted_tail,
+                           len(appended))
+        )
         previous_raw = raw
 
     manifest = {
@@ -2067,11 +2077,21 @@ def shape_failures(batch_dir: Path, manifest: dict) -> list[str]:
         # read off the entry; a body at or over the limit is a fixture defect the adapter turns into
         # a provider refusal, which is exactly the failure the size axis is built to avoid.
         turn = entry.get("turnCharacters")
-        if isinstance(turn, int) and turn > TURN_LIMIT:
+        # A DECLARED QUOTED TAIL IS A SEPARATE FIELD WITH ITS OWN BUDGET, so the turn is legitimately
+        # longer than the body by exactly the length appended. `NimbleMessageState.cs:62-63` truncates
+        # `BodyText` and `QuotedText` against the SAME budget SEPARATELY, so what the budget bounds is
+        # each field and not their sum -- which makes bounding the whole turn a proxy that over-counts
+        # once a tail exists. **It over-counted the first time one was generated**: a 3000-character
+        # tail made `turnCharacters` 3309 and `check` refused it, which is a FALSE refusal rather than
+        # a fixture defect. The allowance is the MEASURED appended length, not the requested one.
+        tail = entry.get("quotedTailCharacters") or 0
+        if isinstance(turn, int) and turn > TURN_LIMIT + tail:
             failures.append(
                 f"{entry['file']}: the turn is {turn} characters, over the adapter's body budget of "
-                f"{TURN_LIMIT} (`NimbleOptions.MaxBodyCharacters`), so the fit must shorten it before "
-                "the classifier sees it and this message is not the fixture it claims to be"
+                f"{TURN_LIMIT} (`NimbleOptions.MaxBodyCharacters`)"
+                + (f" plus a declared quoted tail of {tail}" if tail else "")
+                + ", so the fit must shorten it before the classifier sees it and this message is not "
+                "the fixture it claims to be"
             )
 
         claimed = entry.get("encoding")
