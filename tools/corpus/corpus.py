@@ -1010,6 +1010,14 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
             mail_from=f"ap@{SENDER_DOMAIN}",
             note="turn 1 of a pair: the baseline, submitted with no window",
             turn=1,
+            # DENSE-SAFE, and the reason is what this profile ASSERTS and not what its bytes contain.
+            # Both turns plant the availability of a WINDOW dimension and the ABSENCE of a campaign id;
+            # neither is a needle in the body. The body-borne change lives in `undescribedChange`, which
+            # is a DESCRIPTION and explicitly not a claim, so replacing the body falsifies nothing
+            # `check` verifies -- it only makes the description stale, which the transform handles by
+            # dropping it. This is the profile that carries the RICH state, so it is the one that can
+            # reach a retained length below 1988.
+            dense_safe=True,
         )
 
     second = PAIR_TURN2_CONTROL if control else PAIR_TURN2_CHANGED
@@ -1052,6 +1060,7 @@ def _plan_pair(seed: int, index: int, *, control: bool) -> MessagePlan:
             else "turn 2 of a pair: the window is supplied and the payment destination changed"
         ),
         window_from_previous_turn=True,
+        dense_safe=True,
         turn=2,
         undescribed_change=change,
     )
@@ -1601,6 +1610,12 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 plan,
                 text=dense,
                 html=plan.html.replace(plan.text, dense) if plan.html is not None else None,
+                # THE DESCRIPTION GOES WITH THE BODY IT DESCRIBES. `undescribedChange` records that this
+                # message's payment destination moved in the body; a shaped body does not carry that move,
+                # so keeping the record would ship a manifest describing bytes that are not in the file.
+                # It is a DESCRIPTION and never a claim, so dropping it falsifies nothing, and its absence
+                # then reads as "nothing described" -- which is true of the transformed message.
+                undescribed_change=None,
             )
         encoding = draw_encoding(args.seed, index, args.encoding_mix)
         has_html, has_attachment = size_carriers(plan)

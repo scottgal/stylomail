@@ -224,6 +224,39 @@ def test_the_body_length_is_settable(root: pathlib.Path) -> None:
           f"{got} != {EXPECTED_BODY_CHARACTERS}")
 
 
+def test_the_axis_composes_with_pair_and_drops_its_change_description(root: pathlib.Path) -> None:
+    """`pair` is where the RICH state is, and until now the axis refused it.
+
+    The discriminating arm needs a state whose retained length is below 1988, which `pair` turn 2 has
+    and `benign` does not, because turn 2 carries the previous message's bytes as a conversation
+    window. Its planted claims are the availability of a WINDOW dimension and the ABSENCE of a campaign
+    id, NEITHER of which is a needle in the body, so replacing the body falsifies nothing `check`
+    verifies. **The one thing it does falsify is a DESCRIPTION**: `undescribedChange` records that the
+    payment destination moved in the body, and a shaped body no longer carries it.
+    """
+    shaped = root / "pair-shaped"
+    result = generate(shaped, "pair", "--body-shapes", "hexish", "--body-characters", "1615")
+    check("the axis now composes with `pair`", result.returncode == 0, result.stderr[:300])
+    messages = declared(shaped / "manifest.json")
+    check("turn 2 declares its shape", messages[1].get("bodyShape") == "hexish",
+          str([m.get("bodyShape") for m in messages]))
+    check("turn 2's body is the requested length", messages[1]["turnCharacters"] == 1615,
+          str(messages[1]["turnCharacters"]))
+    check("and the change DESCRIPTION is dropped, since the body it describes is gone",
+          "undescribedChange" not in messages[1],
+          str(messages[1].get("undescribedChange"))[:120])
+
+    # CONTROL: with the axis off the description IS present, so the drop is attributable to the axis
+    plain = root / "pair-plain"
+    generate(plain, "pair")
+    control = declared(plain / "manifest.json")
+    check("CONTROL: with the axis off the change description is present",
+          "undescribedChange" in control[1],
+          str(list(control[1].keys()))[:150])
+    check("CONTROL: and with the axis off no shape is declared",
+          all("bodyShape" not in m for m in control))
+
+
 def run_check(manifest: pathlib.Path, keyfile: pathlib.Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-B", str(CORPUS), "check", "--base-url", DEAD_URL,
