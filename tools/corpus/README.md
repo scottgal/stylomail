@@ -200,6 +200,16 @@ now been taken through this instrument at the pinned `EffectiveNumCtx` **65536**
 | control, `--body-shapes off` | ~281-450 chars | 6 | **0** |
 | treatment, `--body-shapes all` | 2500 chars | 6 | **6** |
 
+**AND THE BOUNDARY IS NOW MEASURED RATHER THAN ASSUMED, WHICH IS WHAT JUSTIFIES THIS CORPUS'S DEFAULT.**
+A loopback recording proxy captured the outgoing request bodies, and a three-point bisection on the
+shortening flag placed the boundary at **`L` = 2160 for the bisected fixture** (`2159` uncut, `2160`
+uncut, `2161` cut), with the boundary arm's request landing at exactly `NumCtx` 8192 bytes. **So the
+dense-family default of 2000 sits below the boundary BY MEASUREMENT and not by estimate.** Six captures,
+an index and the derivations are at `.styloagent/scratch/corpus/captures/`.
+**`L` is a property of the STATE and it MOVES between messages** -- 2160, 2171 and 2176 for three
+messages of one profile and body size, lowest at index 0 -- so **a fixture sized for the first message in
+a batch is sized for the tightest one.**
+
 **AND THE TREATMENT BATCH SETTLES WHICH VARIABLE CUTS, because it holds a 2500-character body of EVERY
 shape including prose.** All six are shortened, `prose` exactly like `hexish`. **At constant size the
 shape changes nothing, so the driver is the byte budget and NOT density.** Two mechanisms were tangled
