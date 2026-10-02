@@ -917,9 +917,17 @@ public static class HostServices
         // through the relation that defines it, so they are the form agreeing with itself at a
         // different body length.
         //
-        // What is still unexplained is how the 105 splits between `M` and `F` (the wire's pair leaves
-        // 105 beyond `O-nought + kept`), which `queue-` showed does not enter `L` at all. The proxy
-        // de-chunks (`capture-proxy.py:63-76`), so `F` is not chunk framing. **THE `1488` THIS PARAGRAPH CARRIED
+        // **AND THE 105 IS `M`, THE MARKER COST, MEASURED FROM TWO INDEPENDENT CUT ARMS** (`queue-`):
+        // `8124 - 6032 - 1987 = 105` from the 2161 arm and `7785 - 6032 - 1648 = 105` from the 2500
+        // arm, **and the 2161 arm was taken for the BISECTION rather than for `M`, which is what makes
+        // it a confirmation rather than a fit.** `F` contributes nothing because the proxy de-chunks
+        // (`capture-proxy.py:63-76`), so the split resolved to `M` alone. **And the two UNCUT arms are
+        // the formula's control**: the same expression applied to them gives **0, not 105**, **because
+        // an uncut state carries no markers at all** -- the precondition showing itself as a wrong
+        // number on the arms where it does not apply, which is a stronger control than a stated
+        // caveat. (`queue-` quoted 170 and 172 for those two arms and **I could NOT reproduce either**
+        // from the four wire totals and `O-nought` = 6032; the control's point holds whatever the two
+        // numbers are, and that is the one arithmetic in this thread I could not follow.) **THE `1488` THIS PARAGRAPH CARRIED
         // WAS A PLACEHOLDER, NOT A MEASUREMENT**: it came from substituting the bracket's LOWER end
         // (2000) for `L`, so the FORM was right and the value was the bracket's edge rather than the
         // boundary. **And `body - MARGIN` is refuted by the same reading** -- it predicts 1988 where
