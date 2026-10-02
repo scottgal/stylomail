@@ -43,6 +43,16 @@ description: >
   than text=; and a locator matches controls that are not visible, so the
   selectors here are kept to strings that appear on one control.
 
+  AND THIS RUN'S OUTPUT IS EMBEDDED TWICE, WHICH IS A DRIFT RISK RATHER THAN A
+  duplication. `02b-held-pane-empty` and `03-decision-pane` are the pair the
+  console write-up renders, and copies of both sit under docs/blog/images/ beside
+  the article that references them. The harness writes to ux-results/, so a
+  re-capture updates NEITHER copy, and updating one alone leaves the published
+  article showing a stale frame with no signal - the direction that keeps
+  working, which is why it is worth a sentence here rather than a hope. The two
+  pairs were identical when placed, at sha256 a3423f50eb2e23d7 and
+  a286783bd350aa06; compare them after any re-capture.
+
 default_delay: 250
 
 actions:
