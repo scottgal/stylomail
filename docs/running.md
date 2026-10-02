@@ -397,9 +397,10 @@ arm. **The cut form holds while the second pass still leaves the request above `
 bisected message means a body of **2093** or more - and that threshold **sums a byte term with a
 character one**, since `105` and the `512`-byte margin are bytes while the `2500` body budget is
 characters, so it is exact only where a character costs a byte and is a **LOWER bound** for any body the
-adapter escapes, where a character can cost up to seven bytes. A shorter body sends the loop round again
-and lands on
-**`NumCtx - MARGIN` = 7680 down to about `CAP - MARGIN` = 1988**, below which the BODY stops being the
+adapter escapes, where a character can cost up to seven bytes. A shorter body sends the loop round again,
+and **the TOTAL it lands on is `NumCtx - MARGIN` = 7680 BYTES** for **bodies** down to about `CAP - MARGIN` = 1988
+CHARACTERS - the first is a request size and the second a body length, not two sizes of one thing - below
+which the BODY stops being the
 smaller term and the total moves with it again (`policy-`, 2026-10-02T01:35). Across these fixtures the
 band of body lengths whose outcome depends on which message carries them is **340 wide**, which is the
 reason a fixture has to declare where it sits rather than quote a boundary.
