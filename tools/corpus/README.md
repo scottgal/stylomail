@@ -286,6 +286,35 @@ fit's lever cannot touch.
   and is not by itself a refused message; its value is that it **bounds the pin from inside the
   corpus**, which a scratch probe cannot do.
 
+### The quoted tail: `--quoted-tail N`
+
+**Why it exists.** `shortened` is a **disjunction** -- `Shortened(BodyText, body) || Shortened(QuotedText,
+quoted)` -- so a reading of `flag + kept + total` cannot say *which field* was cut. The quoted half fires
+iff `QuotedText.Length` exceeds the fit's **current** budget, and that budget starts at
+`MaxBodyCharacters` 2500 (`NimbleSemanticMailClassifier.cs:358`) and is reduced a step per pass (`:407`,
+and it ZEROES rather than sliding when `step >= budget`). So:
+
+| tail | fires when |
+|---|---|
+| `<= 2500` | only if a fit pass drives the budget under it -- **conditional** |
+| `> 2500` | **unconditionally**, on the first pass |
+
+**And the shape was never the gap.** The committed fixtures at `tests/fixtures/jev/` already include
+`reply-in-thread.eml`, which **is** a reply: running the splitter's own markers over its text, the first
+to fire is the `on ... wrote:` attribution at character 49, leaving **164** characters of quoted text --
+so the corpus **has** a reply and what it lacked was one **sized** above the budget. This option is for
+that case. (A neighbouring lane reads **162** from the same file with its own instrument; the two differ
+by where the split's boundary lands, and neither figure is anywhere near the budget, so nothing turns on
+which is quoted.)
+
+**The marker is the splitter's own, not one of this corpus's invention**: `QuotedHistory.cs:38-39` looks
+for a line beginning `>`, and `:34-35` for an `on ... wrote:` attribution. A tail appended without them
+would be a long **body** and no quoted field at all.
+
+**`--quoted-tail 0` is the default and appends nothing**, so the default path is byte-identical to a batch
+generated before this option existed -- asserted across seven profiles. The manifest declares `quotedTail`
+only when the option is used, on the same additive argument `bodyShape` carries.
+
 ## Tests
 
 ```sh

@@ -415,6 +415,42 @@ def shape_body(shape: str, characters: int = SHAPE_BODY_CHARACTERS) -> str:
     return (unit * (characters // len(unit) + 2))[:characters]
 
 
+# -------------------------------------------------------------------------------------------------
+# The quoted tail: the only fixture this generator can make that raises the QUOTED half of the flag
+# -------------------------------------------------------------------------------------------------
+#
+# WHY. `shortened` is a DISJUNCTION -- `Shortened(BodyText, body) || Shortened(QuotedText, quoted)` --
+# so a reading of `flag + kept + total` cannot say WHICH field was cut. The quoted disjunct fires iff
+# `QuotedText.Length` exceeds the fit's CURRENT budget, and the budget starts at `MaxBodyCharacters`
+# 2500 (`NimbleSemanticMailClassifier.cs:358`) and is reduced a step per pass (`:407`). So:
+#
+#   a tail of 162  fires only if a fit pass drives the budget under 162   -- CONDITIONAL
+#   a tail above 2500 fires UNCONDITIONALLY, on the first pass             -- which is the fixture
+#
+# AND THE SHAPE IS NOT THE GAP. The committed fixtures at `tests/fixtures/jev/` already include
+# `reply-in-thread.eml`, whose quoted tail is 162 characters -- so the corpus HAS a reply and what it
+# lacks is one sized above the budget. This option is for that case.
+#
+# THE MARKER IS THE SPLITTER'S OWN, not a pattern of this corpus's invention: `QuotedHistory.cs:38-39`
+# looks for a line beginning `>`, and `:34-35` for an `on ... wrote:` attribution. A tail appended
+# without them would be a long BODY and no quoted field at all, which is the failure mode worth the
+# comment.
+QUOTED_TAIL_ATTRIBUTION = (
+    "\n\nOn Mon, 1 Jan 2024 at 09:00, Correspondent <correspondent@" + SENDER_DOMAIN + "> wrote:\n"
+)
+QUOTED_TAIL_UNIT = "> The earlier message is quoted here so the tail has something to be.\n"
+
+
+def quoted_tail(characters: int) -> str:
+    """The attribution line plus a `>`-quoted section of about `characters`, deterministically.
+
+    No clock: the attribution date is fixed, because this corpus is reproducible from `(seed, index)`
+    and a rendering time would make the same seed produce different bytes on two runs.
+    """
+    repetitions = max(1, characters // len(QUOTED_TAIL_UNIT) + 1)
+    return QUOTED_TAIL_ATTRIBUTION + QUOTED_TAIL_UNIT * repetitions
+
+
 def size_carriers_from(html: str | None, facts: list[str]) -> tuple[bool, bool]:
     """(has html, has attachment): the parts that can carry size without touching the model's turn."""
     return html is not None, "deterministic.attachment_type_mismatch" in facts
@@ -1369,6 +1405,7 @@ def manifest_entry(
     encoding: str = "plain",
     size: str = "small",
     shape: str | None = None,
+    quoted_tail: int = 0,
 ) -> dict:
     # The envelope is recorded in the manifest, not re-derived by `seed`. It has to be, because a
     # manifest that declared `envelope.no_recipients` while `seed` rebuilt a body with one recipient
@@ -1490,6 +1527,9 @@ def manifest_entry(
         # means "this batch drew no shapes", and writing `bodyShape: "prose"` on every message is the
         # choice that would destroy that reading and so would force a corpusVersion bump instead.
         **({"bodyShape": shape} if shape else {}),
+        # The appended quoted tail's requested size, present only when the option was used. Additive
+        # on the same argument as `bodyShape`: absence means "no tail was appended", not "a tail of 0".
+        **({"quotedTail": quoted_tail} if quoted_tail > 0 else {}),
         # A change that is real in the bytes but that no pipeline signal can yet be asked about.
         # Recorded rather than declared: `planted` is a list of claims `check` will hold the pipeline
         # to, and putting an unassertable one there would make a correct pipeline fail. Field present
@@ -1617,6 +1657,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 # then reads as "nothing described" -- which is true of the transformed message.
                 undescribed_change=None,
             )
+        # THE TAIL IS APPENDED AFTER THE SHAPE, so a message can carry a dense body AND a quoted tail
+        # and the two fields are independently sized. The html moves with the text for the same reason
+        # it does in the shape transform: a text-only append would leave the parts disagreeing.
+        if args.quoted_tail > 0:
+            tailed = plan.text + quoted_tail(args.quoted_tail)
+            plan = replace(
+                plan,
+                text=tailed,
+                html=plan.html.replace(plan.text, tailed) if plan.html is not None else None,
+            )
         encoding = draw_encoding(args.seed, index, args.encoding_mix)
         has_html, has_attachment = size_carriers(plan)
         size = draw_size(args.seed, index, args.size_mix, has_html or has_attachment)
@@ -1647,7 +1697,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
                 return 2
             plan.window = [previous_raw.decode("utf-8")]
         (out / f"{index:03d}.eml").write_bytes(raw)
-        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size, shape))
+        messages.append(manifest_entry(plan, raw, args.coverage, encoding, size, shape, args.quoted_tail))
         previous_raw = raw
 
     manifest = {
@@ -2574,6 +2624,19 @@ def main() -> int:
             "to arrive un-cut (2000 clean, 2500 cut, threshold unmeasured between). Refused above "
             + str(TURN_LIMIT)
             + ", the adapter's own body budget, because a fixture over it is not the fixture it claims"
+        ),
+    )
+    gen.add_argument(
+        "--quoted-tail",
+        type=int,
+        default=0,
+        help=(
+            "append a quoted reply section of about N characters after the splitter's own `on ... "
+            "wrote:` attribution, so the message carries a QuotedText. `> 2500` is the only size at "
+            "which the QUOTED half of the `shortened` flag fires UNCONDITIONALLY, since the fit starts "
+            "at MaxBodyCharacters 2500 and reduces it a step per pass; a tail at or below the budget "
+            "fires only if a pass drives the budget under it. 0 (the default) appends nothing and "
+            "declares no `quotedTail`"
         ),
     )
     gen.add_argument(
