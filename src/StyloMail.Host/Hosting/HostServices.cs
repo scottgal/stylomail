@@ -914,12 +914,20 @@ public static class HostServices
         // **AND THAT IS THE BOUNDARY FOR A SUBMISSION WITH NO PROFILE, WHICH IS THE WORST CASE, AND
         // THE SPREAD HAS A DIRECTION.** Measured, in submission order, the same fixture at the SAME
         // 7785 wire total each time:
-        //   index  kept   overhead   L      profile
-        //     0    1648     6137    2160    available False, 14 fields null
-        //     1    1659     6126    2171    available True, 1 message observed
-        //     2    1664     6121    2176    available True, 2 messages observed
-        // **Overhead falls monotonically and `L` rises with it.** The coldest submission has no profile
-        // at all -- fourteen fields at `null` -- and **`null` costs FOUR bytes where a value costs one**,
+        //   index  kept   O-nought+M   O-nought   L      profile
+        //     0    1648      6137        6032     2160    available False, 15 of 18 fields null
+        //     1    1659      6126        6021     2171    available True, 1 message observed
+        //     2    1664      6121        6016     2176    available True, 2 messages observed
+        // **Overhead falls monotonically and `L` rises with it. AND THE SPREAD IS `O-nought`, NOT `M`:
+        // `M` HOLDS AT 105 across all three arms while `O-nought` moves 6032 -> 6016**, which is the
+        // right way round for a reason worth the line -- **`M` is two fixed key lines and SHOULD be
+        // constant, while `O-nought` is content-dependent through the null-length mechanism.**
+        // **Attributing the spread to `M` would make the fixed thing variable and the variable thing
+        // fixed**, which is the inversion this thread has corrected more than once. (The first column
+        // was labelled `overhead` before this and it is `O-nought + M`; `O-nought` alone is 6032.) The coldest submission has no profile
+        // at all -- fifteen of its eighteen fields at `null`, the three populated ones being `available`
+        // (False), `cold_start` (False) and `direction`, which is to say exactly the fields that do not
+        // depend on a profile existing -- and **`null` costs FOUR bytes where a value costs one**,
         // so the coldest message carries the MOST overhead and has the **TIGHTEST boundary**. **So the
         // boundary is a function of what the request CONTAINS ("richer" is not "larger" in a serialised
         // state), and `2160` is its CONSERVATIVE end rather than a fragile sample of it.**
@@ -932,6 +940,15 @@ public static class HostServices
         // arm is one of them.** Both cut readings (2161 -> 1987, 2500 -> 1648) constrain `L` only
         // through the relation that defines it, so they are the form agreeing with itself at a
         // different body length.
+        //
+        // **AND THE SYMMETRIC HALF IS `policy-`'s, AND THE TWO ARE DIFFERENT FREEDOMS: the CUT arms are
+        // `O-nought`-FREE for the TOTAL.** A one-step cut gives `total = O-nought + M + L + (CAP -
+        // MARGIN) - body`, and since `O-nought + L = NumCtx`, that is **`NumCtx + M + CAP - MARGIN -
+        // body` = 10285 - body at these values -- so `body` is RECOVERABLE from the wire total** with no
+        // `O-nought`, no kept value and no flag. **An uncut arm cannot do that, for the same reason it
+        // is form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
+        // `O-nought`-free for `total`** -- and a reader who takes those for ONE property will look for
+        // the body's length in the uncut arms and find it only in the cut ones.
         //
         // **AND THE 105 IS `M`, THE MARKER COST, MEASURED FROM TWO INDEPENDENT CUT ARMS** (`queue-`):
         // `8124 - 6032 - 1987 = 105` from the 2161 arm and `7785 - 6032 - 1648 = 105` from the 2500
@@ -952,7 +969,13 @@ public static class HostServices
         // the cap and not the general form. **AND THE GENERAL FORM EXISTS, so a reader should not conclude the quantity is
         // relationless: `kept + body - L = CAP - MARGIN` -- `1988` at the 2500 cap -- EXACTLY**,
         // because the step subtracts an excess that is itself `body - L`, so `body` appears on both
-        // sides and cancels. **STATED WITH `CAP` AND `MARGIN` EXPLICIT RATHER THAN FOLDED INTO `1988`**,
+        // sides and cancels. **AND THE FORM HAS A PRECONDITION THAT MUST BE WRITTEN BESIDE IT: `body >
+        // L`.** At `body = L` the request FITS and `kept = body`, so the relation has no jurisdiction
+        // there -- **and a capture landing exactly on the boundary reads an UNCUT body, which would make
+        // the form report a FAILURE on correct code.** `nimble-` found this by including two boundary
+        // rows in their own check and watching the precondition show itself as two `False`s, which is
+        // this thread's domain requirement arriving on the form that states it best: **a form exact on
+        // its domain and silently wrong off it needs its domain written down.** **STATED WITH `CAP` AND `MARGIN` EXPLICIT RATHER THAN FOLDED INTO `1988`**,
         // on `policy-`'s clause: the folded number is identical only at `CAP = 2500` and would part
         // company at any other cap, so a sentence keyed on the folded value goes silently stale the
         // moment `MaxBodyCharacters` moves. **The interval is `kept` in `(3988 - body, 1988)` -- and
