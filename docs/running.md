@@ -195,7 +195,22 @@ Two consequences worth knowing:
 
 | Key (under `StyloMail:Assessment:`) | Default | Notes |
 | --- | --- | --- |
-| `Provider` | `Jev` | `Jev`, `Nimble` or `NeverAsks`. Matched by name, case-insensitively. |
+| `Provider` | `Jev` | `Jev`, `Nimble`, `NeverAsks` or `Cascade`. Matched by name, case-insensitively. |
+
+`Cascade` composes the two adapters rather than adding a third: the local arm is the one `Nimble`
+constructs, the second arm is the one `Jev` constructs, and a deterministic rule decides which
+dimensions the local answer cannot be taken on and are therefore asked again of the second arm. It
+needs the hosted provider's **pair** of secrets, because its second arm holds the provider key, and
+it refuses to start without them exactly as `Jev` does. Its classifier version names **both** arms,
+each with the authority of its endpoint and not only its model id, and that one string is both the
+semantic cache's compatibility gate and its model term: the same model at the same digest on two
+hosts answered differently on every one of `352` measured dimension-instances (`cascade-`,
+2026-10-02), so a version naming models alone would serve an entry taken under a replaced host. The
+version and both endpoints are announced in the startup log.
+
+**And a cascade is not a way to have a second opinion without a credential.** A deployment that lost
+its provider key would otherwise keep assessing every message on the local arm with a rule that can
+never fire, and its evidence would look complete; the startup refusal is what makes that loud.
 
 `Nimble` runs the local decision model instead of the hosted one. Four settings, all under
 `StyloMail:Nimble:`, and the first two are announced in the log at every boot:
@@ -490,7 +505,10 @@ measure is not silently treated as clean.
 Three things follow from the choice, and they are the reason it is a named decision rather than a
 fallback:
 
-- **What the deployment must hold changes.** `Jev` needs a provider key and the profile master key.
+- **What the deployment must hold changes.** `Jev` needs a provider key and the profile master key,
+  and `Cascade` needs the **same pair**, because its second arm IS the hosted adapter: a cascade
+  holding the master key alone would keep assessing every message on the local arm with a rule that
+  can never be satisfied, so it refuses at startup and names the missing variable.
   `Nimble` and `NeverAsks` need the master key alone, because neither holds a credential to pair with.
   The refusal messages name the missing variable, and they only name the ones the selected provider
   actually reads.
@@ -557,6 +575,7 @@ resolved to, named in an `X-StyloMail-Key` header: there is no request that wide
 | --- | --- | --- |
 | `StyloMail:Jev:Endpoint` | the hosted TypeSafe endpoint | **Redirects message content**, so a non-default value is announced in the startup log. Setting it is a legitimate operator decision, a local classifier, staging, or deliberately unreachable to exercise the semantic-unavailable path, and the announcement is what keeps it a decision rather than an accident. |
 | `StyloMail:Jev:Model` | the pinned versioned id | Bound so it can be changed deliberately. An alias here would move without notice and silently invalidate memoised assessments. |
+| `StyloMail:Jev:TimeoutSeconds` | `1` second | The adapter's deadline for one assessment. Bound because a cascade can point this adapter at a **local** model, where one second is a hosted-service assumption rather than a property of the protocol: measured on 2026-10-02, the deadline elapsed on the first escalated assessment and the request answered **`500`** (`cascade-`). Absent, unparseable or non-positive means the default, so no existing deployment moves. |
 
 A rejected credential at this endpoint is what makes `provider_credential` appear in `/health/ready`:
 see the readiness section above.
