@@ -965,7 +965,15 @@ public static class HostServices
         // cap and their union covers every regime, so no single route carries information
         // everywhere** -- totality on one side is bought by degeneracy on the other, and a route's
         // DOMAIN and its INFORMATIVENESS are two different properties. **An uncut arm cannot recover
-        // `min(emitted, CAP)` at all, which is the same fact as its being form-free for `L`.** So the clean statement is **`uncut` = form-free for `L`; `cut` =
+        // `min(emitted, CAP)` at all, which is the same fact as its being form-free for `L`.**
+        //
+        // **AND THE INFORMATIVE WINDOW HAS A SIZE, which is what makes the degeneracy concrete rather
+        // than a caveat**: cut bodies `L < body <= CAP` are **2161..2500 -- 340 distinct bodies giving
+        // 340 distinct totals, 7785..8124** -- and **every body at or above the cap collapses onto
+        // 7785.** So the total is INJECTIVE on a 340-wide window and CONSTANT outside it, **and the
+        // degenerate case is not a rarity: it is every body at or above the cap, which is where a
+        // corpus's default fixtures sit.** A fixture whose body IS the cap therefore sits where the
+        // window's top and the degenerate value are the same number. So the clean statement is **`uncut` = form-free for `L`; `cut` =
         // `O-nought`-free for `total`** -- and a reader who takes those for ONE property will look for
         // the body's length in the uncut arms and find it only in the cut ones.
         //
