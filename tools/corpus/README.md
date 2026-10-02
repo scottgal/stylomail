@@ -250,8 +250,15 @@ declared it**, naming the profile and writing nothing. A new plan builder added 
 it opts in. A plan with html must contain its text in that html, so the two parts can be moved together;
 a text-only replacement would ship a message whose parts disagree at `html_text_disagreement`.
 
-**Two profiles declare it today: `benign`, and `pair`.** `pair` is worth stating because its reason shows
-the criterion is about what a profile **asserts** rather than what its bytes contain. Both its turns
+**Three plan builders declare it today: `plan_benign`, `plan_pair` and `plan_pair_control`** -- and the
+refusal is keyed on the INDEX rather than on the profile, so **which batches run depends on the count and
+not on the profile alone**: a two-message `mixed` batch runs, because both of its messages are drawn from
+`plan_benign`, and the same profile is refused at index 2 where `plan_phishing` begins. That is worth
+stating precisely because a reader who asked "which profiles are safe" would get an answer that changes
+with `--count`.
+
+`pair` is worth stating because its reason shows the criterion is about what a profile **asserts** rather
+than what its bytes contain. Both its turns
 plant the *availability* of a window dimension and the **absence** of a campaign id, and neither is a
 needle in the body. It does carry a body-borne change -- the payment destination moving -- but that lives
 in `undescribedChange`, which is a **description** and explicitly not a claim; the transform drops it for
