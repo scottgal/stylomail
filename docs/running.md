@@ -394,7 +394,11 @@ against the measurement, so 105 is the reading and 88 the estimate). For the mes
 bisect pins, `O-nought` is 8192 - 2160 = **6032**. **The two regimes CROSS, so a total on its own identifies no
 body**: an un-cut 2092-byte body and a cut 2161-byte one both total 8124, and one of those is a measured
 arm. **The cut form holds while the second pass still leaves the request above `NumCtx`**, which for the
-bisected message means a body of **2093** or more; a shorter body sends the loop round again and lands on
+bisected message means a body of **2093** or more - and that threshold **sums a byte term with a
+character one**, since `105` and the `512`-byte margin are bytes while the `2500` body budget is
+characters, so it is exact only where a character costs a byte and is a **LOWER bound** for any body the
+adapter escapes, where a character can cost up to seven bytes. A shorter body sends the loop round again
+and lands on
 **`NumCtx - MARGIN` = 7680 down to about `CAP - MARGIN` = 1988**, below which the BODY stops being the
 smaller term and the total moves with it again (`policy-`, 2026-10-02T01:35). Across these fixtures the
 band of body lengths whose outcome depends on which message carries them is **340 wide**, which is the
