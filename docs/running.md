@@ -402,10 +402,12 @@ bisected message means a body of **2093** or more - and that threshold **sums a 
 character one**, since `105` and the `512`-byte margin are bytes while the `2500` body budget is
 characters, so it is exact only where a character costs a byte and is a **LOWER bound** for any body the
 adapter escapes, where a character can cost up to seven bytes. A shorter body sends the loop round again,
-and **the TOTAL it lands on is `NumCtx - MARGIN` = 7680 BYTES** for **bodies** down to about `CAP - MARGIN` = 1988
-CHARACTERS - the first is a request size and the second a body length, not two sizes of one thing - below
-which the BODY stops being the
-smaller term and the total moves with it again (`policy-`, 2026-10-02T01:35). Across these fixtures the
+and **the total it lands on is a property of the STATE rather than a constant**: it is `NumCtx - MARGIN` =
+**7680** BYTES in the state the bisect pins, while a tailed state lands at **7512** on the capture the next
+clause cites - because the loop cuts CHARACTERS to fit BYTES, so a state with a different overhead has a
+different plateau. **The BODY range where the budget stops binding is the part that carries over**: down to
+about `CAP - MARGIN` = 1988 CHARACTERS, below which the body is the smaller term and the total moves with
+it again (`policy-`, 2026-10-02T01:35, and `overview-`'s reading of the 7512 capture, 2026-10-02T06:39). Across these fixtures the
 band of body lengths whose outcome depends on which message carries them is **340 wide**, which is the
 reason a fixture has to declare where it sits rather than quote a boundary.
 
