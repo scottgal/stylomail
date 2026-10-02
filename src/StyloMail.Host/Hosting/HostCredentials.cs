@@ -188,8 +188,13 @@ public static class HostCredentials
         string? jevApiKey,
         string? profileMasterKey)
     {
-        if (provider == AssessmentProvider.Jev)
+        if (provider is AssessmentProvider.Jev or AssessmentProvider.Cascade)
         {
+            // The cascade holds the same all-or-nothing pair as the hosted provider, because its
+            // second arm IS the hosted provider's adapter. A cascade that lost its provider key would
+            // keep assessing every message on the local arm with a rule that can never be satisfied,
+            // and the refusal here is what makes that a startup failure naming the variable rather
+            // than a quiet degradation with complete-looking evidence.
             return Resolve(jevApiKey, profileMasterKey);
         }
 

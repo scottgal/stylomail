@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using System.Text;
 using StyloMail.Assessment;
 using StyloMail.Assessment.Semantic;
+using StyloMail.Cascade;
 using StyloMail.Core;
 using StyloMail.Host.Assessors;
 using StyloMail.Host.Auth;
@@ -534,6 +535,56 @@ public static class HostServices
             ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(secrets.ProfileMasterKey!)),
         };
 
+        // THE CASCADE'S VERSION STRING, BUILT BEFORE THE OPTIONS AND USED IN TWO PLACES, which is
+        // why it is computed here rather than inside the arm below.
+        //
+        // The semantic cache serves a stored entry only when the entry's resolved model version
+        // EQUALS the configured one (`InMemorySemanticCacheStore.IsVersionCompatible`), and
+        // `SemanticCacheKey.Digest` covers the configured value and no inner endpoint. So this one
+        // string is both the compatibility gate and the cache key's model term, and it must name
+        // each arm's HOST as well as its model: two hosts running this model at the same tag and
+        // digest answered differently on every one of 352 dimension-instances measured on
+        // 2026-10-02, so a string naming models alone would serve an entry taken under a replaced
+        // host. Two readers and one writer is deliberate; a deployment cannot set one and forget
+        // the other.
+        var nimbleArmOptions = provider == AssessmentProvider.Cascade
+            ? BuildNimbleOptions(
+                configuration,
+                services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Nimble"))
+            : null;
+
+        var secondArmOptions = provider == AssessmentProvider.Cascade
+            ? BuildJevOptions(
+                configuration,
+                secrets.JevApiKey!,
+                services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Jev"))
+            : null;
+
+        var cascadeVersion = nimbleArmOptions is not null && secondArmOptions is not null
+            ? CascadeClassifierVersion(nimbleArmOptions, secondArmOptions)
+            : null;
+
+        if (cascadeVersion is not null)
+        {
+            options = options with
+            {
+                SemanticCache = options.SemanticCache with { ClassifierModelVersion = cascadeVersion },
+            };
+
+            // Announced, because which model answered is a fact the log should carry on every boot
+            // and not something an operator has to reconstruct from two other lines. The version
+            // string is printed because it is the value the cache compares against, and a reader
+            // comparing two runs' decisions needs it to tell a moved arm from an unchanged one.
+            logger.LogInformation(
+                "StyloMail assessment provider: Cascade, local {LocalModel} at {LocalEndpoint}, "
+                + "second opinion {SecondModel} at {SecondEndpoint}, classifier version {Version}.",
+                nimbleArmOptions!.Model,
+                nimbleArmOptions.Endpoint,
+                secondArmOptions!.Model,
+                secondArmOptions.Endpoint,
+                cascadeVersion);
+        }
+
         var clock = services.GetRequiredService<TimeProvider>();
         var http = services.GetRequiredService<HttpClient>();
 
@@ -575,6 +626,27 @@ public static class HostServices
             // fixed-clock replay writes the same stamps the run it replays did.
             AssessmentProvider.NeverAsks => new NeverAskingSemanticClassifier(clock),
 
+            // The two arms above, composed. The local arm holds no credential and needs no wrapper;
+            // the second arm is wrapped exactly as the hosted provider wraps it, so a rejected
+            // credential reaches `/health/ready` through the same path rather than surfacing only as
+            // rows that say the second opinion was unavailable.
+            //
+            // The weights are the POLICY ENGINE'S OWN TABLE, passed by reference from the options
+            // this assessor will be built with. A copy here would keep escalating on a dimension the
+            // engine had stopped weighing, and the escalation threshold would then be measuring an
+            // older policy than the one acting.
+            AssessmentProvider.Cascade => new CascadeSemanticClassifier(
+                new NimbleSemanticMailClassifier(http, nimbleArmOptions!, clock),
+                new CredentialAwareSemanticClassifier(
+                    new JevSemanticMailClassifier(http, secondArmOptions!, clock),
+                    services.GetRequiredService<ProviderCredentialHealth>(),
+                    clock),
+                new CascadeOptions
+                {
+                    ClassifierVersion = cascadeVersion!,
+                    DimensionWeights = options.Policy.DimensionWeights,
+                }),
+
             _ => throw new InvalidOperationException(
                 $"No composition is defined for assessment provider '{provider}', so the host cannot "
                 + "assess mail with it. Add its composition to BuildAssessor rather than letting it "
@@ -596,6 +668,51 @@ public static class HostServices
             policyContext: new HostPolicyContextSource(
                 services.GetRequiredService<IEmergencyKillSwitch>()));
     }
+
+    /// <summary>
+    /// The version string a cascade deployment reports, naming each arm's MODEL and each arm's HOST.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Built from the built options, not from the configuration keys, so there is one reader of
+    /// each key.</b> Reading the keys again here would be a second reader that could disagree with
+    /// <see cref="BuildNimbleOptions"/> or <see cref="BuildJevOptions"/> about a default or an unset
+    /// value, and the two would drift apart silently: a version string that named a default the
+    /// adapter is not using would key the cache on a configuration the deployment does not have.
+    /// </para>
+    /// <para>
+    /// <b>The host belongs in the string.</b> Measured 2026-10-02 by the cascade lane: the same model
+    /// at the same tag and digest on two hosts, given byte-identical requests, produced different
+    /// answers on every one of 352 dimension-instances, up to an absolute difference of 3.977e-02,
+    /// and no instance agreed exactly. The semantic cache serves an entry only when the reported
+    /// version equals this configured one, and the cache key covers this value rather than any inner
+    /// endpoint, so a string naming models alone would serve an entry taken under a replaced host.
+    /// </para>
+    /// <para>
+    /// Public for the same reason the two option builders are: it is a composition decision a test
+    /// should assert on directly rather than infer from a cache miss.
+    /// </para>
+    /// </remarks>
+    public static string CascadeClassifierVersion(NimbleOptions localArm, JevOptions secondArm)
+    {
+        ArgumentNullException.ThrowIfNull(localArm);
+        ArgumentNullException.ThrowIfNull(secondArm);
+
+        return "cascade/1"
+            + $"+nimble:{localArm.Model}@{Authority(localArm.Endpoint)}"
+            + $"+jev:{secondArm.Model}@{Authority(secondArm.Endpoint)}";
+    }
+
+    /// <summary>
+    /// The authority (host and port) of an endpoint, or the string unchanged when it does not parse.
+    /// </summary>
+    /// <remarks>
+    /// Keyed rather than the whole URL, matching the local adapter's own cache digest, so a scheme or
+    /// path change does not fragment the entry while a different host or port does not share one. An
+    /// unparseable endpoint keys to itself rather than to every other unparseable one.
+    /// </remarks>
+    private static string Authority(string endpoint)
+        => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Authority : endpoint;
 
     /// <summary>
     /// Builds the semantic provider's options, binding the endpoint and model from configuration.
@@ -635,6 +752,18 @@ public static class HostServices
         var endpoint = configuration["StyloMail:Jev:Endpoint"];
         var model = configuration["StyloMail:Jev:Model"];
 
+        // THE DEADLINE IS BOUND BECAUSE A CASCADE CAN POINT THIS ADAPTER AT A LOCAL MODEL, and the
+        // one-second default is a hosted-service assumption rather than a property of the protocol.
+        // Measured on 2026-10-02 while wiring the cascade: with the second arm pointed at a model
+        // server on this machine, the adapter's own deadline elapsed on the first escalated
+        // assessment, it raised its contract exception, and the request answered HTTP 500. That
+        // default is right for a hosted endpoint and wrong for a local one, and the cascade's whole
+        // purpose is to let a deployment choose where the second opinion comes from.
+        //
+        // Unparseable or absent means the default, the same shape the keys above use. Nothing about
+        // an existing hosted deployment moves: the default is still one second.
+        var timeoutSeconds = configuration["StyloMail:Jev:TimeoutSeconds"];
+
         if (!string.IsNullOrWhiteSpace(endpoint)
             && !string.Equals(endpoint, defaults.Endpoint, StringComparison.Ordinal))
         {
@@ -653,6 +782,9 @@ public static class HostServices
             ApiKey = apiKey,
             Endpoint = string.IsNullOrWhiteSpace(endpoint) ? defaults.Endpoint : endpoint,
             Model = string.IsNullOrWhiteSpace(model) ? defaults.Model : model,
+            Timeout = int.TryParse(timeoutSeconds, out var seconds) && seconds > 0
+                ? TimeSpan.FromSeconds(seconds)
+                : defaults.Timeout,
         };
     }
 

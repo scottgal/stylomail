@@ -32,6 +32,12 @@
          make. It carries no credential, which is why its selection changes what the host requires
          to start. -->
     <ProjectReference Include="..\StyloMail.Nimble\StyloMail.Nimble.csproj" />
+
+    <!-- And so the host can compose the two of them in the other order: a local judgment with a
+         second opinion asked only where a deterministic rule says the local answer cannot be taken.
+         The cascade references only the provider PORT and constructs no adapter of its own, so this
+         adds a composition and not a third provider. -->
+    <ProjectReference Include="..\StyloMail.Cascade\StyloMail.Cascade.csproj" />
   </ItemGroup>
 
 </Project>
