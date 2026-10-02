@@ -971,7 +971,26 @@ public static class HostServices
         // `CAP - L` = `O-nought - 5692`** -- **340** at `O-nought` = 6032, **329** at 6021, **324** at
         // 6016 -- **and `L + width = CAP` IDENTICALLY** (2160+340, 2171+329, 2176+324, all 2500).
         // **SO "340 DISTINCT TOTALS" WITHOUT ITS `L` STATES HALF OF AN IDENTITY**, and the figure to
-        // quote for a BATCH is the width informative at EVERY index, which is **324**. The total is
+        // quote for a BATCH is the width informative at EVERY index, which is **324**.
+        //
+        // **AND THE TOP OF THE WINDOW IS SHARED WITH THE REGIME ABOVE IT, WHICH IS A SECOND COUNT.**
+        // `total = 7785` iff `min(body, CAP) = CAP` iff **`body >= CAP`**, so **7785 is what every
+        // over-cap body writes as well**, and the total IDENTIFIES a body only on **`(L, CAP)` -- 339
+        // bodies, 2161..2499, totals 7786..8124.** The interval is `(L, CAP]` for INJECTIVITY (340
+        // distinct bodies to 340 distinct totals, 7785 among them) and `(L, CAP)` for IDENTIFICATION,
+        // **and the one-body difference is exactly the boundary value shared with the other regime.**
+        // A reading of 7785 therefore says "the body is at least the cap" and nothing more.
+        //
+        // **AND TWO CLAUSES THAT DECIDE HOW THE WINDOW MAY BE USED.** First, **THE UPPER EDGE IS `CAP`
+        // IDENTICALLY AT EVERY INDEX** (that is what `L + width = CAP` says), **so a cap-sized body sits
+        // on the one point of the window that no `O-nought` moves and the narrowing from 340 to 324
+        // does not touch it.** Second, **THE WINDOW BOUNDS RECOVERY AND NOT PREDICTION**: a body ABOVE
+        // the cap predicts 7785 just as surely, because `min(body, CAP)` is `CAP` for every such body,
+        // **and what it forfeits is the ability to say WHICH body produced the reading** -- a question
+        // the total was never able to answer. So "2500 exactly" buys nothing on the total side, and the
+        // honest form of the total route is a prediction about `min` rather than a recovery of a body.
+        //
+        // The total is
         // INJECTIVE on that window and CONSTANT outside it, **and the degenerate case is not a rarity:
         // it is every body at or above the cap, which is where a corpus's default fixtures sit.** A
         // fixture whose body IS the cap therefore sits where the window's top and the degenerate value
