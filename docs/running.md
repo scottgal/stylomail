@@ -387,17 +387,18 @@ request the server would have answered, which is exactly the 503 above, and the 
 to is derived from the server's measured capacity rather than from a carried ratio.
 
 **The terms the cut arithmetic is made of, since the captures are read rather than the derivation.** The
-un-cut regime totals `O0 + body` and the cut regime `O0 + 105 + kept`, where **`O0` is the request's
+un-cut regime totals `O-nought + body` and the cut regime `O-nought + 105 + kept`, where **`O-nought` is the request's
 overhead with no marker and no body**, 8192 - `L`, and the **105** is what the two marker fields cost
 once the state is embedded in the request (their assembled cost is 88 bytes with a 17-byte residual
 against the measurement, so 105 is the reading and 88 the estimate). For the message the three-point
-bisect pins, `O0` is 8192 - 2160 = **6032**. **The two regimes CROSS, so a total on its own identifies no
+bisect pins, `O-nought` is 8192 - 2160 = **6032**. **The two regimes CROSS, so a total on its own identifies no
 body**: an un-cut 2092-byte body and a cut 2161-byte one both total 8124, and one of those is a measured
 arm. **The cut form holds while the second pass still leaves the request above `NumCtx`**, which for the
-bisected message means a body of **2093** or more; a shorter body sends the loop round again and takes
-whatever total it lands on. Across these fixtures the band of body lengths whose outcome depends on which
-message carries them is **340 wide**, which is the reason a fixture has to declare where it sits rather
-than quote a boundary.
+bisected message means a body of **2093** or more; a shorter body sends the loop round again and lands on
+**`NumCtx - MARGIN` = 7680 down to about `CAP - MARGIN` = 1988**, below which the BODY stops being the
+smaller term and the total moves with it again (`policy-`, 2026-10-02T01:35). Across these fixtures the
+band of body lengths whose outcome depends on which message carries them is **340 wide**, which is the
+reason a fixture has to declare where it sits rather than quote a boundary.
 
 #### Measured performance
 
