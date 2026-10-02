@@ -911,6 +911,22 @@ public static class HostServices
         // on **8192 = `NumCtx` EXACTLY**, which is the mechanism showing itself: the fit exits on
         // `total <= NumCtx`, so the largest uncut body sits precisely at the limit.
         //
+        // **AND THAT IS THE BOUNDARY FOR A SUBMISSION WITH NO PROFILE, WHICH IS THE WORST CASE, AND
+        // THE SPREAD HAS A DIRECTION.** Measured, in submission order, the same fixture at the SAME
+        // 7785 wire total each time:
+        //   index  kept   overhead   L      profile
+        //     0    1648     6137    2160    available False, 14 fields null
+        //     1    1659     6126    2171    available True, 1 message observed
+        //     2    1664     6121    2176    available True, 2 messages observed
+        // **Overhead falls monotonically and `L` rises with it.** The coldest submission has no profile
+        // at all -- fourteen fields at `null` -- and **`null` costs FOUR bytes where a value costs one**,
+        // so the coldest message carries the MOST overhead and has the **TIGHTEST boundary**. **So the
+        // boundary is a function of what the request CONTAINS ("richer" is not "larger" in a serialised
+        // state), and `2160` is its CONSERVATIVE end rather than a fragile sample of it.**
+        // **And that is the scope `43,202` already carries ("at the body cap, in a minimal state"), one
+        // level further in: the state shape does not fix `L`, and what it does fix is which end of the
+        // spread is safe.**
+        //
         // **AND THE FORM-FREE PROPERTY IS WHAT MAKES THAT A MEASUREMENT RATHER THAN AN ARGUMENT: the
         // UNCUT readings are the ones that do not enter `L` as the form's own parameter, and the 2160
         // arm is one of them.** Both cut readings (2161 -> 1987, 2500 -> 1648) constrain `L` only
