@@ -434,6 +434,15 @@ public sealed record CacheResponse
 {
     public required bool Hit { get; init; }
 
+    /// <summary>
+    /// The digest of the state this assessment was computed from, or the reason it has none.
+    /// </summary>
+    /// <remarks>
+    /// Not the store's lookup key, which is a different property that happens to share this name: that one
+    /// is computed inside the semantic cache from the canonicalised input, while this field is the
+    /// <c>CacheProvenance</c> digest projected unchanged from Core. Two properties under one name is the
+    /// conflation that cost a peer an over-call, so the distinction is written here rather than inferred.
+    /// </remarks>
     public required string KeyDigest { get; init; }
 
     public DateTimeOffset? CachedAt { get; init; }

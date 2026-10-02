@@ -766,9 +766,10 @@ public static class HostServices
 //
 // THE MEASUREMENTS ARE IN `docs/running.md`: the expansion table and its arms, the evaluated bound
 // and its three scopes, the boundary and the window with its width, the two regimes and the shadow
-// collision between them, and the four outcomes of the shortening loop. One sentence there is load
-// bearing for the rest: **a bare wire total is not a reading of a body length** -- it needs the
-// flag, or the kept field, or a known regime.
+// collision between them, and the four outcomes of the shortening PATH. One sentence there is load
+// bearing for the rest: **a bare wire total is not a reading of a body length** -- it needs the flag
+// for THAT field, or that field's kept length, or a known regime, because the state names the body
+// and the quoted tail separately and the total alone cannot say which of them moved.
         logger.LogInformation(
             "StyloMail nimble bounds: the truncation guard compares the server's evaluated TOKEN "
             + "count against the applied window ({AppliedWindow}); the fit bounds the REQUEST by its "

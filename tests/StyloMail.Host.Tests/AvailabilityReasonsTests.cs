@@ -32,9 +32,11 @@ namespace StyloMail.Host.Tests;
 /// test, because what is under test is the mapping and not that constant.
 /// </para>
 /// <para>
-/// <b>UNCOMPILED AND UNRUN.</b> This file was written without a build slot, so it is not evidence that
-/// anything compiles or passes. It is prepared work of the kind <c>policy-</c> and <c>nimble-</c> have
-/// both queued tonight, and it wants a slot of its own.
+/// <b>LANDED AND RUN.</b> The file is committed at <c>68234f5</c>, and these six arms were first
+/// exercised by <c>nimble-</c>'s filtered run of this project on 2026-10-02, which reported
+/// <c>Passed! Failed: 0, Passed: 6, Skipped: 0, Total: 6</c>. That run is the slot this paragraph used
+/// to ask for: it replaces one reading "UNCOMPILED AND UNRUN", which was true when written and false
+/// the moment the file was committed, and which no reader of this file could have known either way.
 /// </para>
 /// </remarks>
 public sealed class AvailabilityReasonsTests
