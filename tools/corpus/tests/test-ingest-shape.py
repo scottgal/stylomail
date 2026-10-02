@@ -38,10 +38,12 @@ MARKER = "SHAPE:"
 DEAD_URL = "http://127.0.0.1:9"
 
 FAILURES: list[str] = []
+CHECKS: list[str] = []
 SKIPPED = False
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
+    CHECKS.append(name)
     if ok:
         print(f"  ok   {name}")
     else:
@@ -144,9 +146,9 @@ def main() -> int:
         print("SKIPPED: the operator dataset is not on disk, so nothing was verified")
         return 2
     if FAILURES:
-        print(f"FAILED: {len(FAILURES)} assertion(s): {FAILURES}")
+        print(f"{len(CHECKS)} assertion(s) run, {len(FAILURES)} FAILED: {FAILURES}")
         return len(FAILURES)
-    print("all assertions held")
+    print(f"{len(CHECKS)} assertion(s) run, all held")
     return 0
 
 

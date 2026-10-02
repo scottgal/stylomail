@@ -58,9 +58,11 @@ def _corpus_constant(name: str):
 TURN_LIMIT = _corpus_constant("TURN_LIMIT")
 
 FAILURES: list[str] = []
+CHECKS: list[str] = []
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
+    CHECKS.append(name)
     if ok:
         print(f"  ok   {name}")
     else:
@@ -228,9 +230,9 @@ def main() -> int:
         shutil.rmtree(root, ignore_errors=True)
     print()
     if FAILURES:
-        print(f"FAILED: {len(FAILURES)} assertion(s): {FAILURES}")
+        print(f"{len(CHECKS)} assertion(s) run, {len(FAILURES)} FAILED: {FAILURES}")
         return len(FAILURES)
-    print("all assertions held")
+    print(f"{len(CHECKS)} assertion(s) run, all held")
     return 0
 
 
