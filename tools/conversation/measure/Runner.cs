@@ -50,6 +50,15 @@ internal sealed record CallResult
     /// </remarks>
     public required int? QuotedCharactersKept { get; init; }
 
+    /// <summary>The shortening reason the DECISION carries, or null when no row names one.</summary>
+    /// <remarks>
+    /// Read from the semantic evidence's <c>reason</c> attribute rather than from the request, because
+    /// this is the only carrier a reader of a DECISION has: a console sees the reason and not the
+    /// request, so it is the one place the cut is legible to a human. The request-side keys above are
+    /// the arm's other half.
+    /// </remarks>
+    public required string? ShorteningReason { get; init; }
+
     /// <summary>The adapter's own reason when it produced no answer at all.</summary>
     public string? UnavailableReason { get; init; }
 
@@ -109,6 +118,30 @@ internal sealed class Runner(
         var bodyKept = StateInt(sent, "body_text_characters_kept");
         var quotedKept = StateInt(sent, "quoted_text_characters_kept");
 
+        // And the decision's own statement of the same fact. The `reason` attribute is NOT the
+        // shortening reason alone: the adapter also records the UNAVAILABILITY reason under the same
+        // name, so a read that takes the first row carrying one returns "HttpRequestException" on a
+        // poisoned endpoint - which this lane measured by doing exactly that. The selection is
+        // therefore by AVAILABILITY as well as by attribute name: the shortening reason is attached
+        // to a row that produced a value, and a row that produced none is not it.
+        string? shorteningReason = null;
+        foreach (var row in assessment.Evidence)
+        {
+            if (row.Availability != EvidenceAvailability.Available)
+            {
+                continue;
+            }
+
+            var hit = row.Attributes?.FirstOrDefault(
+                a => string.Equals(a.Name, "reason", StringComparison.Ordinal));
+
+            if (hit is not null)
+            {
+                shorteningReason = hit.Value;
+                break;
+            }
+        }
+
         return new CallResult
         {
             Codes = codes,
@@ -122,6 +155,7 @@ internal sealed class Runner(
             QuotedShortened = quotedShortened,
             BodyCharactersKept = bodyKept,
             QuotedCharactersKept = quotedKept,
+            ShorteningReason = shorteningReason,
             UnavailableReason = assessment.Cache.KeyDigest?.StartsWith("unavailable:", StringComparison.Ordinal) == true
                 ? assessment.Cache.KeyDigest["unavailable:".Length..]
                 : null,

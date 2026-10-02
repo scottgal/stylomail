@@ -222,21 +222,52 @@ internal static class Program
         if (which is "quoted-tail-arm")
         {
             var caseName = args.Length > 1 ? args[1] : "quoted-tail";
-            var result = await runner.CallAsync(Corpus.Input(caseName, null), CancellationToken.None);
+
+            // Which field the message was built to cut, so the reason's assertion is aimed. The two
+            // arms are each other's control: the quoted arm must name the quoted history and not the
+            // message body, and the body arm the reverse.
+            var expected = args.Length > 2 ? args[2] : "quoted";
+
+            // A body-cut fixture cannot be made large enough by its BODY: the generator refuses above
+            // the adapter's own 2500 budget, and at the cap this lane measured the request still
+            // fitting, so the control did NOT fire when it ran without a window. The lever that
+            // makes the request too big is a WINDOW, which is what the shipping path always carries -
+            // so the body arm is given one and the quoted arm is not, and each arm's own report says
+            // whether it fired.
+            var context = expected is "body" ? SyntheticTurns(3, 800) : null;
+
+            var result = await runner.CallAsync(Corpus.Input(caseName, context), CancellationToken.None);
 
             var flagViaQuoted = result.QuotedShortened;
             var bodyKeyAbsent = result.BodyCharactersKept is null;
 
-            Console.WriteLine($"== quoted-tail arm: {caseName} ==");
+            // The repair's vocabulary is THREE texts, so an assertion that a reason EXISTS passes on
+            // all three and would be vacuous in the way this arm's `kept` clause already became. The
+            // check is therefore on the CONTENT, and it is two-sided: naming the right field is not
+            // enough if it also names the other one.
+            var reason = result.ShorteningReason;
+            var namesQuoted = reason is not null
+                && reason.Contains("quoted history", StringComparison.Ordinal);
+            var namesBody = reason is not null
+                && reason.Contains("message body", StringComparison.Ordinal);
+
+            var reasonOk = expected is "quoted"
+                ? namesQuoted && !namesBody
+                : namesBody && !namesQuoted;
+
+            Console.WriteLine($"== quoted-tail arm: {caseName} (expecting the {expected} field named) ==");
             Console.WriteLine();
             Console.WriteLine($"  flag via the QUOTED field   : {(flagViaQuoted ? "PRESENT" : "ABSENT")}"
                 + $"    (body flag {(result.BodyShortened ? "PRESENT" : "ABSENT")})");
             Console.WriteLine($"  body key ABSENT             : {(bodyKeyAbsent ? "yes" : $"NO, it reads {result.BodyCharactersKept}")}");
             Console.WriteLine($"  quoted key = landing budget : {result.QuotedCharactersKept?.ToString(CultureInfo.InvariantCulture) ?? "(absent)"}");
+            Console.WriteLine($"  reason on the decision      : {reason ?? "(none)"}");
             Console.WriteLine();
-            Console.WriteLine(flagViaQuoted && bodyKeyAbsent
-                ? "PASS: the flag fired naming the QUOTED field, and the body's key is absent."
-                : "FAIL: the state does not separate the two fields.");
+
+            var stateOk = expected is "quoted" ? flagViaQuoted && bodyKeyAbsent : result.BodyShortened;
+            Console.WriteLine(stateOk && reasonOk
+                ? $"PASS: the state and the reason both name the {expected} field."
+                : $"FAIL: state_ok={stateOk} reason_ok={reasonOk} (names_quoted={namesQuoted} names_body={namesBody}).");
 
             ran.Add("quoted-tail-arm");
         }
