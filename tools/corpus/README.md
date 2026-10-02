@@ -250,6 +250,16 @@ declared it**, naming the profile and writing nothing. A new plan builder added 
 it opts in. A plan with html must contain its text in that html, so the two parts can be moved together;
 a text-only replacement would ship a message whose parts disagree at `html_text_disagreement`.
 
+**Two profiles declare it today: `benign`, and `pair`.** `pair` is worth stating because its reason shows
+the criterion is about what a profile **asserts** rather than what its bytes contain. Both its turns
+plant the *availability* of a window dimension and the **absence** of a campaign id, and neither is a
+needle in the body. It does carry a body-borne change -- the payment destination moving -- but that lives
+in `undescribedChange`, which is a **description** and explicitly not a claim; the transform drops it for
+exactly that reason, so the record goes with the body it described rather than being left to mismatch
+the bytes. **`pair` is also the only profile whose state is rich enough to reach the fit's zeroing
+outcome**, because its conversation window is the previous turn's raw bytes and that window is a term the
+fit's lever cannot touch.
+
 **What this family does NOT claim, and the limit is a real one:**
 
 - **It is not a bound on content.** `hexish` is the densest *of six chosen shapes*, not the densest that
