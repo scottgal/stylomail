@@ -122,6 +122,15 @@ LOCKFILE
 # into logs, so content reaches a reader who can see the log and not the filesystem.
 # This refuses BEFORE any read or write and fails CLOSED, which is the same rule the guard already
 # applies to an unreadable header and to a probe that could not run.
+#
+# WHAT THIS TEST CANNOT CATCH, stated so that nobody drops the half that covers it: a HARD LINK is a
+# REGULAR FILE, so `-f` is true and `-L` is false and this returns 0. It is not catchable by any type
+# test, because a hard link is indistinguishable from the file it names. `corpus-` named the
+# consequence, and it is the reason BOTH halves of this change are load-bearing: the TYPE CHECK buys
+# the FAIL-CLOSED REFUSAL for the symlink case, and the DUMP REMOVAL above buys the DISCLOSURE FIX for
+# the general case, hard links included, because a read whose result is never printed discloses
+# nothing. Dropping the removal on the grounds that "the type check covers it" would reopen the
+# general case; dropping the check would reopen the symlink case.
 _require_regular_lock() {
     if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
         return 0
