@@ -580,4 +580,4 @@ Continue with [Part 2: Using Nimble from C#](/blog/stylomail-using-nimble-from-c
 > - **Part 1.5:** [Conversation analysis with specialists (research)](/blog/conversationresearch), the proposed layers, profiles and specialist question banks.
 > - **Part 2:** [Using Nimble from C#](/blog/stylomail-using-nimble-from-csharp), local decision models, a C# example and the trade-offs of a layered classifier.
 >
-> **Coming soon:** the Avalonia console and management API write-up, once screenshots and client testing are ready.
+> - **Part 3:** [The Avalonia console and the management API](/blog/stylomail-console-and-local-decision-models), the operator console, the Host's management surface, and the local decision models both are built on.
