@@ -144,4 +144,12 @@ ux-screenshots/
 # A GAP, NOT A DECISION: spec.md and architecture.md are the design of record and live
 # here, so untracking this took them out of the repository with everything else. They
 # belong in docs/ if the design should be public.
+#
+# WHAT DEPENDS ON THE LINE BELOW, because the coupling is invisible from the line itself: this
+# single entry is the ONLY rule keeping the directory out - check-ignore resolves every path
+# under it to this rule, and there is no global fallback - and 0 files under it are tracked.
+# The bus, the checkpoints, the logs and the scratch carry internal detail (host addresses,
+# measurements, drafts) that is not meant to be published, and a push is append-only once it
+# goes out. Removing or narrowing this line does not fail loudly; it silently makes that
+# material publishable at the next push.
 .styloagent/
