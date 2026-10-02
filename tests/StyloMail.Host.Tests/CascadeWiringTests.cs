@@ -124,7 +124,7 @@ public sealed class CascadeWiringTests
         var baseline = HostServices.CascadeClassifierVersion(arms.Local, arms.Second);
 
         var movedHost = HostServices.CascadeClassifierVersion(
-            new NimbleOptions { Model = "nimble:latest", Endpoint = "http://192.168.0.15:11434/v1/systemone" },
+            new NimbleOptions { Model = "nimble:latest", Endpoint = "http://192.0.2.15:11434/v1/systemone" },
             arms.Second);
 
         var movedPath = HostServices.CascadeClassifierVersion(
