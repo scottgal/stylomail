@@ -274,13 +274,39 @@ ENV = {**os.environ,
 
 _restore = None
 
+# WHETHER THIS PROCESS TOOK THE LOCK. Added 2026-10-02 by `queue-`, because a REFUSED run was
+# deleting the lock of the sweep that refused it. `_restore_if_active()` used to unlink LOCK
+# unconditionally, and it is reached from `atexit` (below, registered at IMPORT time, so a plain
+# `return 6` on the refusal path runs it at interpreter shutdown) and from the SIGINT/SIGTERM
+# handlers installed in `main()` BEFORE `acquire_lock()`. MEASURED in a temp root before this guard:
+# a planted lock naming a LIVE pid, run the copy, exit code 6, and the lock was GONE. The consequence
+# is not cosmetic: the refusal path destroyed the very guard that had just refused, so a third
+# attempt would then have been allowed to sweep concurrently with the first.
+# The flag is used rather than a pid read back out of the header because this process KNOWS whether
+# it acquired, which is both stronger evidence and exactly the property the defective path failed to
+# ask about.
+_HOLDS_LOCK = False
+
+
+def _release_lock_if_held():
+    """Unlink the lock ONLY if this process is the one that took it.
+
+    Reading the flag FIRST also keeps this safe if it ever runs before LOCK is bound (a module that
+    failed to import): the flag can only be True from inside `acquire_lock()`, which cannot run
+    before the module body has finished.
+    """
+    global _HOLDS_LOCK
+    if _HOLDS_LOCK:
+        LOCK.unlink(missing_ok=True)
+        _HOLDS_LOCK = False
+
 
 def _restore_if_active():
     global _restore
     if _restore:
         fn, _restore = _restore, None
         fn()
-    LOCK.unlink(missing_ok=True)
+    _release_lock_if_held()
     remove_isolated_copy()
 
 
@@ -449,6 +475,11 @@ def acquire_lock():
         return False
 
     LOCK.write_text(lock_header() + LOCK_EXPLANATION)
+    # Set only on the SUCCESS path, which is what makes `_release_lock_if_held()` a real ownership
+    # test rather than a second unconditional unlink. The refusal above returns before this line, so
+    # a refused run leaves the flag False and cannot touch the holder's lock on its way out.
+    global _HOLDS_LOCK
+    _HOLDS_LOCK = True
     return True
 
 
@@ -764,7 +795,7 @@ def main():
 
     lanes = sorted(p.stem for p in LANES_DIR.glob("*.py"))
     if not lanes:
-        LOCK.unlink(missing_ok=True)
+        _release_lock_if_held()
         print(f"!!! no lanes found in {LANES_DIR}")
         return 5
 
@@ -786,7 +817,7 @@ def main():
             all_gaps.extend(gaps)
             ran_total += ran
     finally:
-        LOCK.unlink(missing_ok=True)
+        _release_lock_if_held()
         remove_isolated_copy()
 
     # The count matters. With the `only` filter this used to print "every mutation verified" after
