@@ -316,7 +316,7 @@ refused with HTTP 400 rather than shortened, so the failure a deployment would m
 and not a quiet under-read. That is a statement about the **WINDOW** only: the provider shortens message bodies for
 a second and unrelated reason, `MaxBodyCharacters` defaulting to **2500** (`NimbleOptions.cs:229`), so a
 body or a quoted tail over that is shortened before the window is considered at all, and a message can be
-shortened while the window has nothing to do with it. **A cut request totals `10285 - min(body, 2500)` bytes, so its SIZE is content-free** - 7785 at a 2500-character body and 8124 at 2161, both measured (`policy-`, 2026-10-02T01:15) - while what varies from message to message is the SPLIT between that total and the body it keeps. **Which of the two cuts a given message depends on
+shortened while the window has nothing to do with it. **A cut request in the branch where the BODY is what was cut totals `10285 - min(body, 2500)` bytes, so its SIZE is content-free** - 7785 at a 2500-character body and 8124 at 2161, both measured (`policy-`, 2026-10-02T01:15, and the two laws are `10285 = NumCtx + CAP - MARGIN + M` for the markerless branch against `NumCtx - MARGIN` for the marked one, their gap being the marker's own cost) - while what varies from message to message is the SPLIT between that total and the body it keeps. **Which of the two cuts a given message depends on
 its NON-body content, and the operational end of it is MEASURED**: at the pinned window, twelve questions
 and three messages per arm, a 1500-character body was shortened in **0 of 3** cases, a
 2000-character body in **0 of 3**, and a 2500-character body in **3 of 3** (`corpus-`,
