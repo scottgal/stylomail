@@ -174,6 +174,47 @@ def test_the_body_is_one_character_under_the_turn_limit(root: pathlib.Path) -> N
           True)
 
 
+def test_no_drawn_body_ends_in_whitespace(root: pathlib.Path) -> None:
+    """The last character is load-bearing, because `QuotedHistory.Split` does `TrimEnd()`.
+
+    WHY A COSMETIC-LOOKING PROPERTY IS A TEST. `NimbleMessageState` records
+    `body_text_characters_kept`, and the NON-VACUOUS assertion an arm makes about a cut is
+    `kept == manifest.bodyShapeCharacters`, the declared length from OUTSIDE the request. That
+    equality holds only if the analysed body is the emitted body, and the splitter returns
+    `NewText = body[..cut].TrimEnd()` -- so a body trailing in whitespace arrives at the fit shorter
+    than the manifest declared it and the arm fails for a reason that has nothing to do with the fit.
+    Same class as a comparison between two facts derived from one expression, arriving from the
+    fixture side rather than the assertion side.
+
+    AND THE PROPERTY BELONGS TO THE COUNT, NOT TO THE SHAPE. FIVE of the six units in `SHAPE_UNITS`
+    end with a space, so whether an emitted body trails in whitespace is decided by where the slice
+    in `shape_body` lands. The default lands off it for all six, which is luck rather than a
+    guarantee, and this is the assertion that notices when the luck runs out.
+    """
+    batch = root / "trailing"
+    result = generate(batch, "benign", "--body-shapes", "all")
+    if result.returncode != 0:
+        check("generate for the trailing-whitespace pass succeeds", False, result.stderr[:300])
+        return
+    trailing = []
+    for entry in declared(batch / "manifest.json"):
+        body = body_of((batch / entry["file"]).read_bytes())
+        if body and body[-1].isspace():
+            trailing.append((entry["bodyShape"], entry["turnCharacters"], repr(body[-8:])))
+    check(f"no drawn body ends in whitespace at the default {EXPECTED_BODY_CHARACTERS}",
+          not trailing, str(trailing))
+
+    # THE CONTROL THAT GIVES IT TEETH: `shape_body("prose", 4)` is `"The "`, so a count of 4 lands the
+    # tiling ON the unit's trailing space. Without this arm the assertion above is a statement that
+    # cannot be false, which is the class this fleet keeps finding inside negative checks.
+    control = root / "trailing-control"
+    result = generate(control, "benign", "--body-shapes", "prose", "--body-characters", "4")
+    check("CONTROL: generate at 4 characters succeeds", result.returncode == 0, result.stderr[:300])
+    control_body = body_of((control / declared(control / "manifest.json")[0]["file"]).read_bytes())
+    check("CONTROL: a body CAN end in whitespace, so the assertion above is not vacuous",
+          bool(control_body) and control_body[-1].isspace(), repr(control_body))
+
+
 def test_a_profile_whose_facts_ride_its_text_is_refused(root: pathlib.Path) -> None:
     """The guard, and it is the fail-closed direction: a profile that has not said it is safe is not."""
     batch = root / "refused"

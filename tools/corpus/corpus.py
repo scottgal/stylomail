@@ -415,6 +415,19 @@ def shape_body(shape: str, characters: int = SHAPE_BODY_CHARACTERS) -> str:
     return (unit * (characters // len(unit) + 2))[:characters]
 
 
+# THE LAST CHARACTER IS LOAD-BEARING AND IT IS NOT GUARANTEED BY THE SHAPE. FIVE of the six units in
+# `SHAPE_UNITS` END WITH A SPACE, so whether a tiled body trails in whitespace is decided by where the
+# slice above lands rather than by what the unit ends with. Swept over 1..3000: `prose` trails at 577
+# counts, `mixed` at 282, `hexish`/`punct`/`randomcase` at about 40, `base64ish` never. **The default
+# 2000 lands off it for all six, which is why `kept == bodyShapeCharacters` holds on a quoted-tail arm
+# today; the alphabets are full of spaces and the count is the only thing standing between that
+# assertion and prose at 19 percent.** It matters because `QuotedHistory.Split` returns
+# `NewText = body[..cut].TrimEnd()`, so a trailing space makes the ANALYSED body shorter than the
+# manifest's declared `bodyShapeCharacters` and an arm comparing the two fails for a reason that has
+# nothing to do with the fit. `tests/test-body-shapes.py` asserts the property at the default and
+# carries a control at 4 characters, where `prose` is `"The "` and the assertion goes red.
+
+
 # -------------------------------------------------------------------------------------------------
 # The quoted tail: the only fixture this generator can make that raises the QUOTED half of the flag
 # -------------------------------------------------------------------------------------------------
