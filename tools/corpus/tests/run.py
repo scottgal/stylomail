@@ -33,12 +33,25 @@ def main() -> int:
 
     failed: list[str] = []
     skipped: list[str] = []
+    assertions_run = 0
     for harness in harnesses:
         result = subprocess.run(
             [sys.executable, "-B", str(harness)], capture_output=True, text=True
         )
         tail = (result.stdout or result.stderr).strip().splitlines()
         summary = tail[-1] if tail else "(no output)"
+        # The COUNT each harness now leads its summary with, summed so the SUITE carries a total
+        # as well. Without it a suite whose harnesses all executed nothing reads exactly like a
+        # clean one, which is the same hole the per-harness count closes one level down: a run
+        # that recorded no tests reports the same zero for an entirely different reason.
+        lead = summary.split(" assertion(s) run", 1)[0]
+        if lead.isdigit():
+            assertions_run += int(lead)
+        else:
+            # NOT counted as zero, and said out loud: a summary that lost its count is a format
+            # drift, and silently adding nothing for it is how the total would start lying.
+            print(f"  {harness.name}: summary carried no assertion count: {summary!r}",
+                  file=sys.stderr)
         print(f"{harness.name:<28} exit={result.returncode}  {summary}")
         if result.returncode == 2:
             skipped.append(harness.name)
@@ -49,8 +62,10 @@ def main() -> int:
             print(result.stderr, file=sys.stderr)
 
     print()
-    print(f"{len(harnesses)} harness(es): {len(harnesses) - len(failed) - len(skipped)} passed, "
-          f"{len(failed)} failed, {len(skipped)} skipped")
+    # The total goes on the LAST line, because the last line is what a reader and any oracle take.
+    print(f"{len(harnesses)} harness(es): "
+          f"{len(harnesses) - len(failed) - len(skipped)} passed, {len(failed)} failed, "
+          f"{len(skipped)} skipped, {assertions_run} assertion(s) run")
     if failed:
         print(f"FAILED: {', '.join(failed)}", file=sys.stderr)
         return 1
