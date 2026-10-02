@@ -194,9 +194,20 @@ public static class CompositeRiskScorer
             // about: a row that carries an answer and is excluded anyway. Where the question was
             // never askable or was not answered, the availability is the operative explanation and
             // the reason stays null, so "did not apply" and "excluded by policy" never collapse into
-            // one statement. Verified unreachable for this dimension: no classifier assigns it
-            // ReducedCoverage (the providers use Available, Unavailable and NotApplicable only), so
-            // Available is the one availability that carries an answer here.
+            // one statement. Verified unreachable for THIS DIMENSION only: no POLICY-EXCLUDED row
+            // has been observed at ReducedCoverage, so Available is the one availability that
+            // carries an answer here. AND THE PARENTHETICAL THAT USED TO CARRY THAT CLAIM IS FALSE,
+            // corrected 2026-10-02: it read "the providers use Available, Unavailable and
+            // NotApplicable only", and all six decision documents of `run-benign-full-20261001T232851Z`
+            // carry `deterministic.analysis_coverage` at `ReducedCoverage` (value 2, sourceVersion
+            // `stylomail-mime/1`). So a reduced-coverage row DOES carry a value, and the scoped claim
+            // above now rests on the observed absence of one in the excluded set rather than on a
+            // provider census that was never true. That row is not weighted in that run (INFERRED
+            // from `coveredWeightFraction` = 1 in the same document, which could not hold if a
+            // reduced-coverage row sat in the denominator), so the index does not move today. If any
+            // excluded dimension is ever assigned ReducedCoverage, the ternary below returns a null
+            // reason for a row that carries an answer, which is the console blank this field exists
+            // to prevent.
             if (IsExcludedByPolicy(signalId))
             {
                 masked.Add(new MaskedDimension
