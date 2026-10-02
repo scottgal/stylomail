@@ -204,8 +204,9 @@ needs the hosted provider's **pair** of secrets, because its second arm holds th
 it refuses to start without them exactly as `Jev` does. Its classifier version names **both** arms,
 each with the authority of its endpoint and not only its model id, and that one string is both the
 semantic cache's compatibility gate and its model term: the same model at the same digest on two
-hosts answered differently on every one of `352` measured dimension-instances (`cascade-`,
-2026-10-02), so a version naming models alone would serve an entry taken under a replaced host. The
+hosts answered differently on every one of `440` measured dimension-instances across three disjoint
+batches (`cascade-`, 2026-10-02; the earlier `352` was two of the three), so a version naming models
+alone would serve an entry taken under a replaced host. The
 version and both endpoints are announced in the startup log.
 
 **And a cascade is not a way to have a second opinion without a credential.** A deployment that lost
