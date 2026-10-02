@@ -629,6 +629,13 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             // A body cut to NOTHING is a refusal and not a weaker read: the model answered over an
             // empty body, so there is no content for the value to be about. This arm is the ruling,
             // and it is the only path here that leaves the covered set.
+            // AND IT ARMS THE GATE RATHER THAN DISARMING IT, which is the opposite of what a scan of this
+            // SHAPE concludes, and the scan is right about the shape and blind to the mechanism. This row is
+            // Semantic + Unavailable, which is exactly the predicate MailPolicyEngine.cs:512-514 matches, and
+            // a non-zero count there returns Hold at :532, whose own comment at :503-505 says the gate "is
+            // not exempted by the allow floor". So a body cut to nothing forces a CERTAIN Hold rather than
+            // removing a signal. Keeping this row Available, which a fail-open scan suggests, would take it
+            // OUT of that predicate: a repair that disarms the gate it is filed against is not a repair.
             if (bodyCut && bodyCharactersKept == 0)
             {
                 evidence.Add(UnavailableEvidence(

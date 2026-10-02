@@ -527,6 +527,88 @@ public sealed class NimbleSemanticMailClassifierTests
     }
 
     [Fact]
+    public async Task Reports_the_emptied_body_as_unavailable_rather_than_as_a_weaker_read()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
+
+        // The state the ruling is about: a body the fit cut to NOTHING. A zero body budget is the
+        // controllable form of it and it is a state the MECHANISM makes rather than one this test
+        // invents, because the fit drives the budget to zero whenever the rest of the request alone
+        // fills the window. The body is non-empty, so the emptiness below is a CUT and not an absence.
+        var options = new NimbleOptions { MaxBodyCharacters = 0 };
+        var input = NimbleTestMessage.With(m => m with { BodyText = new string('x', 500) });
+
+        var result = await NimbleTestDoubles.Create(handler, options)
+            .ClassifyAsync(input, CancellationToken.None);
+
+        var answered = result.Evidence
+            .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
+            .ToList();
+
+        // Population control first: a uniformity claim over an empty set establishes nothing.
+        Assert.NotEmpty(answered);
+
+        // The ruling: an emptied body is a REFUSAL, because the model answered over an empty body and
+        // there is no content for a value to be about. This is the property a future edit would widen
+        // back to Available and regress silently, so it is the one this test exists to pin.
+        Assert.All(answered, e => Assert.Equal(EvidenceAvailability.Unavailable, e.Availability));
+
+        // AND THE HALF THE RULING'S SAFETY RESTS ON: a semantic row that is Unavailable enters
+        // MailPolicyEngine's unanswered gate (MailPolicyEngine.cs:512-514) and forces a Hold, and it
+        // only reaches it because its ORIGIN is Semantic. If the origin changed, the row would fall out
+        // of that predicate, which is the line policy- named as the one that would reopen the finding.
+        Assert.All(answered, e => Assert.Equal(EvidenceOrigin.Semantic, e.Origin));
+
+        // And the reason names the EMPTYING, so a consumer can separate it from a trim. The selection is
+        // on AVAILABILITY as well as on the attribute name, and that guard is conversation-'s:
+        // `reason` is ONE field serving TWO questions, because UnavailableEvidence writes the
+        // UNAVAILABILITY reason under the same name, and only the row's availability tells them apart.
+        var emptiedRows = answered
+            .Where(e => e.Availability == EvidenceAvailability.Unavailable)
+            .ToList();
+
+        Assert.NotEmpty(emptiedRows);
+        Assert.All(emptiedRows, e => Assert.Contains(
+            e.Attributes ?? [],
+            a => a.Name == "reason" && a.Value.Contains("to nothing", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Names_the_QUOTED_field_in_the_reason_when_only_the_quoted_tail_was_cut()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            NimbleTestDoubles.Ok(SemanticDimensions.All, NimbleTestDoubles.AllAffirmative));
+
+        // A short body and a long quoted tail under one budget, so the body is WHOLE and only the
+        // quoted field is cut. That is the ordinary reply shape, and it is the case the old single text
+        // got wrong by saying "the message body" about a body it had not touched.
+        var options = new NimbleOptions { MaxBodyCharacters = 100 };
+        var input = NimbleTestMessage.With(m => m with { QuotedText = new string('y', 3_000) });
+
+        var result = await NimbleTestDoubles.Create(handler, options)
+            .ClassifyAsync(input, CancellationToken.None);
+
+        var answered = result.Evidence
+            .Where(e => e.Availability != EvidenceAvailability.NotApplicable)
+            .ToList();
+
+        Assert.NotEmpty(answered);
+
+        // A quoted-only cut stays AVAILABLE: the row still answers about the message the model was
+        // given, and only the EMPTIED case is a refusal.
+        Assert.All(answered, e => Assert.Equal(EvidenceAvailability.Available, e.Availability));
+
+        // And the reason names the QUOTED field, which is the half the single text got wrong. This is
+        // clause 4 on the ASSESSMENT route: the reason is attached where the answer is produced, so a
+        // stub transport reaches it with no endpoint and no model.
+        Assert.All(answered, e => Assert.Contains(
+            e.Attributes ?? [],
+            a => a.Name == "reason" && a.Value.Contains("quoted history", StringComparison.Ordinal)));
+    }
+
+
+    [Fact]
     public async Task Sends_exactly_the_measured_request_shape_to_the_configured_endpoint()
     {
         var handler = new RecordingHandler((_, _) =>
