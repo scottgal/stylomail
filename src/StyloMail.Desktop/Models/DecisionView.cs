@@ -27,6 +27,10 @@ public sealed class DecisionView
 
     public required string AssessmentId { get; init; }
 
+    public required string AssessedAtLabel { get; init; }
+
+    public bool IsFixture { get; init; }
+
     /// <summary>What policy did.</summary>
     public required string ActionLabel { get; init; }
 
@@ -112,6 +116,20 @@ public sealed class DecisionView
 
     public required IReadOnlyList<EvidenceView> Evidence { get; init; }
 
+    /// <summary>
+    /// Windowed evidence observations returned with this decision. These are
+    /// individual Host observations, not a history aggregated by the console.
+    /// </summary>
+    public required IReadOnlyList<EvidenceView> TrendObservations { get; init; }
+
+    public required ConversationHistoryPanel ConversationHistory { get; init; }
+
+    public bool HasTrendObservations => TrendObservations.Count > 0;
+
+    public string NoTrendObservationsLabel => HasTrendObservations
+        ? string.Empty
+        : "No windowed trend observations were returned with this decision.";
+
     public required IReadOnlyList<CoverageFlag> Coverage { get; init; }
 
     public required IReadOnlyList<VersionEntry> Versions { get; init; }
@@ -137,7 +155,10 @@ public sealed class DecisionView
 
     public bool HasHistory => HistoryNote is not null;
 
-    public static DecisionView From(DecisionResponse decision, int decisionCount = 1)
+    public static DecisionView From(
+        DecisionResponse decision,
+        int decisionCount = 1,
+        bool isFixture = false)
     {
         ArgumentNullException.ThrowIfNull(decision);
 
@@ -155,6 +176,9 @@ public sealed class DecisionView
         {
             DecisionCount = decisionCount,
             AssessmentId = decision.AssessmentId,
+            AssessedAtLabel = "Assessed at " + decision.AssessedAt.ToString(
+                "yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
+            IsFixture = isFixture,
             ActionLabel = decision.Action.ToString(),
             ChannelLabel = decision.Channel.Kind.ToString(),
 
@@ -206,6 +230,10 @@ public sealed class DecisionView
             Reasons = [.. decision.Reasons.Select(reason => ReasonView.From(reason, bySignal))],
             Dimensions = [.. decision.RiskDimensions.Select(DimensionView.From)],
             Evidence = [.. decision.Evidence.Select(EvidenceView.From)],
+            TrendObservations = [.. decision.Evidence
+                .Where(evidence => !string.IsNullOrWhiteSpace(evidence.Window))
+                .Select(EvidenceView.From)],
+            ConversationHistory = ConversationHistoryPanel.For(decision),
             Coverage = CoverageFlag.From(decision.Coverage),
             Versions = VersionEntry.From(decision.Versions),
             Cache = decision.Cache is null ? null : CacheEntry.From(decision.Cache),
@@ -482,6 +510,12 @@ public sealed class EvidenceView
     /// </summary>
     public required string OriginLabel { get; init; }
 
+    public required string AvailabilityLabel { get; init; }
+
+    public required string ObservedAtLabel { get; init; }
+
+    public required string SampleSupportLabel { get; init; }
+
     public required EvidenceAvailability Availability { get; init; }
 
     public double? Value { get; init; }
@@ -579,6 +613,12 @@ public sealed class EvidenceView
     {
         SignalId = evidence.SignalId,
         OriginLabel = evidence.Origin.ToString(),
+        AvailabilityLabel = evidence.Availability.ToString(),
+        ObservedAtLabel = "Observed at " + evidence.ObservedAt.ToString(
+            "yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
+        SampleSupportLabel = evidence.SampleSupport is { } samples
+            ? $"{samples.ToString(CultureInfo.InvariantCulture)} {(samples == 1 ? "sample" : "samples")}"
+            : "sample count not reported",
         Availability = evidence.Availability,
         Value = evidence.Value,
         Confidence = evidence.Confidence,

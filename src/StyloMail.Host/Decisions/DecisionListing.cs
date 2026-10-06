@@ -67,6 +67,30 @@ public sealed record DecisionListingQuery
     public string? After { get; init; }
 }
 
+/// <summary>A bounded read of assessed Slack events for one workspace channel.</summary>
+public sealed record ConversationHistoryQuery
+{
+    public required string TenantId { get; init; }
+
+    public required string WorkspaceId { get; init; }
+
+    public required string ChannelId { get; init; }
+
+    /// <summary>When absent, include all threads in the channel.</summary>
+    public string? ThreadId { get; init; }
+
+    /// <summary>Inclusive UTC lower bound on assessment time.</summary>
+    public DateTimeOffset? From { get; init; }
+
+    /// <summary>Exclusive UTC upper bound on assessment time.</summary>
+    public DateTimeOffset? To { get; init; }
+
+    public int Limit { get; init; } = DecisionListingLimits.DefaultPageSize;
+
+    /// <summary>Opaque cursor from the previous page, valid only for the same tenant and filters.</summary>
+    public string? After { get; init; }
+}
+
 /// <summary>Bounds for ledger listings.</summary>
 public static class DecisionListingLimits
 {

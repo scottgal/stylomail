@@ -87,6 +87,60 @@ public sealed class StyloMailApiClient
             body: null,
             cancellationToken);
 
+    /// <summary>
+    /// Reads a page of original assessed records for a Slack workspace/channel.
+    /// Tenant identity comes only from the Host's authenticated Review key.
+    /// </summary>
+    public Task<ConversationHistoryResponse> GetConversationHistoryAsync(
+        ConversationHistoryQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.WorkspaceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.ChannelId);
+        if (query.Limit is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(query), "Conversation history page size must be between 1 and 100.");
+        }
+
+        if (query.From is { } from && query.To is { } to && from >= to)
+        {
+            throw new ArgumentException("The inclusive from time must be earlier than the exclusive to time.", nameof(query));
+        }
+
+        var parts = new List<string>
+        {
+            "workspaceId=" + Uri.EscapeDataString(query.WorkspaceId),
+            "channelId=" + Uri.EscapeDataString(query.ChannelId),
+        };
+        if (!string.IsNullOrWhiteSpace(query.ThreadId))
+        {
+            parts.Add("threadId=" + Uri.EscapeDataString(query.ThreadId));
+        }
+
+        if (query.From is { } start)
+        {
+            parts.Add("from=" + Uri.EscapeDataString(start.ToUniversalTime().ToString("O")));
+        }
+
+        if (query.To is { } end)
+        {
+            parts.Add("to=" + Uri.EscapeDataString(end.ToUniversalTime().ToString("O")));
+        }
+
+        parts.Add("limit=" + query.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (!string.IsNullOrEmpty(query.After))
+        {
+            parts.Add("after=" + Uri.EscapeDataString(query.After));
+        }
+
+        return SendAsync<ConversationHistoryResponse>(
+            HttpMethod.Get,
+            "/v1/conversations/history?" + string.Join("&", parts),
+            body: null,
+            cancellationToken);
+    }
+
     // ===================== management =====================
 
     /// <summary>

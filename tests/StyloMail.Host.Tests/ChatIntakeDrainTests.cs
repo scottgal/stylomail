@@ -123,6 +123,11 @@ public sealed class ChatIntakeDrainTests
 
         public Task<DecisionListingPage> ListAsync(DecisionListingQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new DecisionListingPage { Items = [], NextCursor = null });
+
+        public Task<DecisionListingPage> ListConversationHistoryAsync(
+            ConversationHistoryQuery query,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new DecisionListingPage { Items = [], NextCursor = null });
     }
 
     /// <summary>Supplies the two services the drain resolves for itself, and nothing else.</summary>

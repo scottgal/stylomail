@@ -138,7 +138,12 @@ export PATH="/usr/local/share/dotnet:$PATH"
 # copy that can drift. cd into the repo root and name the solution relatively,
 # which is the whole point: see the note above.
 console_dotnet_build() {
-    ( cd "$CONSOLE_REPO" && dotnet build StyloMail.slnx --nologo 2>&1 )
+    # `--disable-build-servers` is paired with this property so a Roslyn shared
+    # compiler cannot become a detached `dotnet` child of a bounded UI run. The
+    # 2026-10-06 fixture take found a residual `dotnet` whose PID differed from
+    # the logged Host PID; comm alone did not prove its role, so this closes the
+    # compiler-server path without weakening process-group teardown checks.
+    ( cd "$CONSOLE_REPO" && dotnet build StyloMail.slnx --nologo --disable-build-servers -p:UseSharedCompilation=false 2>&1 )
 }
 
 # The build fingerprint: what produced the numbers, not only when they were taken.

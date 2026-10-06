@@ -19,6 +19,7 @@ The harness is **Debug-only**. It is not compiled into a Release build and adds 
 ./ux-scripts/run-console-address-change-smoke.sh # ... and pointed at an address nothing answers on
 ./ux-scripts/run-console-long-outage-smoke.sh # ... and taken away for longer than the console retries
 ./ux-scripts/run-console-operator-retry-smoke.sh # ... and pressed Reconnect on while it is still away
+bash ./ux-scripts/run-console-interactive.sh     # a manually explored console over its own local Host
 
 ./ux-scripts/probe-submission-route.sh       # not a smoke: measures what the routes answer
 ./ux-scripts/check-runner-gate.sh            # not a smoke: checks the runner gate itself
@@ -417,6 +418,205 @@ In script mode the process needs a Host. Running the shell script sets that up; 
 by hand needs `STYLOMAIL_HOST` and `STYLOMAIL_SMOKE_KEY` set, which are the Debug-only overrides in
 `ConsoleEnvironment`.
 
+## Controlled interactive console
+
+### Operator walkthrough and screenshot index
+
+Open a queue in the left rail and choose **Open message** to review its
+decision. The pane shows the action, assessment time, risk index and coverage,
+ordered reasons, and their evidence. Treat the index as an index, not a
+probability; **not produced** is not a score of zero. Use the Decisions ledger
+to select recorded assessments, the feedback form to record a label against a
+decision, and sender/company or quarantine controls for their distinct
+management actions. The status bar reports Host/feed state and offers
+**Reconnect** after a feed interruption.
+
+The screenshots below are from the controlled local Host harness; none is
+production mailbox evidence. The Host decision frame is real Host output. The
+trend frame is explicitly a fixture, while the separate history frame shows
+three original decisions fetched from that run's local Host.
+
+- [Decision detail with evidence and feedback](console-state4-decision-open.png)
+- [Decision ledger with no item selected](console-state4-pane-empty.png)
+- [Real Host decision with unavailable windowed trends](console-host-windowed-trends.png) (`console-smoke.yaml`, 100 UI actions passed; rows remain `Unavailable` with `0 samples`).
+- [Illustrative burst/slow trend observations](console-trend-fixture.png) (fixture banner visible; 3 and 12 sample support; not policy evidence).
+- [Three original Slack conversation records](console-slack-history.png) (same fixture run; local Host records, IDs and timestamps, UI loaded 2 then 3 via cursor).
+
+Provenance is retained alongside the images: the Host frame was copied from
+`.styloagent/scratch/desktop/trend-verification/20261006T164610Z-11975/host-ui-results/02-decision-pane.png`
+after a 100-action Host scenario; the fixture/history pair was copied from
+`.styloagent/scratch/desktop/trend-verification/20261006T172731Z-17494/fixture-ui-results/`
+after a 21-action scenario. The companion
+`fixture-slack-history-seed.json` records workspace/channel/thread keys, three
+distinct assessment and message IDs, and the verified `[2, 1]` API page split.
+The promoted PNGs were checked byte-identical to those run artifacts.
+
+The Desktop unit suite passed with 308 passed, 20 skipped, 0 failed
+(`.styloagent/scratch/desktop/trend-verification/20261006T171927Z-16564/desktop-tests.log`),
+and the real Host UI scenario passed 100 actions. The final fixture-only
+verification (`20261006T183458Z-26438`) passed end to end: 21 UI actions, three
+distinct assessment/message IDs across API pages 2+1, and verifier/wrapper exit
+0. Its bounded build-only proof also passed with 0 warnings and 0 errors.
+
+The build-created Avalonia telemetry collector is treated as a specific,
+run-owned teardown resource: the verifier checks its executable, exact installed
+11.3.2 collector path and owned process group twice, then performs bounded
+TERM/KILL and confirms the group is empty. Other or unverified children still
+fail closed. The post-teardown port gate retries only `EADDRINUSE` for at most
+25 seconds using fresh exclusive binds with no socket reuse; this run became
+bindable after 79 attempts. No cause is inferred from that retry count. The
+pre-run bind check remains immediate.
+
+### Re-run the trend-review verification
+
+First run the isolated process-identity controls; these use synthetic process
+output and temporary files only:
+
+```bash
+python3 ux-scripts/test_collector_cleanup_policy.py
+```
+
+For the full supported verification, request/hold the serialized local
+Host/UI runtime slot, then run:
+
+```bash
+bash ux-scripts/verify-console-trends.sh
+```
+
+By default this runs the Desktop unit suite, the real Host UI scenario, and the
+fixture-backed trend plus populated Slack-history scenario. Each invocation
+writes a fresh evidence directory beneath
+`.styloagent/scratch/desktop/trend-verification/`; it does not overwrite prior
+screenshots or logs. The script verifies each UI `result.json`, the three
+distinct seeded history records and 2+1 cursor pages, managed process cleanup,
+and the post-run exclusive port gate.
+
+For a focused UI phase, the supported values are `all` (default), `host`, and
+`fixture`:
+
+```bash
+DESKTOP_UI_PHASE=fixture bash ux-scripts/verify-console-trends.sh
+```
+
+`DESKTOP_UI_ONLY=true` omits the unit-test run and reuses the pinned passing
+Desktop test proof named in the script. `DESKTOP_BUILD_ONLY_DIAGNOSTIC=true`
+runs only the bounded solution build and exact child teardown proof; it starts
+no Host or UI and runs no tests. The build-only mode takes precedence over the
+test/UI phases. All modes use bounded waits and fail closed on unknown children
+or unusable cleanup probes.
+
+The **Conversation trends** panel lists only windowed observations returned
+with the selected decision. It preserves each observation's scope/window,
+availability/value, sample support and timestamp, alongside the assessment
+time. It does not combine assessments into a history total. See the trend
+section below for the current history boundary.
+
+For manual iteration, use the runner rather than assembling those Debug-only
+overrides yourself:
+
+```bash
+bash ./ux-scripts/run-console-interactive.sh
+```
+
+It builds the same solution as the smokes, starts a throwaway loopback Host,
+creates a run-local principal, seeds management data and a real decision through
+the Host's assessment route, then opens the ordinary Avalonia window. Closing
+the window stops the Host and removes its temporary auth-header file. The
+run-local generated keys remain with that session's `/tmp` artifacts. The default
+needs no model or provider key: its Host decision deliberately has unavailable
+semantic evidence, so it is useful for iterating on the real client and API
+without presenting it as a policy-quality scenario.
+
+The same controlled backend can be explored through the UI-testing REPL or MCP
+server:
+
+```bash
+CONSOLE_INTERACTIVE_DRIVER=repl bash ./ux-scripts/run-console-interactive.sh
+CONSOLE_INTERACTIVE_DRIVER=mcp  bash ./ux-scripts/run-console-interactive.sh
+```
+
+`CONSOLE_INTERACTIVE_DRIVER=headless` is the verification-only variant: it
+runs `console-smoke.yaml` through this entrypoint. Its screenshots and
+`result.json` live in that invocation's unique `/tmp/stylomail-console-interactive-*/ui-results/`
+directory. It is useful when changing the runner itself; it is not a
+replacement for manual exploration.
+
+To review two separate, timestamped trend observations and a populated Slack
+conversation-history panel, run:
+
+```bash
+CONSOLE_INTERACTIVE_DRIVER=trend-fixture bash ./ux-scripts/run-console-interactive.sh
+```
+
+This opens no model-backed assessment. The window marks its decision and trend
+rows as illustrative fixture content. Separately, the launcher signs three
+distinct synthetic Slack message events with a fresh process-only secret and
+posts them to the throwaway Host's supported ingress route. It polls the local
+history API, verifies the original assessment/message IDs and a 2+1 opaque
+cursor split, then opens the panel at a debug-only page size of two so **Load
+older** is exercised. The fixture's two rows show the signal, scope and window, value,
+availability, sample support, and observation time. Their `burst` and `slow`
+labels identify separate producer windows; the console does not combine them
+into a history total. The three history cards are real records from this
+throwaway run, not fixture rows or a claim about live Slack. Headless screenshots,
+`result.json`, and nonsensitive expected IDs are written to
+that invocation's unique `/tmp/stylomail-console-interactive-*/ui-results/`
+and `data/` directories respectively. The signing secret is process-only and
+never written to disk or printed. The temporary Host auth-header file is
+removed during teardown; generated run keys remain beside the retained session
+artifacts.
+
+In a real decision, the same panel reads the Host's individual windowed
+evidence rows and shows the assessment time above them. Unavailable evidence
+reads `Unavailable` and `not produced`, even if a wire value field contains
+zero; a support count of zero remains the separate observation `0 samples`.
+The panel says when the decision response contained no windowed observations.
+For a decision with real Slack workspace/channel keys, **Load recent assessed
+records** reads original decisions for that conversation; **Load older** follows
+the Host's opaque cursor. Each record retains its own timestamp and windowed
+observations. The console computes no history totals. The bounded trend-review
+scenario proves this behavior against three local signed-ingress records;
+it does not imply that email has these keys. Email assessments have
+no conversation identifiers and are not grouped by sender or recipient; the
+pane states that boundary instead of offering a guessed conversation.
+
+For a conversation review, open a decision with Slack workspace/channel keys,
+choose **Load recent assessed records**, and inspect each returned assessment's
+action, time, message ID, and individual trend rows. Choose **Load older** to
+append the next page. The screenshots above are paired intentionally: the first
+keeps the fixture banner and illustrative trend values in view; the second
+shows the separately sourced Host history records. The console does not blend
+those two sources or compute an across-message trend aggregate.
+
+The trend-fixture runner produces a separate screenshot and `result.json` in
+that invocation's unique `ui-results/` directory; prior runs are not overwritten.
+The screenshot must remain labelled as fixture content when shared.
+
+To open a real, generated corpus population in the same controlled Host, opt in
+explicitly:
+
+```bash
+CONSOLE_INTERACTIVE_CORPUS=true bash ./ux-scripts/run-console-interactive.sh
+```
+
+Its defaults are seed `20261006`, profile `mailbox`, count `24`, and full
+coverage. The launcher prints the run-local `ui-scenarios.json` contract and
+its observed selectors after seeding. `anyQueuedOrHeld` and
+`anyDecisionJoinResolved` name only IDs the Host actually returned;
+`allPlantedFactsVerified` remains `notChecked` until corpus's separate ledger
+checker runs. The launcher never turns a corpus intent or threshold target into
+a promised queue state.
+
+`CONSOLE_INTERACTIVE_RUN_DIR` is for an isolated local session directory and
+must stay under `/tmp/stylomail-console-interactive-`. It exists so a second
+manual session can be given its own evidence directory; the launcher still
+refuses a backend port before it clears that directory.
+
+For layout-only work, `CONSOLE_INTERACTIVE_CONTENT=fixture` loads
+`decision-fixture.json` instead of seeding a decision. The runner prints that
+mode explicitly because it proves rendering only: it is not evidence of policy
+behaviour, message submission, or the message-to-decision join.
+
 ## Writing a script
 
 1. Find the control you want to drive in `Views/MainWindow.axaml`. If it has no `x:Name`, give it one.
@@ -653,17 +853,13 @@ the fastest way to make a run meaningless.
   itself listed, over `POST /v1/submissions`. The committed smokes that start a Host which cannot
   assess still cannot start one, because a join needs a listed row and their listings are empty by
   design; that is a fact about those Hosts rather than about the join.
-- **Two evidence rows that differ only by trend window.** The pane can tell them apart (they agree on
-  signal id and scope, and the producer emits one row per window, "burst" and "slow"). What a Nimble
-  Host was measured producing on 2026-09-30 is those rows in the *response*:
-  `behavioural.trend.velocity` and `.acceleration` over two scopes, one row per window, each
-  `Unavailable` with `sampleSupport: 0` until there is sender history. They are not drawn, and that
-  is the same measurement seen from the other side: the pane renders a decision's evidence under the
-  reasons that cite it, and no reason cites a trend signal while every one of them is unavailable, so
-  the windowed rows never reach the screen. What reaches it needs sender history, which is traffic.
-  What the smoke asserts today is the other half of the same contract, that the qualifier is *absent*
-  on the unwindowed rows that make up most of a real response. The windowed rendering is covered by
-  `DecisionViewTests`; no run reaches it.
+- **Windowed trend rows without usable history.** A no-model Host can still return behavioural trend
+  observations. The real Host smoke asserts a returned `behavioural.trend.velocity` row is shown with
+  its `burst` window, `Unavailable` availability, and `0 samples`; “not produced” is not hidden or
+  converted to an empty list. The trend fixture scenario separately shows available burst/slow
+  examples with distinct sample support and timestamps. Both screens preserve each row's observation
+  scope/window rather than aggregate across decisions. These are UI readings of their respective Host
+  response and labelled fixture, not a claim that an unavailable signal has a measured value.
 - **Recovery after a long outage.** Closed for the console as of `run-console-long-outage-smoke.sh`:
   `run-console-feed-recovery-smoke.sh` proves the console announces the drop, keeps what it had read,
   and goes back to `Live` on its own when the Host returns inside SignalR's retry budget, and the

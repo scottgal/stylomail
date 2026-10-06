@@ -88,6 +88,18 @@ public sealed class DecisionFixtureTests
         Assert.Equal(DeliveryTiming.PreAcceptance, decision.DeliveryTiming);
     }
 
+    [Fact]
+    public async Task The_shipped_fixture_has_two_distinct_windowed_trend_rows()
+    {
+        var view = DecisionView.From(await ReadShippedFixture(), isFixture: true);
+
+        Assert.True(view.IsFixture);
+        Assert.Equal(
+            ["OutboundSender · burst", "OutboundSender · slow"],
+            view.TrendObservations.Select(row => row.ScopeLabel));
+        Assert.All(view.TrendObservations, row => Assert.Equal("Available", row.AvailabilityLabel));
+    }
+
     /// <summary>
     /// The fixture's masked row says it did not count, and names the weight
     /// that stayed out of the divisor.

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using System.Globalization;
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
 using StyloMail.Desktop.Models;
@@ -421,7 +422,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            await ShowDecisionAsync(decision, cancellationToken).ConfigureAwait(false);
+            await OnUiThreadAsync(() => _model.ShowDecision(decision, isFixture: true)).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
         {
@@ -1362,6 +1363,65 @@ public partial class MainWindow : Window
         if ((sender as Control)?.DataContext is not DecisionRow row) return;
 
         await OpenLedgerRowAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>Loads one page of original assessed records for the open Slack conversation.</summary>
+    private async void OnLoadConversationHistoryClick(object? sender, RoutedEventArgs e)
+    {
+        var panel = _model.Decision?.ConversationHistory;
+        if (_services is null || panel?.Scope is not { } scope)
+        {
+            return;
+        }
+
+        var append = panel.HasLoaded && panel.HasMore;
+        var cursor = append ? panel.NextCursor : null;
+        await OnUiThreadAsync(() => panel.BeginLoad(append)).ConfigureAwait(false);
+
+        try
+        {
+            var response = await _services.Client.GetConversationHistoryAsync(
+                new ConversationHistoryQuery
+                {
+                    WorkspaceId = scope.WorkspaceId,
+                    ChannelId = scope.ChannelId,
+                    ThreadId = scope.ThreadId,
+                    Limit = ConversationHistoryPageSize(),
+                    After = cursor,
+                }).ConfigureAwait(false);
+
+            await OnUiThreadAsync(() =>
+            {
+                if (ReferenceEquals(_model.Decision?.ConversationHistory, panel))
+                {
+                    panel.ApplyPage(response, append);
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Conversation history] {failure.Failure}: {failure.Message}");
+            await OnUiThreadAsync(() =>
+            {
+                if (ReferenceEquals(_model.Decision?.ConversationHistory, panel))
+                {
+                    panel.Fail(preservePageState: append);
+                }
+            }).ConfigureAwait(false);
+        }
+    }
+
+    private static int ConversationHistoryPageSize()
+    {
+#if DEBUG
+        var configured = Environment.GetEnvironmentVariable("STYLOMAIL_SMOKE_HISTORY_PAGE_SIZE");
+        if (int.TryParse(configured, NumberStyles.None, CultureInfo.InvariantCulture, out var pageSize)
+            && pageSize is >= 1 and <= 100)
+        {
+            return pageSize;
+        }
+#endif
+        return 25;
     }
 
     /// <summary>

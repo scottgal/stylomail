@@ -1,0 +1,85 @@
+name: console-trend-review-smoke
+description: >
+  Renders the shipped UI fixture's burst and slow trend observations through
+  the real Avalonia decision pane, then reviews three original Slack
+  assessments seeded through signed ingress into the throwaway local Host.
+  This proves display and cursor paging, not policy behavior or live-deployment
+  trends. The trend rows remain explicitly labelled fixture observations.
+
+default_delay: 200
+
+actions:
+  - type: Expect
+    target: name=DecisionFixtureBanner
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: name=TrendObservationsList
+    matcher: IsVisible
+
+  - type: Expect
+    target: text=behavioural.trend.velocity
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='OutboundSender · burst'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='OutboundSender · slow'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='3 samples'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='12 samples'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text='Observed at 2026-09-22 09:59:56 +00:00'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: name=ConversationHistoryScopeText
+    matcher: IsVisible
+
+  - type: Expect
+    target: name=LoadConversationHistoryButton
+    matcher: IsVisible
+
+  - type: Click
+    target: name=LoadConversationHistoryButton
+
+  - type: Expect
+    target: "text='Showing 2 assessed record(s) in this review.'"
+    matcher: IsVisible
+
+  - type: Expect
+    target: name=LoadMoreConversationHistoryButton
+    matcher: IsVisible
+
+  - type: Click
+    target: name=LoadMoreConversationHistoryButton
+
+  - type: Expect
+    target: "text='Showing 3 assessed record(s) in this review.'"
+    matcher: IsVisible
+
+  # The launcher replaces this marker with visibility assertions for the
+  # assessment IDs independently read from the Host's two cursor pages.
+  # RUNTIME_HISTORY_ASSERTIONS
+
+  - type: Screenshot
+    value: 01-fixture-trend-observations
+    description: "Illustrative fixture trend values; the banner distinguishes them from Host history below"
+
+  - type: Scroll
+    target: "name=DecisionPaneScroll"
+    value: "ScrollToEnd"
+
+  - type: Screenshot
+    value: 02-populated-slack-history
+    description: "Three original Slack assessments from the throwaway Host, after cursor paging 2+1"

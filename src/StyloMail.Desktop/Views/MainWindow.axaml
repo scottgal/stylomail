@@ -585,6 +585,140 @@
                                        Text="{Binding AssessmentId}" />
                         </StackPanel>
 
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,2,0,6"
+                                   Text="{Binding AssessedAtLabel}" />
+
+                        <Border x:Name="DecisionFixtureBanner"
+                                Classes="cardWarning"
+                                Margin="0,0,0,8"
+                                IsVisible="{Binding IsFixture}">
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="Illustrative UI fixture. These values were not returned by the Host." />
+                        </Border>
+
+                        <!-- The full response can include trend-window rows that no reason cites.
+                             Keep each Host observation visible with its own time, scope/window,
+                             availability and sample support. Do not aggregate across decisions. -->
+                        <TextBlock Classes="sectionLabel" Text="Conversation trends" />
+                        <TextBlock Classes="paneDetail"
+                                   Margin="0,0,0,6"
+                                   Text="Individual observations returned with this decision. The time and window identify what each row describes." />
+                        <TextBlock x:Name="NoTrendObservationsText"
+                                   Classes="emptyDetail"
+                                   Margin="0,0,0,8"
+                                   IsVisible="{Binding !HasTrendObservations}"
+                                   Text="{Binding NoTrendObservationsLabel}" />
+                        <ItemsControl x:Name="TrendObservationsList"
+                                      ItemsSource="{Binding TrendObservations}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card" Margin="0,0,0,6">
+                                        <StackPanel Spacing="3">
+                                            <TextBlock Classes="cardTitle" Text="{Binding SignalId}" />
+                                            <TextBlock Classes="cardBody"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding ScopeLabel}" />
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Classes="cardBody" Text="{Binding AvailabilityLabel}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Classes="signalValue"
+                                                           Text="{Binding ValueLabel}" />
+                                            </Grid>
+                                            <TextBlock Classes="cardBody"
+                                                       Text="{Binding SampleSupportLabel}" />
+                                            <TextBlock Classes="cardBody"
+                                                       Text="{Binding ObservedAtLabel}" />
+                                            <TextBlock Classes="signalReason"
+                                                       TextWrapping="Wrap"
+                                                       IsVisible="{Binding ReasonLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                       Text="{Binding ReasonLabel}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel x:Name="ConversationHistoryPanel"
+                                    DataContext="{Binding ConversationHistory}"
+                                    Spacing="4"
+                                    Margin="0,8,0,8">
+                            <TextBlock Classes="sectionLabel" Text="Assessed conversation history" />
+                            <TextBlock Classes="paneDetail"
+                                       TextWrapping="Wrap"
+                                       Text="Original Slack records fetched separately from the open decision. Each observation stays with its assessment; no history totals are calculated." />
+                            <TextBlock x:Name="ConversationHistoryScopeText"
+                                       Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding IsSupported}"
+                                       Text="{Binding ScopeLabel}" />
+                            <TextBlock x:Name="ConversationHistoryUnavailableText"
+                                       Classes="emptyDetail"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding !IsSupported}"
+                                       Text="{Binding UnavailableLabel}" />
+                            <TextBlock x:Name="ConversationHistoryStatusText"
+                                       Classes="paneDetail"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding StatusLabel}" />
+                            <TextBlock x:Name="ConversationHistorySkippedText"
+                                       Classes="signalReason"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding HasSkipped}"
+                                       Text="{Binding SkippedLabel}" />
+                            <Button x:Name="LoadConversationHistoryButton"
+                                    HorizontalAlignment="Left"
+                                    Content="Load recent assessed records"
+                                    IsVisible="{Binding ShowInitialLoadButton}"
+                                    Click="OnLoadConversationHistoryClick" />
+                            <Button x:Name="LoadMoreConversationHistoryButton"
+                                    HorizontalAlignment="Left"
+                                    Content="Load older assessed records"
+                                    IsVisible="{Binding ShowLoadMoreButton}"
+                                    Click="OnLoadConversationHistoryClick" />
+                            <ItemsControl x:Name="ConversationHistoryList"
+                                          ItemsSource="{Binding Decisions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Classes="card" Margin="0,0,0,6">
+                                            <StackPanel Spacing="4">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Classes="cardTitle" Text="{Binding ActionLabel}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Classes="paneDetail"
+                                                               Text="{Binding AssessedAtLabel}" />
+                                                </Grid>
+                                                <TextBlock Classes="cardBody" Text="{Binding AssessmentId}" />
+                                                <TextBlock Classes="cardBody" Text="{Binding InternalMessageId}" />
+                                                <TextBlock Classes="emptyDetail"
+                                                           IsVisible="{Binding !HasTrendObservations}"
+                                                           Text="{Binding NoTrendObservationsLabel}" />
+                                                <ItemsControl ItemsSource="{Binding TrendObservations}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Spacing="2" Margin="0,2,0,4">
+                                                                <TextBlock Classes="cardTitle" Text="{Binding SignalId}" />
+                                                                <TextBlock Classes="cardBody" Text="{Binding ScopeLabel}" />
+                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                    <TextBlock Classes="cardBody" Text="{Binding AvailabilityLabel}" />
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Classes="signalValue"
+                                                                               Text="{Binding ValueLabel}" />
+                                                                </Grid>
+                                                                <TextBlock Classes="cardBody" Text="{Binding SampleSupportLabel}" />
+                                                                <TextBlock Classes="cardBody" Text="{Binding ObservedAtLabel}" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
                         <TextBlock x:Name="RiskIndexText"
                                    Classes="paneDetail"
                                    Margin="0,2,0,4"

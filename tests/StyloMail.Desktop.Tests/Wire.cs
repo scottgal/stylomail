@@ -734,4 +734,22 @@ internal static class Wire
           "assessedAt": "2026-09-22T10:00:00+00:00"
         }
         """;
+
+    /// <summary>A keyed Slack history page carrying the existing full decision projection.</summary>
+    public static string ConversationHistory => $$"""
+        {
+          "tenantId": "tenant-a",
+          "workspaceId": "workspace/a",
+          "channelId": "channel 7",
+          "threadId": "thread-9",
+          "from": "2026-09-22T00:00:00+00:00",
+          "to": null,
+          "decisions": [{{Decision.Replace(
+              "\"kind\": \"Email\", \"workspaceId\": null, \"channelId\": null, \"threadId\": null",
+              "\"kind\": \"Slack\", \"workspaceId\": \"workspace/a\", \"channelId\": \"channel 7\", \"threadId\": \"thread-9\"")}}],
+          "nextCursor": "opaque-cursor",
+          "hasMore": true,
+          "skippedCount": 2
+        }
+        """;
 }

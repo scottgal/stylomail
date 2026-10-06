@@ -1058,12 +1058,12 @@ public sealed class ShellModel : ObservableObject
     /// How many decisions the ledger holds for this message. More than one
     /// means it has been assessed more than once, which the pane says.
     /// </param>
-    public void ShowDecision(DecisionResponse decision, int decisionCount = 1)
+    public void ShowDecision(DecisionResponse decision, int decisionCount = 1, bool isFixture = false)
     {
         ArgumentNullException.ThrowIfNull(decision);
 
         _decisionLookup = DecisionLookup.Unknown;
-        Decision = DecisionView.From(decision, decisionCount);
+        Decision = DecisionView.From(decision, decisionCount, isFixture);
 
         // Reset here rather than after a successful send, so switching
         // decisions mid-draft cannot leave a half-written label pointing at the

@@ -21,7 +21,9 @@
   "evidence": [
     { "signalId": "sig_cred", "origin": "Semantic", "availability": "Available", "value": 0.99, "confidence": null, "sampleSupport": null, "sourceVersion": "jev-1.13.0", "observedAt": "2026-09-22T10:00:00+00:00", "observedScope": null },
     { "signalId": "sig_hist", "origin": "Behavioural", "availability": "ReducedCoverage", "value": 0.42, "confidence": 0.6, "sampleSupport": 3, "sourceVersion": "adaptive-1", "observedAt": "2026-09-22T09:59:58+00:00", "observedScope": "sender" },
-    { "signalId": "sig_link", "origin": "Deterministic", "availability": "Available", "value": 1.0, "confidence": null, "sampleSupport": null, "sourceVersion": "mime-1", "observedAt": "2026-09-22T09:59:57+00:00", "observedScope": null }
+    { "signalId": "sig_link", "origin": "Deterministic", "availability": "Available", "value": 1.0, "confidence": null, "sampleSupport": null, "sourceVersion": "mime-1", "observedAt": "2026-09-22T09:59:57+00:00", "observedScope": null },
+    { "signalId": "behavioural.trend.velocity", "origin": "Behavioural", "availability": "Available", "value": 0.4, "confidence": 0.6, "sampleSupport": 3, "sourceVersion": "adaptive-fixture-1", "observedAt": "2026-09-22T09:59:56+00:00", "observedScope": "OutboundSender", "window": "burst" },
+    { "signalId": "behavioural.trend.velocity", "origin": "Behavioural", "availability": "Available", "value": 0.9, "confidence": 0.6, "sampleSupport": 12, "sourceVersion": "adaptive-fixture-1", "observedAt": "2026-09-22T09:59:55+00:00", "observedScope": "OutboundSender", "window": "slow" }
   ],
   "versions": { "policyVersion": "policy-7", "classifierModelVersion": "jev-1.13.0", "questionSchemaVersion": "questions-3", "preprocessingVersion": "preprocess-2", "regimeId": null },
   "coverage": { "bodyParsed": true, "htmlPresent": true, "hasAttachments": false, "htmlTextDisagreement": true, "parserLimitExceeded": false, "contentEncrypted": false, "truncated": false, "conversationContextMissing": true },

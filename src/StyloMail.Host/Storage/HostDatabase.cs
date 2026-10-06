@@ -1,5 +1,9 @@
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using StyloMail.Core;
+using StyloMail.Host.Serialization;
 
 namespace StyloMail.Host.Storage;
 
@@ -131,6 +135,122 @@ public sealed class HostDatabase
             alter.CommandText = $"ALTER TABLE sender_control ADD COLUMN {column} {definition};";
             alter.ExecuteNonQuery();
         }
+
+        ApplyConversationHistoryMigration(connection);
+    }
+
+    /// <summary>Adds indexed channel metadata and recovers it from legacy decision payloads.</summary>
+    private static void ApplyConversationHistoryMigration(SqliteConnection connection)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA table_info(host_decision_ledger);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+
+        foreach (var (column, definition) in new[]
+                 {
+                     ("channel_kind", "TEXT NULL"),
+                     ("workspace_id", "TEXT NULL"),
+                     ("channel_id", "TEXT NULL"),
+                     ("thread_id", "TEXT NULL"),
+                 })
+        {
+            if (existing.Contains(column))
+            {
+                continue;
+            }
+
+            using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE host_decision_ledger ADD COLUMN {column} {definition};";
+            alter.ExecuteNonQuery();
+        }
+
+        BackfillConversationMetadata(connection);
+
+        using var indexes = connection.CreateCommand();
+        indexes.CommandText =
+            "CREATE INDEX IF NOT EXISTS ix_host_decision_ledger_channel "
+            + "ON host_decision_ledger (tenant_id, workspace_id, channel_id, recorded_at DESC, assessment_id DESC);"
+            + "CREATE INDEX IF NOT EXISTS ix_host_decision_ledger_thread "
+            + "ON host_decision_ledger (tenant_id, workspace_id, channel_id, thread_id, recorded_at DESC, assessment_id DESC);";
+        indexes.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Copies identifiers already present in old decision documents into queryable columns.
+    /// Malformed legacy rows stay readable through the existing ledger path and remain ungroupable.
+    /// </summary>
+    private static void BackfillConversationMetadata(SqliteConnection connection)
+    {
+        var rows = new List<(string TenantId, string AssessmentId, string RecordedAt, string Payload)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText =
+                "SELECT tenant_id, assessment_id, recorded_at, payload FROM host_decision_ledger "
+                + "WHERE channel_kind IS NULL;";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            }
+        }
+
+        foreach (var row in rows)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(row.Payload);
+                if (!document.RootElement.TryGetProperty("channel", out var channelElement))
+                {
+                    continue;
+                }
+
+                var channel = JsonSerializer.Deserialize<ChannelContext>(channelElement.GetRawText(), HostJson.Options);
+                if (channel is null)
+                {
+                    continue;
+                }
+
+                // Previous ledger versions preserved the timestamp's original offset. History
+                // filters and keyset ordering use canonical UTC strings, so normalize every valid
+                // legacy round-trip timestamp while backfilling. If it is unparsable, preserve it
+                // verbatim; the history reader will count and skip that row rather than inventing a time.
+                var normalizedRecordedAt = DateTimeOffset.TryParseExact(
+                    row.RecordedAt,
+                    "O",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var recordedAt)
+                    ? recordedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                    : null;
+
+                using var update = connection.CreateCommand();
+                update.CommandText =
+                    "UPDATE host_decision_ledger SET channel_kind = $kind, workspace_id = $workspace, "
+                    + "channel_id = $channel, thread_id = $thread, "
+                    + "recorded_at = COALESCE($recorded, recorded_at) "
+                    + "WHERE tenant_id = $tenant AND assessment_id = $assessment AND channel_kind IS NULL;";
+                update.Parameters.AddWithValue("$kind", channel.Kind.ToString());
+                update.Parameters.AddWithValue("$workspace", (object?)channel.WorkspaceId ?? DBNull.Value);
+                update.Parameters.AddWithValue("$channel", (object?)channel.ChannelId ?? DBNull.Value);
+                update.Parameters.AddWithValue("$thread", (object?)channel.ThreadId ?? DBNull.Value);
+                update.Parameters.AddWithValue("$recorded", (object?)normalizedRecordedAt ?? DBNull.Value);
+                update.Parameters.AddWithValue("$tenant", row.TenantId);
+                update.Parameters.AddWithValue("$assessment", row.AssessmentId);
+                update.ExecuteNonQuery();
+            }
+            catch (JsonException)
+            {
+                // A malformed legacy payload remains visible to the ordinary listing's skipped count.
+                // Do not make an unrelated valid history query fail during startup migration.
+            }
+        }
     }
 
     private const string HostDdl =
@@ -150,6 +270,10 @@ public sealed class HostDatabase
             internal_message_id TEXT NOT NULL,
             action              TEXT NOT NULL,
             recorded_at         TEXT NOT NULL,
+            channel_kind        TEXT NULL,
+            workspace_id        TEXT NULL,
+            channel_id          TEXT NULL,
+            thread_id           TEXT NULL,
             payload             TEXT NOT NULL,
             PRIMARY KEY (tenant_id, assessment_id)
         );

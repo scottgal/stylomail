@@ -70,6 +70,57 @@ public sealed class StyloMailApiClientTests
     }
 
     [Fact]
+    public async Task GetConversationHistoryAsync_escapes_filters_normalizes_bounds_and_preserves_cursor()
+    {
+        var handler = StubHttpMessageHandler.ReturningJson(Wire.ConversationHistory);
+        var query = new ConversationHistoryQuery
+        {
+            WorkspaceId = "workspace/a",
+            ChannelId = "channel 7",
+            ThreadId = "thread/9",
+            From = new DateTimeOffset(2026, 9, 22, 2, 0, 0, TimeSpan.FromHours(2)),
+            To = new DateTimeOffset(2026, 9, 23, 0, 0, 0, TimeSpan.Zero),
+            Limit = 25,
+            After = "opaque+/cursor=",
+        };
+
+        var response = await Client(handler).GetConversationHistoryAsync(query);
+
+        Assert.Equal(HttpMethod.Get, handler.SingleRequest.Method);
+        Assert.Equal(
+            "/v1/conversations/history?workspaceId=workspace%2Fa&channelId=channel%207"
+                + "&threadId=thread%2F9&from=2026-09-22T00%3A00%3A00.0000000%2B00%3A00"
+                + "&to=2026-09-23T00%3A00%3A00.0000000%2B00%3A00&limit=25"
+                + "&after=opaque%2B%2Fcursor%3D",
+            handler.SingleRequest.PathAndQuery);
+        Assert.Equal("tenant-a", response.TenantId);
+        Assert.Equal("workspace/a", response.WorkspaceId);
+        Assert.Equal("channel 7", response.ChannelId);
+        Assert.Equal("thread-9", response.ThreadId);
+        Assert.Equal("opaque-cursor", response.NextCursor);
+        Assert.True(response.HasMore);
+        Assert.Equal(2, response.SkippedCount);
+        Assert.Single(response.Decisions);
+        Assert.Equal(DecisionId, response.Decisions[0].AssessmentId);
+    }
+
+    [Fact]
+    public async Task GetConversationHistoryAsync_does_not_send_absent_optional_filters()
+    {
+        var handler = StubHttpMessageHandler.ReturningJson(Wire.ConversationHistory);
+
+        await Client(handler).GetConversationHistoryAsync(new ConversationHistoryQuery
+        {
+            WorkspaceId = "ws",
+            ChannelId = "channel",
+        });
+
+        Assert.Equal(
+            "/v1/conversations/history?workspaceId=ws&channelId=channel&limit=25",
+            handler.SingleRequest.PathAndQuery);
+    }
+
+    [Fact]
     public async Task GetSubmissionAsync_requests_the_submission_route()
     {
         var handler = StubHttpMessageHandler.ReturningJson(Wire.SubmissionStatus);

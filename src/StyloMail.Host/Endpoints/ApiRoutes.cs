@@ -32,6 +32,9 @@ public static class ApiRoutes
         v1.MapGet("/decisions", DecisionsEndpoints.ListAsync)
             .RequireAuthorization(HostPolicies.Review);
 
+        v1.MapGet("/conversations/history", ConversationHistoryEndpoints.ListAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
         v1.MapGet("/decisions/{id}", DecisionsEndpoints.GetAsync)
             .RequireAuthorization(HostPolicies.Review);
 

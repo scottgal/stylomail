@@ -642,7 +642,66 @@ What the host promises, and how it was checked:
 
 ---
 
-## 8. Verifying a running instance
+## 8. Operating the local desktop console
+
+The Avalonia operator console has a controlled, Debug-only local harness. Its
+canonical manual, including the runner inventory, prerequisites, safety checks,
+and artifact locations, is [Driving the operator console](../ux-scripts/README.md).
+Run the launchers rather than their YAML scenarios:
+
+```bash
+./ux-scripts/run-console-smoke.sh
+bash ./ux-scripts/run-console-interactive.sh
+CONSOLE_INTERACTIVE_DRIVER=trend-fixture bash ./ux-scripts/run-console-interactive.sh
+bash ./ux-scripts/verify-console-trends.sh # default: tests + Host UI + fixture
+```
+
+Request the serialized local Host/UI runtime slot before starting one of these
+runs; do not overlap them.
+
+Each runner builds what it needs, probes its configured loopback ports and
+refuses a collision, then starts a throwaway Host which occupies its bound
+port. The launcher owns that Host's teardown on success, failure, or
+interruption. These commands are local harness evidence, not a production
+operation or a claim about a deployed Host.
+
+`verify-console-trends.sh` is the supported bounded verification entrypoint.
+The interactive launcher owns and stops its throwaway Host when the window
+closes. The bounded verifier separately verifies the exact
+`Avalonia.BuildServices` 11.3.2 collector in its own build process group and
+applies bounded `TERM`/`KILL` only to that verified collector; unknown children
+fail closed. That verifier-only collector policy is not ordinary Host teardown
+and does not alter telemetry settings. Its isolated policy controls are
+available with `python3 ./ux-scripts/test_collector_cleanup_policy.py`.
+
+The latest recorded evidence is: the Desktop suite passed **308**, skipped
+**20**, and failed **0**; the Host API scenario passed **14** checks; the real
+Host UI scenario completed **100** actions with no failures. The final
+fixture-only verifier completed **21** actions with no failures and exited
+cleanly.
+
+Keep the two trend sources distinct. The real-Host scenario proves that the
+console renders the Host response, including unavailable windowed trend rows;
+the `trend-fixture` launcher shows illustrative `burst` and `slow` observations
+only, and labels them as fixture content. It also signs three synthetic local
+Slack events with a fresh process-only secret, fetches their original records
+from that throwaway Host, and verifies cursor paging as **2 + 1** records.
+That establishes Slack conversation-history paging for the local harness. It
+does not establish email conversation history: email assessments have no Slack
+workspace/channel keys, and the console states that boundary instead of
+inventing a thread.
+
+The supporting read is `GET /v1/conversations/history`. It requires `Review`,
+is scoped to the caller's tenant, and requires `workspaceId` and `channelId`.
+`threadId`, UTC `from`/`to`, `limit`, and `after` are optional; `after` is an
+opaque cursor. Results are original Slack decisions, ordered by
+`recorded_at` then `assessment_id` descending, with an inclusive `from` and
+exclusive `to`. The response deliberately supplies records, not an aggregate;
+the console manual describes how it renders and pages them.
+
+---
+
+## 9. Verifying a running instance
 
 | Route | Meaning |
 | --- | --- |
@@ -758,7 +817,7 @@ a page that quietly shows something other than what it claims is worse than a re
 
 ---
 
-## 9. CLI exit codes
+## 10. CLI exit codes
 
 | Code | Meaning | Example |
 | --- | --- | --- |

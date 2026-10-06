@@ -83,6 +83,13 @@ REPO = Path(__file__).resolve().parents[2]
 # here and absent from every version 3 message, so "absent" cannot be left to mean "plain".
 CORPUS_VERSION = 4
 
+# This is deliberately separate from CORPUS_VERSION. The manifest describes the corpus itself;
+# this adjacent document is an adapter for a UI harness to select only rows the Host actually
+# produced. Adding or changing selection metadata must not make a consumer reinterpret a planted
+# fact in an older manifest.
+UI_SCENARIO_CONTRACT_VERSION = 1
+UI_SCENARIO_CONTRACT_FILE = "ui-scenarios.json"
+
 # Every address this tool writes is under a reserved test domain (RFC 2606 / RFC 5737), so a batch
 # cannot accidentally name a real mailbox and nothing can be delivered anywhere even by mistake.
 SENDER_DOMAIN = "example.test"
@@ -1764,6 +1771,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         "messages": messages,
     }
     write_manifest(out / "manifest.json", manifest)
+    write_ui_scenario_contract(out / "manifest.json", manifest)
 
     counts: dict[str, int] = {}
     for message in messages:
@@ -1788,6 +1796,77 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 def write_manifest(path: Path, manifest: dict) -> None:
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def write_ui_scenario_contract(manifest_path: Path, manifest: dict,
+                               verification: dict | None = None) -> None:
+    """Write the UI selection view beside a corpus manifest.
+
+    This is intentionally a projection, not a second fixture format. Intent and planted facts stay
+    as authored corpus data; action, queue state and the join are copied only from the Host
+    observations that ``seed`` recorded. A missing observed value is explicit, so a UI runner can
+    refuse or skip a scenario rather than treating an intended risk shape as a real queue row.
+    """
+    scenarios = []
+    for message in manifest.get("messages", []):
+        seeded = message.get("seeded") if isinstance(message.get("seeded"), dict) else {}
+        scenario_id = (
+            f"corpus-v{manifest.get('corpusVersion', 'unknown')}-"
+            f"{manifest.get('seed', 'unknown')}-{message.get('index', 'unknown')}-"
+            f"{str(message.get('sha256', 'unknown'))[:12]}"
+        )
+        scenarios.append({
+            "scenarioId": scenario_id,
+            "file": message.get("file"),
+            "intent": message.get("intent"),
+            "thresholdTargeted": bool(message.get("thresholdTargeted")),
+            "factIds": [fact.get("id") for fact in message.get("planted", []) if fact.get("id")],
+            # These are observations, not fallback values. In particular, `None` never means an
+            # Allow, an empty queue, or that a join was not needed.
+            "observed": {
+                "httpStatus": seeded.get("httpStatus"),
+                "action": seeded.get("action"),
+                "state": seeded.get("state"),
+                "queueId": seeded.get("queueId"),
+                "internalMessageId": seeded.get("internalMessageId"),
+            },
+        })
+
+    queued_or_held = [
+        scenario["scenarioId"] for scenario in scenarios
+        if scenario["observed"]["state"] in {"Queued", "Held"}
+    ]
+    joined = [
+        scenario["scenarioId"] for scenario in scenarios
+        if scenario["observed"]["internalMessageId"]
+    ]
+    contract = {
+        "uiScenarioContractVersion": UI_SCENARIO_CONTRACT_VERSION,
+        "manifest": {
+            "file": manifest_path.name,
+            "corpusVersion": manifest.get("corpusVersion"),
+            "seed": manifest.get("seed"),
+            "profile": manifest.get("profile"),
+            "coverage": manifest.get("coverage"),
+        },
+        "scenarios": scenarios,
+        "selectors": {
+            "anyQueuedOrHeld": {
+                "predicate": "observed.state is Queued or Held",
+                "scenarioIds": queued_or_held,
+                "satisfied": bool(queued_or_held),
+            },
+            "anyDecisionJoinResolved": {
+                "predicate": "observed.internalMessageId is present",
+                "scenarioIds": joined,
+                "satisfied": bool(joined),
+            },
+            # `check` owns this status. It begins unknown because a generated or merely seeded
+            # batch has not demonstrated that its planted facts reached the decision ledger.
+            "allPlantedFactsVerified": verification or {"status": "notChecked"},
+        },
+    }
+    write_manifest(manifest_path.with_name(UI_SCENARIO_CONTRACT_FILE), contract)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1953,6 +2032,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 
     # Only `seed` writes the manifest, and it writes only the `seeded` records it just produced.
     write_manifest(manifest_path, manifest)
+    write_ui_scenario_contract(manifest_path, manifest)
     print(f"\naccepted {accepted}, replayed {replayed}, refused {refused}, unreachable {unreachable}")
     if replayed:
         print(
@@ -2185,6 +2265,10 @@ def cmd_check(args: argparse.Namespace) -> int:
     # manifest can be trusted to mean what it says.
     shape = shape_failures(manifest_path.parent, manifest)
     if shape:
+        write_ui_scenario_contract(
+            manifest_path, manifest,
+            {"status": "invalidBatch", "reason": "manifestDoesNotDescribeBytes"},
+        )
         print(f"\nSHAPE: {len(shape)} message(s) do not carry the shape they claim", file=sys.stderr)
         for line in shape:
             print(f"  SHAPE: {line}", file=sys.stderr)
@@ -2294,6 +2378,10 @@ def cmd_check(args: argparse.Namespace) -> int:
     # that did not happen, and reporting failure would call a correct batch broken. Exit 2 is the
     # same "skipped honestly" the ingest uses.
     if declared == 0:
+        write_ui_scenario_contract(
+            manifest_path, manifest,
+            {"status": "notApplicable", "checkedMessages": checked, "declaredFactCount": declared},
+        )
         print(
             "\nSKIPPED: this batch declares no planted facts, so there is nothing to verify. Its "
             "states are reported above; that is the measurement it can support.",
@@ -2302,6 +2390,11 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 2
 
     if missing:
+        write_ui_scenario_contract(
+            manifest_path, manifest,
+            {"status": "failed", "checkedMessages": checked, "declaredFactCount": declared,
+             "missingFactCount": len(missing)},
+        )
         print(f"\nFAIL: {len(missing)} planted fact(s) missing from the findings", file=sys.stderr)
         for line in missing:
             print(f"  {line}", file=sys.stderr)
@@ -2312,12 +2405,21 @@ def cmd_check(args: argparse.Namespace) -> int:
         )
         return 1
     if checked == 0:
+        write_ui_scenario_contract(
+            manifest_path, manifest,
+            {"status": "failed", "checkedMessages": checked, "declaredFactCount": declared,
+             "reason": "noMessageChecked"},
+        )
         print(
             f"refusing to report success: {declared} fact(s) are declared but no message could be "
             "checked, which is not the same as passing",
             file=sys.stderr,
         )
         return 1
+    write_ui_scenario_contract(
+        manifest_path, manifest,
+        {"status": "passed", "checkedMessages": checked, "declaredFactCount": declared},
+    )
     print("\nOK: every planted fact was reported as planted")
     return 0
 

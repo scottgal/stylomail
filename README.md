@@ -163,6 +163,27 @@ a local result as a full assessment.
 
 ---
 
+### Avalonia operator console
+
+Open the client against a disposable local Host:
+
+```bash
+bash ux-scripts/run-console-interactive.sh
+```
+
+The launcher supports a normal window, an interactive UI-testing REPL, MCP,
+and headless verification. To review labelled illustrative trend observations
+alongside three original records from signed local Slack ingress, use:
+
+```bash
+CONSOLE_INTERACTIVE_DRIVER=trend-fixture bash ux-scripts/run-console-interactive.sh
+```
+
+See the [operator walkthrough and screenshots](ux-scripts/README.md#controlled-interactive-console)
+and [running guide](docs/running.md). The local harness needs no live mailbox or
+model credentials; fixture trend values are illustrative. Conversation history
+uses Slack conversation keys; email assessments have no conversation history.
+
 ## Configuration
 
 ### Secrets (environment only)

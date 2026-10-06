@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -51,15 +52,21 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
             command.CommandText =
                 """
                 INSERT OR REPLACE INTO host_decision_ledger
-                    (tenant_id, assessment_id, internal_message_id, action, recorded_at, payload)
-                VALUES ($tenant, $assessment, $message, $action, $recorded, $payload);
+                    (tenant_id, assessment_id, internal_message_id, action, recorded_at,
+                     channel_kind, workspace_id, channel_id, thread_id, payload)
+                VALUES ($tenant, $assessment, $message, $action, $recorded,
+                        $channelKind, $workspace, $channel, $thread, $payload);
                 """;
 
             command.Parameters.AddWithValue("$tenant", assessment.TenantId);
             command.Parameters.AddWithValue("$assessment", assessment.AssessmentId);
             command.Parameters.AddWithValue("$message", assessment.InternalMessageId);
             command.Parameters.AddWithValue("$action", assessment.Action.ToString());
-            command.Parameters.AddWithValue("$recorded", assessment.AssessedAt.ToString("O"));
+            command.Parameters.AddWithValue("$recorded", assessment.AssessedAt.ToUniversalTime().ToString("O"));
+            command.Parameters.AddWithValue("$channelKind", assessment.Channel.Kind.ToString());
+            command.Parameters.AddWithValue("$workspace", (object?)assessment.Channel.WorkspaceId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$channel", (object?)assessment.Channel.ChannelId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$thread", (object?)assessment.Channel.ThreadId ?? DBNull.Value);
             command.Parameters.AddWithValue("$payload", payload);
 
             command.ExecuteNonQuery();
@@ -251,6 +258,194 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
                 SkippedCount = skipped,
             });
     }
+
+    public Task<DecisionListingPage> ListConversationHistoryAsync(
+        ConversationHistoryQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.TenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.WorkspaceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query.ChannelId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var from = query.From?.ToUniversalTime().ToString("O");
+        var to = query.To?.ToUniversalTime().ToString("O");
+        if (query.From is { } fromValue && query.To is { } toValue && fromValue >= toValue)
+        {
+            throw new ArgumentException("The `from` bound must be earlier than the exclusive `to` bound.", nameof(query));
+        }
+
+        var limit = Math.Clamp(query.Limit, 1, DecisionListingLimits.MaxPageSize);
+        var position = DecodeConversationCursor(query.After, query, from, to);
+        var rows = new List<(string AssessmentId, string RecordedAt, string Payload)>(limit + 1);
+
+        try
+        {
+            using var connection = _database.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT assessment_id, recorded_at, payload
+                  FROM host_decision_ledger
+                 WHERE tenant_id = $tenant
+                   AND channel_kind = 'Slack'
+                   AND workspace_id = $workspace
+                   AND channel_id = $channel
+                   AND ($thread IS NULL OR thread_id = $thread)
+                   AND ($from IS NULL OR recorded_at >= $from)
+                   AND ($to IS NULL OR recorded_at < $to)
+                   AND ($afterAt IS NULL
+                        OR recorded_at < $afterAt
+                        OR (recorded_at = $afterAt AND assessment_id < $afterId))
+                 ORDER BY recorded_at DESC, assessment_id DESC
+                 LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$tenant", query.TenantId);
+            command.Parameters.AddWithValue("$workspace", query.WorkspaceId);
+            command.Parameters.AddWithValue("$channel", query.ChannelId);
+            command.Parameters.AddWithValue("$thread", (object?)query.ThreadId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$from", (object?)from ?? DBNull.Value);
+            command.Parameters.AddWithValue("$to", (object?)to ?? DBNull.Value);
+            command.Parameters.AddWithValue("$afterAt", (object?)position?.RecordedAt ?? DBNull.Value);
+            command.Parameters.AddWithValue("$afterId", (object?)position?.AssessmentId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$limit", limit + 1);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The decision ledger could not be read.", ex);
+        }
+
+        string? nextCursor = null;
+        if (rows.Count > limit)
+        {
+            rows.RemoveAt(rows.Count - 1);
+            var last = rows[^1];
+            nextCursor = EncodeConversationCursor(query, from, to, last.RecordedAt, last.AssessmentId);
+        }
+
+        var items = new List<MailAssessment>(rows.Count);
+        var skipped = 0;
+        foreach (var row in rows)
+        {
+            if (!DateTimeOffset.TryParseExact(
+                    row.RecordedAt,
+                    "O",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out _))
+            {
+                _logger.LogWarning(
+                    "Decision {AssessmentId} was skipped in conversation history: its recorded timestamp is invalid.",
+                    row.AssessmentId);
+                skipped++;
+                continue;
+            }
+
+            try
+            {
+                var assessment = JsonSerializer.Deserialize<MailAssessment>(row.Payload, HostJson.PersistedRead);
+                if (assessment is null)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                items.Add(assessment);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(
+                    "Decision {AssessmentId} was skipped in conversation history: its stored payload "
+                    + "cannot be read by this build ({Kind} at {Path}).",
+                    row.AssessmentId,
+                    ex.GetType().Name,
+                    ex.Path);
+                skipped++;
+            }
+        }
+
+        return Task.FromResult(new DecisionListingPage
+        {
+            Items = items,
+            NextCursor = nextCursor,
+            SkippedCount = skipped,
+        });
+    }
+
+    private static string EncodeConversationCursor(
+        ConversationHistoryQuery query,
+        string? from,
+        string? to,
+        string recordedAt,
+        string assessmentId) => Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
+            new ConversationHistoryCursor(
+                query.TenantId,
+                query.WorkspaceId,
+                query.ChannelId,
+                query.ThreadId,
+                from,
+                to,
+                recordedAt,
+                assessmentId))));
+
+    private static ConversationHistoryCursor? DecodeConversationCursor(
+        string? cursor,
+        ConversationHistoryQuery query,
+        string? from,
+        string? to)
+    {
+        if (string.IsNullOrWhiteSpace(cursor))
+        {
+            return null;
+        }
+
+        try
+        {
+            var decoded = JsonSerializer.Deserialize<ConversationHistoryCursor>(
+                Encoding.UTF8.GetString(Convert.FromBase64String(cursor)));
+            if (decoded is null
+                || decoded.TenantId != query.TenantId
+                || decoded.WorkspaceId != query.WorkspaceId
+                || decoded.ChannelId != query.ChannelId
+                || decoded.ThreadId != query.ThreadId
+                || decoded.From != from
+                || decoded.To != to
+                || string.IsNullOrWhiteSpace(decoded.RecordedAt)
+                || string.IsNullOrWhiteSpace(decoded.AssessmentId))
+            {
+                throw new InvalidDecisionCursorException(
+                    "The `after` cursor does not match this tenant and conversation filter. "
+                    + "Pass back the `nextCursor` unchanged or omit it.");
+            }
+
+            return decoded;
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidDecisionCursorException("The `after` cursor is invalid.", ex);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDecisionCursorException("The `after` cursor is invalid.", ex);
+        }
+    }
+
+    private sealed record ConversationHistoryCursor(
+        string TenantId,
+        string WorkspaceId,
+        string ChannelId,
+        string? ThreadId,
+        string? From,
+        string? To,
+        string RecordedAt,
+        string AssessmentId);
 
     /// <summary>
     /// Encodes the position to resume from.

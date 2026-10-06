@@ -31,4 +31,9 @@ public interface IDecisionLedger
     Task<DecisionListingPage> ListAsync(
         DecisionListingQuery query,
         CancellationToken cancellationToken);
+
+    /// <summary>Lists stored assessments for one Slack channel, newest first.</summary>
+    Task<DecisionListingPage> ListConversationHistoryAsync(
+        ConversationHistoryQuery query,
+        CancellationToken cancellationToken);
 }

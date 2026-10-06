@@ -437,6 +437,99 @@ public sealed class DecisionViewTests
     }
 
     /// <summary>
+    /// Trend review lists every windowed response observation, including one
+    /// that no reason cites, and keeps unavailable separate from measured zero.
+    /// </summary>
+    [Fact]
+    public void Trend_review_preserves_time_window_availability_and_sample_support()
+    {
+        var observedAt = new DateTimeOffset(2026, 10, 6, 14, 5, 0, TimeSpan.FromHours(1));
+        var decision = Decision() with
+        {
+            AssessedAt = new DateTimeOffset(2026, 10, 6, 14, 6, 0, TimeSpan.FromHours(1)),
+            Evidence =
+            [
+                Trend(window: "burst", value: 0.0) with
+                {
+                    Availability = EvidenceAvailability.Unavailable,
+                    Value = 0.0,
+                    SampleSupport = 0,
+                    ObservedAt = observedAt,
+                },
+                Trend(window: "slow", value: 0.9) with
+                {
+                    Availability = EvidenceAvailability.Available,
+                    SampleSupport = 12,
+                    ObservedAt = observedAt.AddMinutes(-1),
+                },
+                Trend(window: "single", value: 0.1) with
+                {
+                    Availability = EvidenceAvailability.Available,
+                    SampleSupport = 1,
+                    ObservedAt = observedAt.AddMinutes(-2),
+                },
+            ],
+            Reasons = [],
+        };
+
+        var view = DecisionView.From(decision);
+
+        Assert.Equal("Assessed at 2026-10-06 14:06:00 +01:00", view.AssessedAtLabel);
+        Assert.True(view.HasTrendObservations);
+        Assert.Equal(3, view.TrendObservations.Count);
+        Assert.Equal(
+            ["OutboundSender · burst", "OutboundSender · slow", "OutboundSender · single"],
+            view.TrendObservations.Select(row => row.ScopeLabel));
+        Assert.Equal("Unavailable", view.TrendObservations[0].AvailabilityLabel);
+        Assert.Equal("not produced", view.TrendObservations[0].ValueLabel);
+        Assert.Equal("0 samples", view.TrendObservations[0].SampleSupportLabel);
+        Assert.Equal("Observed at 2026-10-06 14:05:00 +01:00", view.TrendObservations[0].ObservedAtLabel);
+        Assert.Equal("0.9", view.TrendObservations[1].ValueLabel);
+        Assert.Equal("12 samples", view.TrendObservations[1].SampleSupportLabel);
+        Assert.Equal("1 sample", view.TrendObservations[2].SampleSupportLabel);
+    }
+
+    [Fact]
+    public void A_decision_without_windowed_rows_says_none_were_returned()
+    {
+        var view = DecisionView.From(Decision());
+
+        Assert.False(view.HasTrendObservations);
+        Assert.Equal(
+            "No windowed trend observations were returned with this decision.",
+            view.NoTrendObservationsLabel);
+    }
+
+    [Fact]
+    public void Cross_message_history_requires_real_slack_workspace_and_channel_keys()
+    {
+        var email = DecisionView.From(Decision());
+        var slackDecision = Decision() with
+        {
+            Channel = new ChannelContext
+            {
+                Kind = ChannelKind.Slack,
+                WorkspaceId = "workspace-1",
+                ChannelId = "channel-2",
+                ThreadId = "thread-3",
+            },
+        };
+        var slack = DecisionView.From(slackDecision);
+
+        Assert.False(email.ConversationHistory.IsSupported);
+        Assert.Contains("Email is not grouped by sender or recipient", email.ConversationHistory.UnavailableLabel);
+        Assert.False(email.ConversationHistory.ShowInitialLoadButton);
+        Assert.True(slack.ConversationHistory.IsSupported);
+        Assert.Equal(
+            new ConversationHistoryScope("workspace-1", "channel-2", "thread-3"),
+            slack.ConversationHistory.Scope);
+        Assert.Equal(
+            "Slack · workspace workspace-1 · channel channel-2 · thread thread-3",
+            slack.ConversationHistory.ScopeLabel);
+        Assert.True(slack.ConversationHistory.ShowInitialLoadButton);
+    }
+
+    /// <summary>
     /// A row with no window says nothing about a window, rather than "unknown".
     /// </summary>
     /// <remarks>
