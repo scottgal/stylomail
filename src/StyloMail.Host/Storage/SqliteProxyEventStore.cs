@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 using StyloMail.AccessProxy.Hosting;
+using StyloMail.Embeddings;
 using StyloMail.Host.Proxy;
 
 namespace StyloMail.Host.Storage;
@@ -24,7 +25,8 @@ namespace StyloMail.Host.Storage;
 /// </para>
 /// </remarks>
 public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThreadingEventSink,
-    IProxyTelemetryReader, IProxySessionAuthenticator, IProxyWarningEventSink
+    IProxyTelemetryReader, IProxySessionAuthenticator, IProxyWarningEventSink,
+    IProxySegmentationOutcomeSink, IProxyElementSink, IProxyElementReader
 {
     private readonly HostDatabase _database;
 
@@ -148,7 +150,9 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         using var command = connection.CreateCommand();
         command.CommandText =
             "SELECT 1 FROM proxy_threading_event WHERE tenant_id=$tenant "
-            + "UNION ALL SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant LIMIT 1;";
+            + "UNION ALL SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant "
+            + "UNION ALL SELECT 1 FROM proxy_segment_outcome WHERE tenant_id=$tenant "
+            + "UNION ALL SELECT 1 FROM proxy_element_point WHERE tenant_id=$tenant LIMIT 1;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         return ValueTask.FromResult(command.ExecuteScalar() is not null);
     }
@@ -281,6 +285,10 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "UNION ALL "
             + "SELECT thread_token,NULL,observed_at,account_id "
             + "FROM proxy_warning_outcome WHERE tenant_id=$tenant "
+            + "AND observed_at >= $from AND observed_at < $to "
+            + "UNION ALL "
+            + "SELECT thread_token,NULL,observed_at,account_id "
+            + "FROM proxy_segment_outcome WHERE tenant_id=$tenant "
             + "AND observed_at >= $from AND observed_at < $to"
             + ") u "
             + "WHERE ($after IS NULL OR u.thread_token > $after) "
@@ -325,8 +333,9 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         using var command = connection.CreateCommand();
         command.CommandText =
             "SELECT 1 FROM proxy_threading_event WHERE tenant_id=$tenant AND thread_token=$thread "
-            + "UNION ALL "
-            + "SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "UNION ALL SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "UNION ALL SELECT 1 FROM proxy_segment_outcome WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "UNION ALL SELECT 1 FROM proxy_element_point WHERE tenant_id=$tenant AND thread_token=$thread "
             + "LIMIT 1;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$thread", threadToken);
@@ -496,6 +505,219 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         command.Parameters.AddWithValue("$reason", marker.AvailabilityReason.ToString());
         command.ExecuteNonQuery();
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RecordAsync(
+        ProxySegmentationOutcome outcome,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO proxy_segment_outcome "
+            + "(tenant_id,message_token,direction,thread_token,account_id,observed_at,availability,"
+            + "availability_reason,segment_count,truncated,applied_max_segments,applied_max_segment_bytes,"
+            + "analysed_ordinals,any_segment_dropped) "
+            + "VALUES ($tenant,$message,$direction,$thread,$account,$at,$availability,$reason,$count,"
+            + "$truncated,$maxSegments,$maxBytes,$ordinals,$dropped) "
+            + "ON CONFLICT(tenant_id,message_token,direction) DO UPDATE SET "
+            + "thread_token=excluded.thread_token,account_id=excluded.account_id,"
+            + "observed_at=excluded.observed_at,availability=excluded.availability,"
+            + "availability_reason=excluded.availability_reason,segment_count=excluded.segment_count,"
+            + "truncated=excluded.truncated,applied_max_segments=excluded.applied_max_segments,"
+            + "applied_max_segment_bytes=excluded.applied_max_segment_bytes,"
+            + "analysed_ordinals=excluded.analysed_ordinals,any_segment_dropped=excluded.any_segment_dropped;";
+        command.Parameters.AddWithValue("$tenant", outcome.TenantId);
+        command.Parameters.AddWithValue("$message", outcome.MessageToken);
+        command.Parameters.AddWithValue("$direction", outcome.TrafficKind.ToString());
+        command.Parameters.AddWithValue("$thread", outcome.ThreadToken);
+        command.Parameters.AddWithValue("$account", outcome.AccountId);
+        command.Parameters.AddWithValue("$at", Timestamp(outcome.ObservedAt));
+        command.Parameters.AddWithValue("$availability", outcome.Availability.ToString());
+        command.Parameters.AddWithValue("$reason", outcome.AvailabilityReason.ToString());
+        command.Parameters.AddWithValue("$count", outcome.SegmentCount);
+        command.Parameters.AddWithValue("$truncated", outcome.Truncated ? 1 : 0);
+        command.Parameters.AddWithValue("$maxSegments", outcome.AppliedMaxSegments);
+        command.Parameters.AddWithValue("$maxBytes", outcome.AppliedMaxSegmentBytes);
+        command.Parameters.AddWithValue("$ordinals", string.Join(',', outcome.AnalysedOrdinals));
+        command.Parameters.AddWithValue("$dropped", outcome.AnySegmentDropped ? 1 : 0);
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RecordOutcomeAsync(
+        ProxySegmentationOutcome outcome,
+        CancellationToken cancellationToken)
+        => RecordAsync(outcome, cancellationToken);
+
+    public ValueTask RecordPointAsync(
+        ProxyElementPoint point,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(point);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // The whole point is validated before the write. A contract break is refused rather than
+        // stored as a half-meaningful row; the classifier client already refuses a whole batch
+        // upstream, so this is the last guard before persistence.
+        Validate(point);
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO proxy_element_point "
+            + "(tenant_id,message_token,direction,ordinal,element,scorer,thread_token,account_id,"
+            + "observed_at,score,nearest_exemplar_id,availability,availability_reason,model_tag,"
+            + "prefix_version,dimension,vocabulary_version,scorer_version) "
+            + "VALUES ($tenant,$message,$direction,$ordinal,$element,$scorer,$thread,$account,$at,"
+            + "$score,$exemplar,$availability,$reason,$model,$prefix,$dimension,$vocabulary,$scorerVersion) "
+            + "ON CONFLICT(tenant_id,message_token,direction,ordinal,element,scorer) DO UPDATE SET "
+            + "thread_token=excluded.thread_token,account_id=excluded.account_id,"
+            + "observed_at=excluded.observed_at,score=excluded.score,"
+            + "nearest_exemplar_id=excluded.nearest_exemplar_id,availability=excluded.availability,"
+            + "availability_reason=excluded.availability_reason,model_tag=excluded.model_tag,"
+            + "prefix_version=excluded.prefix_version,dimension=excluded.dimension,"
+            + "vocabulary_version=excluded.vocabulary_version,scorer_version=excluded.scorer_version;";
+        command.Parameters.AddWithValue("$tenant", point.TenantId);
+        command.Parameters.AddWithValue("$message", point.MessageToken);
+        command.Parameters.AddWithValue("$direction", point.TrafficKind.ToString());
+        command.Parameters.AddWithValue("$ordinal", point.Ordinal);
+        command.Parameters.AddWithValue("$element", point.Element);
+        command.Parameters.AddWithValue("$scorer", point.Scorer);
+        command.Parameters.AddWithValue("$thread", point.ThreadToken);
+        command.Parameters.AddWithValue("$account", point.AccountId);
+        command.Parameters.AddWithValue("$at", Timestamp(point.ObservedAt));
+        command.Parameters.AddWithValue("$score", (object?)point.Score ?? DBNull.Value);
+        command.Parameters.AddWithValue("$exemplar", (object?)point.NearestExemplarId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$availability",
+            point.Availability == ProxyWarningAvailability.Available ? "available" : "not_produced");
+        command.Parameters.AddWithValue("$reason", point.AvailabilityReason);
+        command.Parameters.AddWithValue("$model", point.ModelTag);
+        command.Parameters.AddWithValue("$prefix", point.PrefixVersion);
+        command.Parameters.AddWithValue("$dimension", point.Dimension);
+        command.Parameters.AddWithValue("$vocabulary", point.VocabularyVersion);
+        command.Parameters.AddWithValue("$scorerVersion", point.ScorerVersion);
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<IReadOnlyList<ProxyElementRow>> ListElementPointsAsync(
+        string tenantId,
+        string threadToken,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
+        ArgumentException.ThrowIfNullOrEmpty(threadToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT message_token,thread_token,ordinal,element,scorer,scorer_version,"
+            + "vocabulary_version,model_tag,prefix_version,dimension,score,nearest_exemplar_id,"
+            + "availability,availability_reason,observed_at "
+            + "FROM proxy_element_point "
+            + "WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "AND observed_at >= $from AND observed_at < $to "
+            + "ORDER BY observed_at,message_token,ordinal,element,scorer;";
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$thread", threadToken);
+        command.Parameters.AddWithValue("$from", Timestamp(from));
+        command.Parameters.AddWithValue("$to", Timestamp(to));
+
+        using var reader = command.ExecuteReader();
+        var rows = new List<ProxyElementRow>();
+        while (reader.Read())
+        {
+            rows.Add(new ProxyElementRow
+            {
+                MessageToken = reader.GetString(0),
+                ThreadToken = reader.GetString(1),
+                Ordinal = reader.GetInt32(2),
+                Element = reader.GetString(3),
+                Scorer = reader.GetString(4),
+                ScorerVersion = reader.IsDBNull(5) ? null : reader.GetString(5),
+                VocabularyVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
+                ModelTag = reader.IsDBNull(7) ? null : reader.GetString(7),
+                PrefixVersion = reader.IsDBNull(8) ? null : reader.GetString(8),
+                Dimension = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                Score = reader.IsDBNull(10) ? null : reader.GetDouble(10),
+                NearestExemplarId = reader.IsDBNull(11) ? null : reader.GetString(11),
+                Availability = reader.GetString(12),
+                AvailabilityReason = reader.GetString(13),
+                ObservedAt = ParseTimestamp(reader.GetString(14)),
+            });
+        }
+
+        return ValueTask.FromResult<IReadOnlyList<ProxyElementRow>>(rows);
+    }
+
+    private static void Validate(ProxyElementPoint point)
+    {
+        if (point.Ordinal < 0)
+        {
+            throw new ArgumentException("Element ordinal must be zero or greater.", nameof(point));
+        }
+
+        if (string.IsNullOrWhiteSpace(point.Element)
+            || string.IsNullOrWhiteSpace(point.Scorer)
+            || string.IsNullOrWhiteSpace(point.ScorerVersion)
+            || string.IsNullOrWhiteSpace(point.ModelTag)
+            || string.IsNullOrWhiteSpace(point.PrefixVersion)
+            || string.IsNullOrWhiteSpace(point.VocabularyVersion)
+            || point.Dimension <= 0)
+        {
+            throw new ArgumentException("Element point is missing its provenance.", nameof(point));
+        }
+
+        if (!ElementScorers.Contains(point.Scorer)
+            || !string.Equals(ElementScorers.VersionOf(point.Scorer), point.ScorerVersion, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Element point names an unknown scorer or the wrong version.", nameof(point));
+        }
+
+        // Validate element names only against the version that is currently closed; a future
+        // vocabulary is stored with its own version rather than rejected by an older build.
+        if (string.Equals(point.VocabularyVersion, ElementVocabulary.Version, StringComparison.Ordinal)
+            && !ElementVocabulary.Contains(point.Element))
+        {
+            throw new ArgumentException("Element point names an element outside its vocabulary version.", nameof(point));
+        }
+
+        if (point.Availability == ProxyWarningAvailability.Available)
+        {
+            if (point.Score is null)
+            {
+                throw new ArgumentException("An available element point must carry a score.", nameof(point));
+            }
+
+            var requiresExemplar = string.Equals(
+                point.Scorer, ElementScorers.PrototypeKnn, StringComparison.Ordinal);
+            if (requiresExemplar != (point.NearestExemplarId is not null))
+            {
+                throw new ArgumentException(
+                    "A kNN margin requires an exemplar id; a probe point must not carry one.", nameof(point));
+            }
+        }
+        else
+        {
+            if (point.Score is not null || point.NearestExemplarId is not null)
+            {
+                throw new ArgumentException("A not-produced element point must not carry a score or exemplar.", nameof(point));
+            }
+
+            if (string.IsNullOrWhiteSpace(point.AvailabilityReason)
+                || string.Equals(point.AvailabilityReason, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("A not-produced element point must name a reason.", nameof(point));
+            }
+        }
     }
 
     private bool Exists(string table, string tenantId)

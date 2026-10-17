@@ -84,6 +84,9 @@ internal static class ProxyEndpoints
 
         proxy.MapGet("/conversations/{threadToken}/signals", ConversationSignalsAsync)
             .RequireAuthorization(HostPolicies.Review);
+
+        proxy.MapGet("/conversations/{threadToken}/elements", ConversationElementsAsync)
+            .RequireAuthorization(HostPolicies.Review);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -747,6 +750,97 @@ internal static class ProxyEndpoints
                 AvailabilityReason = point.AvailabilityReason,
                 MarkerCount = point.MarkerCount,
             })],
+        });
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Element series
+    // ---------------------------------------------------------------------------------------------
+
+    internal static async Task<IResult> ConversationElementsAsync(
+        string threadToken,
+        string? window,
+        ClaimsPrincipal user,
+        IProxyElementReader elements,
+        IProxyTelemetryReader telemetry,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (Tenant(user) is not { } tenantId)
+        {
+            return EndpointResults.Forbidden("tenant_required", "The principal has no tenant.");
+        }
+
+        if (!ProxyTokens.IsUrlSafe(threadToken))
+        {
+            return EndpointResults.Invalid(
+                "invalid_thread_token",
+                "A thread token must be unpadded base64url (A-Z, a-z, 0-9, '-' and '_').");
+        }
+
+        if (!IsLast24Hours(window))
+        {
+            return InvalidWindow();
+        }
+
+        var exists = await telemetry.HasConversationAsync(tenantId, threadToken, cancellationToken)
+            .ConfigureAwait(false);
+        if (!exists)
+        {
+            return EndpointResults.NotFound(
+                "conversation_not_found",
+                "No conversation with that thread token is recorded for this tenant.");
+        }
+
+        var windowEnd = clock.GetUtcNow();
+        var windowStart = windowEnd.AddHours(-24);
+
+        var rows = await elements.ListElementPointsAsync(
+            tenantId, threadToken, windowStart, windowEnd, cancellationToken).ConfigureAwait(false);
+
+        var points = rows
+            .GroupBy(row => (row.MessageToken, row.Ordinal))
+            .Select(group => new ProxyElementPointResponse
+            {
+                ObservedAt = group.Max(row => row.ObservedAt),
+                TurnToken = group.Key.MessageToken,
+                Ordinal = group.Key.Ordinal,
+                Elements = [.. group.Select(row => new ProxyElementScoreResponse
+                {
+                    Element = row.Element,
+                    Scorer = row.Scorer,
+                    ScorerVersion = row.ScorerVersion ?? string.Empty,
+                    VocabularyVersion = row.VocabularyVersion ?? string.Empty,
+                    ModelTag = row.ModelTag ?? string.Empty,
+                    PrefixVersion = row.PrefixVersion ?? string.Empty,
+                    Dimension = row.Dimension ?? 0,
+                    Score = row.Score,
+                    NearestExemplarId = row.NearestExemplarId,
+                    Availability = row.Availability,
+                    AvailabilityReason = row.AvailabilityReason,
+                })],
+                // Tone has no server in this slice. It is a sibling series and is reported as
+                // not produced with the type's own reason, never as zeros or an empty mood.
+                Tone = new ProxyToneResponse
+                {
+                    Availability = "not_produced",
+                    AvailabilityReason = "ToneModelUnavailable",
+                    Top = [],
+                },
+            })
+            .OrderBy(point => point.ObservedAt)
+            .ThenBy(point => point.Ordinal)
+            .ToArray();
+
+        return Results.Ok(new ProxyElementSeriesResponse
+        {
+            TenantId = tenantId,
+            ThreadToken = threadToken,
+            Window = Last24Hours,
+            WindowStart = windowStart,
+            WindowEnd = windowEnd,
+            Provenance = "proxy_element_classification",
+            Points = points,
         });
     }
 

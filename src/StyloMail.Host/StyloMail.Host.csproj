@@ -40,6 +40,7 @@
          The cascade references only the provider PORT and constructs no adapter of its own, so this
          adds a composition and not a third provider. -->
     <ProjectReference Include="..\StyloMail.Cascade\StyloMail.Cascade.csproj" />
+    <ProjectReference Include="..\StyloMail.Embeddings\StyloMail.Embeddings.csproj" />
   </ItemGroup>
 
   <ItemGroup>

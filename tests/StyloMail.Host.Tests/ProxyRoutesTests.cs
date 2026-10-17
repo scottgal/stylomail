@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.Embeddings;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Proxy;
 using StyloMail.Host.Serialization;
@@ -828,6 +829,147 @@ public sealed class ProxyRoutesTests
         Assert.Null(anonymous.AccountId);
         Assert.Null(anonymous.AuthenticatedAt);
     }
+
+    [Fact]
+    public async Task Element_series_projects_scorers_versions_and_per_point_availability()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-2);
+        const string thread = "thread-elementsABC";
+
+        await sink.RecordOutcomeAsync(
+            new ProxySegmentationOutcome
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-element",
+                ThreadToken = thread,
+                ObservedAt = at,
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = ProxyWarningAvailabilityReason.None,
+                SegmentCount = 1,
+                Truncated = false,
+                AppliedMaxSegments = 32,
+                AppliedMaxSegmentBytes = 6000,
+                AnalysedOrdinals = [0],
+                AnySegmentDropped = false,
+            },
+            CancellationToken.None);
+
+        await sink.RecordPointAsync(
+            Point("credential_request", score: 0.31, exemplar: "seed-1:credential_request:0007",
+                availability: ProxyWarningAvailability.Available, reason: "none", at),
+            CancellationToken.None);
+
+        // One element can be unavailable while another on the same segment is scored.
+        await sink.RecordPointAsync(
+            Point("threat", score: null, exemplar: null,
+                availability: ProxyWarningAvailability.NotProduced, reason: "no_exemplars", at),
+            CancellationToken.None);
+
+        var series = await ReadAsync<ProxyElementSeriesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
+
+        Assert.Equal("proxy_element_classification", series.Provenance);
+        var point = Assert.Single(series.Points);
+        Assert.Equal(0, point.Ordinal);
+        Assert.Equal("m-element", point.TurnToken);
+        Assert.Equal(2, point.Elements.Count);
+
+        var available = Assert.Single(point.Elements, element => element.Element == "credential_request");
+        Assert.Equal("prototype_knn", available.Scorer);
+        Assert.Equal("prototype_knn/seed-1", available.ScorerVersion);
+        Assert.Equal("elements/1", available.VocabularyVersion);
+        Assert.Equal("google/embeddinggemma-2", available.ModelTag);
+        Assert.Equal("classification/1", available.PrefixVersion);
+        Assert.Equal(256, available.Dimension);
+        Assert.Equal(0.31, available.Score);
+        Assert.Equal("seed-1:credential_request:0007", available.NearestExemplarId);
+        Assert.Equal("available", available.Availability);
+        Assert.Equal("none", available.AvailabilityReason);
+
+        var missing = Assert.Single(point.Elements, element => element.Element == "threat");
+        Assert.Null(missing.Score);
+        Assert.Null(missing.NearestExemplarId);
+        Assert.Equal("not_produced", missing.Availability);
+        Assert.Equal("no_exemplars", missing.AvailabilityReason);
+
+        // Tone is a sibling series and its service is not published: not produced, never zeros.
+        Assert.Equal("not_produced", point.Tone.Availability);
+        Assert.Equal("ToneModelUnavailable", point.Tone.AvailabilityReason);
+        Assert.Empty(point.Tone.Top);
+    }
+
+    [Fact]
+    public async Task An_element_point_with_a_contract_break_is_refused_not_stored()
+    {
+        using var host = ProxyHost();
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow;
+
+        // Available with no score is a contract break; the whole point is refused.
+        await Assert.ThrowsAsync<ArgumentException>(() => sink.RecordPointAsync(
+            Point("credential_request", score: null, exemplar: "seed-1:credential_request:0007",
+                availability: ProxyWarningAvailability.Available, reason: "none", at),
+            CancellationToken.None).AsTask());
+
+        // A probe point carrying a kNN exemplar is also a break.
+        await Assert.ThrowsAsync<ArgumentException>(() => sink.RecordPointAsync(
+            new ProxyElementPoint
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-element",
+                ThreadToken = "thread-elementsABC",
+                Ordinal = 0,
+                Element = "threat",
+                Scorer = ElementScorers.LinearProbe,
+                ScorerVersion = ElementScorers.LinearProbeVersion,
+                Score = 0.5,
+                NearestExemplarId = "seed-1:threat:0001",
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = "none",
+                ModelTag = "google/embeddinggemma-2",
+                PrefixVersion = "classification/1",
+                Dimension = 256,
+                VocabularyVersion = ElementVocabulary.Version,
+                ObservedAt = at,
+            },
+            CancellationToken.None).AsTask());
+    }
+
+    private static ProxyElementPoint Point(
+        string element,
+        double? score,
+        string? exemplar,
+        ProxyWarningAvailability availability,
+        string reason,
+        DateTimeOffset at)
+        => new()
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = "m-element",
+            ThreadToken = "thread-elementsABC",
+            Ordinal = 0,
+            Element = element,
+            Scorer = ElementScorers.PrototypeKnn,
+            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Score = score,
+            NearestExemplarId = exemplar,
+            Availability = availability,
+            AvailabilityReason = reason,
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = ElementVocabulary.Version,
+            ObservedAt = at,
+        };
 
     [Fact]
     public async Task An_smtp_listener_binds_once_the_submission_gate_is_composed()

@@ -524,6 +524,87 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_proxy_warning_marker_thread
             ON proxy_warning_marker (tenant_id, thread_token, observed_at);
 
+        -- One row per attempted segmentation. Available with segment_count 0 is a measured empty
+        -- message; NotProduced with a reason is unmeasured. Ordinals are the only segment identity.
+        CREATE TABLE IF NOT EXISTS proxy_segment_outcome (
+            tenant_id                  TEXT NOT NULL,
+            message_token              TEXT NOT NULL,
+            direction                  TEXT NOT NULL,
+            thread_token               TEXT NOT NULL,
+            account_id                 TEXT NOT NULL,
+            observed_at                TEXT NOT NULL,
+            availability               TEXT NOT NULL,
+            availability_reason        TEXT NOT NULL,
+            segment_count              INTEGER NOT NULL,
+            truncated                  INTEGER NOT NULL,
+            applied_max_segments       INTEGER NOT NULL,
+            applied_max_segment_bytes  INTEGER NOT NULL,
+            analysed_ordinals          TEXT NOT NULL,
+            any_segment_dropped        INTEGER NOT NULL,
+            PRIMARY KEY (tenant_id, message_token, direction)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_segment_outcome_thread
+            ON proxy_segment_outcome (tenant_id, thread_token, observed_at);
+
+        -- One point per (message, segment ordinal, element, scorer). A score is only comparable
+        -- with its scorer and versions, so they are columns rather than an implicit deployment fact.
+        -- No text and no embedding vector is stored here.
+        CREATE TABLE IF NOT EXISTS proxy_element_point (
+            tenant_id           TEXT NOT NULL,
+            message_token       TEXT NOT NULL,
+            direction           TEXT NOT NULL,
+            ordinal             INTEGER NOT NULL,
+            element             TEXT NOT NULL,
+            scorer              TEXT NOT NULL,
+            thread_token        TEXT NOT NULL,
+            account_id          TEXT NOT NULL,
+            observed_at         TEXT NOT NULL,
+            score               REAL NULL,
+            nearest_exemplar_id TEXT NULL,
+            availability        TEXT NOT NULL,
+            availability_reason TEXT NOT NULL,
+            model_tag           TEXT NULL,
+            prefix_version      TEXT NULL,
+            dimension           INTEGER NULL,
+            vocabulary_version  TEXT NULL,
+            scorer_version      TEXT NULL,
+            PRIMARY KEY (tenant_id, message_token, direction, ordinal, element, scorer)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_element_point_thread
+            ON proxy_element_point (tenant_id, thread_token, observed_at, ordinal);
+
+        -- Tone is a sibling series with its own model tag and vocabulary. No writer exists in this
+        -- slice (nimble's tone service is not published), so no route may invent scores.
+        CREATE TABLE IF NOT EXISTS proxy_tone_point (
+            tenant_id              TEXT NOT NULL,
+            message_token          TEXT NOT NULL,
+            direction              TEXT NOT NULL,
+            ordinal                INTEGER NOT NULL,
+            thread_token           TEXT NOT NULL,
+            account_id             TEXT NOT NULL,
+            observed_at            TEXT NOT NULL,
+            tone_model_tag         TEXT NOT NULL,
+            tone_vocabulary_version TEXT NOT NULL,
+            availability           TEXT NOT NULL,
+            availability_reason    TEXT NOT NULL,
+            top_labels             TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, message_token, direction, ordinal)
+        );
+
+        -- Vectors are off by default: this table exists for a later retention policy and no route
+        -- reads it. The Host does not populate it in this slice.
+        CREATE TABLE IF NOT EXISTS proxy_element_vector (
+            tenant_id      TEXT NOT NULL,
+            message_token  TEXT NOT NULL,
+            ordinal        INTEGER NOT NULL,
+            model_tag      TEXT NOT NULL,
+            dimension      INTEGER NOT NULL,
+            vector         BLOB NOT NULL,
+            PRIMARY KEY (tenant_id, message_token, ordinal, model_tag)
+        );
+
         CREATE TABLE IF NOT EXISTS host_schema_migration (
             name       TEXT NOT NULL PRIMARY KEY,
             applied_at TEXT NOT NULL

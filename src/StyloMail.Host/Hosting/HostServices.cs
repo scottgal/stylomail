@@ -99,6 +99,12 @@ public static class HostServices
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IProxyWarningEventSink>(
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxySegmentationOutcomeSink>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxyElementSink>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxyElementReader>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IThreadTokenDeriver>(ProxyThreadTokens.Create);
         services.AddSingleton(sp => new ThreadingHeaderExtractor(
             sp.GetRequiredService<IThreadTokenDeriver>()));

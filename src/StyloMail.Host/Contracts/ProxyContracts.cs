@@ -304,3 +304,88 @@ public sealed record ProxySignalPointResponse
     /// <summary>Zero on an available point means a measured clean message, not an absent analysis.</summary>
     public required int MarkerCount { get; init; }
 }
+
+/// <summary>The element series for one conversation thread.</summary>
+public sealed record ProxyElementSeriesResponse
+{
+    public required string TenantId { get; init; }
+
+    public required string ThreadToken { get; init; }
+
+    public required string Window { get; init; }
+
+    public required DateTimeOffset WindowStart { get; init; }
+
+    public required DateTimeOffset WindowEnd { get; init; }
+
+    public required string Provenance { get; init; }
+
+    public required IReadOnlyList<ProxyElementPointResponse> Points { get; init; }
+}
+
+/// <summary>One segment's element scores, with tone as a separate sibling block.</summary>
+public sealed record ProxyElementPointResponse
+{
+    public required DateTimeOffset ObservedAt { get; init; }
+
+    public required string TurnToken { get; init; }
+
+    public required int Ordinal { get; init; }
+
+    public required IReadOnlyList<ProxyElementScoreResponse> Elements { get; init; }
+
+    public required ProxyToneResponse Tone { get; init; }
+}
+
+/// <summary>
+/// One element's score for one segment.
+/// </summary>
+/// <remarks>
+/// The score is uninterpreted: a kNN margin for <c>prototype_knn</c>, a probability for
+/// <c>linear_probe</c>. Its scorer and versions travel with it so two runs are never compared
+/// without them. Null with a named reason is not produced, never zero.
+/// </remarks>
+public sealed record ProxyElementScoreResponse
+{
+    public required string Element { get; init; }
+
+    public required string Scorer { get; init; }
+
+    public required string ScorerVersion { get; init; }
+
+    public required string VocabularyVersion { get; init; }
+
+    public required string ModelTag { get; init; }
+
+    public required string PrefixVersion { get; init; }
+
+    public required int Dimension { get; init; }
+
+    public double? Score { get; init; }
+
+    public string? NearestExemplarId { get; init; }
+
+    public required string Availability { get; init; }
+
+    public required string AvailabilityReason { get; init; }
+}
+
+/// <summary>
+/// Tone for one segment. Separate from element scores by construction: its own model tag and
+/// vocabulary mean a tone point is never compared with an element point or another tone model.
+/// </summary>
+public sealed record ProxyToneResponse
+{
+    public required string Availability { get; init; }
+
+    public required string AvailabilityReason { get; init; }
+
+    public required IReadOnlyList<ProxyToneLabelResponse> Top { get; init; }
+}
+
+public sealed record ProxyToneLabelResponse
+{
+    public required string Label { get; init; }
+
+    public required double Score { get; init; }
+}
