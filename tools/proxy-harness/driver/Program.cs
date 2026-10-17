@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -40,8 +41,16 @@ static async Task RunImapAsync(string host, int port, string login, string passw
     using var client = new ImapClient();
     await client.ConnectAsync(host, port, SecureSocketOptions.None);
     await client.AuthenticateAsync(login, password);
-    _ = await client.GetFolderAsync("INBOX");
-    Console.WriteLine("IMAP client authenticated and listed INBOX.");
+    var inbox = await client.GetFolderAsync("INBOX");
+    await inbox.OpenAsync(FolderAccess.ReadOnly);
+    var summaries = await inbox.FetchAsync(0, -1, MessageSummaryItems.Size);
+    if (summaries.Count == 0)
+        throw new InvalidOperationException("IMAP harness inbox is empty; retrieval proof requires a seeded message.");
+    var selected = summaries[^1];
+    if (selected.Size is not { } bytes or <= 0)
+        throw new InvalidOperationException("IMAP harness message has no demonstrable body size.");
+    _ = await inbox.GetMessageAsync(selected.Index);
+    Console.WriteLine($"IMAP client authenticated, listed INBOX, and fetched one body bytes={bytes}.");
     if (hold)
     {
         await Task.Delay(Timeout.InfiniteTimeSpan);

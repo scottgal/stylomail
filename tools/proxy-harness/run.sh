@@ -18,6 +18,11 @@ fi
 : "${PROXY_E2E_NO_TRAFFIC:=0}"
 : "${PROXY_E2E_LOGIN:=harness-client@example.test}"
 : "${PROXY_E2E_BACKEND_USERNAME:=backend@example.test}"
+: "${PROXY_E2E_EMBEDDING_ENDPOINT:=http://127.0.0.1:11440}"
+: "${PROXY_E2E_EMBEDDING_TOKEN_FILE:=}"
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
+  [[ -n "$PROXY_E2E_EMBEDDING_TOKEN_FILE" ]] || { print -u2 -- 'PROXY_E2E_EMBEDDING_TOKEN_FILE is required for retrieval element proof.'; exit 1; }
+fi
 if [[ -z "${PROXY_E2E_CLIENT_PASSWORD:-}" ]]; then
   export PROXY_E2E_CLIENT_PASSWORD="$(openssl rand -hex 16)"
 fi
@@ -38,6 +43,7 @@ host_log="$run_dir/host.log"
 imap_sessions="$run_dir/sessions-imap-live.json"
 smtp_sessions="$run_dir/sessions-smtp-live.json"
 idle_sessions="$run_dir/sessions-idle.json"
+retrieval_analysis="$run_dir/retrieval-analysis.json"
 transcript="$run_dir/client-transcript.txt"
 certificate="$run_dir/harness-smtp-cert.pem"
 certificate_key="$run_dir/harness-smtp-key.pem"
@@ -167,6 +173,9 @@ export StyloMail__Proxy__Providers__harness__SmtpHost="$PROXY_E2E_BACKEND_SMTP_H
 export StyloMail__Proxy__Providers__harness__SmtpPort="$PROXY_E2E_BACKEND_SMTP_PORT"
 export StyloMail__Proxy__Providers__harness__SmtpTls=true
 export StyloMail__Proxy__Providers__harness__CaCertificatePath="$backend_ca"
+export StyloMail__Embeddings__Enabled=true
+export StyloMail__Embeddings__Endpoint="$PROXY_E2E_EMBEDDING_ENDPOINT"
+export StyloMail__Embeddings__TokenFilePath="$PROXY_E2E_EMBEDDING_TOKEN_FILE"
 export PROXY_E2E_BACKEND_SMTP_CERTIFICATE="$backend_certificate"
 export PROXY_E2E_BACKEND_SMTP_PRIVATE_KEY="$backend_key"
 export StyloMail__Proxy__Listeners__0__ListenerId=imap-1
@@ -224,6 +233,16 @@ account_status=$(curl -sS --config "$secret_dir/curl.conf" -o "$run_dir/account-
   "$PROXY_E2E_HOST_URL/v1/proxy/accounts")
 [[ "$account_status" == 201 ]] || { print -u2 -- "Account enrolment returned HTTP $account_status."; exit 1; }
 
+# The retrieval proof needs one real backend message. This stays in the disposable backend and is
+# never copied to the artifact directory or transcript.
+print -r -- 'From: sender@example.test' >"$secret_dir/retrieval.eml"
+print -r -- 'To: backend@example.test' >>"$secret_dir/retrieval.eml"
+print -r -- 'Message-ID: <harness-retrieval@example.test>' >>"$secret_dir/retrieval.eml"
+print -r -- 'Subject: Retrieval proof' >>"$secret_dir/retrieval.eml"
+print -r -- '' >>"$secret_dir/retrieval.eml"
+print -r -- 'Please verify your account immediately.' >>"$secret_dir/retrieval.eml"
+docker exec -i "$dovecot_container" doveadm save -u "$PROXY_E2E_BACKEND_USERNAME" INBOX <"$secret_dir/retrieval.eml"
+
 listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/imap-1/enable")
 imap_port=$(print -r -- "$listener_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bindPort"])')
 unset listener_json
@@ -238,6 +257,31 @@ if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
     dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >"$transcript" 2>&1 &
   client_pid=$!; sleep 1
   curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$imap_sessions"
+  # The FETCH worker is intentionally off relay. Poll its durable, content-free rows rather than
+  # assuming the driver completion means the background classification has persisted already.
+  for attempt in {1..30}; do
+    if python3 - "$run_dir/host.db" "$PROXY_E2E_TENANT" "$retrieval_analysis" <<'PY'
+import json, sqlite3, sys
+database, tenant, artifact = sys.argv[1:]
+with sqlite3.connect(database) as connection:
+    segments = connection.execute(
+        "SELECT availability, availability_reason, segment_count FROM proxy_segment_outcome "
+        "WHERE tenant_id=? AND direction='Retrieval' ORDER BY observed_at", (tenant,)).fetchall()
+    points = connection.execute(
+        "SELECT element, scorer, scorer_version FROM proxy_element_point "
+        "WHERE tenant_id=? AND direction='Retrieval' ORDER BY observed_at", (tenant,)).fetchall()
+with open(artifact, 'w', encoding='utf-8') as stream:
+    json.dump({'direction': 'Retrieval', 'segmentation': [dict(availability=row[0], availabilityReason=row[1], segmentCount=row[2]) for row in segments],
+               'elementPointCount': len(points), 'elements': [dict(element=row[0], scorer=row[1], scorerVersion=row[2]) for row in points]}, stream)
+if not segments or not points:
+    raise SystemExit(1)
+PY
+    then
+      break
+    fi
+    [[ "$attempt" == 30 ]] && { print -u2 -- 'Retrieval analysis did not persist a Retrieval segmentation outcome and element point.'; exit 1; }
+    sleep 1
+  done
   if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$client_pid"; fi
 fi
 
