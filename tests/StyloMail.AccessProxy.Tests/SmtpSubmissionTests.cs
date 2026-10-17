@@ -114,7 +114,8 @@ public sealed class SmtpSubmissionTests
         var h = new ProxyHarness(); h.AddAccount();
         var backend = new ScriptedSmtpConnector();
         var sink = new ThrowingElementSink();
-        var session = NewSession(h, backend, new AllowAssessment(), new InMemoryEphemeralSubmissionStager(),
+        var stager = new InMemoryEphemeralSubmissionStager();
+        var session = NewSession(h, backend, new AllowAssessment(), stager,
             elementOrchestrator: new ProxyElementOrchestrator(new CompleteElementClassifier(), sink));
         var client = new StartTlsTestChannel();
         var run = session.RunAsync(client, CancellationToken.None);
@@ -127,6 +128,7 @@ public sealed class SmtpSubmissionTests
         Assert.StartsWith("250", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
         Assert.Equal(1, sink.PointAttempts);
         Assert.Contains("DATA", backend.Received);
+        Assert.Equal(0, stager.ActiveCount);
 
         await client.Pipe.SendAsync("QUIT\r\n");
         Assert.StartsWith("221", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
