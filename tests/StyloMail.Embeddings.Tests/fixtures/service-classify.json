@@ -1,5 +1,5 @@
 {
-  "request_id": "9d7f8f26066b4382a800f6ae4253b2bc",
+  "request_id": "3b7d07defc3848ca9c2a3f18c91d1fa6",
   "model_tag": "google/embeddinggemma-2",
   "prefix_version": "classification/1",
   "dimension": 256,
@@ -16,40 +16,40 @@
             {
               "element": "credential_request",
               "availability": "available",
-              "score": 0.075843,
-              "nearest_exemplar_id": "ex:credential_request:cb3811e9b2e4",
+              "score": 0.067799,
+              "nearest_exemplar_id": "ex:credential_request:066d380ef88d",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "urgency_pressure",
               "availability": "available",
-              "score": 0.059647,
-              "nearest_exemplar_id": "ex:urgency_pressure:7358e1abcdbd",
+              "score": 0.088489,
+              "nearest_exemplar_id": "ex:urgency_pressure:80c9e4b693ab",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "threat",
               "availability": "available",
-              "score": 0.095102,
-              "nearest_exemplar_id": "ex:threat:10347e8668b6",
+              "score": 0.130225,
+              "nearest_exemplar_id": "ex:threat:3baf19c30314",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "impersonated_greeting",
               "availability": "available",
-              "score": 0.031981,
-              "nearest_exemplar_id": "ex:impersonated_greeting:3a9b1b71accc",
+              "score": 0.060053,
+              "nearest_exemplar_id": "ex:impersonated_greeting:0eb12a70de90",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "attachment_lure",
               "availability": "available",
-              "score": -0.0218,
-              "nearest_exemplar_id": "ex:attachment_lure:4a09430996c8",
+              "score": 0.004882,
+              "nearest_exemplar_id": "ex:attachment_lure:9433bb32fc0c",
               "reason": null,
               "scorer": "prototype_knn"
             }
@@ -61,40 +61,40 @@
             {
               "element": "credential_request",
               "availability": "available",
-              "score": -0.030699,
-              "nearest_exemplar_id": "ex:credential_request:b8e8ff325e52",
+              "score": -0.035075,
+              "nearest_exemplar_id": "ex:credential_request:043dc23c8345",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "urgency_pressure",
               "availability": "available",
-              "score": 0.016606,
-              "nearest_exemplar_id": "ex:urgency_pressure:12bf89d5eec6",
+              "score": -0.008145,
+              "nearest_exemplar_id": "ex:urgency_pressure:171434f8a6b9",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "threat",
               "availability": "available",
-              "score": -0.014914,
-              "nearest_exemplar_id": "ex:threat:a475775a1f16",
+              "score": -0.002012,
+              "nearest_exemplar_id": "ex:threat:2b4ce423901f",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "impersonated_greeting",
               "availability": "available",
-              "score": -0.03891,
-              "nearest_exemplar_id": "ex:impersonated_greeting:87951eaa6a09",
+              "score": -0.040179,
+              "nearest_exemplar_id": "ex:impersonated_greeting:033c2c110b4f",
               "reason": null,
               "scorer": "prototype_knn"
             },
             {
               "element": "attachment_lure",
               "availability": "available",
-              "score": 0.002795,
-              "nearest_exemplar_id": "ex:attachment_lure:6c88b9e74de1",
+              "score": 0.007191,
+              "nearest_exemplar_id": "ex:attachment_lure:56151da44970",
               "reason": null,
               "scorer": "prototype_knn"
             }
@@ -112,7 +112,7 @@
             {
               "element": "credential_request",
               "availability": "available",
-              "score": 0.992121,
+              "score": 0.981264,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -120,7 +120,7 @@
             {
               "element": "urgency_pressure",
               "availability": "available",
-              "score": 0.999154,
+              "score": 0.943552,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -128,7 +128,7 @@
             {
               "element": "threat",
               "availability": "available",
-              "score": 0.977447,
+              "score": 0.880404,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -136,7 +136,7 @@
             {
               "element": "impersonated_greeting",
               "availability": "available",
-              "score": 0.731902,
+              "score": 0.99253,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -144,7 +144,7 @@
             {
               "element": "attachment_lure",
               "availability": "available",
-              "score": 0.532781,
+              "score": 0.575016,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -157,7 +157,7 @@
             {
               "element": "credential_request",
               "availability": "available",
-              "score": 0.004892,
+              "score": 0.001466,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -165,7 +165,7 @@
             {
               "element": "urgency_pressure",
               "availability": "available",
-              "score": 0.040921,
+              "score": 0.005101,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -173,7 +173,7 @@
             {
               "element": "threat",
               "availability": "available",
-              "score": 0.180287,
+              "score": 0.075101,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -181,7 +181,7 @@
             {
               "element": "impersonated_greeting",
               "availability": "available",
-              "score": 0.013319,
+              "score": 0.009737,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -189,7 +189,7 @@
             {
               "element": "attachment_lure",
               "availability": "available",
-              "score": 0.517227,
+              "score": 0.237819,
               "nearest_exemplar_id": null,
               "reason": null,
               "scorer": "linear_probe"
@@ -199,5 +199,5 @@
       ]
     }
   ],
-  "encode_ms": 400.238
+  "encode_ms": 1435.319
 }
