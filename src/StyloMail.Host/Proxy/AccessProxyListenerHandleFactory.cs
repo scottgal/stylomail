@@ -84,6 +84,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     private readonly IProxyWarningAnalyzer _warningAnalyzer;
     private readonly ProxyElementConfiguration _elementConfiguration;
     private readonly IProxyElementSink _elementSink;
+    private readonly bool _proxyEnabled;
     private readonly ILogger<AccessProxyListenerHandleFactory> _logger;
 
     public AccessProxyListenerHandleFactory(
@@ -102,6 +103,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         IProxyWarningAnalyzer warningAnalyzer,
         ProxyElementConfiguration elementConfiguration,
         IProxyElementSink elementSink,
+        Microsoft.Extensions.Options.IOptions<HostProxyOptions> proxyOptions,
         ILogger<AccessProxyListenerHandleFactory> logger)
     {
         _services = services;
@@ -119,6 +121,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         _warningAnalyzer = warningAnalyzer;
         _elementConfiguration = elementConfiguration;
         _elementSink = elementSink;
+        _proxyEnabled = proxyOptions.Value.Enabled;
         _logger = logger;
     }
 
@@ -204,6 +207,13 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             // as no-analyser, and nothing is written rather than a fabricated clean outcome.
             ElementOrchestrator = _elementConfiguration.Classifier is { } classifier
                 ? new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(classifier, _elementSink)
+                : null,
+            // Retrieval warning analysis is independent of the element classifier: it is the
+            // bounded FETCH assembler plus the deterministic warning analyzer. Null keeps IMAP
+            // analysis entirely off rather than installing a half-configured observer.
+            RetrievalWarningAssemblerFactory = _proxyEnabled
+                ? new StyloMail.AccessProxy.Sessions.ProxyRetrievalWarningAssemblerFactory(
+                    _warningSink, _warningAnalyzer, _clock)
                 : null,
             Tls = tls,
             SubmissionAssessment = assessment,
