@@ -82,7 +82,14 @@ def embed_all(endpoint: str, token: str, texts: list[str], batch: int = 16) -> n
 
 
 def text_key(row: dict) -> str:
-    """Content identity: the basis of both the split and any stable identifier."""
+    """Content identity: the basis of both the split and any stable identifier.
+
+    An artefact row carries the digest instead of the text, so the same function can rebuild the
+    split from committed data. That is what makes the split-stability test possible without the
+    corpus text in the repository.
+    """
+    if row.get("text_digest"):
+        return str(row["text_digest"])
     basis = " ".join(row["text"].split()).lower()
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
@@ -399,6 +406,7 @@ def main() -> int:
                 "element": element,
                 "label": row["label"],
                 "split": row["split"],
+                "text_digest": text_key(row),
                 "source": row["source"],
                 "licence": row["licence"],
                 "vector": [round(float(value), 6) for value in row["vector"]],

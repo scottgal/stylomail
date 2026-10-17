@@ -92,10 +92,12 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=8)
     args = parser.parse_args()
 
+    import torch
     from datasets import Dataset
     from setfit import SetFitModel, Trainer, TrainingArguments
 
     rows = [json.loads(line) for line in args.labels.read_text(encoding="utf-8").splitlines() if line.strip()]
+    calibration = calibration_set(rows)
     results = {}
 
     for element in ELEMENTS:
@@ -111,7 +113,18 @@ def main() -> int:
             })
 
         print(f"{element}: fit {len(fit)} calibration {len(calibration)} heldout {len(heldout)}", flush=True)
-        model = SetFitModel.from_pretrained(args.model, labels=["benign", "element"])
+        # Force float32. The base checkpoint loads in bfloat16, and the setfit 1.2 head/backward path
+        # produced "Found dtype Float but expected BFloat16" before the first step completed. The
+        # serving path keeps bfloat16; this arm is a training-only comparison and float32 is the
+        # honest choice for it.
+        try:
+            model = SetFitModel.from_pretrained(
+                args.model, labels=["benign", "element"],
+                model_kwargs={"torch_dtype": torch.float32},
+            )
+        except TypeError:
+            model = SetFitModel.from_pretrained(args.model, labels=["benign", "element"])
+            model.model_body = model.model_body.float()
         trainer = Trainer(
             model=model,
             train_dataset=dataset(fit),

@@ -4,7 +4,7 @@
   "model_tag": "google/embeddinggemma-2",
   "prefix_version": "classification/1",
   "dimension": 256,
-  "created_utc": "2026-10-17T23:14:43.454678+00:00",
+  "created_utc": "2026-10-17T23:15:43.283252+00:00",
   "knn_version": "prototype_knn/corpus-1",
   "probe_version": "linear_probe/corpus-1",
   "seed_ids": [
@@ -2351,6 +2351,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "5160eff3057f7d9a523d06e63171ac07e3a2c80a7033273dcc1f7577d9f70567",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -2617,6 +2618,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "fb88d340148ed32bc377d332065d7a4437b6d8bf3dae06ae1f5f74e55a76ba8c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -2883,6 +2885,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "8b80830c916caf7b827ff127a7e1eaf4d186ad285b1d65f155bfd0c3ded766f8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -3149,6 +3152,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "91c603578636d40551fcd982045a47369eeaf661494ccd6054471cbffc0ca473",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -3415,6 +3419,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "7aec1622b0416419b634273634e964ec8ed2d11b7ffb3dbb1206117114c26648",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -3681,6 +3686,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "f5e581ccbab2c7db7ac0ef3b591f7e3adbfde1f394f080bb5eeedc2c52d8903a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -3947,6 +3953,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "b4338eb8d6c921c6919db1f41b730954c1422bf1edb6babb53cb783cf118fc0d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -4213,6 +4220,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "5dc09e9a5fa09e4e1f1b9d754fd265745f69f4e60db18d2bde25c4a202ff67c1",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -4479,6 +4487,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "0363c4a734ff879f0e6bb0df22c4aa67eed6793db883fc022ac8781cb41d5d8a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -4745,6 +4754,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "39c1a427865eddbb4611fc27812bf7bfc1fcaa5e85ec3db27f481c0d2ff4ceca",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -5011,6 +5021,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "f985e4a09dcd7f4faa7de0a8915b25a7ccd70b26b005f3bf2220f0d351a0d5f7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -5277,6 +5288,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "3eed0f23cf34b05d15bf82d6f8368e83efe976ec431a957c31dbeecf5d05f0d1",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -5543,6 +5555,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "56c3154e217b12e5ccfec32d6f0532eff562e8921e7e9781b020e9f9bf28483b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -5809,6 +5822,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "06213e15820c12592c0c44cdb4f136d7978cdc2b90ba0d97be5ce408b3f373cc",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -6075,6 +6089,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "3cbed7287e019c64ea3d1a26465c709224ee9e7f757f9b38fb707a2c511dbfc6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -6341,6 +6356,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "2442fe0f8be6cb71d17e2c01ccdfefc19d7c6dfd02b38eddb6ce54faf7f4cf1b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -6607,6 +6623,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "3b6d93d9f64c2700d3c4197df6787c0b8c9d1f38c5ef763979c6122e9172ea53",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -6873,6 +6890,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "95c3352b1be56c5eaa4b05caa621deb0836b0801468b414c84d0f17215b30383",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -7139,6 +7157,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "94e9ee973d36369f847ea31d5b65ef9353b7d940eb6d08e4830e4dcc73304643",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -7405,6 +7424,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "f36f6c0cd5f35f8bbd35a006cb4be8911816490d6e7a4ccbecfea551c33a73d3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -7671,6 +7691,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "240690d674cf2dc4de18482f73f65fc111bfbfc6f7ae34d6a3b5e3ffdf07902f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -7937,6 +7958,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "53aa539f661d85fb8dc69e44120a3bb47bbf258975fad8cc190eaa3e92b57adc",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -8203,6 +8225,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "def2e0525c936705e160358c3f26931b52dfb9cf40a6bf4642aa209dd08fe854",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -8469,6 +8492,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "acbf0629780164b64414824afe34eb1e2392f1ab347f4d8891cb64c8809301b9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -8735,6 +8759,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "278c8a6c3c13156fe3e689e499e197880307ba801d6cb894c438498f6f031fa6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -9001,6 +9026,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "235065d2c1682076c36eb6e10ffe8c33857551e3ca6bdc5e846ddc9af7dfb5c6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -9267,6 +9293,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "2c7ef5e323d4b23da602a1b8cf2884a7195e56d7d52e3c578fbf549a59ad3b7b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -9533,6 +9560,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "9d04d0826e1995e1b8638a7c915e814baaf10a259446e5aff234c4e80e8a77db",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -9799,6 +9827,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "36e39c0cb733811d0a40d75bb19999b8b19e1c9b5de92283cf347c15defb4533",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -10065,6 +10094,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "bdbd9cd239bd0cf968563e834f4b5efca1b615fb3f2f1262228e40e863769a10",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -10331,6 +10361,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "a05ff64e66e9720409cee5fe488d37bbc1a12c2e52c5cc9f8dc5fb635e8b5159",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -10597,6 +10628,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "29e036de326717d1a525825409f4804aef50dd299c55bcb67fc51536d2bccb08",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -10863,6 +10895,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "5d506f2c768b83d2542bcb4ad25ba6ab86a10f31ee60a15446e5bfa41b4c6a2a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -11129,6 +11162,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "b0c2ef7e403991698a49546771f7660ace7d043da73cfe047ddecb6c9c61a619",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -11395,6 +11429,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "ff925f6a442d7fded3a630f6e732e70cb14bbdf7b0b11b50aa5750e5d04a6a9c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -11661,6 +11696,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "14cfd97f4f43bb21532786de01fb291d17838de18d316111f2911c3dea3e50c4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -11927,6 +11963,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "87023a525af4265a99feaee56dad9471b98247430afc8a737f17ec67d19e0b80",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -12193,6 +12230,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "c375c6ee501e849b2f99cfea49b58aa0c5877f74c98a8cfbf417cf5e42105383",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -12459,6 +12497,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "e24171d768e3f60584d109f3851c1846b625dd76498d3cde69d4b5c9cbaf79b7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -12725,6 +12764,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "b44ce9ad074af70ba3bf5b20400b1e29ecf3b97eab41da4c6d5f110a289b291e",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -12991,6 +13031,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "6eee6bcdf18d00f39ffc8b2420abc6a842e882ef8fbe547d216830d0a2e74912",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -13257,6 +13298,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "5d6fa496a44c7e3c1f73010f01d94e2a926b0cbb4c7c557206ff9d10938e5972",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -13523,6 +13565,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "ef556fe8fab12cbbf1e51d084a055f2b7404d8bfbe5790292f5ff07730eff024",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -13789,6 +13832,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "22da801ef4e37349901817e749523f634940fbd4962d5d8bc262baab71f9ade7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -14055,6 +14099,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "05fa01fff89a3dfd5ec4ceb837e8694882b30de788416dc56c2139e0d86c266a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -14321,6 +14366,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "54571d496ecbfcef14cf61614e0fe78d119381b12f41fc8b0a9bede7d093f0a9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -14587,6 +14633,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "6dfa33008a8d3a2e4ab49f5413fea8cdeb55d4bdf90b783c6af6a7d6b1caa2c7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -14853,6 +14900,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "eb4c90909ed849718c0b8b5d4972c180d8bf4444991b7a191d8a71b846b674b4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -15119,6 +15167,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "6891f6912d1488fc761052aa1d4b0d80443be85637e59a0f5fa083938e3df929",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -15385,6 +15434,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "d82139c4edd1c809c4c530a14366463eeec54464fcec5b974bdd26d93ac90d3c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -15651,6 +15701,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "021338144472ea718b7c9f76eb5feabb15853254bfaad63e3c624fbf2030a2e9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -15917,6 +15968,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "cc109c72c0cd5efd5bee6ff8a26ddccbea14fc537f81fa4acf731d38a0d17451",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -16183,6 +16235,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "89bd4e2def1713607f841058094c5cb772407e4219f0a97dee36639760f8ee0c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -16449,6 +16502,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "adb63f585329e5871701106bc0b1fa32a60a90081f54a4d7aa6856e2b252e434",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -16715,6 +16769,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "b8f3e5ff3c85c4a88edc466333310d487391ae0cf95fd4951d179b4b4b91582f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -16981,6 +17036,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "e2b8ffc35fbedc6e3be843cd8d7fc6346f9a2609ecb7ed5f1ef6e08be18ee943",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -17247,6 +17303,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "6df45bc179e82d9229d545fce6169699ab22daca72088daa5159c4398489ff50",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -17513,6 +17570,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "heldout",
+      "text_digest": "fbed426d9ed14cd70aa3f90fbb5f869a89258ea107827d480f2c66170148b105",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -17779,6 +17837,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "cebf64e91b3ff6ad80c4c708e007f0b17ea97b9c7ba29687195d4447e9b9be15",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -18045,6 +18104,7 @@
       "element": "credential_request",
       "label": 1,
       "split": "train",
+      "text_digest": "c1329d0929e4d1fa691a6ac31900dc5c59b4676fc514d8af07b88940d3d0ea12",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -18311,6 +18371,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "0efe38061c3ec7f27a9ea1369a3658b8f168fbe094da8f29030dd162f66f956f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -18577,6 +18638,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "f5f01553082f00506f21b3000f227071ee204a3bce7f1abef2b1b35db5332ebf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -18843,6 +18905,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5de376be6334879a681d694571caf67833b022084f3b422789e1c3b4f1337e1e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -19109,6 +19172,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "e56ec788caba675ec03cb6a49ba3e63cd7a60a16a3c90522a8a1d45461f75733",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -19375,6 +19439,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "fffb2170e243db85e42bb60b710e0c16dd076b2bc983c538328f7455f104ba84",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -19641,6 +19706,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "908e24419eacf3db0cf8b237fb034848945e87cb32715601bc5f2cd827b835ef",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -19907,6 +19973,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "e6059b99cf2819c39b13812408061fd6e434e58061b96196ec7339cf31df7823",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -20173,6 +20240,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "fc6a8a0eccb0a5f49c3b9ad2f14f5f2c7ee934670efc4078699739c8510a26af",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -20439,6 +20507,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "b2a4e11e6563c774832ea427b8a2127bf0435858308da6aa9d94c9735c9749ac",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -20705,6 +20774,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "0a27a9fe43e0a7c0a92b91d146d11d06fe5b64cb969cc75b04914da9ee687165",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -20971,6 +21041,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "6eb77ab0ea90962870d1ac85ac9359e48a4c3cce9d37c03cf1bfdd1992c0f51a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -21237,6 +21308,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "4bf7dc45a9365b78819f1b115add1df5480f380e7526a338bec3ea88763ef8e1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -21503,6 +21575,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "858ea0b73bcc182920ef4878e42332dbcfdafb815c29cdf3ae2dd9fa8c49b811",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -21769,6 +21842,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "e7db673d5b1bcb75fb21a7ff2abd37ccd0114f109265a8cdb0afffb98c709ffd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -22035,6 +22109,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "0c71f4bc2cc076bd0ed5bf149e03a0a87276fe07f0caac8cbeceb8ca8e66ba6c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -22301,6 +22376,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "29fb81a76fb2545de88972b8930f4629e0fce4043d44e3f5bb0966e547321ec0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -22567,6 +22643,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "0125be6754595aac96a03d027fe2b22217598123958993744558d2978d516b39",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -22833,6 +22910,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5a54a2b27a9a50a238d1b5c69d3d56b7c2b6d2e1cf9fe46af4a1a742fbc40fe4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -23099,6 +23177,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "7c66665cdb02b6dbbb9222aa42f418ee33edc2452abcd97660de46deb866712d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -23365,6 +23444,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "645ace5faea0ec665e1b3133be502d6d78461557e47fda7c1da18a89d96e9ea3",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -23631,6 +23711,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "d7093e248b8c354c909bf8b96ede696c91a46e7a9998e2fa794360f17759a2d2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -23897,6 +23978,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "6e38ab8fbf807db8202c28199b30133f5403682ef64b5921e1e25a35ac6da2a7",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -24163,6 +24245,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "4e740168133b402454deac62b6d579c604a868d872e88ba3e59a805fa17e00d4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -24429,6 +24512,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "cb989ae2b874256f43857a46d89d1358b63455e44385254a4b109816066fd130",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -24695,6 +24779,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "4c70bacc325db7271c2b0816a7902b3f32f100aa38146a1ac298bb92660fc5b3",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -24961,6 +25046,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "6caf6898aa9ece5548cc8d1663707a3cc6e46f9c3edd76a4455fa3d6893c70f9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -25227,6 +25313,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "57ef5bc1eeebd08608bd788fb486a8e46977dd6a7a9a796a0c2aaea22f2735d9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -25493,6 +25580,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "3f56c77d75ca50bcf34422e7b0a25107b30eba9e7d4c81cc293b5ad531acb5ff",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -25759,6 +25847,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "36c7699ddefc342a85a0c9898837811b784e68e4169af449f164a82aeed3814f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -26025,6 +26114,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5eb0b945de33881c28b96fe3b45188395aa068f27e4ecb22ad980d2fe6bccd10",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -26291,6 +26381,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "0927ca9ca74df795422b462aa9825d48b984818ce232697ca2044b1c02c8316a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -26557,6 +26648,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "f2e8af2d9acc5a078a040e992d68bcb77452bc253dc2cbc7d9e5d31984422ddb",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -26823,6 +26915,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5233384db3d4f3b7f6c9f40993f74acaae4899b7e981a806ee666670e862bb1c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -27089,6 +27182,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "dc7d96b07ea9ffb5aea804c868afa6cd8a9c6bf9dfbb6a518c3ee710ef7b40f0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -27355,6 +27449,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "a3a883da73456d19191f1b07671ff0ad3e865951d97be455ab02ec86a8b3deca",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -27621,6 +27716,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "845423d70a357c632764e8cb012192e077e6781c70c913ed5ec5b11bfa38996b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -27887,6 +27983,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "b9dda0c0cf70c8944c44fbcf9df91577d1cd372a3e6c154fa93ef3d7c6c92249",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -28153,6 +28250,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "7f09e60b4f280b5de161f6ac0575978fdba5673dc79960e217d73fb5124d4b1f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -28419,6 +28517,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5bb50c003894a141d69920e817fdcad94f08509e22b539a6dbdacecf9102d423",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -28685,6 +28784,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "f86a85c0cbec4de730b6d5e8e334e80c1f032b04ad2d4e4e1a044813ac6cbaf4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -28951,6 +29051,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "e120dc31918f30fe2c8be49de386400c94d9bb7e077d79f5275acac24000eefd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -29217,6 +29318,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "aa33efc9b651446b4d1a059ae959f6a666c9b8063c605f81380bec0dd34bf783",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -29483,6 +29585,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "8f5f2ff0d2f7c8efccd4590a7dd1eb700c56edcb6827c5aaf0eae0e5ff0f2f4a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -29749,6 +29852,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "2afa90901e2506d196e53516e63fb9d37c9954853c4df4a15b69b3bb7022e236",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -30015,6 +30119,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "5fbe2545711a104d18c82f67fefdad3d211fcb66cc20ff1a6b28fd9999f428d5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -30281,6 +30386,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "15d1a387ec37cc106b70e16d6ba467201c1e21c2aeb3c0788dbe206c0db7d6fd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -30547,6 +30653,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "04648f1f4a390d0e240e7870b3cc85a9c0e157657bde5e06e58d431042b48695",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -30813,6 +30920,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "30f85b9926268c94b45152542798f13db6cfe236b3a80f60087bdf1284127853",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -31079,6 +31187,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "c4247773c9ba245c1876b29fb3b4a862bfafba010656c3594f2d42e83595052a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -31345,6 +31454,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "5b7a7eb00a056483986fab702b301871f50e8951fb824df5edd4582b86a5f234",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -31611,6 +31721,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "c2b9df2cb89e98ba0567826c1a8c8d8c73bff0d15463931d654195b16128a5ca",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -31877,6 +31988,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "b05f5a9e5d3be9b23b3a2be41fecc0a89f68c0a4d4710edbc607ea147501b2ad",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -32143,6 +32255,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "8469a76091b45a80314c233971ee6ba26f688f25e2c69e1a2d10f86d95ff7b38",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -32409,6 +32522,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "e711d0143d9d9aa868c75e30c9bce008aa77a32c328780b7c2843e731d857fb2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -32675,6 +32789,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "01bf0597835a1db0ba4a26f831a0c4244a76ff130121c9c6b1d4da18219ebf26",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -32941,6 +33056,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "15cd0aca45cf500b4742c8212e2985f7d538bf1a982dd98040852f68bef94b77",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -33207,6 +33323,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "heldout",
+      "text_digest": "3781d867cedfe727b1f739873599d81def8ab19c4c1c8380cb0e306e2fabde5a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -33473,6 +33590,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "507d935fdaad73abd324ee144dc1f23f43a35f4d711965cd41ca5f76d4df9acf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -33739,6 +33857,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "fcc42d365e9a3178c9fe7913ee1ac183b3b61c58e41516111f8f19a9ff69ee11",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -34005,6 +34124,7 @@
       "element": "credential_request",
       "label": 0,
       "split": "train",
+      "text_digest": "017aff4e6ad30c5e0a2705af70501a187c6ee7723338d55d6afab0d9ec8b5644",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -34271,6 +34391,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "ed6da4dbd02ca77dcfc0e79ca01b09b577f31b6df57501f5de251b606a44368a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -34537,6 +34658,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "9fb248e24a85252a92609cd8791a915ba542c54667f61dcbac0c9c1d807b2f3d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -34803,6 +34925,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "d4155f2f535fdc8e93a8f55a362c56de2154d533c6b246bf9056a6421c32be6c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -35069,6 +35192,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "5f883b014ef42749a0a570b0f7b2fa7e387dc4db3021b32333dd251c0cbd6c7c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -35335,6 +35459,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "8e9070283155b6a3dd1773fc4f9be407bec18f64bad414bccb98944f15e981f8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -35601,6 +35726,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "83ddf88b4e53b487c4edace95f515a4e09cb6322853c71502a061a32567dde2b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -35867,6 +35993,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "a3d9bb979248965b81cfc6c4496e6c50fc974f344bb6fdee8c7c307c7aeab993",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -36133,6 +36260,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "e16ec31ccb3be99bd04bdc0c8ece5339e5c499bc2a5eb1de1727877206fe12ec",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -36399,6 +36527,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "09d91e14491fccdd3879fca8a3aa2a93a05c5a79f3430b8ddeb4ba0f32672602",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -36665,6 +36794,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "314c1f54e837e4f9ec05b6fbc9da00c4aa903b0d65fa81c419f381a772f3b37d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -36931,6 +37061,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "bd16931d8c3130ab1bace0a15b369ac7bd83a1d43c8ecbdcac9862ceb0188818",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -37197,6 +37328,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "8ab0f87d1cff6f25383f96cef30fb3152136de5dbb48e93521904bb27ab15367",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -37463,6 +37595,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "47091ab15c204b6b95e3f482da984e501693e2a5cfec91ff292d8e2233f79ea7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -37729,6 +37862,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "891b5959f01186accceaa426ae70ab5fee7f5a6ded2772d6e7ea10324168546b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -37995,6 +38129,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "07e290714f5b5fd57f8e8786ac4749ce44eac138b3f2c723168da3cb9faa704e",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -38261,6 +38396,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "72ff2248697128d2e50e630fa38bc96184cfc510836c234fec74844fbb1ad4a7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -38527,6 +38663,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "bbacd53f0ef1af01797595b0a3706016e1bd113806780c7d6ae1be461df0f675",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -38793,6 +38930,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "72549cda9b0a2a3586eafb0b03e9938ef083e33b317026fba9805418dc9d80ee",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -39059,6 +39197,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "91e2a80de250b5b2ff49a6f73276f048ca0bd3973bcba55d02e18ab4f2614f5c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -39325,6 +39464,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "a508743713fe93dfd12668d95c642f454054f315d2c1a1dcc57f760f7ee70253",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -39591,6 +39731,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "3f03b4e72391e5e7d833044209c7551f09f7293448731e66d29169bf9f8677c0",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -39857,6 +39998,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "c7529e21b91b3c36d986da7badc3eba78a50673d9235117f5383f1b1970054c9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -40123,6 +40265,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "24020c0cfae6ad18a99ba3930f826f9838b1bd004ba8803588369a4c980adaf9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -40389,6 +40532,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "5894135af5ea0d6637a03fec62f7556f42f9848898066dcd45018e7abf9c57d2",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -40655,6 +40799,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "4a206ec306955fe6bf04702f1756596306e0d2722c9075791adb571cf7d00d40",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -40921,6 +41066,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "643bac22ed1024f057b6f70319b82e07f3959159a7b4fc4f8c76e6fbff4c0477",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -41187,6 +41333,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "bf658135a77798ac5c822c0745856ea364a4256c384140d9788a7f266a6386fc",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -41453,6 +41600,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "f04ae6e8a3a289dd86b586deb769bb42dca1943f06c5007ff7a5dfab03794616",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -41719,6 +41867,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "f19397f7964c2b043a8b264f45f66129d0db2733317d933b8781b39a2c203e28",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -41985,6 +42134,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "ff406c3e762141cf718df797034b089db0f71ce9e349729a0233cfe3fe6f3986",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -42251,6 +42401,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "b64ebbd28b499ab7d67580a75e1d5ab40ee43684237c8d610519c5d3f696802a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -42517,6 +42668,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "87a9bf93a59cc6e6121ff6f71b91cb60fa9bde9675cae9c14bfac76ba419fd5e",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -42783,6 +42935,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "46b25da3c7e3cab5672fde869ae9da8a5ca467021c92ca48468f7e24c4501a2b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -43049,6 +43202,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "6ab6d0a359bebd47f784531f29d2baccd320a0ef408707dadfa0294d9cf2decb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -43315,6 +43469,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "7649bb6e687846f344a10799182abe5b633adf49b07d570a8c69b68c43ab6566",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -43581,6 +43736,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "614d258e48c55e4d9f709eb7a2c19191ede6bbbbd78c05d497cbbc844e797074",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -43847,6 +44003,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "6ba38af9006403e78f6f7f151150af31571eeaa723b27eb8c4d986fa2574ac7d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -44113,6 +44270,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "3efa9d0d2979fd695caa7e2fd989318060779017258c65c66935f05689d92383",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -44379,6 +44537,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "78906852d6d519aa2185e9ae7939eedf255e68c4b3ddef1149ddbd68911af0b7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -44645,6 +44804,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "fa923dd9028c37fe2746a4f027d30b1670440035af883551765ec98fe9caefad",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -44911,6 +45071,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "3b41b18c4399201825f373a3e095ded11d4f9ff2c13a420c324bbc1f22636cbb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -45177,6 +45338,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "9b002e0ee14a63aecdce537f9c0f8208e1919f53109b474233b0dd23fad9c88b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -45443,6 +45605,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "5da6a66cbb9f1db965b82b94988f5ef4458cc99ed46b4daac16763594d6579b7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -45709,6 +45872,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "40db1c2fbdad7944df4755191526aed6801e6e3d93ef6e67a8b21e98154f0311",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -45975,6 +46139,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "65989d71544e092465b30c0ee1001b7fae59cd54f1c2bf1e49770ae77270c47a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -46241,6 +46406,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "ca30ecf200bd76ea8d1c9c0f0134a7cc9d7a73401fcfba23ea2fcacae581d147",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -46507,6 +46673,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "20dacb1a98c76fae3fb791adfc79e85dfe3fa238c875b92b21ce1809c52c428b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -46773,6 +46940,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "20dacb1a98c76fae3fb791adfc79e85dfe3fa238c875b92b21ce1809c52c428b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -47039,6 +47207,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "0956eb3cf797ce97fc05362d698acc0ba1713bebfcd290f4222038deddd8ef93",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -47305,6 +47474,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "20dacb1a98c76fae3fb791adfc79e85dfe3fa238c875b92b21ce1809c52c428b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -47571,6 +47741,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "fe7d87a2c8ea406ecfe8468a21c99c77db99d3437bdd3444a18d130a14d6c611",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -47837,6 +48008,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "fe7d87a2c8ea406ecfe8468a21c99c77db99d3437bdd3444a18d130a14d6c611",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -48103,6 +48275,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "fe7d87a2c8ea406ecfe8468a21c99c77db99d3437bdd3444a18d130a14d6c611",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -48369,6 +48542,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "0ab46b53e9e386b13921b95068023fb3f1ddb83a068f44eecb740d4b41643e4a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -48635,6 +48809,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "8700ccd7039a2dbf6cee9be5ef0eb940b8b9c684cdf7082e3219e67d010bfe8b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -48901,6 +49076,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "a1779559892e13ee3bf1e01d22de4b4b1cdc652da435db18083f2235097a0e47",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -49167,6 +49343,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "2398cdc80d85099c23a3fb4790e949bccb0a62f6d6b386adb6a82df73a5ec2c4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -49433,6 +49610,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "5d0476d1e229bc7551acaca182b2989e970f328ecae3197ecaca5aea998f9fd4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -49699,6 +49877,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "train",
+      "text_digest": "91d988d0a7117bdcb058c5b930231846bec186a7096910abe1ac9636f3c66891",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -49965,6 +50144,7 @@
       "element": "urgency_pressure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "a1fb90944fa4e717d003739c7757bc72e6f3e5c620122f669a0f80ddb263f90c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -50231,6 +50411,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a0fc215d91e7934d3d68c3bcd1df59c4bf6e3a88e2fe336d87e36a9ec7f5d891",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -50497,6 +50678,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "1d3c328f9fdb1d77d412be3e3a77059df04613c3b05747f09464d7768d1fcdd4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -50763,6 +50945,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "8db38a7914b7c5fecd34a132a900f5a69234c0bf05018086139e4f185e008b9a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -51029,6 +51212,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "58dbb4c1f6f72a8ce497999cafd74e2c3d33ad3e86605af614e9cced1553c0f9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -51295,6 +51479,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "d0a649783cfb379bf8f9331ddc4b88a7709d508f9d3547953199d04b457fc0d0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -51561,6 +51746,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "3a28c1594bf631e851cd414d5e40c47b6c6ccace6161851d3f6dbdde4e1081a5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -51827,6 +52013,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "f4d185f35759e61c143317007868d36effc231a0ecebc6b9eb27082ebefb62d0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -52093,6 +52280,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "d9b03a8980a7db4a8ba8a4d21f461564f5f2fab595b2b590ca64f57ec8480cf0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -52359,6 +52547,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a4db089e8f0640e297fe30aa4b45b780045915113076999617fcb476e18b7a13",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -52625,6 +52814,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "3fe05a1260e191a7b60defa9ad5d3674c0d0ebdb6ac88ea28f24a2c2f53bc40d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -52891,6 +53081,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "4bdee77f1478991804b6a1edc26b124768e1a499e109fd3efc67aa687d702a04",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -53157,6 +53348,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "22986151ef03d166917ccbbb602f1ca2f497274ff9922b832b04b25ad742b585",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -53423,6 +53615,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "69bd3b1a73b780f45b3632636207da08de22713bdff32fa05be012c93ef075a3",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -53689,6 +53882,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "1c1ec7b540c2835eaeaecada957958b8493fff1a7a6ed7efb84994e05d407002",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -53955,6 +54149,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "e301bfafb006df895420aba2599daaf11edd266ebe11eeec9d03c3389bad64a2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -54221,6 +54416,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "47791166f94963c3bea346059ff8b40a580f3b04fdd06105d22c8547f366c3dc",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -54487,6 +54683,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "cb2682eca76c32cfb2dbc02874c36e491f6250ccbf8fa7b35fcfd2cd39c6dc0e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -54753,6 +54950,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "b98c212900a6b950f4232152c7c3d534c469810680f77785aac13365449703b9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -55019,6 +55217,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "58b86e86522b8e8ecfff6f2e9103d2510d2fc2e984ddb5292d3ae19f4ea7ecc9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -55285,6 +55484,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "75770e2eaffdc0dc71d39a3610f860c35b000193f116ffec838ba92268572798",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -55551,6 +55751,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "2e4694040fd39b0f5be72dd5bcd022092ea1ceaf516b84152fffb7715e83dc78",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -55817,6 +56018,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "d96a48f171347d49e8ac6ad66ddfaec2070baae42abd1b0fa489c5f4eb7e4aae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -56083,6 +56285,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "7a0ef184992ce8177959a84f2a79b3cd1c1ae7e18dd0ef55f8ee69f5364f0a21",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -56349,6 +56552,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "043d866e996f4ed78dba60b859e60cd1eda303795a4dfc8057f3f9b78c253d45",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -56615,6 +56819,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "687e0e82480f819d49db23512883e50c69baf3280d44831eecf61e4292a4751e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -56881,6 +57086,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "e9f628122477516aef13052ad7e09d5e8d74bbfe9a253c34444e3e4e03a1b255",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -57147,6 +57353,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "f411f42616f94b5c18aea2ec138e0169a0d2e1d6da6642c55a8c45305ebab289",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -57413,6 +57620,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "25e88121b4186c80e2456a8960dcf0ea2eb3531884415d992769e412269facf6",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -57679,6 +57887,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "938d53a18a4784850c4b8337c95ea36c60d0c0e1cd819873296759d59693e01c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -57945,6 +58154,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "201b6e2a41ec021d6f3540ddbc451510f9b80eab9f315ea927b9b74ad15df356",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -58211,6 +58421,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "3938344f3d26b52d4a1eaa5864297e9c14e91e4b003e2635b69a6f4df96bd9aa",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -58477,6 +58688,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a7959a1895dc132f8ef2c0808051ee51879333df046d74555ee5284b34ccecb8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -58743,6 +58955,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a130fd96d13d727ae7a58685e150ad32779c2f4e1d818b5ccb4d070349f68f6a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -59009,6 +59222,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "2c988d68ea3af024710ee41c1b7e67bacca36b124dc5d7bfa815c21fa6b66a8e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -59275,6 +59489,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "2666ae6d569e59a727e2469506198c24d7afb74035011c3fe55bc24d9e915031",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -59541,6 +59756,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "eb876e3ea76fcfcec02356f17c87f09c3af72dd80f32da2897b1bcc03a37be12",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -59807,6 +60023,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "9505833408a2bd99be1d43ae499e3617164866fc9cce8545fe75af30adb23570",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -60073,6 +60290,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "cbd126f7a0ec58e3e06a7e2538a26b70e44d895c57ee969bb1ac0d98cf5c8e0b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -60339,6 +60557,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a520c396a4ca742a385693ad1f7922d8cc099aa28976efd804283a3422244d64",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -60605,6 +60824,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "ec1ddaeaaf423b91e8d05e783d99f41c42301851dc436abce86bb279b77485a8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -60871,6 +61091,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "067706b418cec9bea6a6de772860095df390141cfd8c79ee5a3fb50b99d6873f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -61137,6 +61358,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "0f58fde9312f63d2131accc96616ed06289f0294beb6106f5125097251dc73be",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -61403,6 +61625,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "a7782944ba2c65ae1a1f74d95cecd25262fd1012a0bd7ef3cb2ef3757065ef3d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -61669,6 +61892,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "21a26e0126157ada314c9e34447af61805b2d99be1efaeeb1944e75b3cddc437",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -61935,6 +62159,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "28177f7dcf65cf19f4a96b61587f2786baf95da0c24ceb4fe1d4ca6bfb5380fa",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -62201,6 +62426,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "dbbb6454310c273bc2c61a6863b3f5ed953db18cc1fc305c80df0d37fa3a875e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -62467,6 +62693,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "7e0a5a57fa7bab4d79211d778064de9524b2f90f4f9a9fe466a789a35963a547",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -62733,6 +62960,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "abe5f04c472e2342454e13cf0eae7283b2cfac38c724e5ad6a0b8e3f73ac5a3b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -62999,6 +63227,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "d33bb01c29421ec6f3314365ab22e5bf582fe04b89c5077dbc325207c41d9eae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -63265,6 +63494,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "210af990389e72df96d4548fd380d01308352fb60fa1d4c32da4bd6b78830ae5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -63531,6 +63761,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "799fd865f6e3dc4fb1dc161161912de9667fa2bfcf867fd10e682575433d4bb3",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -63797,6 +64028,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "82d094b14dca9564edc2e7d4a78ca2563c92085a1fdcde04feb515462b1f2299",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -64063,6 +64295,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "2c203010d380b2246240fef65cb1d692dbd01a8fb39ef255f3b17f2501f8ed1c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -64329,6 +64562,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "9f1a2739dbb4154900477dd0f01764a2ca311af44ae34e05c9a9e3885e8f8654",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -64595,6 +64829,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "b56c743e29a2e559e359522d9a70d06ef7d5388fcd18beaec033cb628c9bc612",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -64861,6 +65096,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "dbecf388644147c32d2cfe3a8c74e20355af28fbfdce7d3b0f56ebe0cf4c0b72",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -65127,6 +65363,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "3a734eea2adb186bf4d144cc9751b65307c1ded8f73c0bf11566d38824f90b35",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -65393,6 +65630,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "train",
+      "text_digest": "24cfec585eeaf4672fbd17e5ab569d4ae6803e139b773b8de803d9c1060e8eb5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -65659,6 +65897,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "4293b332d9fb1d2e184c0e9b4868eaee2e6748e9e06c203fb2fafcec3acd10fa",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -65925,6 +66164,7 @@
       "element": "urgency_pressure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "d16d645a7dc74dca19cab52daaa5a6c7b851c987fdb56452d75b1bdf8a26199c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -66191,6 +66431,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "29acbbf3ee98c71749913f9796a2df60c31fc339ae78d3c9a035b019513f5a3a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -66457,6 +66698,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "bdab43e365aa5ffc00d19c23d28b3e1bc7130901ee93153e932b841fda2de7d9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -66723,6 +66965,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "6ba7c84d3c80c01e5452c89b5aaa1da4bbd553da871b8e2ae332fb9e42d105c5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -66989,6 +67232,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "5aabc607a4d26382f0f8884a300aa8f2fad440682b54922e996317ae6985cffa",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -67255,6 +67499,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "31841ee2f73762f79989d8067b7b3a214f020128cab4cb1ea6c85555a9651ecf",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -67521,6 +67766,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "e12ee6ee662171c610679439ba275d546f50c256642c62a5e94dddccaec17329",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -67787,6 +68033,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "2391136b60e8b65d771129a28cacd09be360c3a4499c185fc00aec70d9e224e9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -68053,6 +68300,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "e29db20f444a301dd19b3e42b881ff477c1f4ffbc51741b5530b13d11d527dfd",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -68319,6 +68567,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "64d9a8ca28ba5599ff623f3697400f3e2ff98172371dfebec41e5e63f0b075c2",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -68585,6 +68834,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "4c5dc5e692b0e29c92ae6e2175c3bc5e0d142d839de3070e981907a040a384ef",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -68851,6 +69101,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "0c153a098c177f8b487e54b7679608c859d35f0ec1a33cf4ab136d3d1cf86321",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -69117,6 +69368,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "c8def392135af8d9f0fcf186ad1c5ebbeddf9e9c972dd675f68205b515f31c1c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -69383,6 +69635,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "3278e587cfd9104586035668bb84fdedb28ec12ef6d086bfdeb2db0e8d083f47",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -69649,6 +69902,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "8c1c2508291105d8dedb7e2878122f6743bd6a790dc6a02c5ee5dfda82aa3dd6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -69915,6 +70169,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "745a22be7553b5c0450ab221099980542f0fa70f85f8fd9616601f0030fc5252",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -70181,6 +70436,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "9a1b380fe0775eb258d7cf531c4f13ab658566dd119a1e4f326268a45ec72fe5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -70447,6 +70703,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "d6959d791134c62b132009eb9b9f60536c1036ea681a09f29c4a94f11db66ceb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -70713,6 +70970,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "d5009d30039aa6ac96460a398069423f4a3fdcd3f29c328030a7eb23d44a82be",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -70979,6 +71237,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "d866b7cee007754f8b9f7339909e830f12ac270d3f988d0198107e5f03378a77",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -71245,6 +71504,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "91ac5e90978cdbcf9656dd6d8dae17b23d286b3b5a8a6526bd552ffdb20ae87d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -71511,6 +71771,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "b07e5fb1bfde34325418253bbfe9a275d8b7e81bbf7db307a054508b32025feb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -71777,6 +72038,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "91fec44ba534826d99837718ef2ba64fedb9e61e91a85a4a0bd913ef8922f710",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -72043,6 +72305,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "9e4ab50b28ca27f1e1870b1b737a5f128c086f8754011f5306e64d7f581d2f13",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -72309,6 +72572,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "718146d645151f389c229c1010c0ca9d9faf47206db9f21163e8de9ffbfe3d75",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -72575,6 +72839,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "5461d7efa3e1138f9711ce4fd9fdf350836d17b263048a8d1353abb4341cfcca",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -72841,6 +73106,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "ee83f1817cdef1156d183b0dabd19ba130c75389afbfef33d8712c34497ba308",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -73107,6 +73373,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "4f1552c41bd6a603b8607f64b6d67985c33dcd1eb44a0474117caf2a1153dfa9",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -73373,6 +73640,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "4e50b2ae408452a99d798aee91107139f43b26295bc5f7cb973eb867556ac02c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -73639,6 +73907,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "21b090fa401c2cde6c5b818915aafdb1e42d9521fcdeef8addc667bef8290d03",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -73905,6 +74174,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "26d27f92cbdad08165321233a64eeab2d616d89366c2645652134982ccd5a81c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -74171,6 +74441,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "465a1e015e4b7d00429a66b062b9903eebeea3e4f250b39c12edf54cdd9811d0",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -74437,6 +74708,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "4c4463aaa13e93f590ec4bdc542d2fbae34b070393583283666018aee64f103f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -74703,6 +74975,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "79c11a19ccf16066d7d759eb8739c2b3f1cb20a91648e68529945d102b7af1a1",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -74969,6 +75242,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "f093e8cdaddf5959c10023f69d174e196448699d2b525b673ef9944d590229ee",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -75235,6 +75509,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "fee3fb80776d1360d390738c36119bdfa9eee7032a3b7a8bb24b1b3d482bca6b",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -75501,6 +75776,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "e04bcce03dc968e69a6c9a2635139f101a39c05dc915bfd0956ce79581079c41",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -75767,6 +76043,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "c74c4c2988107cc869208b73139c7d3f4a48aa156cf997f586129034e906c926",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -76033,6 +76310,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "f621ece4d51abbc4dc9b28b6155ca8f24ad592f5f941a5815505225b08727bea",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -76299,6 +76577,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "83a01b20791bcf14db4be56b4055eb1f3e20911b2cfc7038d990bfae74524fb5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -76565,6 +76844,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "5bb50c003894a141d69920e817fdcad94f08509e22b539a6dbdacecf9102d423",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -76831,6 +77111,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "d1cc57e1a590b1d1a9990c233cb041a67106c52e734eb23a9015941480fe7281",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -77097,6 +77378,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "6eb7d47d31255c45eea935c4ac0db152528cdfc52d50f5c98257420821d57bbe",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -77363,6 +77645,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "c910ea08c3770eecf73d43d28bd025e02142934cc9df15606ab372473666dcfb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -77629,6 +77912,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "bf3c0cb14737fde07edb8a2d90a1ee02658ddce25e9853273460a3e245e97e71",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -77895,6 +78179,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "4a72b756df7dcc787f9f53320c33266a8566616b4efff920268e9784f56ebf44",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -78161,6 +78446,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "b07e5fb1bfde34325418253bbfe9a275d8b7e81bbf7db307a054508b32025feb",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -78427,6 +78713,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "6f5bad7b2e7d271fd6fc0b6ea5539f0320ce2c3923b397b507736fa2d9ddf159",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -78693,6 +78980,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "dd4a01df70ba23cf6d20c2cbd286334ecbc837a9b10522659e6d661a5a1211bf",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -78959,6 +79247,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "4b7cb3b7dab7574440b94bbc80e0b8aec9a8c75b9e4d01adb1e907778cc930c8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -79225,6 +79514,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "c03b9d57e24d2abb4c9685bb0dc94dcbc5bdae7f5ede9cd288eefcb8cefb07dc",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -79491,6 +79781,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "429d842ab1516990168ba3f2327edb3c71d75654160c761f11b31f4e95a8a481",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -79757,6 +80048,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "2b23782cfec1c708af73080dc6d519b156f0a99c74361680783d570ba08a05e3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -80023,6 +80315,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "5af24cb2d9b98663de2d9d64f11cdbb5d59472d3f8982b6adc5afd3535792f34",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -80289,6 +80582,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "637497f6ebffb036305d1385c983498ed3c75f80c9ab4cea55ec12ca0aa15832",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -80555,6 +80849,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "f16331933aa8b5420bedc984894722a350f64e7845e04f1cdfc5e612681069f6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -80821,6 +81116,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "5e566282691d2b5e7375c0ba3723eec77a713653bb699a9e2705918c70a2a746",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -81087,6 +81383,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "27ea306e43eb40c8ac9bcecb54d774481792bf0e491ea4cd9c6fc175b896c8f3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -81353,6 +81650,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "15fb481a51176d03ffc29863bab7aef306fe10a7b8473b7873f25dd71c356420",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -81619,6 +81917,7 @@
       "element": "threat",
       "label": 1,
       "split": "train",
+      "text_digest": "4e16c84469352983ae9170039c0ddea3a4cba90699929f02ab8e8fb3d7cd5679",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -81885,6 +82184,7 @@
       "element": "threat",
       "label": 1,
       "split": "heldout",
+      "text_digest": "034e442c10911746b756b3fd12633f0cc6d3d6856efd545d487118d845d319ed",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -82151,6 +82451,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "8b6dd64bc9d67b06de52b65abdad8ae071a09b3cdffda5af8c1126239a4deeb8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -82417,6 +82718,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "c6101dfc3083be9cc4a44a277ea0bf0c76818165f1142f8f68360141439aa8d0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -82683,6 +82985,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "5e01311eeac32a24e5a2b17726887498b131ad4dada8a8723e722f1c8019df9e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -82949,6 +83252,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "a5a5ecc2706e4a2f724440af7b74d4564c68ae14a2cc2224992764c81a6daf33",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -83215,6 +83519,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "5078b8b835168d3f0b80f75da433a22a5b31adb4873033506bcab28de8e202dd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -83481,6 +83786,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "a3c2a7f0631fc3cc7c339d87cfaf102ab1e305522615173d93d1f2f055b863a6",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -83747,6 +84053,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "1779cfd975563dd672374bc623d1cb23b2e24cbf021fc932305ca8ad457d26e4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -84013,6 +84320,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "f7313323559a1d96562d9c70affb0374dce9ad247ef42b3eb98212bef0c29ffd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -84279,6 +84587,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "0eb2ea698686905b85fb24294fef1ae92d0fb70a93210d9ae10fa1f6852624b4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -84545,6 +84854,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "8f2f5e9f53e67c77b45bd7401f52dd9264a2852fd46440047eace9fcad9fe577",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -84811,6 +85121,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "f8cd0c741088ff8cc22e85e1e37f3783218042ebe1f7b0ea8f39c1320b8473ae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -85077,6 +85388,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "8e0a6c00e69d460f6de29a70a2af6b4f7d805b6d622cf9ebd7afd9a1e119fb99",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -85343,6 +85655,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "a4df9ec820436c4f65e24125423a26468cf8bdab1197fffa9bc21c86c81fe395",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -85609,6 +85922,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "7b189660766367098568cdcf9bc5385c47c5489e8bd41c1fac4bbfe3dc8da582",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -85875,6 +86189,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "2461bb9844265d06808eb08aa0e1fd76aa6e0ddb9a8970545d84147dddff38a3",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -86141,6 +86456,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "2d4121c22043c0a6eae68d0ea62441078db961ad8ba336e64bfb5e3c6b42b550",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -86407,6 +86723,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "56ad23c21f343f497692994b9abb7ffe1c263a2e74d8a4311a9399205794b0cc",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -86673,6 +86990,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "542353adfd7f4744ccbaf80308766300ba66c070c7ce88697c01b2ff6d2db876",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -86939,6 +87257,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "aeccf11b418db0242ab7c9e49dc966eaa431eb5c677bb1cf3075257b64c9a524",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -87205,6 +87524,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "042feb7201bcd54da457e9e7162e098613f2037e8a6e415ca31f75f253ce334f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -87471,6 +87791,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "ad1b547eced4cb31b6094e3c5385d85de45dd192bf26a1ddc3ed1f9fb7c02efb",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -87737,6 +88058,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "903df49d8718616823ab225d49df8ac669089eff21b91db360366301393fe4e8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -88003,6 +88325,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "f3863e19f04611593b48d76fe5b3d4fbfeeb2c5df9521f35c39813329de6f1dd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -88269,6 +88592,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "4e2c410098ec3767c861653286b471e77fa1e1d538b3793a6bbd37518768ca75",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -88535,6 +88859,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "52403bc4fb915f0cd11701f8c8d1e4a42620cc9331536cd9429d4fc70dead07a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -88801,6 +89126,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "d6b93ebddf2cf7d4599f8c881ccfd5d095670cef966f65e999a4c22648565758",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -89067,6 +89393,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "c7e793c07d251c922b0d8e6f5d5c3c2e52f136fe5b4a60af4c89d0a74e5d471d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -89333,6 +89660,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "790ae8324a176f2dcdbb7b83ea1b4aa200d324d65cc6afbbf90a9f93d12ddcd8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -89599,6 +89927,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "32e1f5385758953808219d63cb7a0d7844065a07711f4548f32dbb4120eb19ea",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -89865,6 +90194,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "abf3a393718418ed6456f7d34df7994561eced415fddb6723f90ce135c90f07e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -90131,6 +90461,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "339e5385b01208f421b2a9e6f6eb1ca4dd166641a5a1a1275c208846980e33fa",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -90397,6 +90728,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "8d26d78f65418f2dbfa65e05298c2e6c0fcdf7b4fb8bd0a4150894665e7af68b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -90663,6 +90995,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "6ef74e25a18cde9d60648f40d043cdf5da7d666f6a7953d223f11eff0c461e4a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -90929,6 +91262,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "8e4c54c644b861f1bc8b55695e85b64c23e4fb3d1acbfa0868ea01406027511a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -91195,6 +91529,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "a24c4e40a49786ff0b8fde6e7e0a9193ec291ca378ca8797965ce62b34d1ee16",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -91461,6 +91796,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "b0bd953af4ee9c93fa4c97b5a965d9d32fd176abc12d9bb7080933e738c17476",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -91727,6 +92063,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "65fa428e4c25b34202a359792a327f9e902395cdc0bc51c0635429eb788f4e8e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -91993,6 +92330,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "71f6260de47a40e602a85e82655dcf37effce0e75119317ece9d93c956e868b5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -92259,6 +92597,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "d2553a7bb526f0f7a3bb759ffdfbce40eddb29db788b7db6004e27bf904ccc87",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -92525,6 +92864,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "dfe5f83657fc267efcf95345f18b947882564f938cae08223f30036c5bdf3a86",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -92791,6 +93131,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "ff51ebc2b6f69ab570a2cc0a5cbf3ddcb50d9a588de8f7548f7fefbbfa0438bf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -93057,6 +93398,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "dabb81ebf88c7786bbae464ae8e897a22f0af07cae386d6cdcdf734ff1191a87",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -93323,6 +93665,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "53edfc2ff2e7a66aa6f5581e24663adaf3fbb483cbbf2d931a19ce8c97976f31",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -93589,6 +93932,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "3ec2f2a6d8399b68879a4ec4860abb4e430875992f70fd52b750d7b2e64358bc",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -93855,6 +94199,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "b5f03986a63ef5e06d9996cb4450d88fba14d19eb3262cec1553c263fae2efd5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -94121,6 +94466,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "acca0bfafb04ca0e610d97c5d977819307f314064dad74113d360c4d2c2505c4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -94387,6 +94733,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "3d44440cb5979def74574c8402e4c5ebaf061a7378e8a0483f8487926dde0f2d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -94653,6 +95000,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "a4a0f95c670852e7fff6864f2cc23814d23497355e691c1be378198d15668eaf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -94919,6 +95267,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "901bb1f825261ddb004f96314cda70bcb4fad0eca46a0b1b69add0570167579b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -95185,6 +95534,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "f883e3ccbc74f1dbbffc9a53abdc96007778d8da6b4a6a344fee8c190856ecd0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -95451,6 +95801,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "1f1f9a4fed6d564822c02c9d33bcc9082b8fb3ee8ab3dbabcf555da54f34d78f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -95717,6 +96068,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "7bf468e18baa433b49b42731faa8a6e14bbf7496ace296f1a29e981473ea32bd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -95983,6 +96335,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "f17875ce23e13ceb69b63aa4db960146f34829840d980b32087540db831ab485",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -96249,6 +96602,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "dc446f61ba2eaa28e3813a316a5c38d9a9631d75442deba13137ef72698149a8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -96515,6 +96869,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "345bd0d652a0d56e5eb6fdf9861e037d6471c308fcacf42147402284020e4619",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -96781,6 +97136,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "99dabd236f91927a05af86b3966547d1dae730a6062b6f8195950c4e90a371bf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -97047,6 +97403,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "f3627050105784755c84dbc73d49f626744b2a224c4817480a8c5099c1b33887",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -97313,6 +97670,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "f030af0947afd8e9f2224bd6a48e27616b2870b4e8a34618d4890476369e37ca",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -97579,6 +97937,7 @@
       "element": "threat",
       "label": 0,
       "split": "train",
+      "text_digest": "9deda057b5f43b85fc3a236cb8b1d4709a4c821fdfb7c35c68d3f696aed1c25b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -97845,6 +98204,7 @@
       "element": "threat",
       "label": 0,
       "split": "heldout",
+      "text_digest": "9108574537022c352843e8df4c6e5f08c4bdf7f066fa148a4ff990bfbf590221",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -98111,6 +98471,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "3eaf17ee688224e9ce593059ce5c336f12ecc0fc868e02eecfc54e7e0d363a5d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -98377,6 +98738,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "98c4ad8d77d551adbdd82ab53f1d4ad7d8a334d4ab304b42449b5e851abb77af",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -98643,6 +99005,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "a2fe821569dc60916807f0b4277a502940c664619018a6bc55d362f4e7d21550",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -98909,6 +99272,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "7df4ad51c3d7cf14949d8ad41d73e284961b3e98425ee074f08896d0d97b2838",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -99175,6 +99539,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "1a4ec76f44d068491668781643d94c1dbcda9e9f528e5b1890c447c3723d5f40",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -99441,6 +99806,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "f311f737e8bd532fb9f5745b6b0997b1dd2c5bbed44dbbfa77c66248e43ef322",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -99707,6 +100073,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "7128cb86cf63d6cc91ff2ddf9f205759c2c5f11486eb606c34c73912d771eb91",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -99973,6 +100340,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "353b7c32c66e29feb2f0a040eabce4473159ab9a372b043349b7227de3d43002",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -100239,6 +100607,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "3c9d5bd7bdd9e34b50abe27e7e9d27a197894195d60ccc7f311adabe6a81cdd4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -100505,6 +100874,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "da5720f2bac93440a64816886938ba6dbae32c9916e72ee6ee01699295ad5c6a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -100771,6 +101141,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "567e0a055a4c886190eb1440d5349cac401a973f7a7e2dd145b689c9db8bac6d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -101037,6 +101408,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "de9452366b8b669d2a60dfbfef2afb739799f0a62d41381c5c36b4371432b755",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -101303,6 +101675,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "6b3053d58c902a3c9afe6446761c9281896bb9f32add267cfbe97d3d2b45a051",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -101569,6 +101942,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "e4904f0948d3125986231141400800660d5a7a9fd8581f90a5fa3a700c10c3ce",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -101835,6 +102209,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "2c97cdd88402b2c2d913a9e1fbe6f640cfd6f9b6a6592aa3a32c04d02fe8b508",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -102101,6 +102476,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "94f04a5c9d1313d8a325092185e5d405360c223f4e4a78b73496801cdb2e0202",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -102367,6 +102743,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "f64629165e069663d4099a06446978dc6966846da4e8dc390405b78aed03dec5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -102633,6 +103010,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "764937701660689773f2e7880a279d7fa85c474aa15f4a81c41ae1b5dd10e489",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -102899,6 +103277,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "1f1185006ad664a577906576d7230d01868d0a25c72a5c48cff6b963025badaf",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -103165,6 +103544,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "d26985e41c299ff36f2195fec92f35e8306d3e41001df6a0a52a1e6001bfae20",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -103431,6 +103811,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "c900114102f2e9133d06bdec28874854e7b313f7a80fb6111a4e793b1cbcfeb8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -103697,6 +104078,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "cb9f47d476da1d0582b0f41389de037a7fa57c182b94be6259f180d783cc3c93",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -103963,6 +104345,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "cb52a9ecd1ae5216904a84211fd7bd3b0c36d8fc4512984f2e2fd4d3330b954d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -104229,6 +104612,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "8463736f393a11e6b221ec1b832cd1f51933586b9edca5e052da3c7baa51be24",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -104495,6 +104879,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "9feb02a758861555a0770fb14a61499a10745e4d8ed4d941be2e872800b07d65",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -104761,6 +105146,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "f1a8bab9009ec1dec460a1541acebabac69bdce92ff73c53836da15bf7e61ea0",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -105027,6 +105413,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "f68f81943bc73abe6bd35f603efc02b50ad4d383cd42329caa16da4c86dc48cd",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -105293,6 +105680,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "1c1db554f3bd6478d7a2f7c886532666d2142c8bb989dfc8cad4baacc8ff9c29",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -105559,6 +105947,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "93c5aee462a005c5048020da76bffe3349755537df80adf28ea70a25f71263c7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -105825,6 +106214,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "0b175f1a0b05ecc9f28adb89db2018389eab2519a509a44372df7ec3cbec1d40",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -106091,6 +106481,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "252ab6177a123a72befe289490e6b217eab2a555b368e325934f573caa3a0a7f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -106357,6 +106748,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "267ee501c4c31e5e4396d36d347da22e4a38795bdb0d4803a2db1fa348c52fd5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -106623,6 +107015,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "2bfcd6b963814c09d8203dddc857706606f72d5d8a7a9434f9f7dc9071b4b0a3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -106889,6 +107282,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "e174052ef01d6e00c93b37417c3b997d2eb0d8588f52d45d7d6dc54532c588c6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -107155,6 +107549,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "7a08791610b4fdcd2102fcb60e94410aaea058186868901f0994085b0a7ca56e",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -107421,6 +107816,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "af27b4b530026c6c6ecfeffcda9d0d6f51d4e15f4e91562d8ce661c92fd1111a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -107687,6 +108083,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "21146f2460d124c8330438afdea991b210e3c10e65e7cedb3d189e61df121551",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -107953,6 +108350,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "0e33a9437b6a81eea1a30a283319650c2d7f50a48904f1e9cbc8f571d6c8b5e3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -108219,6 +108617,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "74a955206f78d38e7a2bf8bb4270cb5bc5add44e14cb9091e2debc49ca17e5f2",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -108485,6 +108884,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "ec98bf2c3658fa5f6164edb75e080b32468484feb4e9d6a50ae63d94fb21289e",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -108751,6 +109151,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "61076697205cedaf5c8d65db6b876b1805612530df4c7b7e7d3bbebfd916cfa6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -109017,6 +109418,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "c65ccf8f62d9260a85f22238671ea9821c5a6acd87ff97ec5cefac15fbb0bbb7",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -109283,6 +109685,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "731c5ebe28eaa7059184aae385d1b7c06fe1db278520c6097a3dc6448e9509e8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -109549,6 +109952,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "4cc5c88ac674e4fac060fdf5395c797798fbcdb24853198d190443b6485af936",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -109815,6 +110219,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "fb3c7f42ff8207610a1c779fe7f341c4366c1c41f6ad99352f6e99c958698973",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -110081,6 +110486,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "6c77198a077623a5750799cd21301848d63dec5cabf9fa4f8205930bc997fde2",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -110347,6 +110753,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "0e93cc53a147b45e1c8b6018f866dc84c6ab45c35f95dd32db05808902a45121",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -110613,6 +111020,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "0da77582f62c3a46487e94a067c4c969fda251bf5dc28172de683428f09d0641",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -110879,6 +111287,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "9c242f83b3b842380a6c90c95a76e19bbc6ff7a72c547f7bb4e81fdd76312432",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -111145,6 +111554,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "c44cd3bf34fbd7d0e37cfb4a07b89e8ee7549871650c4af81a78fc61cd77d42f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -111411,6 +111821,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "365f748fcb18b46798dcb0eb4f8b4102088d35d883395ca89167e8e3a737bdb6",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -111677,6 +112088,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "550550be093446658568e9ebd93e2c4d8308efb351e0a601e30e48a9d2d6a0bd",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -111943,6 +112355,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "517d880db46b35bb6dc4ff69ea5638d8bbffa86d0e1a488ee2504d59eb5840ef",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -112209,6 +112622,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "heldout",
+      "text_digest": "267ddc0fec970ae69c6bd71298741a7f2cb570e046b5726a58211c9a3c592684",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -112475,6 +112889,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "3dcf5ce7d88136dbb9247667acd7df3829a6b74c32f7eb3b0b92b2a5958dafab",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -112741,6 +113156,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "b4ead7fb7f7d0f25298e075fd68652d5320235dcafb73ef81fac22da91d6e845",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -113007,6 +113423,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "3862461fc7af15f0383834b90520ef6706000797e6924fb24b41b5aa11d577ba",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -113273,6 +113690,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "b6c4f7c8d7c9ed70e05ae50220203e31816a01b87ae8da3aaffbe9b245738ba5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -113539,6 +113957,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "47a78febacfd4bf4b4d98579bfd39652a09686ea95e5369454eaf705bb5401bc",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -113805,6 +114224,7 @@
       "element": "impersonated_greeting",
       "label": 1,
       "split": "train",
+      "text_digest": "19f8c2a5e3b8bb68eb442231072c93f8228e4714da85834326b7a028ecc46ea8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -114071,6 +114491,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "83908ad8dd4de2a6f8588a0ba28ac2289ed31ad598c3cfe96817f9c3ff81616b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -114337,6 +114758,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "8270ece397315709f6d8aad527c36f95aed472be6f2136717112d9251ae2d70d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -114603,6 +115025,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "77418eff0dba7d9b606e794bb140ad296643517c30afd5ff16e2797d211184c2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -114869,6 +115292,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "bf6f76a4f7440bacaa866ed99b474305a8bec2dafafddf71cfb70a4ea212c04d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -115135,6 +115559,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "6697ea3d7c611520c094bfb4bc00b16c39450cb0c6962ac0468edc5d695b904f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -115401,6 +115826,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "28f0f486d6111e6c79516d90c1ca78701a4c9485f681f2dc8baf94138a0fd7ae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -115667,6 +116093,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "454bc50a63e9fc917f2363f5e7df84743903ba8b9bac54569c811788eb5d4cc2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -115933,6 +116360,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "e2f27e40652d112d4afc4fc0f5daf2a47f49e8ded4ca46fe70f57028a49b1c40",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -116199,6 +116627,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "77e458bf9980c70bd077e7652df4e831c2eaeef88ad9ba133df2113c65bf15e9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -116465,6 +116894,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "0f5e33cd6faa7a119661b9030310b2346b2987972b81d916d127aae948e856cd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -116731,6 +117161,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "8ecfda488dea931fd264729f4edc8b5336535b12e5a8d7a6401f06838164460a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -116997,6 +117428,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "725921822a1f89b65891aa0d0ac921a110a3e57bbbb43158f0fbbf7ff1555dc9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -117263,6 +117695,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "2d4fabf51fb300b8071200f7ce67adc815f7668ac6c088762c7b87bef700af46",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -117529,6 +117962,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "960af099e041ad7b3e3d18599415f37d00c107de1695c35b37a2e34538e962b1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -117795,6 +118229,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "57b0e7f125c76a2b8f711427fad6715a87ee507a074be1131211557aa0e78ebf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -118061,6 +118496,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "827ed69df5d3a5ce4f1c55d2fe34a9a2fe5f9b8f3a02e5a6a202fc335517e218",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -118327,6 +118763,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "371ede6ebd89b0956246568b26880ced2b66201c2182aa4bc1d85e3fa98984e6",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -118593,6 +119030,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "cc5bc1160f05e246c1462685f148085c2df63fcdca8a0b9b38b1e2f724216c88",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -118859,6 +119297,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "00591f2d54ffa4b63177c8f82a20f6ad0465daf23a95ac8106e771285c6118ac",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -119125,6 +119564,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "b64cebd8fb867015bd51b58bfc916829d26e8e98e712a5e7012df0a40db1c8b0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -119391,6 +119831,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "17c3e0d2c82e7bf0e7334d907a321ede364805062b74b6aa5a1398b47a18b052",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -119657,6 +120098,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "7ab0cc0d2f3f9c5d04d3afbea6af658080918aeb9b19da1910e5e887819e8a27",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -119923,6 +120365,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "a89b45d288a1a06ca9e487c68cc550faee8740d8792bf82e5c6d184688a257b4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -120189,6 +120632,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "50775224f53b7219ec5eee158335b4d1d0a34cd8fbecb81019926e80d2091535",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -120455,6 +120899,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "2e31b40e5bac082bbfe2720c521e2d06ecf31518f17a6b82244c25bfc2e6c3ae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -120721,6 +121166,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "da7d0cd8696bea76ccae6f88fcdfdecfc89efa4b315d0e39460ac74cf072ad42",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -120987,6 +121433,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "43ca902920c8c203ecd78760c3da44564e3a04cfb2ad13315392016f2eee58eb",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -121253,6 +121700,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "bfd8b12b5f8a5f1ac4fd2478fd7e30fdf430a5cd32da6da98e281287e465eeea",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -121519,6 +121967,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "cfe50c57c7dfb5463787db6bdad89b54f2267f6cffd4b27a0dc127ad08b7cd22",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -121785,6 +122234,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "650bb3eb7445ab95e5d51843165e6bc4ec92482fa3a0e1777a5fe8d1974950ae",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -122051,6 +122501,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "e5e4d3da6bdec665377e1014a72ca6b50e3fc85a36ef2bfb939b1badde43b292",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -122317,6 +122768,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "2df23437da36120b4bba1cdbe5f82d58a3e66ccdb30a45e885e5b5ee012a6dfe",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -122583,6 +123035,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "841908e8cd888eb018309b6d5df30eb3d9559c8d3ab5d333917de45560d1bca7",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -122849,6 +123302,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "5bf3ea5e9b9d30ac1d4dbc5efcde9791a4534625bae642dc0bc6ec8133a137b7",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -123115,6 +123569,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "bb996016e2482533bf05b21f92178bc5fb11bc2ae351d462d14350bb125e49e4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -123381,6 +123836,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "d143eec9c078eb7c8456b9c04f1c7707454c5669c31849b65071edc8e5a902e1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -123647,6 +124103,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "b8c9618835496e6691271d18a5e0d34d325bac5cc476a68437318254ef9ee5b4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -123913,6 +124370,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "c47fb6a084a4acb0b5846e4ce5ed921f0f72b9eda4a00855561aef8349b4222d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -124179,6 +124637,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "5b9220548154e278173bfce1e883b7e8cf3483d18abbfafc1c952af0a1e27c77",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -124445,6 +124904,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "22d431d2791515acd4a2f33bf4e5967b870b6a2b05ccf34fdf0e226edf5ff1f6",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -124711,6 +125171,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "4360135f9f849ddcb09c26d2158d8c156bf01f2522374692c5087251e1fe8489",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -124977,6 +125438,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "45b15949f7517e6a7aab3601c7264a1bc27cfc44673a44feaf223a009cab6cbe",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -125243,6 +125705,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "626d05f3a620e051d15e56253664ae3accd809e908e9adcb2dd369e4d1f39242",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -125509,6 +125972,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "de99daa615ff71e911e95335e57603de01f8301c4139e672c80c1831dd8b88f1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -125775,6 +126239,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "7fc0f8516ce20f47f7c7eb586936d06731e3426e83572f511b2505014d0df995",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -126041,6 +126506,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "cd8e938577ad1d58b34302753fe2f3c3287d2ce48769f0c0104aece41f63e5b6",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -126307,6 +126773,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "c36c7b24027bb1a9c1d47af0350dbff618166e5f2a79926674e779443b33a4b8",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -126573,6 +127040,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "8da268c0e82f85738652af2fe85c34d4c49954b6d32feea77c6b67f482501f18",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -126839,6 +127307,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "a46bebde8cd79175ba7edc4c41742bbe1376b44879c3787af7ce771eda4fc957",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -127105,6 +127574,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "010dc03683438fcde760934e9282b1bf238f88cdb6124a6a58a02790359f2096",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -127371,6 +127841,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "a88458a7297bf5bd8b7a3f30aff64b2b2b140b7b9dd330698ec62c4aec07bb9e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -127637,6 +128108,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "19a7a7710c43acec076c35d76f0fb261b6d6fb271c260f16db7f209118e52a08",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -127903,6 +128375,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "fa05538cc19bbc89c6a9515ab3fd2203de62d6837f5f394d7149a3d9183de34f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -128169,6 +128642,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "a04230f51e6233cdf83e0f5558fd62571989e38cf769eb138bcf8b82dd17d03b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -128435,6 +128909,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "e8cdc488372eaf3c5f1034fa0350b849b05cdcf9b901466dba66b0cbcfb9e3a5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -128701,6 +129176,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "2210598879f403755e3e65aecae5c34ddce98647e0c7ccd3165bf5752f3c199f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -128967,6 +129443,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "a2a30646af7e9351d72b7de285f608fd3e29d419da6a390c92069e4b8b7effb1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -129233,6 +129710,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "heldout",
+      "text_digest": "600a02e75bc3cd7a26be74a23fbc348504fa52ae3d8fad05f76322a3f9a15bc4",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -129499,6 +129977,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "1125f14ac12dab395f4e724104f9f59dfaf3002c49961e7ae055aaad1d007d58",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -129765,6 +130244,7 @@
       "element": "impersonated_greeting",
       "label": 0,
       "split": "train",
+      "text_digest": "57fee523ce6da73b365f5c4507c49a366791c6c6ca1a554f569ce262110adc74",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -130031,6 +130511,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "e855a3951f0fb0e64d820d65de3c9b76c02a3259546b53ca9af15e9c535d73ee",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -130297,6 +130778,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "d0affdc76e3fef5d373f539fdde400f903e80947db3592c7ab8cae088a5d020d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -130563,6 +131045,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "9178b0f806f72785a810daf144dd3aa078a4255699e5afa1d525223bd3614e60",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -130829,6 +131312,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "e22c54d9ce5f2714c6f63db5f55eca3b2e073e9eb18769cd01162c80cf427d6f",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -131095,6 +131579,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "5cc96f69a87d3f840ab49bc92d0b864f592c49fdda50155ba692c56f10c1c4ce",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -131361,6 +131846,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "e380a9354ae687e56069c7f9e1c5dc81e76065125065c63c6155c405883f104a",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -131627,6 +132113,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "2923a9a2d35829e73b0e2f60081acbfdf5351ba4c8d4ed9eed6d31ac44b2bb38",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -131893,6 +132380,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "104e6f194be613c860c1546f7497697dd8ad6df8c73e05f9629665f6776c3db3",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -132159,6 +132647,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "5f177a3d1a8c1f8d6867cf4fed29b7727d70805a80b8776b932e55b68a9c99f4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -132425,6 +132914,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "88c4e49f8349e56adca2970e493d61a519e9d2d9b52ca2d0d99fb6deddadcdc2",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -132691,6 +133181,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "895ac9a3f5b03cea5171625ce5eb7707cb13c832e884babc319530131f227585",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -132957,6 +133448,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "5ce5a3ca2d175115362fe10ccbb6b6ea7bc9221c83e47668e2bc793329193da4",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -133223,6 +133715,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "118d0f00a9f6c30c3e523d88e486388d6650201576a2a439eb42433aaf07d0b5",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -133489,6 +133982,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "961dc9b713102697f04d67b591036e3f48a77cb8e4522ad04286e2fc0cf92dc8",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -133755,6 +134249,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "0baab38bc115f45c1626e2a86d6ef6beacd51302cc5a59c933d4d2af71f7bc3c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -134021,6 +134516,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "0baab38bc115f45c1626e2a86d6ef6beacd51302cc5a59c933d4d2af71f7bc3c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -134287,6 +134783,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "cfd8e9f8f2c9d0063c10eebd2c1e3e7a1f5549bee90d30e7b5f407c173009e8d",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -134553,6 +135050,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "11e0542708a419b18046df0c03d2a769f947c6910807da87f0ab3e834eab6a33",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -134819,6 +135317,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "f0e65cc0a5da4ac6318e5deafe5e31eec980b66fb626b1796ab8436b127d2b23",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -135085,6 +135584,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "47c923e64c27508a082d24f9f54a467619959a23141b5f7cab9544861ace7e0c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -135351,6 +135851,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "94c13b8d3cfa7ee2a1ef19fef4917cb06ef790eb00c9bd330cbcc2c9510c775c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -135617,6 +136118,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "train",
+      "text_digest": "480a4c9c9649bd875ec52251f98c64c9e25df288a72f7c8da5a12214d5fe5439",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -135883,6 +136385,7 @@
       "element": "attachment_lure",
       "label": 1,
       "split": "heldout",
+      "text_digest": "da0011156663fcaffd4878471d50968577dc004397a94bb9c63de1e1f9a83d9c",
       "source": "nazario-public-corpus",
       "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
       "vector": [
@@ -136149,6 +136652,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "6c6083417ba193394f002dec72097bd0d2a88c419368b5337d42d0c57f4c73c9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -136415,6 +136919,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "d9fb7aaef61bcb7562d0bf5a9dadd2d8be79610a93140c3217335e20e47c618d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -136681,6 +137186,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "7cb12eb8b50158f27c290684293672ae40c014f9691ce13e43e3f683b1d60a80",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -136947,6 +137453,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "e658912ad0904a22c321f2d47ac4bb80305fb768ae58a605fac47dbdeb84a592",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -137213,6 +137720,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "5c369c269793d4021276e6db5644d102e0ab7b49af8261170249ed7ba473e823",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -137479,6 +137987,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "aa546ea3364ffe65f63136b7256ca42e7342a027c77dd42828a49be0180414e1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -137745,6 +138254,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "6e58138eb6543f5ae112de52465a77c7a56a9b33fa68de0787dd7895d6849113",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -138011,6 +138521,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "ac8f77c7b80c8a739fd2fb857c8106728d9582112e1a1ec9e31cc85968182689",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -138277,6 +138788,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "d73353dbc0a7b6364791ec5db8436b19b6cdc2add936adf92498d2a2813ac1fb",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -138543,6 +139055,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "43fb1f5472aedf64172a1d7eb43211dba91dfe490f1c7042579be34004423b96",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -138809,6 +139322,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "6a439d3f2307785bd54e7bfe85af94e907fa779a36e1e01dbaece76056ce2ca1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -139075,6 +139589,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "2745f03be48ce38e2e6f9006d3798eab0f9cc6d34b553f307f3c00ea06086e4c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -139341,6 +139856,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "74ddd66956c51da0a081128bf2d07cc9a6d72a0237f19de70753703ca0ae1da0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -139607,6 +140123,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "c9dc1889bd8d0822a715be8c5aa373a66d6a08ed6c6fbc325006a1316c043d8e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -139873,6 +140390,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "159ced16ba7b81e276013812112e777721362934bef23b0995551f8f9c2a82df",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -140139,6 +140657,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "41ca73326ecf24b531ee4d67f09c7b01aadb16f4b97473e6db36eeb7a9320b7a",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -140405,6 +140924,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "8ba1785fed64ea0350af3787e13f48d82f6f2d6ea15f09f3f4d77a1776c7cb33",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -140671,6 +141191,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "561c256b5caebb5aabbfab8a13b923dcacf20261095cce2980f207c9299aa3bd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -140937,6 +141458,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "1390a9a03887fd87487c412a5b3c7a54c9a807e7f79dc6b149a1d28e69cc7754",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -141203,6 +141725,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "5e3f74902391aa566ee1f979930d25af689ee0e3696fc332e473e3c1ea826e9f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -141469,6 +141992,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "9121f486450b22e757ed15f3e50c4eb93c21f97a0f652c472d52775b7354778e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -141735,6 +142259,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "baf5220e72cca65cc24f3d14579dc83c5842e64216f9149acab1ce34d6bea332",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -142001,6 +142526,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "21c61bf6ac8b90ab019ea26b4e2beb3462db981867c1e408c37cc3957b41b2d5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -142267,6 +142793,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "cc37b20d5d5df886419381330b078cfbbc9aa26a3d59411edd1b565284c1934b",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -142533,6 +143060,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "945851b48eb4a393db71cbd589afd0a611c1335d111f496636e115e186e1490e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -142799,6 +143327,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "eae17073439d0b7ff107986736bfe6f45ee91fdd116987447a78423ff030c221",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -143065,6 +143594,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "4ceea7a84e6cd16f922d18687f0d33417e84f9e344b32ea6ceade24ac88f3807",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -143331,6 +143861,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "524545774160794e13cacef2c85ab42c0fb34e3325c3d56c2e5a06dd6cff4ddf",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -143597,6 +144128,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "48f3562f2fc69fe4c4229ff96b6a071a4472d61206d83b77ff9326bed931df48",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -143863,6 +144395,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "6083e62af36e4b9223ec8ff516543d224485c6d29e7ff5b96bc07513cce4b668",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -144129,6 +144662,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "7d17c6cdde8912c69583e7b757854fa083dcbe3f4dc70300369e7e530f5d434d",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -144395,6 +144929,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "88608ec0e6d3944926c9da7bfea154c229f9c4d6ef0895fff1288dbb74992793",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -144661,6 +145196,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "f41200b983688b11104abc9d1009e63cd76f2200fe42a7701b6963fb3bdce808",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -144927,6 +145463,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "e84e94a109dd10b3c4fa363b2f6771735d27800314c2902fef4d0da2d72c06b5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -145193,6 +145730,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "e34518816fb51f605988a78a5725066aba1730831644e3718ad051a191ee0604",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -145459,6 +145997,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "80203e26a4e036012d1079c426d56f54dc55c0ed1b04bf2aa0f0ad36ac1c4afc",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -145725,6 +146264,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "d4ca7e90cf9a5e965ff4d022a0f3a3689c858d14e5711e3b58489902e3c11b9c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -145991,6 +146531,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "357b6a2fbf219a599f3fa58fcd0eba63272740bfe5ffb522f66c4b288b07a029",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -146257,6 +146798,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "3e9ec3c1e934ef9f62303c14b151be80119b8c048eadb875c8d290ebcd803851",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -146523,6 +147065,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "cf5da3d59862e91d48d5f909c41e179218aef7b60289cc02ab1e5626993b3c87",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -146789,6 +147332,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "941ede48f1f2528422139b946acbbc2665fcbc7147edf5985caf6b572e1889a0",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -147055,6 +147599,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "798dfcf7a709c7a87a3a20ffc511c24e5266e8b763b9316b7f7676a77750be46",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -147321,6 +147866,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "eadc500ef4da982a13b5b5b6cd4d0f4a63df78046f50bd22316dafeaa3cf3692",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -147587,6 +148133,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "12e41db7fc688006fac0469fbc5d702e101d139d46ff3c7b23f9b651bbdf227c",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -147853,6 +148400,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "bf3cba4127f24cb328cae396fa020dec43c171e8ab64d7879593db37c8335a90",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -148119,6 +148667,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "ba534fd8020c682c99fe517d83e9242f58632e9c79453bd795a7870b0702327e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -148385,6 +148934,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "3266d4f31d966f4042d68250a549c0bb5465e6486a34ca572727c0b0a6e61490",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -148651,6 +149201,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "d49ddf888eaf8c591f6296bb784c1f886e4b00eaf058c5f0f6f667803404bad5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -148917,6 +149468,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "b5748db119ebd97c8f73f3f1a49165e0544cf7e1c283384c6c2c3c7f655766cc",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -149183,6 +149735,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "38ec34a2835ff533e55abf930d7310e354f0c6e2482b595ae288b11cd17263f1",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -149449,6 +150002,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "67c2fdd9129110c8fbe193b6e571fc0873d805d7b65af7332289fbf40cadc91e",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -149715,6 +150269,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "c5829261f29c4f03c6ca2a4a26d22e9ab035dc38c9406cbf815cc73675820741",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -149981,6 +150536,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "1e561ed09a160fa1272e07e54cc506ea825f2314e564c3e8a8892e1db8992e17",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -150247,6 +150803,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "505d2783b5d92aa97e2a3730b39d234ac97b29f0461a4ae7bcee69456d600895",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -150513,6 +151070,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "252230766aaa35606b4efc753288a06740dfb65f418dbb665f113b07c5c0fcf7",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -150779,6 +151337,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "86096ab484c1276a15268f4dacdcf954d7eed0190c738fe97471dfeb6167ef4f",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -151045,6 +151604,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "54e8c98e4ed46530a474fb3520164af1839767bd31079822ba65e778aa0afdf2",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -151311,6 +151871,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "e5b605a07fec1b4f20cf26c751f3157fc9b9aec6e3ecfc0072bc1908a2b35bd9",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -151577,6 +152138,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "heldout",
+      "text_digest": "558d657a820f262dc84f2f94fc2dd2fc19b969d08dd14da2933d1c6165fb8cd5",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
@@ -151843,6 +152405,7 @@
       "element": "attachment_lure",
       "label": 0,
       "split": "train",
+      "text_digest": "d27b25587f7fb88514837881a1e4e8184f9dfc2abe68c5e8b9450ca9eb1e4ccd",
       "source": "spamassassin-ham",
       "licence": "Apache SpamAssassin public corpus",
       "vector": [
