@@ -138,9 +138,16 @@ public sealed class MintedKeyTests
         Assert.Equal(16, salt.Length);
 
         // The secret half alone must not appear either, in any encoding, because a store that leaked
-        // it would have leaked the credential as surely as storing the whole key.
-        var secret = key[(key.LastIndexOf('_') + 1)..];
-        Assert.DoesNotContain(secret, row, StringComparison.Ordinal);
+        // it would have leaked the credential as surely as storing the whole key. Search a long,
+        // random fragment: a single base64url character can occur in the rendered hexadecimal
+        // digest by chance. The positive control proves this search would catch a rendered secret.
+        var separator = key.IndexOf('_', MintedApiKey.Scheme.Length + 1);
+        Assert.NotEqual(-1, separator);
+        var secret = key[(separator + 1)..];
+        var secretFragment = secret[..16];
+        Assert.Contains(Convert.ToHexString(digest), row, StringComparison.Ordinal);
+        Assert.Contains(secretFragment, $"{row}|{secret}", StringComparison.Ordinal);
+        Assert.DoesNotContain(secretFragment, row, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToBase64String(Encoding.UTF8.GetBytes(secret)), row, StringComparison.Ordinal);
     }
 
