@@ -29,6 +29,8 @@ export PROXY_E2E_LOGIN PROXY_E2E_BACKEND_USERNAME
 run_dir="${PROXY_E2E_RUN_DIR:-.styloagent/artifacts/proxy-e2e-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$run_dir"
 run_dir="$(cd "$run_dir" && pwd)"
+find "$PWD/src/StyloMail.Host/bin/Debug/net10.0" -type f -name '*.dll' -print0 | sort -z | \
+  xargs -0 shasum -a 256 | shasum -a 256 | awk '{print substr($1,1,12)}' >"$run_dir/host-build.id"
 secret_dir=$(mktemp -d "$run_dir/secrets.XXXXXX")
 chmod 700 "$secret_dir"
 host_log="$run_dir/host.log"
@@ -271,6 +273,11 @@ if [[ "$PROXY_E2E_KEEP_ALIVE_SECONDS" != <-> ]]; then
   exit 1
 fi
 if (( PROXY_E2E_KEEP_ALIVE_SECONDS > 0 )); then
+  curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$run_dir/sessions-keepalive-live.json"
+  python3 - "$run_dir/sessions-keepalive-live.json" <<'PY'
+import json, sys
+if len(json.load(open(sys.argv[1], encoding='utf-8'))['sessions']) < 2: raise SystemExit('Keep-alive did not retain both live sessions.')
+PY
   print -r -- "KEEP-ALIVE base-url=$PROXY_E2E_HOST_URL api-key-config=$secret_dir/curl.conf imap-port=$imap_port smtp-port=$smtp_port seconds=$PROXY_E2E_KEEP_ALIVE_SECONDS"
   # Waiting on a child lets INT/TERM reach this trapping shell immediately; foreground sleep does not.
   sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS" &
