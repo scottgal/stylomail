@@ -59,17 +59,17 @@
     "threat:positive": 60,
     "impersonated_greeting:positive": 60,
     "attachment_lure:positive": 23,
-    "credential_request:negative": 60,
-    "credential_request:negative_hard": 55,
-    "urgency_pressure:negative": 60,
-    "urgency_pressure:negative_hard": 55,
-    "threat:negative": 60,
-    "threat:negative_hard": 55,
-    "impersonated_greeting:negative": 60,
-    "impersonated_greeting:negative_hard": 55,
-    "attachment_lure:negative": 60,
-    "attachment_lure:negative_hard": 55
+    "credential_request:negative": 200,
+    "credential_request:negative_hard": 180,
+    "urgency_pressure:negative": 200,
+    "urgency_pressure:negative_hard": 180,
+    "threat:negative": 200,
+    "threat:negative_hard": 180,
+    "impersonated_greeting:negative": 200,
+    "impersonated_greeting:negative_hard": 120,
+    "attachment_lure:negative": 200,
+    "attachment_lure:negative_hard": 180
   },
-  "rows": 563,
+  "rows": 1263,
   "note": "Weak supervision. The corpus supplies the malicious or benign label; the cue rule only selects the element a segment is evidence about. Text is redacted for structured identifiers only and is not committed."
 }

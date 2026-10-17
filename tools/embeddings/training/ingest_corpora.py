@@ -105,7 +105,8 @@ SPAMASSASSIN = [
 ]
 
 TARGET_PER_ELEMENT = 60
-HARD_NEGATIVE_TARGET = 55
+NEGATIVE_TARGET_PER_ELEMENT = 200
+HARD_NEGATIVE_TARGET = 180
 MAX_SEGMENTS = 32
 MAX_SEGMENT_CHARS = 6000
 
@@ -293,8 +294,9 @@ def main() -> int:
         easy = [(segment, hits) for segment, hits in ham_segments
                 if hits[element] == 0 and not topic.search(segment)]
         chosen_hard = choose(hard, used, HARD_NEGATIVE_TARGET)
-        chosen_easy = choose(easy, used, TARGET_PER_ELEMENT - len(chosen_hard))
+        chosen_easy = choose(easy, used, NEGATIVE_TARGET_PER_ELEMENT - len(chosen_hard))
         for segment, hits in chosen_hard + chosen_easy:
+            is_hard = any(segment is chosen[0] for chosen in chosen_hard)
             rows.append({
                 "id": f"ex:{element}:{digest(segment)[:12]}",
                 "element": element,
@@ -302,7 +304,7 @@ def main() -> int:
                 "split": "heldout" if int(digest(segment)[:2], 16) % 10 < 3 else "train",
                 "source": "spamassassin-ham",
                 "licence": "Apache SpamAssassin public corpus",
-                "hard_negative": hits[element] > 0,
+                "hard_negative": is_hard,
                 "cue_hits": hits[element],
                 "text": redact(segment),
             })

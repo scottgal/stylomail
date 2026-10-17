@@ -182,39 +182,43 @@ would be provenance theatre.
 ### Held-out metrics: corpus/1, weak supervision
 
 Built by `ingest_corpora.py` from the Nazario phishing corpus and the Apache SpamAssassin ham
-corpora, then trained by `train_elements.py`. 563 rows. The train split is split again by a stable
-hash into fit (80 percent) and calibration (20 percent); the calibration split chooses the operating
-point, and the held-out split is read once at that point.
+corpora, then trained by `train_elements.py`. 1,263 rows: 60 Nazario positives per element (23 for
+attachment_lure) and 200 ham negatives per element, of which 120 to 180 are hard negatives selected
+by subject. The train split is divided by a stable text digest into fit and calibration, stratified
+per element and label; calibration chooses the operating point and held-out is read once.
 
 **What the labels mean.** A Nazario message is malicious by the corpus's own label; the segment
 chosen for an element is the one carrying that element's cues. A SpamAssassin ham message is benign;
-a cue-bearing ham segment is a hard negative, and the rest are easy negatives. The corpus supplies
-the class, the cue rule only selects which element a segment is evidence about. This is weak
-supervision, and a held-out number here is a statement about the rule as much as about the model.
+a segment selected by subject is a hard negative, and the rest are easy negatives. The corpus
+supplies the class, the cue and topic rules only select which element a segment is evidence about.
+This is weak supervision, and a held-out number here is a statement about the rule as much as about
+the model.
 
 **Operating point and its budget.** Thresholds are chosen on the calibration split for a **one
-percent false-positive budget on negatives**, and applied unchanged to held-out.
+percent false-positive budget on negatives**, applied unchanged to held-out.
 
 | element | scorer | P | R | FPR | n neg | hard neg | hard FPR | PR-AUC | threshold |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| credential_request | kNN | 1.00 | 0.91 | 0.00 | 22 | 4 | 0.00 | 0.98 | 0.008 |
-| credential_request | probe | 1.00 | 0.77 | 0.00 | 22 | 4 | 0.00 | 1.00 | 0.682 |
-| urgency_pressure | kNN | 1.00 | 0.85 | 0.00 | 15 | 12 | 0.00 | 0.99 | 0.029 |
-| urgency_pressure | probe | 0.95 | 0.95 | 0.07 | 15 | 12 | 0.08 | 1.00 | 0.360 |
-| threat | kNN | 0.94 | 0.89 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.014 |
-| threat | probe | 0.94 | 0.89 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.607 |
-| impersonated_greeting | kNN | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.019 |
-| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.219 |
-| attachment_lure | kNN | 0.83 | 0.62 | 0.07 | 14 | 12 | 0.08 | 0.91 | 0.023 |
-| attachment_lure | probe | 0.75 | 0.75 | 0.14 | 14 | 12 | 0.08 | 0.90 | 0.475 |
+| credential_request | kNN | 0.95 | 0.95 | 0.01 | 70 | 65 | 0.02 | 0.98 | 0.008 |
+| credential_request | probe | 0.94 | 0.77 | 0.01 | 70 | 65 | 0.02 | 0.98 | 0.627 |
+| urgency_pressure | kNN | 0.78 | 0.90 | 0.09 | 57 | 48 | 0.08 | 0.96 | -0.019 |
+| urgency_pressure | probe | 1.00 | 0.85 | 0.00 | 57 | 48 | 0.00 | 0.97 | 0.726 |
+| threat | kNN | 0.94 | 0.89 | 0.02 | 65 | 58 | 0.02 | 0.98 | -0.008 |
+| threat | probe | 0.94 | 0.89 | 0.02 | 65 | 58 | 0.02 | 0.99 | 0.785 |
+| impersonated_greeting | kNN | 0.94 | 1.00 | 0.02 | 61 | 39 | 0.03 | 1.00 | 0.006 |
+| impersonated_greeting | probe | 0.94 | 1.00 | 0.02 | 61 | 39 | 0.03 | 1.00 | 0.110 |
+| attachment_lure | kNN | 0.71 | 0.62 | 0.04 | 51 | 46 | 0.04 | 0.82 | -0.005 |
+| attachment_lure | probe | 0.83 | 0.62 | 0.02 | 51 | 46 | 0.07 | 0.66 | 0.651 |
 
-The split is stratified by element and label and keyed by the TEXT digest, not the row id. Hashing
-the id was wrong and was caught by renaming exemplar ids: the rename moved every row between fit and
-calibration and the metrics moved with it. A flat text hash then left an element with 23 positives
-holding only 2 in calibration, which the trainer refused; the stratified version fixes both.
+Held-out hard negatives are now 39 to 65 per element, which is the first table where most elements
+carry enough negatives to say something. `attachment_lure` is the exception in the other direction:
+its ranking is weak (PR-AUC 0.82 kNN, 0.66 probe) even with 46 hard negatives, and its 23 positives
+are the smallest positive set. `urgency_pressure` is the element where kNN carries visible cost:
+FPR 0.09 on 57 negatives at a threshold chosen for a one percent budget.
 
-**The one percent budget is NOT met, and at these sample sizes it cannot even be resolved.** The
-calibration negatives number 15 to 28 per element, and the held-out hard negatives 2 to 27. Resolving a
+**The one percent budget is NOT met, and it still cannot be resolved.** Held-out negatives now number
+51 to 70 per element, and hard negatives 39 to 65, but resolving a one percent rate needs at least
+100 negatives, so every row is still marked `fpr_budget_resolvable: false`. Resolving a
 one percent rate needs at least 100 negatives, so every row in this artefact is marked
 `fpr_budget_resolvable: false`, and observed held-out FPRs reach 0.28 on all negatives and 1.00 on
 the four hard negatives available for credential_request. The artefact says this rather than quoting
