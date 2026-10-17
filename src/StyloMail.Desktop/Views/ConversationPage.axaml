@@ -1,0 +1,10 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:StyloMail.Desktop.Views"
+             x:Class="StyloMail.Desktop.Views.ConversationPage">
+  <Grid ColumnDefinitions="380,1,*">
+    <local:ConversationListView Grid.Column="0" x:Name="ListView" />
+    <Border Grid.Column="1" Classes="separator" />
+    <local:ConversationSignalsView Grid.Column="2" x:Name="SignalsView" />
+  </Grid>
+</UserControl>

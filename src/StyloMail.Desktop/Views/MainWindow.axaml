@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:StyloMail.Desktop.Views.Controls"
+        xmlns:local="using:StyloMail.Desktop.Views"
         xmlns:models="using:StyloMail.Desktop.Models"
         x:Class="StyloMail.Desktop.Views.MainWindow"
         Title="StyloMail"
@@ -170,7 +171,9 @@
             </Grid>
         </Border>
 
-        <Grid ColumnDefinitions="228,1,340,1,*">
+        <Grid x:Name="ConversationHost" IsVisible="False" />
+
+        <Grid x:Name="ConsoleGrid" ColumnDefinitions="228,1,340,1,*">
 
             <!-- ============ 1. sidebar ============ -->
             <Border Grid.Column="0" Classes="sidebar">

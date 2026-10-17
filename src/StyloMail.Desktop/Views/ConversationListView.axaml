@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.ConversationListView">
+  <UserControl.Styles>
+    <Style Selector="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+    <StackPanel Grid.Row="0" Spacing="4">
+      <TextBlock Classes="paneTitle" Text="Proxy conversations" />
+      <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ProvenanceLine}" />
+      <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding StatusLabel}" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="1"
+               Classes="emptyDetail"
+               Margin="0,12"
+               IsVisible="{Binding ShowEmpty}"
+               Text="{Binding EmptyLabel}" />
+
+    <ListBox Grid.Row="2"
+             Margin="0,8,0,0"
+             Background="Transparent"
+             ItemsSource="{Binding Conversations}"
+             SelectedItem="{Binding SelectedConversation, Mode=TwoWay}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Border Classes="card" Margin="0,0,4,0">
+            <StackPanel Spacing="3">
+              <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Summary}" />
+              <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+              <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding LastActivityLabel}" />
+              <TextBlock Classes="signalReason" TextWrapping="Wrap" Text="{Binding AvailabilityDetail}" />
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+      <Button Classes="rowButton" Content="Refresh" Click="OnRefreshClick" />
+      <Button Classes="rowButton" Content="Load more" IsVisible="{Binding ShowLoadMoreButton}" Click="OnLoadMoreClick" />
+    </StackPanel>
+  </Grid>
+</UserControl>

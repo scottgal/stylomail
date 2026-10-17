@@ -28,7 +28,8 @@ public static class ConsoleEnvironment
     /// </remarks>
     public const string KeyVariable = "STYLOMAIL_SMOKE_KEY";
 
-    private const string DefaultHost = "http://127.0.0.1:5000";
+    // docs/running.md uses 8080; macOS AirPlay commonly owns 5000.
+    private const string DefaultHost = "http://127.0.0.1:8080";
 
     /// <summary>
     /// Whether a harness is driving this run.

@@ -1,5 +1,14 @@
 # Driving the operator console
 
+## External Host capture
+
+`run-console-external-host-capture.sh` drives the desktop against an already
+running Host. It does not start, seed, stop, or otherwise manage that Host.
+Supply `CONSOLE_EXTERNAL_HOST_URL` and `CONSOLE_EXTERNAL_API_KEY_FILE`; the
+key is read into the Debug-only console configuration and is never printed or
+passed on the command line. Set `CONSOLE_EXTERNAL_SCRIPT` for the approved
+capture scenario and optionally `CONSOLE_EXTERNAL_OUTPUT` for its artifacts.
+
 Live UI tests for `src/StyloMail.Desktop`, powered by
 [Mostlylucid.Avalonia.UITesting](../../lucidview/external/lucidRESUME/src/Mostlylucid.Avalonia.UITesting).
 Modelled on mylo's `ux-scripts/`, including the repeatability rule.

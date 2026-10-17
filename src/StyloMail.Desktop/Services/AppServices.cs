@@ -70,6 +70,9 @@ public sealed class AppServices : IDisposable
     /// <summary>The console's entire view of the system.</summary>
     public StyloMailApiClient Client { get; private set; } = null!;
 
+    /// <summary>Conversation review client sharing this console's Host transport and key provider.</summary>
+    public ProxyConversationClient Conversations { get; private set; } = null!;
+
     /// <summary>
     /// Builds the console's services.
     /// </summary>
@@ -134,6 +137,7 @@ public sealed class AppServices : IDisposable
             keychain);
 
         services.Client = new StyloMailApiClient(http, provider);
+        services.Conversations = new ProxyConversationClient(http, provider);
 
         return services;
     }

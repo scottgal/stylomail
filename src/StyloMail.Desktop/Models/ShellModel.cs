@@ -641,6 +641,12 @@ public sealed class ShellModel : ObservableObject
                 "GET /v1/proxy/accounts, sessions, operations",
                 "Review pseudonymous proxy accounts, live sessions, and named-window operations. "
                     + "Unavailable telemetry is shown as not produced, never as zero."),
+
+            new SidebarItem(
+                "Conversations",
+                SidebarItemState.Available,
+                "GET /v1/proxy/conversations?window=last_24_hours",
+                "Review pseudonymous conversation threads and their safe signal gaps. Message content, addresses, and raw endpoints are not shown."),
         ]));
 
         model.Sections.Add(new SidebarSection("Review",

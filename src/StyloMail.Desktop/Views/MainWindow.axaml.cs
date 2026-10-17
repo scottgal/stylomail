@@ -61,6 +61,7 @@ public partial class MainWindow : Window
     private object? _connectInFlight;
 
     private readonly ShellModel _model;
+    private ConversationPage? _conversationPage;
 
     /// <summary>
     /// Set while a row's open button is assigning the selection itself.
@@ -771,6 +772,14 @@ public partial class MainWindow : Window
     {
         if (sender is not Control { DataContext: SidebarItem item }) return;
 
+        if (item.Title == "Conversations")
+        {
+            await OpenConversationsAsync(item).ConfigureAwait(true);
+            return;
+        }
+
+        ShowConsole();
+
         // Connection opens a dialog rather than filling a pane: it has nothing
         // to list, and the one thing it does is a form.
         if (item.Title == ConnectionSectionTitle)
@@ -901,6 +910,24 @@ public partial class MainWindow : Window
         if (_services is null) return;
         var dialog = new ProxyManagementDialog(_services.Client);
         await dialog.ShowDialog(this).ConfigureAwait(true);
+    }
+
+    private async Task OpenConversationsAsync(SidebarItem item)
+    {
+        await OnUiThreadAsync(() => _model.SelectedItem = item).ConfigureAwait(false);
+        if (_conversationPage is null)
+        {
+            _conversationPage = new ConversationPage(_services?.Conversations);
+            ConversationHost.Children.Add(_conversationPage);
+        }
+        ConsoleGrid.IsVisible = false;
+        ConversationHost.IsVisible = true;
+    }
+
+    private void ShowConsole()
+    {
+        ConversationHost.IsVisible = false;
+        ConsoleGrid.IsVisible = true;
     }
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>

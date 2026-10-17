@@ -32,6 +32,8 @@ public sealed record ProxySessionsResponse
     public required bool HasMore { get; init; }
 }
 
+public sealed record ProxyListenersResponse { public required string TenantId { get; init; } public required IReadOnlyList<ProxyListenerResponse> Listeners { get; init; } }
+
 public sealed record ProxySessionResponse
 {
     public required string SessionId { get; init; }
