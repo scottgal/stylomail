@@ -113,18 +113,16 @@ def main() -> int:
             })
 
         print(f"{element}: fit {len(fit)} calibration {len(calibration)} heldout {len(heldout)}", flush=True)
-        # Force float32. The base checkpoint loads in bfloat16, and the setfit 1.2 head/backward path
-        # produced "Found dtype Float but expected BFloat16" before the first step completed. The
-        # serving path keeps bfloat16; this arm is a training-only comparison and float32 is the
-        # honest choice for it.
-        try:
-            model = SetFitModel.from_pretrained(
-                args.model, labels=["benign", "element"],
-                model_kwargs={"torch_dtype": torch.float32},
-            )
-        except TypeError:
-            model = SetFitModel.from_pretrained(args.model, labels=["benign", "element"])
-            model.model_body = model.model_body.float()
+        # Force float32 on the body. The checkpoint loads in bfloat16, SetFit's contrastive training
+        # step runs in float32, and the backward pass fails with "Found dtype Float but expected
+        # BFloat16" before the first step completes. model_kwargs={"torch_dtype": ...} is accepted
+        # and ignored by setfit 1.2 (measured: the body still reported bfloat16), while body.float()
+        # converts it and reports float32. The serving path keeps bfloat16; this arm is training only.
+        model = SetFitModel.from_pretrained(args.model, labels=["benign", "element"])
+        model.model_body = model.model_body.float()
+        if model.model_body[0].auto_model.dtype != torch.float32:
+            raise SystemExit("REFUSING: the SetFit body did not convert to float32")
+
         trainer = Trainer(
             model=model,
             train_dataset=dataset(fit),
