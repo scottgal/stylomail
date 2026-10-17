@@ -75,5 +75,9 @@ public static class ApiRoutes
 
         v1.MapPost("/controls/senders/{id}/resume", ControlsEndpoints.ResumeSenderAsync)
             .RequireAuthorization(HostPolicies.Administer);
+
+        // The access-proxy management surface. Read on Review, mutate on Administer; mapped from its
+        // own module so the proxy routes and their privilege split read together.
+        ProxyEndpoints.Map(v1);
     }
 }

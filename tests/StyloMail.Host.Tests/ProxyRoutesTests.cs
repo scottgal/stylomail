@@ -1,0 +1,794 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using StyloMail.AccessProxy.Accounts;
+using StyloMail.AccessProxy.Hosting;
+using StyloMail.AccessProxy.Sessions;
+using StyloMail.Host.Contracts;
+using StyloMail.Host.Proxy;
+using StyloMail.Host.Serialization;
+
+namespace StyloMail.Host.Tests;
+
+/// <summary>
+/// The <c>/v1/proxy</c> management routes: tenant scope from claims, the Review/Administer split,
+/// typed conflicts, cursor binding, drain-aware listener control and the not-produced/zero
+/// distinction.
+/// </summary>
+public sealed class ProxyRoutesTests
+{
+    private const string ProxyEnabled = "StyloMail:Proxy:Enabled";
+    private static readonly string[] ExpectedParticipantTokens = ["pa_account"];
+
+    // ---------------------------------------------------------------------------------------------
+    // Privilege split and tenant scope
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Reads_need_review_and_mutations_need_administer()
+    {
+        using var host = ProxyHost();
+
+        using var anonymous = host.Anonymous();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/v1/proxy/accounts")).StatusCode);
+
+        using var sender = host.ClientAs(TestPrincipals.AcmeSenderKey);
+        Assert.Equal(HttpStatusCode.Forbidden, (await sender.GetAsync("/v1/proxy/accounts")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await sender.PostAsJsonAsync("/v1/proxy/accounts", AccountBody("alice@example.com", "b-1"))).StatusCode);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        Assert.Equal(HttpStatusCode.OK, (await reviewer.GetAsync("/v1/proxy/accounts")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await reviewer.PostAsJsonAsync("/v1/proxy/accounts", AccountBody("alice@example.com", "b-1"))).StatusCode);
+
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await operatorClient.PostAsJsonAsync("/v1/proxy/accounts", AccountBody("alice@example.com", "b-1"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task An_account_created_in_one_tenant_is_absent_from_another()
+    {
+        using var host = ProxyHost();
+        using var acme = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var created = await EnrolAsync(acme, "alice@example.com", "backend-1");
+
+        using var globex = host.ClientAs(TestPrincipals.GlobexReviewerKey);
+        var listing = await ReadAsync<ProxyAccountsResponse>(
+            await globex.GetAsync("/v1/proxy/accounts"));
+
+        Assert.Empty(listing.Accounts);
+
+        // Addressed by the same opaque id, in another tenant, the target does not exist.
+        using var globexOperator = host.ClientAs(TestPrincipals.GlobexOperatorKey);
+        var disabled = await globexOperator.PostAsync($"/v1/proxy/accounts/{created.AccountId}/disable", null);
+        Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Enrolment shape and typed conflicts
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Enrolment_is_metadata_only_and_never_echoes_identity_or_secrets()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var body = AccountBody("alice@example.com", "backend-1");
+        var response = await client.PostAsJsonAsync("/v1/proxy/accounts", body);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("alice@example.com", raw);
+        Assert.DoesNotContain("backend-user", raw);
+        Assert.DoesNotContain("client-secret-value", raw);
+        Assert.DoesNotContain("backend-secret-value", raw);
+
+        var created = JsonSerializer.Deserialize<ProxyAccountCreatedResponse>(raw, HostJson.Options);
+        Assert.NotNull(created);
+        Assert.StartsWith("pa_", created!.AccountId);
+        Assert.True(created.Enabled);
+        Assert.Equal("active", created.EnrollmentState);
+        Assert.Equal(TestPrincipals.AcmeTenant, created.TenantId);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var listingRaw = await (await reviewer.GetAsync("/v1/proxy/accounts")).Content.ReadAsStringAsync();
+        Assert.DoesNotContain("alice@example.com", listingRaw);
+        Assert.DoesNotContain("backend-user", listingRaw);
+        Assert.DoesNotContain("client-secret-value", listingRaw);
+        Assert.DoesNotContain("backend-secret-value", listingRaw);
+
+        var listing = JsonSerializer.Deserialize<ProxyAccountsResponse>(listingRaw, HostJson.Options)!;
+        var account = Assert.Single(listing.Accounts);
+        Assert.DoesNotContain("@", account.LoginKey);
+        Assert.Equal("active", account.EnrollmentState);
+    }
+
+    [Fact]
+    public async Task A_duplicate_login_is_a_conflict()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        await EnrolAsync(client, "alice@example.com", "backend-1");
+
+        var duplicate = await client.PostAsJsonAsync(
+            "/v1/proxy/accounts",
+            AccountBody("alice@example.com", "backend-2"));
+
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Equal("duplicate_login", await ErrorCodeAsync(duplicate));
+    }
+
+    [Theory]
+    [InlineData(ProxyEnrollmentConflict.DuplicateAccountId, HttpStatusCode.Conflict, "duplicate_account")]
+    [InlineData(ProxyEnrollmentConflict.TenantMismatch, HttpStatusCode.UnprocessableEntity, "tenant_mismatch")]
+    [InlineData(ProxyEnrollmentConflict.BackendCredentialUnavailable, HttpStatusCode.NotFound, "credential_unavailable")]
+    public async Task Every_typed_conflict_maps_to_its_documented_status(
+        ProxyEnrollmentConflict conflict,
+        HttpStatusCode expected,
+        string expectedCode)
+    {
+        using var host = ProxyHost().Override(services =>
+        {
+            services.RemoveAll<IProxyEnrollmentService>();
+            services.AddSingleton<IProxyEnrollmentService>(new ThrowingEnrollmentService(conflict));
+        });
+
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        var response = await client.PostAsJsonAsync(
+            "/v1/proxy/accounts",
+            AccountBody("alice@example.com", "backend-1"));
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(expectedCode, await ErrorCodeAsync(response));
+
+        // The Host's existing error body, not a second shape invented for this surface.
+        var raw = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(raw);
+        Assert.True(document.RootElement.TryGetProperty("detail", out _));
+    }
+
+    [Fact]
+    public async Task A_missing_request_field_is_a_bad_request()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/proxy/accounts",
+            new { login = "alice@example.com" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("client_password_required", await ErrorCodeAsync(response));
+    }
+
+    [Fact]
+    public async Task Account_lifecycle_answers_not_found_for_a_missing_target()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await client.PostAsync("/v1/proxy/accounts/pa_missing/disable", null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await client.PostAsync("/v1/proxy/accounts/pa_missing/enable", null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await client.PostAsync("/v1/proxy/accounts/pa_missing/credential/revoke", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Disable_enable_and_revoke_are_reflected_in_the_readback()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var created = await EnrolAsync(client, "alice@example.com", "backend-1");
+
+        var disabled = await ReadAsync<ProxyAccountResponse>(
+            await client.PostAsync($"/v1/proxy/accounts/{created.AccountId}/disable", null));
+        Assert.False(disabled.Enabled);
+        Assert.Equal("active", disabled.EnrollmentState);
+
+        var enabled = await ReadAsync<ProxyAccountResponse>(
+            await client.PostAsync($"/v1/proxy/accounts/{created.AccountId}/enable", null));
+        Assert.True(enabled.Enabled);
+
+        var revoked = await ReadAsync<ProxyAccountResponse>(
+            await client.PostAsync($"/v1/proxy/accounts/{created.AccountId}/credential/revoke", null));
+        Assert.Equal("revoked", revoked.EnrollmentState);
+        Assert.NotNull(revoked.RevokedAt);
+
+        // Disabling an account is an operator state, never an inference about backend health.
+        Assert.True(revoked.Enabled);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Pagination
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Account_paging_is_stable_and_the_cursor_is_bound_to_tenant_and_page_size()
+    {
+        using var host = ProxyHost();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        await EnrolAsync(client, "a@example.com", "backend-a");
+        await EnrolAsync(client, "b@example.com", "backend-b");
+        await EnrolAsync(client, "c@example.com", "backend-c");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var first = await ReadAsync<ProxyAccountsResponse>(
+            await reviewer.GetAsync("/v1/proxy/accounts?limit=2"));
+
+        Assert.Equal(2, first.Accounts.Count);
+        Assert.True(first.HasMore);
+        Assert.NotNull(first.NextCursor);
+
+        var second = await ReadAsync<ProxyAccountsResponse>(
+            await reviewer.GetAsync($"/v1/proxy/accounts?limit=2&after={first.NextCursor}"));
+
+        Assert.Single(second.Accounts);
+        Assert.False(second.HasMore);
+        Assert.Null(second.NextCursor);
+        Assert.True(string.CompareOrdinal(second.Accounts[0].AccountId, first.Accounts[^1].AccountId) > 0);
+
+        // A cursor is opaque, but it is bound: another tenant cannot replay it, and neither can the
+        // same tenant with a different page size.
+        using var globex = host.ClientAs(TestPrincipals.GlobexReviewerKey);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await globex.GetAsync($"/v1/proxy/accounts?limit=2&after={first.NextCursor}")).StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync($"/v1/proxy/accounts?limit=1&after={first.NextCursor}")).StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/accounts?limit=0")).StatusCode);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Availability: not produced is not zero
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Not_produced_is_distinct_from_a_readable_zero()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        // No listener event has ever been recorded for this tenant.
+        var before = await ReadAsync<ProxySessionsResponse>(
+            await reviewer.GetAsync("/v1/proxy/sessions?scope=live"));
+        Assert.Equal("not_produced", before.Availability);
+        Assert.Empty(before.Sessions);
+
+        var operationsBefore = await ReadAsync<ProxyOperationsResponse>(
+            await reviewer.GetAsync("/v1/proxy/operations?window=last_24_hours"));
+        Assert.Equal("not_produced", operationsBefore.Availability);
+        Assert.Null(operationsBefore.Counters.LiveSessions);
+        Assert.Null(operationsBefore.Counters.Opened);
+
+        // One listener lifecycle event makes the stream readable. Empty now means zero, not unknown.
+        var sink = host.Services.GetRequiredService<IProxyListenerEventSink>();
+        await sink.PublishAsync(
+            new ProxyListenerEvent
+            {
+                Kind = ProxyListenerEventKind.Started,
+                TenantId = TestPrincipals.AcmeTenant,
+                Protocol = ProxyListenerProtocol.Imap,
+                Timestamp = DateTimeOffset.UtcNow,
+                BoundPort = 143,
+            },
+            CancellationToken.None);
+
+        var after = await ReadAsync<ProxySessionsResponse>(
+            await reviewer.GetAsync("/v1/proxy/sessions?scope=live"));
+        Assert.Equal("available", after.Availability);
+        Assert.Empty(after.Sessions);
+        Assert.False(after.HasMore);
+
+        var operationsAfter = await ReadAsync<ProxyOperationsResponse>(
+            await reviewer.GetAsync("/v1/proxy/operations?window=last_24_hours"));
+        Assert.Equal("available", operationsAfter.Availability);
+        Assert.Equal(0L, operationsAfter.Counters.LiveSessions);
+        Assert.Equal(0L, operationsAfter.Counters.Opened);
+        Assert.Equal(0L, operationsAfter.Counters.Closed);
+        Assert.Equal(0L, operationsAfter.Counters.Faulted);
+        Assert.Equal("proxy_listener_events", operationsAfter.Provenance);
+    }
+
+    [Fact]
+    public async Task Only_the_named_window_and_the_live_scope_are_accepted()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/operations?window=last_7_days")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/operations")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/conversations?window=current")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/sessions?scope=recent")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await reviewer.GetAsync("/v1/proxy/sessions")).StatusCode);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Conversations and thread-token shape
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Thread_tokens_must_be_unpadded_base64url()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        // Rejected shapes: a dot, padding and a standard-base64 '+'.
+        foreach (var rejected in new[] { "abc.def", "abc=", "abc+def" })
+        {
+            var response = await reviewer.GetAsync(
+                $"/v1/proxy/conversations/{Uri.EscapeDataString(rejected)}/signals?window=last_24_hours");
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("invalid_thread_token", await ErrorCodeAsync(response));
+        }
+
+        // An accepted shape that no conversation uses is a 404, which proves it passed the shape
+        // check: a rejected shape would be a 400.
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await reviewer.GetAsync("/v1/proxy/conversations/AAAA/signals?window=last_24_hours")).StatusCode);
+
+        var sink = host.Services.GetRequiredService<IProxyThreadingEventSink>();
+        await sink.PublishAsync(
+            new ProxyThreadingEvent
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Protocol = ProxyListenerProtocol.Imap,
+                MessageToken = "message-one",
+                ThreadToken = "abc-DEF_123",
+                ReferenceDepth = 2,
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+            },
+            CancellationToken.None);
+
+        var accepted = await reviewer.GetAsync(
+            "/v1/proxy/conversations/abc-DEF_123/signals?window=last_24_hours");
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_missing_measurement_is_an_explicit_not_produced_point()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var sink = host.Services.GetRequiredService<IProxyThreadingEventSink>();
+        await sink.PublishAsync(
+            new ProxyThreadingEvent
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Protocol = ProxyListenerProtocol.Imap,
+                MessageToken = "message-one",
+                ThreadToken = "thread-one",
+                ReferenceDepth = 1,
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+            },
+            CancellationToken.None);
+
+        var signals = await ReadAsync<ProxyConversationSignalsResponse>(
+            await reviewer.GetAsync("/v1/proxy/conversations/thread-one/signals?window=last_24_hours"));
+
+        var point = Assert.Single(signals.Points);
+        Assert.Equal("not_produced", point.Availability);
+        Assert.Null(point.ToneScore);
+        Assert.Equal("message-one", point.TurnToken);
+        Assert.Empty(point.WarningMarkers);
+        Assert.Equal("proxy_threading_and_assessment", signals.Provenance);
+    }
+
+    [Fact]
+    public async Task Conversations_report_not_produced_without_telemetry_and_zero_with_it()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var before = await ReadAsync<ProxyConversationsResponse>(
+            await reviewer.GetAsync("/v1/proxy/conversations?window=last_24_hours"));
+        Assert.Equal("not_produced", before.Availability);
+        Assert.Empty(before.Conversations);
+
+        var sink = host.Services.GetRequiredService<IProxyThreadingEventSink>();
+        await sink.PublishAsync(
+            new ProxyThreadingEvent
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Protocol = ProxyListenerProtocol.Imap,
+                MessageToken = "message-one",
+                ThreadToken = "thread-one",
+                ReferenceDepth = 3,
+                Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+            },
+            CancellationToken.None);
+
+        var after = await ReadAsync<ProxyConversationsResponse>(
+            await reviewer.GetAsync("/v1/proxy/conversations?window=last_24_hours"));
+
+        Assert.Equal("available", after.Availability);
+        var conversation = Assert.Single(after.Conversations);
+        Assert.Equal("thread-one", conversation.ThreadToken);
+        Assert.Equal(3, conversation.ReferenceDepth);
+        Assert.Equal(ExpectedParticipantTokens, conversation.ParticipantTokens);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Listeners
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Listener_disable_is_drain_aware_and_the_readback_shows_the_drain()
+    {
+        var factory = new FakeListenerHandleFactory();
+        using var host = HostWithListener(factory);
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var listing = await ReadAsync<ProxyListenersResponse>(
+            await reviewer.GetAsync("/v1/proxy/listeners"));
+        var listener = Assert.Single(listing.Listeners);
+        Assert.Equal("imap-main", listener.ListenerId);
+        Assert.Equal("Imap", listener.Protocol);
+        Assert.Equal("LoopbackHarnessPlaintext", listener.TlsPolicy);
+        Assert.Equal("stopped", listener.State);
+        Assert.False(listener.Enabled);
+
+        var enabled = await ReadAsync<ProxyListenerResponse>(
+            await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/enable", null));
+        Assert.Equal("started", enabled.State);
+        Assert.True(enabled.Enabled);
+        Assert.Equal(54123, enabled.BindPort);
+
+        var disableResponse = await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/disable", null);
+        Assert.Equal(HttpStatusCode.Accepted, disableResponse.StatusCode);
+
+        var draining = await ReadAsync<ProxyListenerResponse>(disableResponse);
+        Assert.Equal("stopping", draining.State);
+        Assert.True(draining.Draining);
+        Assert.False(draining.Enabled);
+
+        // The drain is still running: the readback must say so rather than pretending the listener
+        // is already stopped, and the existing session is deliberately not killed.
+        var during = await ReadAsync<ProxyListenersResponse>(
+            await reviewer.GetAsync("/v1/proxy/listeners"));
+        Assert.Equal("stopping", during.Listeners[0].State);
+        Assert.True(during.Listeners[0].Draining);
+
+        factory.Last!.AllowDrain();
+
+        var stopped = await WaitForStoppedAsync(reviewer);
+        Assert.Equal("stopped", stopped.State);
+        Assert.False(stopped.Draining);
+        Assert.False(stopped.Enabled);
+    }
+
+    [Fact]
+    public async Task Listener_controls_require_administer_and_a_known_listener()
+    {
+        using var host = HostWithListener(new FakeListenerHandleFactory());
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await reviewer.PostAsync("/v1/proxy/listeners/imap-main/disable", null)).StatusCode);
+
+        var missing = await operatorClient.PostAsync("/v1/proxy/listeners/not-configured/disable", null);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal("listener_not_found", await ErrorCodeAsync(missing));
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await operatorClient.PostAsync("/v1/proxy/listeners/not-configured/enable", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task The_real_listener_factory_binds_and_reports_the_actual_port()
+    {
+        // No fake handle here: this is the composition path, on a loopback harness listener with an
+        // ephemeral port. Enable must bind a real socket through access's published session runner,
+        // and the readback must show the port the operating system assigned.
+        using var host = HostWithListener(factory: null);
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var enable = await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/enable", null);
+        Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
+
+        var started = await ReadAsync<ProxyListenerResponse>(enable);
+        Assert.Equal("started", started.State);
+        Assert.True(started.Enabled);
+        Assert.True(started.BindPort > 0);
+        Assert.False(started.Draining);
+
+        var disable = await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/disable", null);
+        Assert.Equal(HttpStatusCode.Accepted, disable.StatusCode);
+
+        var stopped = await WaitForStoppedAsync(reviewer);
+        Assert.Equal("stopped", stopped.State);
+        Assert.False(stopped.Enabled);
+        Assert.False(stopped.Draining);
+    }
+
+    [Fact]
+    public async Task A_live_session_is_listed_and_uninstrumented_bytes_are_null_not_zero()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyListenerEventSink>();
+
+        await sink.PublishAsync(
+            new ProxyListenerEvent
+            {
+                Kind = ProxyListenerEventKind.Started,
+                TenantId = TestPrincipals.AcmeTenant,
+                Protocol = ProxyListenerProtocol.Imap,
+                Timestamp = DateTimeOffset.UtcNow,
+                BoundPort = 143,
+            },
+            CancellationToken.None);
+
+        await sink.PublishAsync(
+            new ProxySessionEvent
+            {
+                Kind = ProxySessionEventKind.Opened,
+                SessionId = "s-1",
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Protocol = ProxyListenerProtocol.Imap,
+                Direction = ProxySessionDirection.ClientToProxy,
+                Timestamp = DateTimeOffset.UtcNow,
+            },
+            CancellationToken.None);
+
+        var live = await ReadAsync<ProxySessionsResponse>(
+            await reviewer.GetAsync("/v1/proxy/sessions?scope=live"));
+
+        var session = Assert.Single(live.Sessions);
+        Assert.Equal("Imap", session.Protocol);
+        Assert.Equal("pa_account", session.AccountId);
+
+        // No byte counter is wired. A measured zero and an unmeasured session must not look alike.
+        Assert.Null(session.ClientBytes);
+        Assert.Null(session.BackendBytes);
+
+        await sink.PublishAsync(
+            new ProxySessionEvent
+            {
+                Kind = ProxySessionEventKind.Closed,
+                SessionId = "s-1",
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Protocol = ProxyListenerProtocol.Imap,
+                Direction = ProxySessionDirection.ClientToProxy,
+                Timestamp = DateTimeOffset.UtcNow,
+                Outcome = SessionOutcome.Relayed,
+            },
+            CancellationToken.None);
+
+        var afterClose = await ReadAsync<ProxySessionsResponse>(
+            await reviewer.GetAsync("/v1/proxy/sessions?scope=live"));
+        Assert.Empty(afterClose.Sessions);
+    }
+
+    [Fact]
+    public async Task An_smtp_listener_binds_once_the_submission_gate_is_composed()
+    {
+        using var host = ProxyHost();
+        var certificate = CreateCertificate(host.Root);
+        host.Configure("StyloMail:Proxy:Listeners:0:ListenerId", "smtp-main")
+            .Configure("StyloMail:Proxy:Listeners:0:TenantId", TestPrincipals.AcmeTenant)
+            .Configure("StyloMail:Proxy:Listeners:0:Protocol", "Smtp")
+            .Configure("StyloMail:Proxy:Listeners:0:BindAddress", "127.0.0.1")
+            .Configure("StyloMail:Proxy:Listeners:0:Port", "0")
+            .Configure("StyloMail:Proxy:Listeners:0:TlsPolicy", "Required")
+            .Configure("StyloMail:Proxy:Listeners:0:CertificateReference", certificate)
+            .Configure("StyloMail:Proxy:Listeners:0:Enabled", "false");
+
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var enable = await operatorClient.PostAsync("/v1/proxy/listeners/smtp-main/enable", null);
+        Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
+
+        var started = await ReadAsync<ProxyListenerResponse>(enable);
+        Assert.Equal("Smtp", started.Protocol);
+        Assert.Equal("Required", started.TlsPolicy);
+        Assert.Equal("started", started.State);
+        Assert.True(started.BindPort > 0);
+
+        await operatorClient.PostAsync("/v1/proxy/listeners/smtp-main/disable", null);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Fixtures
+    // ---------------------------------------------------------------------------------------------
+
+    private static TestHost ProxyHost()
+        => new TestHost()
+            .Configure(ProxyEnabled, "true")
+            .Override(services =>
+            {
+                services.RemoveAll<IProxySecretSource>();
+                services.AddSingleton<IProxySecretSource>(new FixtureProxySecretSource());
+            });
+
+    private static TestHost HostWithListener(FakeListenerHandleFactory? factory)
+    {
+        var host = ProxyHost()
+            .Configure("StyloMail:Proxy:Listeners:0:ListenerId", "imap-main")
+            .Configure("StyloMail:Proxy:Listeners:0:TenantId", TestPrincipals.AcmeTenant)
+            .Configure("StyloMail:Proxy:Listeners:0:Protocol", "Imap")
+            .Configure("StyloMail:Proxy:Listeners:0:BindAddress", "127.0.0.1")
+            .Configure("StyloMail:Proxy:Listeners:0:Port", "0")
+            .Configure("StyloMail:Proxy:Listeners:0:TlsPolicy", "LoopbackHarnessPlaintext")
+            .Configure("StyloMail:Proxy:Listeners:0:Enabled", "false");
+
+        if (factory is not null)
+        {
+            host.Override(services =>
+            {
+                services.RemoveAll<IProxyListenerHandleFactory>();
+                services.AddSingleton<IProxyListenerHandleFactory>(factory);
+            });
+        }
+
+        return host;
+    }
+
+    private static object AccountBody(string login, string backendAccountId)
+        => new
+        {
+            login,
+            clientPassword = "client-secret-value",
+            backendAccountId,
+            providerId = "gmail",
+            credentialDiscriminator = "app-password",
+            backendUsername = "backend-user",
+            backendSecret = "backend-secret-value",
+        };
+
+    /// <summary>Creates a throwaway self-signed certificate for a loopback TLS listener.</summary>
+    private static string CreateCertificate(string directory)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddDays(1));
+
+        var path = Path.Combine(directory, "listener.pfx");
+        File.WriteAllBytes(path, certificate.Export(X509ContentType.Pkcs12, (string?)null));
+        return path;
+    }
+
+    private static async Task<ProxyAccountCreatedResponse> EnrolAsync(
+        HttpClient client,
+        string login,
+        string backendAccountId)
+    {
+        var response = await client.PostAsJsonAsync(
+            "/v1/proxy/accounts",
+            AccountBody(login, backendAccountId));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        return await ReadAsync<ProxyAccountCreatedResponse>(response);
+    }
+
+    private static async Task<T> ReadAsync<T>(HttpResponseMessage response)
+    {
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"Expected a success, got {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        var raw = await response.Content.ReadAsStringAsync();
+        var value = JsonSerializer.Deserialize<T>(raw, HostJson.Options);
+        Assert.NotNull(value);
+        return value!;
+    }
+
+    private static async Task<string?> ErrorCodeAsync(HttpResponseMessage response)
+    {
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.TryGetProperty("error", out var error) ? error.GetString() : null;
+    }
+
+    private static async Task<ProxyListenerResponse> WaitForStoppedAsync(HttpClient reviewer)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var listing = await ReadAsync<ProxyListenersResponse>(
+                await reviewer.GetAsync("/v1/proxy/listeners"));
+            var listener = listing.Listeners[0];
+            if (listener.State == "stopped")
+            {
+                return listener;
+            }
+
+            await Task.Delay(25);
+        }
+
+        throw new TimeoutException("The listener did not report stopped after its drain was released.");
+    }
+
+    private sealed class FixtureProxySecretSource : IProxySecretSource
+    {
+        public byte[] GetLoginKey()
+            => System.Text.Encoding.UTF8.GetBytes("fixture-login-key-32-bytes-long!!");
+
+        public byte[] GetProtectionKey()
+            => System.Text.Encoding.UTF8.GetBytes("fixture-protection-key-32-bytes!");
+    }
+
+    private sealed class ThrowingEnrollmentService : IProxyEnrollmentService
+    {
+        private readonly ProxyEnrollmentConflict _conflict;
+
+        public ThrowingEnrollmentService(ProxyEnrollmentConflict conflict) => _conflict = conflict;
+
+        public ValueTask EnrolAsync(ProxyEnrollmentRequest request, CancellationToken cancellationToken)
+            => throw new ProxyEnrollmentConflictException(_conflict);
+    }
+
+    private sealed class FakeListenerHandleFactory : IProxyListenerHandleFactory
+    {
+        public FakeListenerHandle? Last { get; private set; }
+
+        public IProxyListenerHandle? Create(HostProxyListenerOptions listener)
+            => Last = new FakeListenerHandle();
+    }
+
+    private sealed class FakeListenerHandle : IProxyListenerHandle
+    {
+        private readonly TaskCompletionSource _drain = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int? BoundPort => 54123;
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public async Task StopAsync(CancellationToken cancellationToken)
+            => await _drain.Task.WaitAsync(cancellationToken);
+
+        public void AllowDrain() => _drain.TrySetResult();
+
+        public ValueTask DisposeAsync()
+        {
+            _drain.TrySetResult();
+            return ValueTask.CompletedTask;
+        }
+    }
+}

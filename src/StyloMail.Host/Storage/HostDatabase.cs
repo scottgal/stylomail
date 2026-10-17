@@ -396,6 +396,64 @@ public sealed class HostDatabase
                 REFERENCES proxy_backend_credential (backend_account_id, tenant_id)
         );
 
+        -- Management telemetry for the access proxy. Access publishes these through its own event
+        -- sink contract; this is the Host's durable record, not a schema the access layer reads.
+        --
+        -- `kind` and `protocol` are stored as names rather than ordinals: a reordered enum must never
+        -- silently change the meaning of a recorded fact, and an operator reading the database should
+        -- be able to tell what happened without a mapping table.
+        CREATE TABLE IF NOT EXISTS proxy_listener_event (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id    TEXT NOT NULL,
+            protocol     TEXT NOT NULL,
+            kind         TEXT NOT NULL,
+            occurred_at  TEXT NOT NULL,
+            bound_port   INTEGER NULL,
+            fault_reason TEXT NOT NULL,
+            safe_detail  TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_listener_event_tenant
+            ON proxy_listener_event (tenant_id, occurred_at);
+
+        -- One row per lifecycle transition, never a mutable "currently live" flag. A crash between
+        -- an open and a close leaves an open row behind, which the live-session query treats as
+        -- live; that is the honest reading of the last fact recorded, not a claim that a socket is
+        -- still open.
+        CREATE TABLE IF NOT EXISTS proxy_session_event (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id     TEXT NOT NULL,
+            session_id    TEXT NOT NULL,
+            account_id    TEXT NULL,
+            protocol      TEXT NOT NULL,
+            direction     TEXT NOT NULL,
+            kind          TEXT NOT NULL,
+            occurred_at   TEXT NOT NULL,
+            outcome       TEXT NULL,
+            client_bytes  INTEGER NOT NULL,
+            backend_bytes INTEGER NOT NULL,
+            bound_reason  TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_session_event_session
+            ON proxy_session_event (tenant_id, session_id, id);
+
+        -- Structural threading facts only: non-reversible tokens for Message-ID/In-Reply-To/References,
+        -- depth and time. No header value, subject, body or participant address is stored here.
+        CREATE TABLE IF NOT EXISTS proxy_threading_event (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id       TEXT NOT NULL,
+            account_id      TEXT NOT NULL,
+            protocol        TEXT NOT NULL,
+            message_token   TEXT NOT NULL,
+            thread_token    TEXT NOT NULL,
+            reference_depth INTEGER NOT NULL,
+            occurred_at     TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_threading_event_thread
+            ON proxy_threading_event (tenant_id, thread_token, occurred_at, id);
+
         CREATE TABLE IF NOT EXISTS host_schema_migration (
             name       TEXT NOT NULL PRIMARY KEY,
             applied_at TEXT NOT NULL

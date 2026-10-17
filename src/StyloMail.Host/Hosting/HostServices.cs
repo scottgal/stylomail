@@ -4,6 +4,11 @@ using Microsoft.Extensions.Options;
 using System.Text;
 using StyloMail.Assessment;
 using StyloMail.Assessment.Semantic;
+using StyloMail.AccessProxy.Accounts;
+using StyloMail.AccessProxy.Backends;
+using StyloMail.AccessProxy.Credentials;
+using StyloMail.AccessProxy.Hosting;
+using StyloMail.AccessProxy.Sessions;
 using StyloMail.Cascade;
 using StyloMail.Core;
 using StyloMail.Host.Assessors;
@@ -13,6 +18,7 @@ using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Feedback;
 using StyloMail.Host.Observability;
+using StyloMail.Host.Proxy;
 using StyloMail.Host.Storage;
 using StyloMail.Host.Submissions;
 using StyloMail.Host.Traffic;
@@ -60,6 +66,53 @@ public static class HostServices
         services.AddSingleton<ISenderControlStore, SqliteSenderControlStore>();
         services.AddSingleton<ISenderProfileStore, SqliteSenderProfileStore>();
         services.AddSingleton<ICompanyStore, SqliteCompanyStore>();
+
+        // The access proxy backend. Registered unconditionally, with the key-dependent pieces
+        // refusing at use rather than at composition: this composition root runs before a test host
+        // layers its configuration in, so gating registration on it here would read the wrong values.
+        // Startup validation below is what makes an enabled deployment with no key fail loudly.
+        services.Configure<HostProxyOptions>(configuration.GetSection(HostProxyOptions.SectionName));
+        services.AddSingleton<IProxySecretSource, EnvironmentProxySecretSource>();
+        services.AddSingleton<IProxyLoginKeyDeriver>(ProxyLoginKeys.Create);
+        services.AddSingleton<ISecretKeyRing>(ProxyLoginKeys.CreateKeyRing);
+        services.AddSingleton<ISecretProtector, AesGcmSecretProtector>();
+        services.AddSingleton<IStyloMailPasswordHasher, Pbkdf2StyloMailPasswordHasher>();
+        services.AddSingleton<IProxyEnrollmentPersistence, SqliteProxyEnrollmentPersistence>();
+        services.AddSingleton<IProxyEnrollmentService, ProxyEnrollmentService>();
+        services.AddSingleton<SqliteProxyAccountStore>();
+        services.AddSingleton<IStyloMailAccountStore>(
+            sp => sp.GetRequiredService<SqliteProxyAccountStore>());
+        services.AddSingleton<IProxyAccountDirectory>(
+            sp => sp.GetRequiredService<SqliteProxyAccountStore>());
+        services.AddSingleton<SqliteBackendCredentialStore>();
+        services.AddSingleton<IBackendCredentialStore>(
+            sp => sp.GetRequiredService<SqliteBackendCredentialStore>());
+        services.AddSingleton<SqliteProxyEventStore>();
+        services.AddSingleton<IProxyListenerEventSink>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxyThreadingEventSink>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxyTelemetryReader>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<AccessProxyBounds>();
+        services.AddSingleton<SessionLimiter>();
+        services.AddSingleton<IBackendCredentialProvider, AppPasswordCredentialProvider>();
+        services.AddSingleton<BackendCredentialProviders>();
+        services.AddSingleton<BackendCredentialResolver>();
+        services.AddSingleton<IProxySubmissionPolicy, AllowAllProxySubmissionPolicy>();
+        services.AddSingleton<StyloMail.AccessProxy.Submission.IProxySubmissionAssessment, HostProxySubmissionAssessment>();
+        services.AddSingleton<StyloMail.AccessProxy.Submission.IEphemeralSubmissionStager,
+            StyloMail.AccessProxy.Submission.InMemoryEphemeralSubmissionStager>();
+        services.AddHostedService<ProxySubmissionStagerSweep>();
+        services.AddSingleton<IProxyCertificateResolver, HostProxyCertificateResolver>();
+        services.AddSingleton<IBackendTransport, HostProxyBackendTransport>();
+        services.AddSingleton<IProxyBackendConnectorFactory, HostProxyBackendConnectorFactory>();
+        services.AddSingleton<IProxyListenerHandleFactory, AccessProxyListenerHandleFactory>();
+        services.AddSingleton<ProxyListenerSupervisor>();
+        services.AddSingleton<IProxyListenerControl>(
+            sp => sp.GetRequiredService<ProxyListenerSupervisor>());
+        services.AddHostedService(sp => sp.GetRequiredService<ProxyListenerSupervisor>());
+
 
         // The emergency stop, registered unconditionally. Before this existed the only policy
         // context source supplied nothing, so the control the specification lists second in policy
@@ -951,6 +1004,16 @@ public static class HostServices
     public static async Task InitialiseStorageAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         services.GetRequiredService<HostDatabase>().EnsureCreated();
+
+        // An enabled proxy with no usable key is a startup fault, not a condition to discover on the
+        // first login. Resolving these constructs the deriver and key ring from the environment, so a
+        // missing or short key stops the host here rather than silently making every account unusable.
+        var proxy = services.GetRequiredService<IOptions<HostProxyOptions>>().Value;
+        if (proxy.Enabled)
+        {
+            _ = services.GetRequiredService<IProxyLoginKeyDeriver>();
+            _ = services.GetRequiredService<ISecretKeyRing>().CurrentKeyId;
+        }
 
         using (var connection = services.GetRequiredService<SqliteConnectionFactory>().Open())
         {
