@@ -107,6 +107,7 @@ public static class HostServices
         services.AddSingleton<IProxyCertificateResolver, HostProxyCertificateResolver>();
         services.AddSingleton<IBackendTransport, HostProxyBackendTransport>();
         services.AddSingleton<IProxyBackendConnectorFactory, HostProxyBackendConnectorFactory>();
+        services.AddSingleton<ProxyTrustAnchors>();
         services.AddSingleton<IProxyListenerHandleFactory, AccessProxyListenerHandleFactory>();
         services.AddSingleton<ProxyListenerSupervisor>();
         services.AddSingleton<IProxyListenerControl>(
@@ -1013,6 +1014,10 @@ public static class HostServices
         {
             _ = services.GetRequiredService<IProxyLoginKeyDeriver>();
             _ = services.GetRequiredService<ISecretKeyRing>().CurrentKeyId;
+
+            // A configured backend trust anchor is loaded and validated here, so a missing, empty
+            // or expired CA file stops the host instead of falling back to the public roots.
+            _ = services.GetRequiredService<ProxyTrustAnchors>();
         }
 
         using (var connection = services.GetRequiredService<SqliteConnectionFactory>().Open())

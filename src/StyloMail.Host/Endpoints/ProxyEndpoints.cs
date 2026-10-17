@@ -457,7 +457,10 @@ internal static class ProxyEndpoints
     // Listeners
     // ---------------------------------------------------------------------------------------------
 
-    internal static IResult ListListenersAsync(ClaimsPrincipal user, IProxyListenerControl listeners)
+    internal static IResult ListListenersAsync(
+        ClaimsPrincipal user,
+        IProxyListenerControl listeners,
+        ProxyTrustAnchors trustAnchors)
     {
         if (Tenant(user) is not { } tenantId)
         {
@@ -468,6 +471,11 @@ internal static class ProxyEndpoints
         {
             TenantId = tenantId,
             Listeners = [.. listeners.Snapshot(tenantId).Select(Listener)],
+            Providers = [.. trustAnchors.Describe().Select(provider => new ProxyProviderTrustResponse
+            {
+                ProviderId = provider.ProviderId,
+                CustomTrustAnchor = provider.CustomTrustAnchor,
+            })],
         });
     }
 

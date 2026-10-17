@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Options;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
@@ -55,13 +56,16 @@ public sealed class HostProxyBackendTransport : IBackendTransport
 {
     private readonly IOptions<HostProxyOptions> _options;
     private readonly IBackendCredentialStore _credentials;
+    private readonly ProxyTrustAnchors _anchors;
 
     public HostProxyBackendTransport(
         IOptions<HostProxyOptions> options,
-        IBackendCredentialStore credentials)
+        IBackendCredentialStore credentials,
+        ProxyTrustAnchors anchors)
     {
         _options = options;
         _credentials = credentials;
+        _anchors = anchors;
     }
 
     public async ValueTask<IDuplexChannel> OpenAsync(
@@ -127,13 +131,29 @@ public sealed class HostProxyBackendTransport : IBackendTransport
         var secure = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
         try
         {
-            await secure.AuthenticateAsClientAsync(
-                new SslClientAuthenticationOptions
+            var clientOptions = new SslClientAuthenticationOptions
+            {
+                TargetHost = host,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            };
+
+            if (_anchors.Get(record.ProviderId) is { } anchor)
+            {
+                // CustomRootTrust replaces the system roots for this connection only. Name
+                // validation and validity checking are left to the TLS stack; there is no policy
+                // error callback and no way here to accept an untrusted peer.
+                var policy = new X509ChainPolicy
                 {
-                    TargetHost = host,
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                },
-                cancellationToken).ConfigureAwait(false);
+                    TrustMode = X509ChainTrustMode.CustomRootTrust,
+                    // A private backend has no public CRL/OCSP to consult; online revocation here
+                    // would stall every session. Expiry is still a chain failure.
+                    RevocationMode = X509RevocationMode.NoCheck,
+                };
+                policy.CustomTrustStore.Add(anchor);
+                clientOptions.CertificateChainPolicy = policy;
+            }
+
+            await secure.AuthenticateAsClientAsync(clientOptions, cancellationToken).ConfigureAwait(false);
         }
         catch
         {

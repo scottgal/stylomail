@@ -93,6 +93,17 @@ public sealed class HostProxyProviderOptions
     /// SMTP submission requires TLS; this is true for every non-loopback endpoint.
     /// </summary>
     public bool SmtpTls { get; set; } = true;
+
+    /// <summary>
+    /// Opt-in root certificate for this provider's backend TLS only.
+    /// </summary>
+    /// <remarks>
+    /// When set, the backend chain is validated against exactly this anchor instead of the system
+    /// roots. Hostname and validity checks remain, there is no error override, and the anchor never
+    /// reaches listener TLS or another provider. An unreadable, empty or expired file is a startup
+    /// fault rather than a fallback to the public roots.
+    /// </remarks>
+    public string? CaCertificatePath { get; set; }
 }
 
 /// <summary>One tenant-bound listener from deployment configuration.</summary>

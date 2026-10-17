@@ -138,6 +138,21 @@ public sealed record ProxyListenersResponse
     public required string TenantId { get; init; }
 
     public required IReadOnlyList<ProxyListenerResponse> Listeners { get; init; }
+
+    /// <summary>
+    /// Deployment-level backend trust facts. A provider appears here only when it is pinned to a
+    /// custom root, so an operator can see why a private backend works without seeing the path or
+    /// the certificate itself.
+    /// </summary>
+    public required IReadOnlyList<ProxyProviderTrustResponse> Providers { get; init; }
+}
+
+/// <summary>Whether one provider's backend TLS uses a deployment-supplied root.</summary>
+public sealed record ProxyProviderTrustResponse
+{
+    public required string ProviderId { get; init; }
+
+    public required bool CustomTrustAnchor { get; init; }
 }
 
 /// <summary>
