@@ -79,7 +79,7 @@ public interface IProxySessionContextSink
 public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }
 public enum ProxyWarningAvailability { Available, NotProduced }
-public enum ProxyWarningAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent }
+public enum ProxyWarningAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent, ServiceUnavailable, TimedOut, Unauthorized, ContractViolation, UnsupportedModel, InvalidRequest }
 
 public sealed record ProxyDeterministicWarningEvent
 {

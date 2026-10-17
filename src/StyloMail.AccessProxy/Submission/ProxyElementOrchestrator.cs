@@ -22,7 +22,7 @@ public sealed class ProxyElementOrchestrator
             var classified = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
             if (classified is ClassificationOutcome.Unavailable unavailable)
             {
-                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.UnsupportedContent }, ct).ConfigureAwait(false);
+                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = Map(unavailable.Reason) }, ct).ConfigureAwait(false);
                 return;
             }
             var result = ((ClassificationOutcome.Success)classified).Classification;
@@ -38,6 +38,18 @@ public sealed class ProxyElementOrchestrator
         }
         finally { foreach (var segment in segments) { /* strings are ephemeral and not retained beyond this call */ } }
     }
+
+    private static ProxyWarningAvailabilityReason Map(ClassificationUnavailableReason reason) => reason switch
+    {
+        ClassificationUnavailableReason.NoAnalyserConfigured => ProxyWarningAvailabilityReason.NoAnalyserConfigured,
+        ClassificationUnavailableReason.ServiceUnavailable => ProxyWarningAvailabilityReason.ServiceUnavailable,
+        ClassificationUnavailableReason.TimedOut => ProxyWarningAvailabilityReason.TimedOut,
+        ClassificationUnavailableReason.Unauthorized => ProxyWarningAvailabilityReason.Unauthorized,
+        ClassificationUnavailableReason.ContractViolation => ProxyWarningAvailabilityReason.ContractViolation,
+        ClassificationUnavailableReason.UnsupportedModel => ProxyWarningAvailabilityReason.UnsupportedModel,
+        ClassificationUnavailableReason.InvalidRequest => ProxyWarningAvailabilityReason.InvalidRequest,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Classifier unavailable reason must be named."),
+    };
 
     private static List<string> Segment(ReadOnlyMemory<byte> message, int maxSegments, int maxBytes, out bool truncated)
     {
