@@ -89,7 +89,8 @@ def main() -> int:
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--embedding-epochs", type=int, default=1)
     parser.add_argument("--classifier-epochs", type=int, default=10)
-    parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--num-iterations", type=int, default=4)
     args = parser.parse_args()
 
     import torch
@@ -129,8 +130,13 @@ def main() -> int:
             eval_dataset=dataset(calibration),
             # SetFit takes a pair here (embedding epochs, classifier epochs), not a scalar. A scalar
             # fails inside the library on num_epochs[0], measured on setfit 1.2.0.
+            # Reduced from the default 20 contrastive iterations: at 20 the first element needed
+            # more than an hour on this corpus (measured, 233 steps), which is not a comparison
+            # anyone will wait for. Four iterations and batch 16 is the arm that ran, and it is
+            # reported as such rather than presented as the default configuration.
             args=TrainingArguments(
                 batch_size=args.batch,
+                num_iterations=args.num_iterations,
                 num_epochs=(args.embedding_epochs, args.classifier_epochs),
             ),
             column_mapping={"text": "text", "label": "label"},
