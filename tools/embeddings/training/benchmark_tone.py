@@ -63,6 +63,10 @@ def main() -> int:
         observed: dict[str, list[float]] = {}
         for text in sample:
             scores = classifier(text)
+            # transformers 5 returns one result list per input, so a single string arrives as
+            # [[{label, score}, ...]]. Normalise both shapes rather than assuming one.
+            if scores and isinstance(scores[0], list):
+                scores = scores[0]
             for item in scores:
                 observed.setdefault(item["label"], []).append(float(item["score"]))
             top_scores.append(max(float(item["score"]) for item in scores))
