@@ -244,7 +244,16 @@ print -r -- 'Message-ID: <harness-retrieval@example.test>' >>"$secret_dir/retrie
 print -r -- 'Subject: Retrieval proof' >>"$secret_dir/retrieval.eml"
 print -r -- '' >>"$secret_dir/retrieval.eml"
 print -r -- 'Please verify your account immediately.' >>"$secret_dir/retrieval.eml"
-docker exec -i "$dovecot_container" doveadm save -u "$PROXY_E2E_BACKEND_USERNAME" INBOX <"$secret_dir/retrieval.eml"
+docker exec -i "$dovecot_container" doveadm save -u "$PROXY_E2E_BACKEND_USERNAME" -m INBOX <"$secret_dir/retrieval.eml"
+if ! mailbox_status=$(docker exec "$dovecot_container" doveadm mailbox status -u "$PROXY_E2E_BACKEND_USERNAME" messages INBOX); then
+  print -u2 -- 'Dovecot retrieval seed mailbox-status command failed.'
+  exit 1
+fi
+mailbox_messages="${mailbox_status##*messages=}"
+if [[ "$mailbox_messages" != <-> ]] || (( mailbox_messages < 1 )); then
+  print -u2 -- "Dovecot retrieval seed did not produce a non-empty INBOX: $mailbox_status"
+  exit 1
+fi
 
 listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/imap-1/enable")
 imap_port=$(print -r -- "$listener_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bindPort"])')
