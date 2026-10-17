@@ -18,10 +18,16 @@ public sealed class ProxyElementOrchestrator
         var segments = Segment(message, 32, 6000, out var truncated);
         try
         {
-            var outcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
-            var result = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
+            var baseOutcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
+            var classified = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
+            if (classified is ClassificationOutcome.Unavailable unavailable)
+            {
+                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.UnsupportedContent }, ct).ConfigureAwait(false);
+                return;
+            }
+            var result = ((ClassificationOutcome.Success)classified).Classification;
             if (result.Scorers.Any(s => s.Segments.Count != segments.Count)) throw new InvalidOperationException("Classifier returned incomplete segment coverage.");
-            await _sink.RecordOutcomeAsync(outcome, ct).ConfigureAwait(false);
+            await _sink.RecordOutcomeAsync(baseOutcome, ct).ConfigureAwait(false);
             foreach (var scorer in result.Scorers) foreach (var segment in scorer.Segments) foreach (var score in segment.Elements)
                 await _sink.RecordPointAsync(new ProxyElementPoint { TenantId=identity.TenantId, AccountId=identity.AccountId, TrafficKind=kind, MessageToken=messageToken, ThreadToken=threadToken, Ordinal=segment.Ordinal, Element=score.Element, Score=score.Score, Scorer=scorer.Scorer, ScorerVersion=scorer.ScorerVersion, NearestExemplarId=score.NearestExemplarId, Availability=score.Availability == ElementAvailability.Available ? ProxyWarningAvailability.Available : ProxyWarningAvailability.NotProduced, AvailabilityReason=ElementReasons.ToWireName(score.Reason), ModelTag=result.Metadata?.ModelTag ?? "unavailable", PrefixVersion=result.Metadata?.PrefixVersion ?? "unavailable", Dimension=result.Metadata?.Dimension ?? 0, VocabularyVersion=result.VocabularyVersion, ObservedAt=identity.ObservedAt }, ct).ConfigureAwait(false);
         }
