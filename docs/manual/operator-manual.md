@@ -607,15 +607,16 @@ segment was dropped. The element series groups scores by turn token and ordinal,
 not-produced entries for one segment sit in one list; it does not invent an entry the Host did not
 record.
 
-#### Both directions
+#### Both directions in one harness run
 
-Element points have been recorded in both directions, in separate runs. A submission run recorded
-five points, one for each element, all `prototype_knn/corpus-1` and all available:
-`.styloagent/artifacts/proxy-e2e-20261017T231711Z`. A retrieval run recorded five `Retrieval` points
-from a real IMAP body fetch, one segment, all available under the same scorer:
-`.styloagent/artifacts/proxy-e2e-20261017T233813Z`, whose `retrieval-analysis.json` reports
-`segmentCount: 1` and `elementPointCount: 5`. The two were separate runs, not one message in both
-directions, and this manual does not claim a single combined run.
+Element points have been recorded in both directions in a single harness run, not production.
+`.styloagent/artifacts/proxy-e2e-20261017T234655Z` contains `retrieval-analysis.json` and
+`submission-analysis.json`; each reports availability Available, reason None, `segmentCount: 1`
+and `elementPointCount: 5`, with one point for each of the five elements under
+`prototype_knn/corpus-1`. The same run's `client-transcript.txt` records the IMAP client fetching
+one 168-byte body, the SMTP client completing STARTTLS, authenticating and submitting one message,
+and `IMAP+SMTP PASS`. `sessions-smtp-live.json` records authenticated Imap and Smtp sessions on the
+same opaque account `pa_f1cd145597b34ed4bec9c2a37866a978`. Host build `cf6faa6d7f69`.
 
 #### Calibration and the false-positive budget
 
