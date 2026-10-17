@@ -15,6 +15,7 @@ fi
 : "${PROXY_E2E_ACTOR:=harness}"
 : "${PROXY_E2E_HOST_URL:=http://127.0.0.1:5087}"
 : "${PROXY_E2E_KEEP_ALIVE_SECONDS:=0}"
+: "${PROXY_E2E_NO_TRAFFIC:=0}"
 : "${PROXY_E2E_LOGIN:=harness-client@example.test}"
 : "${PROXY_E2E_BACKEND_USERNAME:=backend@example.test}"
 if [[ -z "${PROXY_E2E_CLIENT_PASSWORD:-}" ]]; then
@@ -232,22 +233,24 @@ import json, sys
 if json.load(open(sys.argv[1], encoding="utf-8"))["sessions"]:
     raise SystemExit("Idle listener unexpectedly published a live authenticated session.")
 PY
-PROXY_E2E_DRIVER_PROTOCOL=imap PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$imap_port" \
-  dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >"$transcript" 2>&1 &
-client_pid=$!
-sleep 1
-curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$imap_sessions"
-if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$client_pid"; fi
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
+  PROXY_E2E_DRIVER_PROTOCOL=imap PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$imap_port" \
+    dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >"$transcript" 2>&1 &
+  client_pid=$!; sleep 1
+  curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$imap_sessions"
+  if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$client_pid"; fi
+fi
 
 smtp_listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/smtp-1/enable")
 smtp_port=$(print -r -- "$smtp_listener_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bindPort"])')
 unset smtp_listener_json
-PROXY_E2E_DRIVER_PROTOCOL=smtp PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$smtp_port" \
-  PROXY_E2E_DRIVER_HARNESS_CERT="$certificate" dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >>"$transcript" 2>&1 &
-smtp_client_pid=$!
-sleep 1
-curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$smtp_sessions"
-if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$smtp_client_pid"; fi
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
+  PROXY_E2E_DRIVER_PROTOCOL=smtp PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$smtp_port" \
+    PROXY_E2E_DRIVER_HARNESS_CERT="$certificate" dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >>"$transcript" 2>&1 &
+  smtp_client_pid=$!; sleep 1
+  curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$smtp_sessions"
+  if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$smtp_client_pid"; fi
+fi
 
 # Fail closed if any run artifact emitted a supplied or generated secret. Python receives values only via env.
 python3 - "$run_dir" "$secret_dir" <<'PY'
@@ -274,10 +277,12 @@ if [[ "$PROXY_E2E_KEEP_ALIVE_SECONDS" != <-> ]]; then
 fi
 if (( PROXY_E2E_KEEP_ALIVE_SECONDS > 0 )); then
   curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$run_dir/sessions-keepalive-live.json"
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   python3 - "$run_dir/sessions-keepalive-live.json" <<'PY'
 import json, sys
 if len(json.load(open(sys.argv[1], encoding='utf-8'))['sessions']) < 2: raise SystemExit('Keep-alive did not retain both live sessions.')
 PY
+fi
   print -r -- "KEEP-ALIVE base-url=$PROXY_E2E_HOST_URL api-key-config=$secret_dir/curl.conf imap-port=$imap_port smtp-port=$smtp_port seconds=$PROXY_E2E_KEEP_ALIVE_SECONDS"
   # Waiting on a child lets INT/TERM reach this trapping shell immediately; foreground sleep does not.
   sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS" &

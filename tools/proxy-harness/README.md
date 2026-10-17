@@ -22,5 +22,6 @@ zsh tools/proxy-harness/run.sh
 Expected wall time is approximately 30 to 90 seconds on a cold Docker image or package cache, then 10 to 20 seconds warm. It writes `.styloagent/artifacts/proxy-e2e-YYYYMMDDTHHMMSSZ/`, containing `host.log`, `driver-build.log`, `client-transcript.txt`, `sessions-imap-live.json`, `sessions-smtp-live.json`, the disposable listener certificate/key, and the disposable backend CA/certificate/key. The temporary secret directory and Docker containers are deleted at exit. If Docker is unavailable, it fails with that one sentence.
 
 For manual capture, run `PROXY_E2E_KEEP_ALIVE_SECONDS=300 zsh tools/proxy-harness/run.sh`.
+For the no-traffic operations state, use `PROXY_E2E_NO_TRAFFIC=1` with keep-alive; listeners start but no MailKit clients connect.
 Point the console at the printed base URL and use the harness admin key from the printed temporary config location.
 Capture the screen, then interrupt the harness or let its bounded timer tear everything down.
