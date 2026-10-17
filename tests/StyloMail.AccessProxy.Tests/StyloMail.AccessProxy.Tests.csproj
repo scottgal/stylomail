@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\StyloMail.AccessProxy\StyloMail.AccessProxy.csproj" />
+    <ProjectReference Include="..\..\src\StyloMail.Embeddings\StyloMail.Embeddings.csproj" />
   </ItemGroup>
 
 </Project>

@@ -7,6 +7,7 @@ using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Smtp;
 using StyloMail.AccessProxy.Submission;
 using StyloMail.AccessProxy.Tests.Support;
+using StyloMail.Embeddings;
 
 namespace StyloMail.AccessProxy.Tests;
 
@@ -107,15 +108,47 @@ public sealed class SmtpSubmissionTests
         }
     }
 
-    private static SmtpAccessProxySession NewSession(ProxyHarness h, IBackendConnector backend, IProxySubmissionAssessment assessment, IEphemeralSubmissionStager stager, IProxyWarningEventSink? warningSink = null, IProxyWarningAnalyzer? warningAnalyzer = null)
+    [Fact]
+    public async Task Throwing_element_sink_cannot_drop_a_submission_or_the_session()
+    {
+        var h = new ProxyHarness(); h.AddAccount();
+        var backend = new ScriptedSmtpConnector();
+        var sink = new ThrowingElementSink();
+        var session = NewSession(h, backend, new AllowAssessment(), new InMemoryEphemeralSubmissionStager(),
+            elementOrchestrator: new ProxyElementOrchestrator(new CompleteElementClassifier(), sink));
+        var client = new StartTlsTestChannel();
+        var run = session.RunAsync(client, CancellationToken.None);
+
+        await AuthenticateAsync(client);
+        await client.Pipe.SendAsync("MAIL FROM:<a@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+        await client.Pipe.SendAsync("RCPT TO:<b@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+        await client.Pipe.SendAsync("DATA\r\nbody\r\n.\r\n");
+        Assert.StartsWith("354", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
+        Assert.StartsWith("250", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
+        Assert.Equal(1, sink.PointAttempts);
+        Assert.Contains("DATA", backend.Received);
+
+        await client.Pipe.SendAsync("QUIT\r\n");
+        Assert.StartsWith("221", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
+        Assert.Equal(SessionOutcome.Relayed, await run);
+    }
+
+    private static SmtpAccessProxySession NewSession(ProxyHarness h, IBackendConnector backend, IProxySubmissionAssessment assessment, IEphemeralSubmissionStager stager, IProxyWarningEventSink? warningSink = null, IProxyWarningAnalyzer? warningAnalyzer = null, ProxyElementOrchestrator? elementOrchestrator = null)
         => new(ProxyHarness.TenantId, h.AccountStore, h.PasswordHasher, backend, h.Limiter, h.Bounds, h.Clock, assessment, stager,
-            warningSink: warningSink ?? new WarningSink(), warningAnalyzer: warningAnalyzer ?? new WarningAnalyzer());
+            warningSink: warningSink ?? new WarningSink(), warningAnalyzer: warningAnalyzer ?? new WarningAnalyzer(), elementOrchestrator: elementOrchestrator);
 
     private static async Task<StartTlsTestChannel> AuthenticateAsync(SmtpAccessProxySession session)
     {
-        var client = new StartTlsTestChannel(); _ = session.RunAsync(client, CancellationToken.None); await client.Pipe.ReadLineAsync();
+        var client = new StartTlsTestChannel(); _ = session.RunAsync(client, CancellationToken.None);
+        await AuthenticateAsync(client);
+        return client;
+    }
+
+    private static async Task AuthenticateAsync(StartTlsTestChannel client)
+    {
+        await client.Pipe.ReadLineAsync();
         await client.Pipe.SendAsync("EHLO x\r\n"); await client.Pipe.ReadLineAsync(); await client.Pipe.ReadLineAsync(); await client.Pipe.SendAsync("STARTTLS\r\n"); await client.Pipe.ReadLineAsync(); await client.Pipe.SendAsync("EHLO x\r\n"); await client.Pipe.ReadLineAsync(); await client.Pipe.ReadLineAsync();
-        var plain = Convert.ToBase64String(Encoding.UTF8.GetBytes($"\0{ProxyHarness.Login}\0{ProxyHarness.ClientPassword}")); await client.Pipe.SendAsync($"AUTH PLAIN {plain}\r\n"); await client.Pipe.ReadLineAsync(); return client;
+        var plain = Convert.ToBase64String(Encoding.UTF8.GetBytes($"\0{ProxyHarness.Login}\0{ProxyHarness.ClientPassword}")); await client.Pipe.SendAsync($"AUTH PLAIN {plain}\r\n"); await client.Pipe.ReadLineAsync();
     }
 
     private sealed class StartTlsTestChannel : IStartTlsCapableChannel, ISecureDuplexChannel
@@ -138,5 +171,26 @@ public sealed class SmtpSubmissionTests
     private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [] }); }
     private sealed class CapturingWarningSink : IProxyWarningEventSink { public List<ProxyWarningAnalysisOutcome> Outcomes { get; } = []; public List<ProxyDeterministicWarningEvent> Markers { get; } = []; public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) { Outcomes.Add(o); return ValueTask.CompletedTask; } public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) { Markers.Add(m); return ValueTask.CompletedTask; } }
     private sealed class StaticWarningAnalyzer(IReadOnlyList<ProxyWarningFinding> findings) : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = findings }); }
+    private sealed class ThrowingElementSink : IProxyElementSink
+    {
+        public int PointAttempts { get; private set; }
+        public ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken)
+        {
+            PointAttempts++;
+            throw new InvalidOperationException("sink failure");
+        }
+    }
+    private sealed class CompleteElementClassifier : IElementClassifier
+    {
+        public Task<ClassificationOutcome> ClassifyAsync(IReadOnlyList<string> segments, IReadOnlyList<string>? scorers = null, CancellationToken cancellationToken = default)
+        {
+            var results = ElementScorers.All.Select(scorer => new ElementScorerResult(scorer, ElementScorers.VersionOf(scorer)!,
+                segments.Select((_, ordinal) => new SegmentElementScores(ordinal,
+                    ElementVocabulary.All.Select(element => new ElementScore(element, ElementAvailability.Available, 0.5, null, ElementNotProducedReason.None)).ToArray())).ToArray())).ToArray();
+            return Task.FromResult<ClassificationOutcome>(new ClassificationOutcome.Success(new ElementClassification(
+                new EmbeddingMetadata("test-model", null, 3, 3, "test-prefix", "float32", "test-contract"), ElementVocabulary.Version, results)));
+        }
+    }
     private static ProxyWarningFinding Finding(ProxyWarningMarkerKind kind) => new() { MarkerKind = kind, FindingId = kind.ToString() };
 }
