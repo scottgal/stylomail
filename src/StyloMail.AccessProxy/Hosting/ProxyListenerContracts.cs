@@ -75,7 +75,8 @@ public interface IProxySessionContextSink
     ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset authenticatedAt, CancellationToken cancellationToken);
 }
 
-public enum ProxyWarningDirection { Retrieval, Submission }
+/// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>
+public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }
 public enum ProxyWarningAvailability { Available, NotProduced }
 public enum ProxyWarningAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent }
@@ -84,7 +85,7 @@ public sealed record ProxyDeterministicWarningEvent
 {
     public required string TenantId { get; init; }
     public required string AccountId { get; init; }
-    public required ProxyWarningDirection Direction { get; init; }
+    public required MessageTrafficKind TrafficKind { get; init; }
     public required string MessageToken { get; init; }
     public required string ThreadToken { get; init; }
     public required ProxyWarningMarkerKind MarkerKind { get; init; }
@@ -98,13 +99,24 @@ public sealed record ProxyWarningAnalysisOutcome
 {
     public required string TenantId { get; init; }
     public required string AccountId { get; init; }
-    public required ProxyWarningDirection Direction { get; init; }
+    public required MessageTrafficKind TrafficKind { get; init; }
     public required string MessageToken { get; init; }
     public required string ThreadToken { get; init; }
     public required DateTimeOffset ObservedAt { get; init; }
     public required ProxyWarningAvailability Availability { get; init; }
     public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
     public required int MarkerCount { get; init; }
+}
+
+/// <summary>
+/// Receives derived deterministic-warning facts only. Implementations must not retain source
+/// message content, headers or credentials.
+/// </summary>
+public interface IProxyWarningEventSink
+{
+    ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome outcome, CancellationToken cancellationToken);
+
+    ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent marker, CancellationToken cancellationToken);
 }
 
 public interface IProxyCertificateResolver
