@@ -72,6 +72,17 @@ public interface IRetrievalObserver
     void Observe(ReadOnlySpan<byte> bytes);
 }
 
+/// <summary>Creates an opt-in, account-bound retrieval assembler after authentication succeeds.</summary>
+public interface IProxyRetrievalWarningAssemblerFactory
+{
+    IProxyRetrievalWarningAssembler Create(string tenantId, string accountId);
+}
+
+/// <summary>Off-relay bounded FETCH-literal assembler; it owns and clears any copied buffers.</summary>
+public interface IProxyRetrievalWarningAssembler : IRetrievalObserver, IAsyncDisposable
+{
+}
+
 /// <summary>
 /// The observer installed when no assessment is configured: it observes nothing.
 /// </summary>

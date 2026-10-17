@@ -83,6 +83,7 @@ public abstract class AccessProxySessionBase
     private readonly IBackendConnector _backend;
     private readonly SessionLimiter _limiter;
     private readonly IRetrievalObserver? _observer;
+    private readonly IProxyRetrievalWarningAssemblerFactory? _retrievalAssemblerFactory;
     private readonly IProxySessionContextSink? _contextSink;
     private readonly string _tenantId;
     private IDuplexChannel? _client;
@@ -98,7 +99,8 @@ public abstract class AccessProxySessionBase
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer = null,
-        IProxySessionContextSink? contextSink = null)
+        IProxySessionContextSink? contextSink = null,
+        IProxyRetrievalWarningAssemblerFactory? retrievalAssemblerFactory = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _accounts = accounts ?? throw new ArgumentNullException(nameof(accounts));
@@ -111,6 +113,7 @@ public abstract class AccessProxySessionBase
         Bounds.Validate();
         _observer = observer;
         _contextSink = contextSink;
+        _retrievalAssemblerFactory = retrievalAssemblerFactory;
         _tenantId = tenantId;
     }
 
@@ -271,12 +274,13 @@ public abstract class AccessProxySessionBase
 
         await using (backend.ConfigureAwait(false))
         {
+            await using var assembler = _retrievalAssemblerFactory?.Create(account.TenantId, account.AccountId);
             await PublishAuthenticatedAsync(account).ConfigureAwait(false);
             // The client is told only now, with a backend already authenticated behind it.
             await WriteAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
 
             var bounded = await ByteRelay
-                .RunAsync(Client, backend, Bounds, TimeProvider, _observer, cancellationToken)
+                .RunAsync(Client, backend, Bounds, TimeProvider, assembler ?? _observer, cancellationToken)
                 .ConfigureAwait(false);
 
             return bounded ? SessionOutcome.Timeout : SessionOutcome.Relayed;
