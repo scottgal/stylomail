@@ -82,10 +82,12 @@ public abstract class AccessProxySessionBase
     private readonly IBackendConnector _backend;
     private readonly SessionLimiter _limiter;
     private readonly IRetrievalObserver? _observer;
+    private readonly string _tenantId;
     private IDuplexChannel? _client;
     private ProtocolLineWriter? _writer;
 
     protected AccessProxySessionBase(
+        string tenantId,
         IStyloMailAccountStore accounts,
         IStyloMailPasswordHasher passwordHasher,
         BackendCredentialResolver credentials,
@@ -95,6 +97,7 @@ public abstract class AccessProxySessionBase
         TimeProvider timeProvider,
         IRetrievalObserver? observer = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _accounts = accounts ?? throw new ArgumentNullException(nameof(accounts));
         _passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
@@ -104,6 +107,7 @@ public abstract class AccessProxySessionBase
         Bounds = bounds ?? throw new ArgumentNullException(nameof(bounds));
         Bounds.Validate();
         _observer = observer;
+        _tenantId = tenantId;
     }
 
     /// <summary>The protocol this session terminates.</summary>
@@ -190,7 +194,7 @@ public abstract class AccessProxySessionBase
             using (claimed)
             {
                 var account = await _accounts
-                    .FindByLoginAsync(claimed.Login, cancellationToken)
+                    .FindByLoginAsync(_tenantId, claimed.Login, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (!VerifyClientCredential(account, claimed.Password))
@@ -240,6 +244,7 @@ public abstract class AccessProxySessionBase
             backend = await _backend.ConnectAsync(
                 new BackendConnectionRequest
                 {
+                    TenantId = account.TenantId,
                     AccountId = account.BackendAccountId,
                     Protocol = BackendProtocol,
                     TimeProvider = TimeProvider,

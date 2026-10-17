@@ -38,26 +38,27 @@ public sealed class BackendCredentialResolver
     }
 
     /// <summary>
-    /// Builds the authenticator for <paramref name="accountId"/> against <paramref name="protocol"/>.
+    /// Builds the authenticator for a tenant-scoped backend account against <paramref name="protocol"/>.
     /// </summary>
     /// <exception cref="CredentialUnavailableException">The credential cannot be used. Never retried.</exception>
     public async ValueTask<IBackendAuthenticator> ResolveAsync(
-        string accountId,
+        string tenantId,
+        string backendAccountId,
         BackendProtocol protocol,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrEmpty(accountId);
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
+        ArgumentException.ThrowIfNullOrEmpty(backendAccountId);
 
-        var record = await _store.FindAsync(accountId, cancellationToken).ConfigureAwait(false)
+        var record = await _store.FindAsync(tenantId, backendAccountId, cancellationToken).ConfigureAwait(false)
             ?? throw new CredentialUnavailableException(
-                $"Account '{accountId}' has no backend credential enrolled.");
+                "The account has no backend credential enrolled.");
 
         if (record.Revoked)
         {
             // Spec §9.5 risk 4. Checked before decryption so a revoked credential is never even
             // unwrapped, and so revocation works even if the key that protected it is gone.
-            throw new CredentialUnavailableException(
-                $"The backend credential for account '{accountId}' has been revoked.");
+            throw new CredentialUnavailableException("The backend credential has been revoked.");
         }
 
         var provider = _providers.TryGet(record.Discriminator)

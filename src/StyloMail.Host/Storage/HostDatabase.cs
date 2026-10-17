@@ -361,6 +361,49 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_sender_profile_company
             ON sender_profile (tenant_id, company_id);
 
+        -- Access-proxy credentials are deliberately separate from Host API principals. The account
+        -- holds a verifier only; the backend record holds ciphertext only. Login lookup is scoped
+        -- to its tenant because equal client logins in different tenants must not correlate.
+        CREATE TABLE IF NOT EXISTS proxy_backend_credential (
+            backend_account_id TEXT NOT NULL,
+            tenant_id          TEXT NOT NULL,
+            provider_id        TEXT NOT NULL,
+            discriminator      TEXT NOT NULL,
+            protected_secret   BLOB NOT NULL,
+            protection_key_id  TEXT NOT NULL,
+            backend_username   TEXT NOT NULL,
+            granted_scopes     TEXT NULL,
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL,
+            revoked_at         TEXT NULL,
+            PRIMARY KEY (tenant_id, backend_account_id),
+            UNIQUE (backend_account_id, tenant_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS proxy_account (
+            account_id               TEXT NOT NULL PRIMARY KEY,
+            tenant_id                TEXT NOT NULL,
+            login_key                TEXT NOT NULL,
+            password_hash_iterations INTEGER NOT NULL,
+            password_hash_salt       BLOB NOT NULL,
+            password_hash_digest     BLOB NOT NULL,
+            backend_account_id       TEXT NOT NULL,
+            disabled                 INTEGER NOT NULL,
+            created_at               TEXT NOT NULL,
+            updated_at               TEXT NOT NULL,
+            UNIQUE (tenant_id, login_key),
+            FOREIGN KEY (backend_account_id, tenant_id)
+                REFERENCES proxy_backend_credential (backend_account_id, tenant_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS host_schema_migration (
+            name       TEXT NOT NULL PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+
+        INSERT OR IGNORE INTO host_schema_migration (name, applied_at)
+            VALUES ('proxy-store-v1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
         -- Minted API keys. A row holds a per-key salt and a slow-KDF digest and NEVER the key, so
         -- copying this file does not hand over a usable credential and does not hand over a fast
         -- digest to attack offline either. Named host_* for the same reason as the ledger above.

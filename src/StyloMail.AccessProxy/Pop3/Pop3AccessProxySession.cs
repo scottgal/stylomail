@@ -28,6 +28,7 @@ public sealed class Pop3AccessProxySession : AccessProxySessionBase
     private string? _user;
 
     public Pop3AccessProxySession(
+        string tenantId,
         IStyloMailAccountStore accounts,
         IStyloMailPasswordHasher passwordHasher,
         BackendCredentialResolver credentials,
@@ -36,7 +37,7 @@ public sealed class Pop3AccessProxySession : AccessProxySessionBase
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer = null)
-        : base(accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer)
+        : base(tenantId, accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer)
     {
     }
 

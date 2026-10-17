@@ -20,6 +20,7 @@
     <ProjectReference Include="..\StyloMail.Persistence\StyloMail.Persistence.csproj" />
     <ProjectReference Include="..\StyloMail.Adaptive\StyloMail.Adaptive.csproj" />
     <ProjectReference Include="..\StyloMail.Assessment\StyloMail.Assessment.csproj" />
+    <ProjectReference Include="..\StyloMail.AccessProxy\StyloMail.AccessProxy.csproj" />
 
     <!-- The host composes the mail boundary, so it references the transport rather than the other
          way round: the transport has no idea it is being hosted, and its ingress sink port is

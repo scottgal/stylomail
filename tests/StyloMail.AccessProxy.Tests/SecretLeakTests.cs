@@ -40,7 +40,7 @@ public sealed class SecretLeakTests
         {
             var h = new ProxyHarness();
             h.AddAccount();
-            await h.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None);
+            await h.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         }));
 
         exceptions.Add(await CaptureAsync(async () =>
@@ -48,7 +48,7 @@ public sealed class SecretLeakTests
             var h = new ProxyHarness();
             h.AddAccount();
             await h.AddBackendCredentialAsync(revoked: true);
-            await h.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None);
+            await h.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         }));
 
         exceptions.Add(await CaptureAsync(async () =>
@@ -56,7 +56,7 @@ public sealed class SecretLeakTests
             var h = new ProxyHarness();
             h.AddAccount();
             await h.AddBackendCredentialAsync(discriminator: "unknown-kind");
-            await h.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None);
+            await h.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         }));
 
         exceptions.Add(await CaptureAsync(() =>
@@ -75,7 +75,7 @@ public sealed class SecretLeakTests
             var h = new ProxyHarness();
             await h.EnrolOAuthAccountAsync();
             h.OAuth.FailWith = new HttpRequestException("token endpoint unreachable");
-            await h.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None);
+            await h.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         }));
 
         exceptions.Add(await CaptureAsync(async () =>
@@ -86,6 +86,7 @@ public sealed class SecretLeakTests
             await h.NewImapConnector().ConnectAsync(
                 new BackendConnectionRequest
                 {
+                    TenantId = ProxyHarness.TenantId,
                     AccountId = "acct-1",
                     Protocol = BackendProtocol.Imap,
                     TimeProvider = h.Clock,
@@ -113,7 +114,7 @@ public sealed class SecretLeakTests
             $"POST https://oauth2.googleapis.com/token failed for refresh_token={ProxyHarness.RefreshTokenSecret}");
 
         var exception = await CaptureAsync(async () =>
-            await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
 
         AssertNoSecret(exception);
     }
@@ -129,7 +130,7 @@ public sealed class SecretLeakTests
             new HttpRequestException($"https://oauth2.googleapis.com/token?refresh_token={ProxyHarness.RefreshTokenSecret}"));
 
         var exception = await CaptureAsync(async () =>
-            await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
 
         AssertNoSecret(exception);
     }
@@ -182,24 +183,24 @@ public sealed class SecretLeakTests
         await harness.EnrolAppPasswordAccountAsync();
 
         // Rotate the client password.
-        var account = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
+        var account = (await harness.AccountStore.FindByIdAsync(ProxyHarness.TenantId, "acct-1", CancellationToken.None))!;
         harness.AccountStore.Add(account with
         {
             PasswordHash = harness.PasswordHasher.Hash(Encoding.UTF8.GetBytes("a-brand-new-client-password")),
         });
 
         // The old client password no longer works...
-        var rotated = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
+        var rotated = (await harness.AccountStore.FindByIdAsync(ProxyHarness.TenantId, "acct-1", CancellationToken.None))!;
         Assert.False(harness.PasswordHasher.Verify(
             Encoding.UTF8.GetBytes(ProxyHarness.ClientPassword), rotated.PasswordHash));
 
         // ...but the backend credential is untouched and still resolves.
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         Assert.Equal("PLAIN", authenticator.SaslMechanism);
 
         // And the stored verifier is not, and does not contain, the backend credential.
-        var stored = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
+        var stored = (await harness.AccountStore.FindByIdAsync(ProxyHarness.TenantId, "acct-1", CancellationToken.None))!;
         var hashJson = JsonSerializer.Serialize(stored);
         Assert.DoesNotContain(ProxyHarness.AppPasswordSecret, hashJson, StringComparison.Ordinal);
     }
@@ -210,21 +211,21 @@ public sealed class SecretLeakTests
         var harness = new ProxyHarness();
         await harness.EnrolAppPasswordAccountAsync();
 
-        var before = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
+        var before = (await harness.AccountStore.FindByIdAsync(ProxyHarness.TenantId, "acct-1", CancellationToken.None))!;
 
         // Move the account onto OAuth, the migration spec §9.5 is designed around.
         await harness.AddBackendCredentialAsync(
             discriminator: OAuthRefreshTokenCredentialProvider.DiscriminatorValue,
             secret: ProxyHarness.RefreshTokenSecret);
 
-        var after = (await harness.AccountStore.FindByIdAsync("acct-1", CancellationToken.None))!;
+        var after = (await harness.AccountStore.FindByIdAsync(ProxyHarness.TenantId, "acct-1", CancellationToken.None))!;
 
         Assert.Equal(before.PasswordHash.Hash, after.PasswordHash.Hash);
         Assert.True(harness.PasswordHasher.Verify(
             Encoding.UTF8.GetBytes(ProxyHarness.ClientPassword), after.PasswordHash));
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
         Assert.Equal("XOAUTH2", authenticator.SaslMechanism);
     }
 

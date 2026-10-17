@@ -6,6 +6,9 @@ namespace StyloMail.AccessProxy.Backends;
 /// <summary>What a backend connection needs to know.</summary>
 public sealed record BackendConnectionRequest
 {
+    /// <summary>Tenant that owns the backend-account reference.</summary>
+    public required string TenantId { get; init; }
+
     /// <summary>The StyloMail account whose backend credential should be used.</summary>
     public required string AccountId { get; init; }
 

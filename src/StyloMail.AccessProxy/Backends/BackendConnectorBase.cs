@@ -68,7 +68,7 @@ public abstract class BackendConnectorBase : IBackendConnector
         // a revoked credential from producing even the connection attempt a provider might
         // rate-limit, flag, or count as a failed login.
         var authenticator = await _credentials
-            .ResolveAsync(request.AccountId, Protocol, cancellationToken)
+            .ResolveAsync(request.TenantId, request.AccountId, Protocol, cancellationToken)
             .ConfigureAwait(false);
 
         using (authenticator)

@@ -204,10 +204,16 @@ public sealed class Pbkdf2StyloMailPasswordHasher : IStyloMailPasswordHasher
 /// <summary>Where StyloMail-issued client accounts live.</summary>
 public interface IStyloMailAccountStore
 {
-    /// <summary>The account for a client-supplied login, or null when unknown.</summary>
-    ValueTask<StyloMailAccount?> FindByLoginAsync(string login, CancellationToken cancellationToken);
+    /// <summary>The account for a tenant-scoped client-supplied login, or null when unknown.</summary>
+    ValueTask<StyloMailAccount?> FindByLoginAsync(
+        string tenantId,
+        string login,
+        CancellationToken cancellationToken);
 
-    ValueTask<StyloMailAccount?> FindByIdAsync(string accountId, CancellationToken cancellationToken);
+    ValueTask<StyloMailAccount?> FindByIdAsync(
+        string tenantId,
+        string accountId,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -221,29 +227,54 @@ public interface IStyloMailAccountStore
 /// </remarks>
 public sealed class InMemoryStyloMailAccountStore : IStyloMailAccountStore
 {
-    private readonly Dictionary<string, StyloMailAccount> _byLogin = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, StyloMailAccount> _byId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, StyloMailAccount>> _byTenantLogin = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string TenantId, string AccountId), StyloMailAccount> _byId = new();
 
-    public ValueTask<StyloMailAccount?> FindByLoginAsync(string login, CancellationToken cancellationToken)
+    public ValueTask<StyloMailAccount?> FindByLoginAsync(
+        string tenantId,
+        string login,
+        CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
         ArgumentException.ThrowIfNullOrEmpty(login);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return ValueTask.FromResult(_byLogin.TryGetValue(login, out var account) ? account : null);
+        if (_byTenantLogin.TryGetValue(tenantId, out var accounts)
+            && accounts.TryGetValue(login, out var account))
+        {
+            return ValueTask.FromResult<StyloMailAccount?>(account);
+        }
+
+        return ValueTask.FromResult<StyloMailAccount?>(null);
     }
 
-    public ValueTask<StyloMailAccount?> FindByIdAsync(string accountId, CancellationToken cancellationToken)
+    public ValueTask<StyloMailAccount?> FindByIdAsync(
+        string tenantId,
+        string accountId,
+        CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
         ArgumentException.ThrowIfNullOrEmpty(accountId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return ValueTask.FromResult(_byId.TryGetValue(accountId, out var account) ? account : null);
+        return ValueTask.FromResult<StyloMailAccount?>(
+            _byId.TryGetValue((tenantId, accountId), out var account) ? account : null);
     }
 
     public void Add(StyloMailAccount account)
     {
         ArgumentNullException.ThrowIfNull(account);
-        _byLogin[account.Login] = account;
-        _byId[account.AccountId] = account;
+        ArgumentException.ThrowIfNullOrEmpty(account.TenantId);
+        ArgumentException.ThrowIfNullOrEmpty(account.Login);
+        ArgumentException.ThrowIfNullOrEmpty(account.AccountId);
+
+        if (!_byTenantLogin.TryGetValue(account.TenantId, out var accounts))
+        {
+            accounts = new Dictionary<string, StyloMailAccount>(StringComparer.OrdinalIgnoreCase);
+            _byTenantLogin.Add(account.TenantId, accounts);
+        }
+
+        accounts[account.Login] = account;
+        _byId[(account.TenantId, account.AccountId)] = account;
     }
 }

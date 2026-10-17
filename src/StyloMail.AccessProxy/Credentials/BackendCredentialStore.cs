@@ -43,8 +43,11 @@ public sealed record BackendCredentialWrite
 /// </remarks>
 public interface IBackendCredentialStore
 {
-    /// <summary>The record for <paramref name="accountId"/>, or null when none is enrolled.</summary>
-    ValueTask<BackendCredentialRecord?> FindAsync(string accountId, CancellationToken cancellationToken);
+    /// <summary>The tenant-scoped record for <paramref name="backendAccountId"/>, or null when none is enrolled.</summary>
+    ValueTask<BackendCredentialRecord?> FindAsync(
+        string tenantId,
+        string backendAccountId,
+        CancellationToken cancellationToken);
 
     /// <summary>Enrols or replaces the credential for an account, encrypting it on the way in.</summary>
     ValueTask<BackendCredentialRecord> StoreAsync(BackendCredentialWrite write, CancellationToken cancellationToken);
@@ -58,7 +61,7 @@ public interface IBackendCredentialStore
     /// the provider will reject. Revocation is a marker rather than a delete so that an incident can
     /// still tell "never enrolled" from "revoked at some point".
     /// </remarks>
-    ValueTask<bool> RevokeAsync(string accountId, CancellationToken cancellationToken);
+    ValueTask<bool> RevokeAsync(string tenantId, string backendAccountId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -79,18 +82,23 @@ public interface IBackendCredentialStore
 /// </remarks>
 public sealed class InMemoryBackendCredentialStore : IBackendCredentialStore
 {
-    private readonly ConcurrentDictionary<string, BackendCredentialRecord> _records = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<(string TenantId, string BackendAccountId), BackendCredentialRecord> _records = new();
     private readonly ISecretProtector _protector;
 
     public InMemoryBackendCredentialStore(ISecretProtector protector)
         => _protector = protector ?? throw new ArgumentNullException(nameof(protector));
 
-    public ValueTask<BackendCredentialRecord?> FindAsync(string accountId, CancellationToken cancellationToken)
+    public ValueTask<BackendCredentialRecord?> FindAsync(
+        string tenantId,
+        string backendAccountId,
+        CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrEmpty(accountId);
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
+        ArgumentException.ThrowIfNullOrEmpty(backendAccountId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return ValueTask.FromResult(_records.TryGetValue(accountId, out var record) ? record : null);
+        return ValueTask.FromResult<BackendCredentialRecord?>(
+            _records.TryGetValue((tenantId, backendAccountId), out var record) ? record : null);
     }
 
     public ValueTask<BackendCredentialRecord> StoreAsync(
@@ -119,21 +127,26 @@ public sealed class InMemoryBackendCredentialStore : IBackendCredentialStore
             Revoked = false,
         };
 
-        _records[write.AccountId] = record;
+        _records[(write.TenantId, write.AccountId)] = record;
         return ValueTask.FromResult(record);
     }
 
-    public ValueTask<bool> RevokeAsync(string accountId, CancellationToken cancellationToken)
+    public ValueTask<bool> RevokeAsync(
+        string tenantId,
+        string backendAccountId,
+        CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrEmpty(accountId);
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
+        ArgumentException.ThrowIfNullOrEmpty(backendAccountId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        while (_records.TryGetValue(accountId, out var existing))
+        var key = (tenantId, backendAccountId);
+        while (_records.TryGetValue(key, out var existing))
         {
             // The record is immutable, so revocation is a replace. Retried against a concurrent
             // write rather than swallowed, so a revoke racing an enrolment still takes effect.
             var revoked = existing with { Revoked = true, UpdatedAt = existing.UpdatedAt };
-            if (_records.TryUpdate(accountId, revoked, existing))
+            if (_records.TryUpdate(key, revoked, existing))
             {
                 return ValueTask.FromResult(true);
             }

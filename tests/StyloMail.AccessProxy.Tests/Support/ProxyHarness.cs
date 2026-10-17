@@ -133,8 +133,8 @@ internal sealed class ProxyHarness
 
         if (revoked)
         {
-            await CredentialStore.RevokeAsync(accountId, CancellationToken.None);
-            record = (await CredentialStore.FindAsync(accountId, CancellationToken.None))!;
+            await CredentialStore.RevokeAsync(TenantId, accountId, CancellationToken.None);
+            record = (await CredentialStore.FindAsync(TenantId, accountId, CancellationToken.None))!;
         }
 
         return record;
@@ -157,10 +157,10 @@ internal sealed class ProxyHarness
     }
 
     public ImapAccessProxySession NewImapSession(IRetrievalObserver? observer = null) =>
-        new(AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer);
+        new(TenantId, AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer);
 
     public Pop3AccessProxySession NewPop3Session(IRetrievalObserver? observer = null) =>
-        new(AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock, observer);
+        new(TenantId, AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock, observer);
 
     public ImapBackendConnector NewImapConnector() =>
         new(Transport, Resolver, Bounds);

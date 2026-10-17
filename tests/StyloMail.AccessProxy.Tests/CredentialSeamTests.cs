@@ -85,7 +85,7 @@ public sealed class CredentialSeamTests
         await harness.EnrolAppPasswordAccountAsync();
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
 
         Assert.Equal(BackendAuthStyle.Sasl, authenticator.Style);
         Assert.Equal("PLAIN", authenticator.SaslMechanism);
@@ -100,7 +100,7 @@ public sealed class CredentialSeamTests
         await harness.EnrolOAuthAccountAsync();
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
 
         Assert.Equal(BackendAuthStyle.Sasl, authenticator.Style);
         Assert.Equal("XOAUTH2", authenticator.SaslMechanism);
@@ -115,7 +115,7 @@ public sealed class CredentialSeamTests
         await harness.AddBackendCredentialAsync(discriminator: "passkey-of-the-future");
 
         var ex = await Assert.ThrowsAsync<CredentialUnavailableException>(
-            async () => await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            async () => await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
 
         Assert.Contains("passkey-of-the-future", ex.Message, StringComparison.Ordinal);
     }
@@ -127,7 +127,7 @@ public sealed class CredentialSeamTests
         harness.AddAccount();
 
         await Assert.ThrowsAsync<CredentialUnavailableException>(
-            async () => await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            async () => await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class CredentialSeamTests
         await harness.AddBackendCredentialAsync(revoked: true);
 
         var ex = await Assert.ThrowsAsync<CredentialUnavailableException>(
-            async () => await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            async () => await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
 
         Assert.Contains("revoked", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -152,7 +152,7 @@ public sealed class CredentialSeamTests
         await harness.EnrolAppPasswordAccountAsync();
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
 
         using var token = await authenticator.NextAsync(null, CancellationToken.None);
         Assert.NotNull(token);
@@ -175,7 +175,7 @@ public sealed class CredentialSeamTests
         await harness.EnrolOAuthAccountAsync();
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Imap, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None);
 
         using var token = await authenticator.NextAsync(null, CancellationToken.None);
         Assert.NotNull(token);
@@ -196,7 +196,7 @@ public sealed class CredentialSeamTests
         await harness.EnrolAppPasswordAccountAsync();
 
         using var authenticator = await harness.Resolver.ResolveAsync(
-            "acct-1", BackendProtocol.Pop3, CancellationToken.None);
+            ProxyHarness.TenantId, "acct-1", BackendProtocol.Pop3, CancellationToken.None);
 
         Assert.Equal(BackendAuthStyle.LegacyUsernamePassword, authenticator.Style);
         Assert.Null(authenticator.SaslMechanism);
@@ -212,7 +212,7 @@ public sealed class CredentialSeamTests
         harness.OAuth.FailWith = new HttpRequestException("token endpoint unreachable");
 
         await Assert.ThrowsAsync<CredentialUnavailableException>(
-            async () => await harness.Resolver.ResolveAsync("acct-1", BackendProtocol.Imap, CancellationToken.None));
+            async () => await harness.Resolver.ResolveAsync(ProxyHarness.TenantId, "acct-1", BackendProtocol.Imap, CancellationToken.None));
     }
 
     [Fact]

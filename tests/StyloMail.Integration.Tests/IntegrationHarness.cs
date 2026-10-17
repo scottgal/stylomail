@@ -116,10 +116,10 @@ internal sealed class IntegrationHarness
 
     /// <summary>A session whose backend connections go to the real server.</summary>
     internal ImapAccessProxySession NewImapSession()
-        => new(AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock);
+        => new("tenant-alpha", AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock);
 
     internal Pop3AccessProxySession NewPop3Session()
-        => new(AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock);
+        => new("tenant-alpha", AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock);
 
     internal ImapBackendConnector NewImapConnector() => new(Backend, Resolver, Bounds);
 

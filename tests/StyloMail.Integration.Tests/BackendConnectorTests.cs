@@ -40,6 +40,7 @@ public sealed class BackendConnectorTests
             channel = await connector.ConnectAsync(
                 new BackendConnectionRequest
                 {
+                    TenantId = "tenant-alpha",
                     AccountId = "acct-1",
                     Protocol = BackendProtocol.Imap,
                     TimeProvider = harness.Clock,
@@ -81,6 +82,7 @@ public sealed class BackendConnectorTests
             await connector.ConnectAsync(
                 new BackendConnectionRequest
                 {
+                    TenantId = "tenant-alpha",
                     AccountId = "acct-1",
                     Protocol = BackendProtocol.Imap,
                     TimeProvider = harness.Clock,
