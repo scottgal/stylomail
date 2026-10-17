@@ -64,7 +64,8 @@ def main() -> int:
     parser.add_argument("--labels", type=pathlib.Path, required=True)
     parser.add_argument("--model", default="google/embeddinggemma-2")
     parser.add_argument("--output", type=pathlib.Path, required=True)
-    parser.add_argument("--epochs", type=float, default=1.0)
+    parser.add_argument("--embedding-epochs", type=int, default=1)
+    parser.add_argument("--classifier-epochs", type=int, default=10)
     parser.add_argument("--batch", type=int, default=8)
     args = parser.parse_args()
 
@@ -92,7 +93,12 @@ def main() -> int:
             model=model,
             train_dataset=dataset(fit),
             eval_dataset=dataset(calibration),
-            args=TrainingArguments(batch_size=args.batch, num_epochs=args.epochs),
+            # SetFit takes a pair here (embedding epochs, classifier epochs), not a scalar. A scalar
+            # fails inside the library on num_epochs[0], measured on setfit 1.2.0.
+            args=TrainingArguments(
+                batch_size=args.batch,
+                num_epochs=(args.embedding_epochs, args.classifier_epochs),
+            ),
             column_mapping={"text": "text", "label": "label"},
         )
         trainer.train()
