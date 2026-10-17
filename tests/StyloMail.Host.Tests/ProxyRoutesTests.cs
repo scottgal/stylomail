@@ -12,6 +12,7 @@ using StyloMail.Embeddings;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Proxy;
 using StyloMail.Host.Serialization;
+using StyloMail.Host.Storage;
 
 namespace StyloMail.Host.Tests;
 
@@ -831,6 +832,117 @@ public sealed class ProxyRoutesTests
     }
 
     [Fact]
+    public async Task Element_analysis_readiness_reports_configuration_without_leaking_it()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var defaultRaw = await (await reviewer.GetAsync("/v1/proxy/listeners")).Content.ReadAsStringAsync();
+        var defaultResponse = JsonSerializer.Deserialize<ProxyListenersResponse>(defaultRaw, HostJson.Options)!;
+        Assert.False(defaultResponse.ElementAnalysisConfigured);
+        Assert.Null(host.Services.GetRequiredService<ProxyElementConfiguration>().Classifier);
+
+        using var configured = ProxyHost();
+        var tokenPath = Path.Combine(configured.Root, "embedding-token");
+        File.WriteAllText(tokenPath, "fixture-token-not-a-real-secret");
+        configured
+            .Configure("StyloMail:Embeddings:Enabled", "true")
+            .Configure("StyloMail:Embeddings:Endpoint", "http://127.0.0.1:1")
+            .Configure("StyloMail:Embeddings:TokenFilePath", tokenPath);
+
+        using var configuredReviewer = configured.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var configuredRaw = await (await configuredReviewer.GetAsync("/v1/proxy/listeners"))
+            .Content.ReadAsStringAsync();
+        var configuredResponse = JsonSerializer.Deserialize<ProxyListenersResponse>(
+            configuredRaw, HostJson.Options)!;
+
+        Assert.True(configuredResponse.ElementAnalysisConfigured);
+        Assert.NotNull(configured.Services.GetRequiredService<ProxyElementConfiguration>().Classifier);
+
+        // Readiness names the state, never the address or the token path.
+        Assert.DoesNotContain("127.0.0.1:1", configuredRaw);
+        Assert.DoesNotContain(tokenPath, configuredRaw);
+        Assert.DoesNotContain("fixture-token-not-a-real-secret", configuredRaw);
+    }
+
+    [Fact]
+    public void Null_element_configuration_composes_nothing_and_writes_nothing()
+    {
+        using var host = ProxyHost();
+
+        var configuration = host.Services.GetRequiredService<ProxyElementConfiguration>();
+        Assert.False(configuration.Enabled);
+        Assert.Null(configuration.Classifier);
+
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using var connection = database.Open();
+        Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_segment_outcome;"));
+        Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_element_point;"));
+    }
+
+    [Fact]
+    public async Task An_unreachable_configured_endpoint_writes_one_not_produced_outcome_and_no_points()
+    {
+        using var host = ProxyHost();
+        var tokenPath = Path.Combine(host.Root, "embedding-token");
+        File.WriteAllText(tokenPath, "fixture-token-not-a-real-secret");
+        host
+            .Configure("StyloMail:Embeddings:Enabled", "true")
+            .Configure("StyloMail:Embeddings:Endpoint", "http://127.0.0.1:1")
+            .Configure("StyloMail:Embeddings:TokenFilePath", tokenPath);
+
+        var configuration = host.Services.GetRequiredService<ProxyElementConfiguration>();
+        Assert.True(configuration.Enabled);
+        Assert.NotNull(configuration.Classifier);
+
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var orchestrator = new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(
+            configuration.Classifier!, sink);
+        var bytes = "para one\r\n\r\npara two"u8.ToArray();
+
+        await orchestrator.EmitAsync(
+            new ProxyWarningAnalysisInput
+            {
+                Message = bytes,
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                ObservedAt = DateTimeOffset.UtcNow,
+            },
+            bytes,
+            "m-unreachable",
+            "thread-unreachable",
+            MessageTrafficKind.Submission,
+            CancellationToken.None);
+
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using var connection = database.Open();
+
+        using (var outcome = connection.CreateCommand())
+        {
+            outcome.CommandText =
+                "SELECT availability,availability_reason,segment_count FROM proxy_segment_outcome "
+                + "WHERE tenant_id=$tenant AND message_token='m-unreachable';";
+            outcome.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+            using var reader = outcome.ExecuteReader();
+            Assert.True(reader.Read());
+            // A refused connection is service_unavailable, not "unsupported content".
+            Assert.Equal("NotProduced", reader.GetString(0));
+            Assert.Equal("ServiceUnavailable", reader.GetString(1));
+            Assert.True(reader.GetInt32(2) >= 1);
+            Assert.False(reader.Read());
+        }
+
+        Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_element_point;"));
+    }
+
+    private static long Scalar(Microsoft.Data.Sqlite.SqliteConnection connection, string sql)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (long)command.ExecuteScalar()!;
+    }
+
+    [Fact]
     public async Task Element_series_projects_scorers_versions_and_per_point_availability()
     {
         using var host = ProxyHost();
@@ -849,7 +961,7 @@ public sealed class ProxyRoutesTests
                 ThreadToken = thread,
                 ObservedAt = at,
                 Availability = ProxyWarningAvailability.Available,
-                AvailabilityReason = ProxyWarningAvailabilityReason.None,
+                AvailabilityReason = ProxySegmentationAvailabilityReason.None,
                 SegmentCount = 1,
                 Truncated = false,
                 AppliedMaxSegments = 32,

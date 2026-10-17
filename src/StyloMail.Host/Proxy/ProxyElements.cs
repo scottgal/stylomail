@@ -49,3 +49,67 @@ public interface IProxyElementReader
         DateTimeOffset to,
         CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Composes the loopback classifier only when a deployment explicitly enables it.
+/// </summary>
+/// <remarks>
+/// The Host never starts the embedding service or a tunnel; it only creates an HTTP client. A
+/// non-loopback endpoint is rejected at startup because the whole point of this path is that
+/// message segments never leave the machine.
+/// </remarks>
+internal static class ProxyElementComposition
+{
+    public static ProxyElementConfiguration Create(IServiceProvider services, bool enabled)
+    {
+        if (!enabled)
+        {
+            return new ProxyElementConfiguration(null, enabled: false);
+        }
+
+        var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmbeddingOptions>>().Value;
+        if (!Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
+        {
+            throw new ProxyConfigurationException(
+                "Element analysis is enabled but its embedding endpoint is not a loopback address.");
+        }
+
+        var http = new HttpClient
+        {
+            BaseAddress = endpoint,
+            Timeout = options.Timeout,
+        };
+
+        var classifier = new SegmentEmbeddingProvider(
+            http,
+            options,
+            services.GetRequiredService<TimeProvider>(),
+            services.GetService<Microsoft.Extensions.Logging.ILogger<SegmentEmbeddingProvider>>());
+
+        // A missing token file is not a composition failure: the provider reports token_unavailable
+        // per point, which is the explicit absence state. Only an invalid endpoint is fatal.
+        return new ProxyElementConfiguration(classifier, enabled: true);
+    }
+}
+
+/// <summary>Whether this deployment composes element analysis, and the classifier when it does.</summary>
+/// <remarks>
+/// Analysis is off unless explicitly enabled with a loopback endpoint and a readable token file.
+/// A missing token is not "no analyser configured"; it is a deployment that intended analysis and
+/// cannot do it, so the classifier is still composed and returns token_unavailable, while this flag
+/// reports the configuration state without exposing the address or token.
+/// </remarks>
+public sealed class ProxyElementConfiguration
+{
+    public ProxyElementConfiguration(IElementClassifier? classifier, bool enabled)
+    {
+        Classifier = classifier;
+        Enabled = enabled;
+    }
+
+    /// <summary>True when the deployment explicitly enabled element analysis.</summary>
+    public bool Enabled { get; }
+
+    /// <summary>The composed classifier, or null when analysis is not enabled.</summary>
+    public IElementClassifier? Classifier { get; }
+}

@@ -464,7 +464,8 @@ internal static class ProxyEndpoints
     internal static IResult ListListenersAsync(
         ClaimsPrincipal user,
         IProxyListenerControl listeners,
-        ProxyTrustAnchors trustAnchors)
+        ProxyTrustAnchors trustAnchors,
+        ProxyElementConfiguration elementAnalysis)
     {
         if (Tenant(user) is not { } tenantId)
         {
@@ -475,6 +476,7 @@ internal static class ProxyEndpoints
         {
             TenantId = tenantId,
             Listeners = [.. listeners.Snapshot(tenantId).Select(Listener)],
+            ElementAnalysisConfigured = elementAnalysis.Enabled,
             Providers = [.. trustAnchors.Describe().Select(provider => new ProxyProviderTrustResponse
             {
                 ProviderId = provider.ProviderId,

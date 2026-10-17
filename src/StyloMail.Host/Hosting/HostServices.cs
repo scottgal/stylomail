@@ -12,6 +12,7 @@ using StyloMail.AccessProxy.Sessions;
 using StyloMail.AccessProxy.Threading;
 using StyloMail.Cascade;
 using StyloMail.Core;
+using StyloMail.Embeddings;
 using StyloMail.Host.Assessors;
 using StyloMail.Host.Auth;
 using StyloMail.Host.Chat;
@@ -105,6 +106,10 @@ public static class HostServices
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IProxyElementReader>(
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.Configure<EmbeddingOptions>(configuration.GetSection("StyloMail:Embeddings"));
+        services.AddSingleton(sp => ProxyElementComposition.Create(
+            sp,
+            configuration.GetSection("StyloMail:Embeddings").GetValue<bool>("Enabled")));
         services.AddSingleton<IThreadTokenDeriver>(ProxyThreadTokens.Create);
         services.AddSingleton(sp => new ThreadingHeaderExtractor(
             sp.GetRequiredService<IThreadTokenDeriver>()));

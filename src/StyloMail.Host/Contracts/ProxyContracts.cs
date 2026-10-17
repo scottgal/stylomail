@@ -140,6 +140,11 @@ public sealed record ProxyListenersResponse
     public required IReadOnlyList<ProxyListenerResponse> Listeners { get; init; }
 
     /// <summary>
+    /// Whether element analysis is explicitly configured. Never exposes the endpoint or token.
+    /// </summary>
+    public required bool ElementAnalysisConfigured { get; init; }
+
+    /// <summary>
     /// Deployment-level backend trust facts. A provider appears here only when it is pinned to a
     /// custom root, so an operator can see why a private backend works without seeing the path or
     /// the certificate itself.

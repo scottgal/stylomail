@@ -82,6 +82,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     private readonly IProxySessionAuthenticator _sessionAuthenticator;
     private readonly IProxyWarningEventSink _warningSink;
     private readonly IProxyWarningAnalyzer _warningAnalyzer;
+    private readonly ProxyElementConfiguration _elementConfiguration;
+    private readonly IProxyElementSink _elementSink;
     private readonly ILogger<AccessProxyListenerHandleFactory> _logger;
 
     public AccessProxyListenerHandleFactory(
@@ -98,6 +100,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         IProxySessionAuthenticator sessionAuthenticator,
         IProxyWarningEventSink warningSink,
         IProxyWarningAnalyzer warningAnalyzer,
+        ProxyElementConfiguration elementConfiguration,
+        IProxyElementSink elementSink,
         ILogger<AccessProxyListenerHandleFactory> logger)
     {
         _services = services;
@@ -113,6 +117,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         _sessionAuthenticator = sessionAuthenticator;
         _warningSink = warningSink;
         _warningAnalyzer = warningAnalyzer;
+        _elementConfiguration = elementConfiguration;
+        _elementSink = elementSink;
         _logger = logger;
     }
 
@@ -194,6 +200,11 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             ContextSink = new ProxySessionContextSink(_sessionAuthenticator, _logger),
             WarningSink = _warningSink,
             WarningAnalyzer = _warningAnalyzer,
+            // Null composition is deliberate: with no classifier the SMTP session behaves exactly
+            // as no-analyser, and nothing is written rather than a fabricated clean outcome.
+            ElementOrchestrator = _elementConfiguration.Classifier is { } classifier
+                ? new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(classifier, _elementSink)
+                : null,
             Tls = tls,
             SubmissionAssessment = assessment,
             SubmissionStager = stager,
