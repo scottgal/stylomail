@@ -32,6 +32,7 @@ public sealed class SmtpAccessProxySession
     private readonly IProxySessionContextSink? _contextSink;
     private readonly IProxyWarningEventSink _warningSink;
     private readonly IProxyWarningAnalyzer _warningAnalyzer;
+    private readonly ProxyElementOrchestrator? _elementOrchestrator;
 
     public SmtpAccessProxySession(
         string tenantId,
@@ -45,7 +46,8 @@ public sealed class SmtpAccessProxySession
         IEphemeralSubmissionStager stager,
         IProxySessionContextSink? contextSink = null,
         IProxyWarningEventSink? warningSink = null,
-        IProxyWarningAnalyzer? warningAnalyzer = null)
+        IProxyWarningAnalyzer? warningAnalyzer = null,
+        ProxyElementOrchestrator? elementOrchestrator = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _tenantId = tenantId;
@@ -60,6 +62,7 @@ public sealed class SmtpAccessProxySession
         _contextSink = contextSink;
         _warningSink = warningSink ?? throw new ArgumentNullException(nameof(warningSink));
         _warningAnalyzer = warningAnalyzer ?? throw new ArgumentNullException(nameof(warningAnalyzer));
+        _elementOrchestrator = elementOrchestrator;
         _bounds.Validate();
     }
 
@@ -405,7 +408,19 @@ public sealed class SmtpAccessProxySession
 
             staged.Content.Position = 0;
             var assessment = await _assessment.AssessAsync(staged, cancellationToken).ConfigureAwait(false);
-            await PublishWarningsAsync(staged, account, cancellationToken).ConfigureAwait(false);
+            var warning = await PublishWarningsAsync(staged, account, cancellationToken).ConfigureAwait(false);
+            if (_elementOrchestrator is not null)
+            {
+                var elementBytes = new byte[checked((int)staged.Length)];
+                try
+                {
+                    staged.Content.Position = 0;
+                    await staged.Content.ReadExactlyAsync(elementBytes, cancellationToken).ConfigureAwait(false);
+                    await _elementOrchestrator.EmitAsync(warning.Input, elementBytes, warning.Result.MessageToken,
+                        warning.Result.ThreadToken, MessageTrafficKind.Submission, cancellationToken).ConfigureAwait(false);
+                }
+                finally { Array.Clear(elementBytes); }
+            }
             if (assessment.Disposition == ProxySubmissionDisposition.Refuse && assessment.IsDeterministic)
             {
                 await clientWriter.WriteLineAsync("554 Submission refused by local policy", cancellationToken).ConfigureAwait(false);
@@ -435,7 +450,7 @@ public sealed class SmtpAccessProxySession
         }
     }
 
-    private async ValueTask PublishWarningsAsync(
+    private async ValueTask<(ProxyWarningAnalysisInput Input, ProxyWarningAnalysisResult Result)> PublishWarningsAsync(
         IStagedProxySubmission staged,
         StyloMailAccount account,
         CancellationToken cancellationToken)
@@ -446,10 +461,11 @@ public sealed class SmtpAccessProxySession
             staged.Content.Position = 0;
             await staged.Content.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
             var observedAt = _timeProvider.GetUtcNow();
-            var analysis = await _warningAnalyzer.AnalyzeAsync(new ProxyWarningAnalysisInput
+            var input = new ProxyWarningAnalysisInput
             {
                 Message = bytes, TenantId = account.TenantId, AccountId = account.AccountId, ObservedAt = observedAt,
-            }, cancellationToken).ConfigureAwait(false);
+            };
+            var analysis = await _warningAnalyzer.AnalyzeAsync(input, cancellationToken).ConfigureAwait(false);
             await _warningSink.RecordOutcomeAsync(new ProxyWarningAnalysisOutcome
             {
                 TenantId = account.TenantId, AccountId = account.AccountId, TrafficKind = MessageTrafficKind.Submission,
@@ -457,7 +473,7 @@ public sealed class SmtpAccessProxySession
                 Availability = analysis.Availability, AvailabilityReason = analysis.AvailabilityReason,
                 MarkerCount = analysis.Availability == ProxyWarningAvailability.Available ? analysis.Findings.Count : 0,
             }, cancellationToken).ConfigureAwait(false);
-            if (analysis.Availability != ProxyWarningAvailability.Available) return;
+            if (analysis.Availability != ProxyWarningAvailability.Available) return (input, analysis);
             foreach (var finding in analysis.Findings)
                 await _warningSink.RecordMarkerAsync(new ProxyDeterministicWarningEvent
                 {
@@ -466,6 +482,7 @@ public sealed class SmtpAccessProxySession
                     FindingId = finding.FindingId, ObservedAt = observedAt, Availability = ProxyWarningAvailability.Available,
                     AvailabilityReason = ProxyWarningAvailabilityReason.None,
                 }, cancellationToken).ConfigureAwait(false);
+            return (input, analysis);
         }
         finally { Array.Clear(bytes); }
     }
