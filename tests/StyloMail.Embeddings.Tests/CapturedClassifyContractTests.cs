@@ -56,7 +56,9 @@ public sealed class CapturedClassifyContractTests : IDisposable
         var provider = new SegmentEmbeddingProvider(
             new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
 
-        var result = await provider.ClassifyAsync(Segments, Scorers);
+        var outcome = await provider.ClassifyAsync(Segments, Scorers);
+        var success = Assert.IsType<ClassificationOutcome.Success>(outcome);
+        var result = success.Classification;
 
         Assert.Equal(ElementVocabulary.Version, result.VocabularyVersion);
         Assert.Equal(2, result.Scorers.Count);
@@ -90,7 +92,7 @@ public sealed class CapturedClassifyContractTests : IDisposable
     }
 
     [Fact]
-    public async Task A_response_naming_an_unknown_element_is_refused_whole()
+    public async Task A_response_naming_an_unknown_element_is_a_contract_unavailable()
     {
         var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
         var classify = (await File.ReadAllTextAsync(Fixture("service-classify.json")))
@@ -100,16 +102,10 @@ public sealed class CapturedClassifyContractTests : IDisposable
         var provider = new SegmentEmbeddingProvider(
             new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
 
-        var result = await provider.ClassifyAsync(Segments, new[] { ElementScorers.PrototypeKnn });
-
-        Assert.All(
-            result.Scorers.SelectMany(scorer => scorer.Segments).SelectMany(row => row.Elements),
-            point =>
-            {
-                Assert.Equal(ElementAvailability.NotProduced, point.Availability);
-                Assert.Equal(ElementNotProducedReason.ContractViolation, point.Reason);
-                Assert.Null(point.Score);
-            });
+        var outcome = await provider.ClassifyAsync(Segments, new[] { ElementScorers.PrototypeKnn });
+        Assert.Equal(
+            ClassificationUnavailableReason.ContractViolation,
+            Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
     }
 
     private static string Fixture(string name) =>

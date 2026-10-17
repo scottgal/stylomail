@@ -74,9 +74,48 @@ def embed_all(endpoint: str, token: str, texts: list[str], batch: int = 16) -> n
     return np.asarray(vectors, dtype=np.float32)
 
 
-def metrics(labels: np.ndarray, predictions: np.ndarray) -> dict:
+def average_precision(labels: np.ndarray, scores: np.ndarray) -> float | None:
+    """Area under the precision-recall curve, computed by the step rule (no interpolation)."""
     labels = labels.astype(int)
-    predictions = predictions.astype(int)
+    if labels.sum() == 0:
+        return None
+    order = np.argsort(-scores, kind="mergesort")
+    ranked = labels[order]
+    tp = np.cumsum(ranked)
+    precision = tp / np.arange(1, len(ranked) + 1)
+    return round(float(np.sum(precision[ranked == 1]) / labels.sum()), 4)
+
+
+def brier(labels: np.ndarray, probabilities: np.ndarray) -> float | None:
+    if len(labels) == 0:
+        return None
+    return round(float(np.mean((probabilities - labels.astype(float)) ** 2)), 4)
+
+
+def reliability(labels: np.ndarray, probabilities: np.ndarray, bins: int = 5) -> list[dict]:
+    """Observed frequency against mean predicted probability, per bin."""
+    labels = labels.astype(int)
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    output = []
+    for index in range(bins):
+        lower, upper = edges[index], edges[index + 1]
+        mask = (probabilities >= lower) & (probabilities < upper if index < bins - 1 else probabilities <= upper)
+        if not mask.any():
+            output.append({"lower": round(float(lower), 2), "upper": round(float(upper), 2), "n": 0})
+            continue
+        output.append({
+            "lower": round(float(lower), 2),
+            "upper": round(float(upper), 2),
+            "n": int(mask.sum()),
+            "mean_predicted": round(float(probabilities[mask].mean()), 4),
+            "observed": round(float(labels[mask].mean()), 4),
+        })
+    return output
+
+
+def metrics(labels: np.ndarray, scores: np.ndarray, threshold: float) -> dict:
+    labels = labels.astype(int)
+    predictions = (scores >= threshold).astype(int)
     tp = int(np.sum((labels == 1) & (predictions == 1)))
     fn = int(np.sum((labels == 1) & (predictions == 0)))
     fp = int(np.sum((labels == 0) & (predictions == 1)))
@@ -85,13 +124,36 @@ def metrics(labels: np.ndarray, predictions: np.ndarray) -> dict:
     recall = tp / (tp + fn) if tp + fn else None
     fpr = fp / (fp + tn) if fp + tn else None
     return {
+        "threshold": round(float(threshold), 6),
         "tp": tp, "fp": fp, "tn": tn, "fn": fn,
         "positives": int(np.sum(labels == 1)),
         "negatives": int(np.sum(labels == 0)),
         "precision": None if precision is None else round(precision, 4),
         "recall": None if recall is None else round(recall, 4),
         "false_positive_rate": None if fpr is None else round(fpr, 4),
+        "pr_auc": average_precision(labels, scores),
+        "brier": brier(labels, scores) if 0.0 <= float(np.min(scores)) and float(np.max(scores)) <= 1.0 else None,
     }
+
+
+def best_threshold(labels: np.ndarray, scores: np.ndarray) -> float:
+    """The threshold that maximises F1 on the TRAIN split, chosen there and never on held-out."""
+    labels = labels.astype(int)
+    candidates = np.unique(scores)
+    best, best_f1 = 0.0, -1.0
+    for candidate in candidates:
+        predictions = (scores >= candidate).astype(int)
+        tp = int(np.sum((labels == 1) & (predictions == 1)))
+        fp = int(np.sum((labels == 0) & (predictions == 1)))
+        fn = int(np.sum((labels == 1) & (predictions == 0)))
+        if tp == 0:
+            continue
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        if f1 > best_f1:
+            best, best_f1 = float(candidate), f1
+    return best
 
 
 def fit_probe(vectors: np.ndarray, labels: np.ndarray, dimension: int) -> tuple[np.ndarray, float]:
@@ -146,6 +208,7 @@ def main() -> int:
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--version", default=ARTEFACT_VERSION)
     args = parser.parse_args()
 
     token = args.token_file.read_text(encoding="utf-8").strip()
@@ -178,6 +241,7 @@ def main() -> int:
 
     artefact_rows = []
     probe_models = {}
+    knn_thresholds = {}
     metrics_block = {}
 
     for element in VOCABULARY:
@@ -194,29 +258,49 @@ def main() -> int:
         negative_matrix /= np.linalg.norm(negative_matrix, axis=1, keepdims=True)
 
         labels = np.asarray([row["label"] for row in heldout], dtype=int)
-        knn_predictions = []
-        for row in heldout:
-            unit = row["vector"] / (np.linalg.norm(row["vector"]) or 1.0)
-            score = float(np.max(positive_matrix @ unit) - np.max(negative_matrix @ unit))
-            knn_predictions.append(1 if score > 0.0 else 0)
+        train_labels = np.asarray([row["label"] for row in train], dtype=int)
+
+        def knn_scores(rows: list[dict]) -> np.ndarray:
+            scores = []
+            for row in rows:
+                unit = row["vector"] / (np.linalg.norm(row["vector"]) or 1.0)
+                scores.append(float(np.max(positive_matrix @ unit) - np.max(negative_matrix @ unit)))
+            return np.asarray(scores)
+
+        # The kNN threshold is chosen on the TRAIN split and then applied unchanged to held-out.
+        # Choosing it on held-out would be a number about the choice, not about the classifier.
+        knn_threshold = best_threshold(train_labels, knn_scores(train))
+        heldout_knn = knn_scores(heldout)
 
         train_matrix = np.stack([row["vector"] for row in train])
-        train_labels = np.asarray([row["label"] for row in train], dtype=int)
         weights, bias = fit_probe(train_matrix, train_labels, dimension)
         heldout_matrix = np.stack([row["vector"] for row in heldout])
-        logits = heldout_matrix @ weights + bias
+        # Same BLAS artifact as in the fit: warnings on finite inputs. Silence the warning and check
+        # the values, so a real non-finite logit still refuses the artefact.
+        with np.errstate(all="ignore"):
+            logits = heldout_matrix @ weights + bias
+        if not np.all(np.isfinite(logits)):
+            raise SystemExit("REFUSING: non-finite logits on the held-out split")
         probabilities = 1.0 / (1.0 + np.exp(-np.clip(logits, -60.0, 60.0)))
-        probe_predictions = (probabilities >= args.threshold).astype(int)
 
-        metrics_block[element] = {
-            "prototype_knn": metrics(labels, np.asarray(knn_predictions)),
-            "linear_probe": metrics(labels, probe_predictions),
-        }
+        knn_metrics = metrics(labels, heldout_knn, knn_threshold)
+        knn_metrics["threshold_source"] = "max F1 on the train split"
+        knn_metrics["margin_positive_median"] = round(float(np.median(heldout_knn[labels == 1])), 4)
+        knn_metrics["margin_negative_median"] = round(float(np.median(heldout_knn[labels == 0])), 4)
+        knn_metrics["margin_min"] = round(float(np.min(heldout_knn)), 4)
+        knn_metrics["margin_max"] = round(float(np.max(heldout_knn)), 4)
+
+        probe_metrics = metrics(labels, probabilities, args.threshold)
+        probe_metrics["threshold_source"] = "fixed at the artefact threshold"
+        probe_metrics["calibration"] = reliability(labels, probabilities)
+
+        metrics_block[element] = {"prototype_knn": knn_metrics, "linear_probe": probe_metrics}
         probe_models[element] = {
             "weights": [round(float(value), 6) for value in weights],
             "bias": round(bias, 6),
             "threshold": args.threshold,
         }
+        knn_thresholds[element] = round(float(knn_threshold), 6)
 
         for row in rows:
             if row["element"] != element:
@@ -232,17 +316,18 @@ def main() -> int:
             })
 
     document = {
-        "artefact_version": ARTEFACT_VERSION,
+        "artefact_version": args.version,
         "vocabulary_version": VOCABULARY_VERSION,
         "model_tag": model_tag,
         "prefix_version": prefix_version,
         "dimension": dimension,
         "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "knn_version": "prototype_knn/seed-1",
-        "probe_version": "linear_probe/seed-1",
+        "knn_version": f"prototype_knn/{args.version}",
+        "probe_version": f"linear_probe/{args.version}",
         "seed_ids": [row["id"] for row in rows if row["split"] == "train"],
         "heldout_ids": [row["id"] for row in rows if row["split"] == "heldout"],
         "probe": {"models": probe_models, "threshold": args.threshold},
+        "knn_thresholds": knn_thresholds,
         "metrics": metrics_block,
         "notes": (
             "Authored seed labels, not corpus-derived. Text is in training/seed-labels.jsonl; this "
@@ -255,12 +340,13 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
-    print(f"{'element':<24}{'scorer':<16}{'P':>7}{'R':>7}{'FPR':>7}{'pos':>5}{'neg':>5}")
+    print(f"{'element':<24}{'scorer':<16}{'P':>7}{'R':>7}{'FPR':>7}{'PR-AUC':>8}{'thr':>8}{'pos':>5}{'neg':>5}")
     for element, block in metrics_block.items():
         for scorer, values in block.items():
             print(
                 f"{element:<24}{scorer:<16}"
                 f"{_fmt(values['precision']):>7}{_fmt(values['recall']):>7}{_fmt(values['false_positive_rate']):>7}"
+                f"{_fmt(values['pr_auc']):>8}{values['threshold']:>8.3f}"
                 f"{values['positives']:>5}{values['negatives']:>5}"
             )
     print(f"wrote {args.output} ({len(artefact_rows)} exemplars, {len(rows)} labelled rows)")
@@ -273,3 +359,4 @@ def _fmt(value: float | None) -> str:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

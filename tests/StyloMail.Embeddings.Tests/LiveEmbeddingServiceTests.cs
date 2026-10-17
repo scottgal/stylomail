@@ -128,8 +128,9 @@ public sealed class LiveEmbeddingServiceTests
             metadata.ModelTag, metadata.Dimension, metadata.PrefixVersion, metadata.Dtype,
             metadata.ModelRevision ?? "null");
 
-        var classified = await provider.ClassifyAsync(
+        var outcome = await provider.ClassifyAsync(
             Segments, new[] { ElementScorers.PrototypeKnn, ElementScorers.LinearProbe });
+        var classified = Assert.IsType<ClassificationOutcome.Success>(outcome).Classification;
         Assert.Equal(ElementVocabulary.Version, classified.VocabularyVersion);
         Assert.Equal(2, classified.Scorers.Count);
         foreach (var scorer in classified.Scorers)

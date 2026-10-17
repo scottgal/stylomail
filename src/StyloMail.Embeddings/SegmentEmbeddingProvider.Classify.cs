@@ -18,7 +18,7 @@ public sealed partial class SegmentEmbeddingProvider
     private static readonly IReadOnlyList<string> DefaultScorers = new[] { ElementScorers.PrototypeKnn };
 
     /// <inheritdoc />
-    public async Task<ElementClassification> ClassifyAsync(
+    public async Task<ClassificationOutcome> ClassifyAsync(
         IReadOnlyList<string> segments,
         IReadOnlyList<string>? scorers = null,
         CancellationToken cancellationToken = default)
@@ -28,32 +28,32 @@ public sealed partial class SegmentEmbeddingProvider
         var requested = NormaliseScorers(scorers);
         if (segments.Count == 0)
         {
-            return new ElementClassification(
+            return new ClassificationOutcome.Success(new ElementClassification(
                 _metadata,
                 ElementVocabulary.Version,
                 requested.Select(scorer => new ElementScorerResult(
-                    scorer, ElementScorers.VersionOf(scorer)!, Array.Empty<SegmentElementScores>())).ToList());
+                    scorer, ElementScorers.VersionOf(scorer)!, Array.Empty<SegmentElementScores>())).ToList()));
         }
 
         if (GuardBatch(segments) is { } guardReason)
         {
-            return ElementFailure(segments.Count, requested, ToElementReason(guardReason));
+            return Unavailable(ClassificationUnavailableReason.InvalidRequest);
         }
 
         if (_breaker.IsOpen)
         {
-            return ElementFailure(segments.Count, requested, ElementNotProducedReason.CircuitOpen);
+            return Unavailable(ClassificationUnavailableReason.ServiceUnavailable);
         }
 
         var (token, tokenReason) = await ReadTokenAsync(cancellationToken).ConfigureAwait(false);
         if (token is null)
         {
-            return ElementFailure(segments.Count, requested, ToElementReason(tokenReason));
+            return Unavailable(ClassificationUnavailableReason.NoAnalyserConfigured);
         }
 
         if (await EnsureMetadataAsync(force: false, cancellationToken).ConfigureAwait(false) is null)
         {
-            return ElementFailure(segments.Count, requested, ToElementReason(_lastFailure));
+            return Unavailable(ToUnavailableReason(_lastFailure));
         }
 
         for (var attempt = 0; ; attempt++)
@@ -67,7 +67,7 @@ public sealed partial class SegmentEmbeddingProvider
             }
             catch (EmbeddingCallFault fault)
             {
-                return ElementFailure(segments.Count, requested, ToElementReason(fault.Reason));
+                return Unavailable(ToUnavailableReason(fault.Reason));
             }
 
             using (response)
@@ -114,7 +114,7 @@ public sealed partial class SegmentEmbeddingProvider
         },
         token);
 
-    private async Task<ElementClassification> InterpretClassifyAsync(
+    private async Task<ClassificationOutcome> InterpretClassifyAsync(
         HttpResponseMessage response,
         int count,
         IReadOnlyList<string> requested,
@@ -122,52 +122,52 @@ public sealed partial class SegmentEmbeddingProvider
     {
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.Unauthorized);
+            return Unavailable(ClassificationUnavailableReason.Unauthorized);
         }
 
         if (response.StatusCode is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnprocessableEntity)
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+            return Unavailable(ClassificationUnavailableReason.ContractViolation);
         }
 
         if (!response.IsSuccessStatusCode)
         {
             _breaker.RecordFailure();
-            return ElementFailure(count, requested, ElementNotProducedReason.ServiceUnavailable);
+            return Unavailable(ClassificationUnavailableReason.ServiceUnavailable);
         }
 
         var document = await ReadDocumentAsync<ClassifyResponse>(response, cancellationToken).ConfigureAwait(false);
         if (document is null)
         {
             _breaker.RecordFailure();
-            return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+            return Unavailable(ClassificationUnavailableReason.ContractViolation);
         }
 
         if (!string.Equals(document.ModelTag, _options.ModelTag, StringComparison.Ordinal))
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.ModelTagMismatch);
+            return Unavailable(ClassificationUnavailableReason.UnsupportedModel);
         }
 
         if (!string.Equals(document.PrefixVersion, _options.PrefixVersion, StringComparison.Ordinal))
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.PrefixVersionMismatch);
+            return Unavailable(ClassificationUnavailableReason.UnsupportedModel);
         }
 
         if (!IsAcceptedDtype(document.Dtype))
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.UnsupportedDtype);
+            return Unavailable(ClassificationUnavailableReason.UnsupportedModel);
         }
 
         if (document.Dimension != _options.Dimension)
         {
-            return ElementFailure(count, requested, ElementNotProducedReason.DimensionMismatch);
+            return Unavailable(ClassificationUnavailableReason.UnsupportedModel);
         }
 
         if (!string.Equals(document.VocabularyVersion, ElementVocabulary.Version, StringComparison.Ordinal)
             || document.Scorers is null)
         {
             _breaker.RecordFailure();
-            return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+            return Unavailable(ClassificationUnavailableReason.ContractViolation);
         }
 
         var results = new List<ElementScorerResult>(requested.Count);
@@ -178,7 +178,7 @@ public sealed partial class SegmentEmbeddingProvider
             if (scorer?.Segments is null || scorer.Segments.Count != count)
             {
                 _breaker.RecordFailure();
-                return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+                return Unavailable(ClassificationUnavailableReason.ContractViolation);
             }
 
             var rows = new List<SegmentElementScores>(count);
@@ -188,7 +188,7 @@ public sealed partial class SegmentEmbeddingProvider
                 if (segment?.Elements is null || segment.Elements.Count != ElementVocabulary.All.Count)
                 {
                     _breaker.RecordFailure();
-                    return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+                    return Unavailable(ClassificationUnavailableReason.ContractViolation);
                 }
 
                 var points = new List<ElementScore>(ElementVocabulary.All.Count);
@@ -199,14 +199,14 @@ public sealed partial class SegmentEmbeddingProvider
                     if (point is null)
                     {
                         _breaker.RecordFailure();
-                        return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+                        return Unavailable(ClassificationUnavailableReason.ContractViolation);
                     }
 
                     var mapped = MapPoint(point, scorerName);
                     if (mapped is null)
                     {
                         _breaker.RecordFailure();
-                        return ElementFailure(count, requested, ElementNotProducedReason.ContractViolation);
+                        return Unavailable(ClassificationUnavailableReason.ContractViolation);
                     }
 
                     points.Add(mapped);
@@ -230,7 +230,8 @@ public sealed partial class SegmentEmbeddingProvider
             document.Dtype!,
             "embeddinggemma-2/text-only/v1");
         _breaker.RecordSuccess();
-        return new ElementClassification(_metadata, document.VocabularyVersion!, results);
+        return new ClassificationOutcome.Success(
+            new ElementClassification(_metadata, document.VocabularyVersion!, results));
     }
 
     /// <summary>
@@ -306,47 +307,38 @@ public sealed partial class SegmentEmbeddingProvider
     private static ElementScore Absent(string element, ElementNotProducedReason reason) =>
         new(element, ElementAvailability.NotProduced, null, null, reason);
 
-    private static ElementClassification ElementFailure(
-        int count,
-        IReadOnlyList<string> scorers,
-        ElementNotProducedReason reason)
+    private static ClassificationOutcome Unavailable(ClassificationUnavailableReason reason) =>
+        new ClassificationOutcome.Unavailable(reason);
+
+    /// <summary>
+    /// Maps the embedding layer's reasons onto the classification outcome's closed set. There is no
+    /// default arm that invents a reason: an unmapped value is a mapping defect and throws, because
+    /// a silent catch-all is how a closed vocabulary stops being one.
+    /// </summary>
+    private static ClassificationUnavailableReason ToUnavailableReason(EmbeddingNotProducedReason reason) => reason switch
     {
-        var results = new List<ElementScorerResult>(scorers.Count);
-        foreach (var scorer in scorers)
-        {
-            var rows = new List<SegmentElementScores>(count);
-            for (var ordinal = 0; ordinal < count; ordinal++)
-            {
-                rows.Add(new SegmentElementScores(
-                    ordinal,
-                    ElementVocabulary.All
-                        .Select(element => Absent(element, reason))
-                        .ToList()));
-            }
-
-            results.Add(new ElementScorerResult(
-                scorer, ElementScorers.VersionOf(scorer) ?? "unknown", rows));
-        }
-
-        return new ElementClassification(null, ElementVocabulary.Version, results);
-    }
-
-    private static ElementNotProducedReason ToElementReason(EmbeddingNotProducedReason reason) => reason switch
-    {
-        EmbeddingNotProducedReason.Unauthorized => ElementNotProducedReason.Unauthorized,
-        EmbeddingNotProducedReason.TokenUnavailable => ElementNotProducedReason.Unauthorized,
-        EmbeddingNotProducedReason.ServiceUnavailable => ElementNotProducedReason.ServiceUnavailable,
-        EmbeddingNotProducedReason.ServiceUnreachable => ElementNotProducedReason.ServiceUnavailable,
-        EmbeddingNotProducedReason.TimedOut => ElementNotProducedReason.TimedOut,
-        EmbeddingNotProducedReason.ModelTagMismatch => ElementNotProducedReason.ModelTagMismatch,
-        EmbeddingNotProducedReason.DimensionMismatch => ElementNotProducedReason.DimensionMismatch,
-        EmbeddingNotProducedReason.PrefixVersionMismatch => ElementNotProducedReason.PrefixVersionMismatch,
-        EmbeddingNotProducedReason.UnsupportedDtype => ElementNotProducedReason.UnsupportedDtype,
-        EmbeddingNotProducedReason.TooManySegments => ElementNotProducedReason.TooManySegments,
-        EmbeddingNotProducedReason.SegmentTooLong => ElementNotProducedReason.SegmentTooLong,
-        EmbeddingNotProducedReason.EmptySegment => ElementNotProducedReason.EmptySegment,
-        EmbeddingNotProducedReason.CircuitOpen => ElementNotProducedReason.CircuitOpen,
-        _ => ElementNotProducedReason.ContractViolation,
+        EmbeddingNotProducedReason.Unauthorized => ClassificationUnavailableReason.Unauthorized,
+        EmbeddingNotProducedReason.TokenUnavailable => ClassificationUnavailableReason.NoAnalyserConfigured,
+        EmbeddingNotProducedReason.ServiceUnavailable => ClassificationUnavailableReason.ServiceUnavailable,
+        EmbeddingNotProducedReason.ServiceUnreachable => ClassificationUnavailableReason.ServiceUnavailable,
+        EmbeddingNotProducedReason.MetadataUnavailable => ClassificationUnavailableReason.ServiceUnavailable,
+        EmbeddingNotProducedReason.CircuitOpen => ClassificationUnavailableReason.ServiceUnavailable,
+        EmbeddingNotProducedReason.TimedOut => ClassificationUnavailableReason.TimedOut,
+        EmbeddingNotProducedReason.ModelTagMismatch => ClassificationUnavailableReason.UnsupportedModel,
+        EmbeddingNotProducedReason.DimensionMismatch => ClassificationUnavailableReason.UnsupportedModel,
+        EmbeddingNotProducedReason.PrefixVersionMismatch => ClassificationUnavailableReason.UnsupportedModel,
+        EmbeddingNotProducedReason.UnsupportedDtype => ClassificationUnavailableReason.UnsupportedModel,
+        EmbeddingNotProducedReason.TooManySegments => ClassificationUnavailableReason.InvalidRequest,
+        EmbeddingNotProducedReason.SegmentTooLong => ClassificationUnavailableReason.InvalidRequest,
+        EmbeddingNotProducedReason.EmptySegment => ClassificationUnavailableReason.InvalidRequest,
+        EmbeddingNotProducedReason.ContractViolation => ClassificationUnavailableReason.ContractViolation,
+        EmbeddingNotProducedReason.NonFiniteVector => ClassificationUnavailableReason.ContractViolation,
+        EmbeddingNotProducedReason.VectorNotNormalised => ClassificationUnavailableReason.ContractViolation,
+        EmbeddingNotProducedReason.RequestRejected => ClassificationUnavailableReason.ContractViolation,
+        EmbeddingNotProducedReason.None => throw new ArgumentOutOfRangeException(
+            nameof(reason), reason, "a success has no unavailable reason"),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(reason), reason, "an unmapped embedding reason cannot become a classification reason"),
     };
 
     private sealed record ClassifyRequest

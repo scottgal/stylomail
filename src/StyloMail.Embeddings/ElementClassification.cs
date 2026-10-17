@@ -171,6 +171,76 @@ public sealed record ElementClassification(
     string VocabularyVersion,
     IReadOnlyList<ElementScorerResult> Scorers);
 
+/// <summary>Why a classification call produced no result at all.</summary>
+/// <remarks>
+/// A whole-call absence is different from a per-element absence. This enum answers "the analyser
+/// could not run"; <see cref="ElementNotProducedReason"/> answers "this element has no measurement".
+/// Both are typed so a caller never has to catch an exception to learn which happened.
+/// </remarks>
+public enum ClassificationUnavailableReason
+{
+    None = 0,
+
+    /// <summary>No service, token or prototype set is configured, so there is no analyser to ask.</summary>
+    NoAnalyserConfigured,
+
+    /// <summary>The service refused the connection, or answered 5xx after the retry.</summary>
+    ServiceUnavailable,
+
+    /// <summary>The call exceeded the configured deadline.</summary>
+    TimedOut,
+
+    /// <summary>The service rejected the bearer token.</summary>
+    Unauthorized,
+
+    /// <summary>The response violated the published contract or a version disagreed.</summary>
+    ContractViolation,
+
+    /// <summary>The service's model, dimension or prefix version is not the configured one.</summary>
+    UnsupportedModel,
+
+    /// <summary>The request itself was outside the bounds this provider accepts.</summary>
+    InvalidRequest,
+}
+
+/// <summary>Wire names for <see cref="ClassificationUnavailableReason"/>.</summary>
+public static class ClassificationReasons
+{
+    public static string ToWireName(this ClassificationUnavailableReason reason) => reason switch
+    {
+        ClassificationUnavailableReason.None => "none",
+        ClassificationUnavailableReason.NoAnalyserConfigured => "no_analyser_configured",
+        ClassificationUnavailableReason.ServiceUnavailable => "service_unavailable",
+        ClassificationUnavailableReason.TimedOut => "timed_out",
+        ClassificationUnavailableReason.Unauthorized => "unauthorized",
+        ClassificationUnavailableReason.ContractViolation => "contract_violation",
+        ClassificationUnavailableReason.UnsupportedModel => "unsupported_model",
+        ClassificationUnavailableReason.InvalidRequest => "invalid_request",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "no wire name for this reason"),
+    };
+}
+
+/// <summary>
+/// The outcome of one classification call: either a result, or a named reason none was produced.
+/// </summary>
+/// <remarks>
+/// Expected failures are values, not exceptions. A caller that has to catch an exception to build a
+/// one-outcome, zero-points row would end up inventing a reason for anything unexpected, and a
+/// closed vocabulary with a catch-all is not closed.
+/// </remarks>
+public abstract record ClassificationOutcome
+{
+    private ClassificationOutcome()
+    {
+    }
+
+    /// <summary>A result. It may still carry per-element absences with their own reasons.</summary>
+    public sealed record Success(ElementClassification Classification) : ClassificationOutcome;
+
+    /// <summary>No result, with a reason from the closed set.</summary>
+    public sealed record Unavailable(ClassificationUnavailableReason Reason) : ClassificationOutcome;
+}
+
 /// <summary>
 /// Classifies bounded segments into <see cref="ElementVocabulary"/> elements.
 /// </summary>
@@ -181,7 +251,11 @@ public sealed record ElementClassification(
 /// </remarks>
 public interface IElementClassifier
 {
-    Task<ElementClassification> ClassifyAsync(
+    /// <summary>
+    /// Classify a batch. Throws only for programmer errors (a null argument or an unknown scorer
+    /// name); every operational failure is returned as <see cref="ClassificationOutcome.Unavailable"/>.
+    /// </summary>
+    Task<ClassificationOutcome> ClassifyAsync(
         IReadOnlyList<string> segments,
         IReadOnlyList<string>? scorers = null,
         CancellationToken cancellationToken = default);
