@@ -86,23 +86,6 @@ public sealed record ProxyThreadPoint
     public required int MarkerCount { get; init; }
 }
 
-/// <summary>Accepts deterministic warning outcomes and their markers from the analysis tap.</summary>
-/// <remarks>
-/// An outcome is recorded for every attempted message, including a clean one (Available with
-/// MarkerCount 0). Markers alone cannot distinguish a clean message from an unanalysed one, so the
-/// outcome is the evidence that analysis ran.
-/// </remarks>
-public interface IProxyWarningEventSink
-{
-    ValueTask RecordOutcomeAsync(
-        ProxyWarningAnalysisOutcome outcome,
-        CancellationToken cancellationToken);
-
-    ValueTask RecordMarkerAsync(
-        ProxyDeterministicWarningEvent marker,
-        CancellationToken cancellationToken);
-}
-
 /// <summary>The latest listener fact recorded for a protocol.</summary>
 public sealed record ProxyListenerFact(
     ProxyListenerEventKind Kind,

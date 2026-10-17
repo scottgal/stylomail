@@ -429,7 +429,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "availability_reason=excluded.availability_reason,marker_count=excluded.marker_count;";
         command.Parameters.AddWithValue("$tenant", outcome.TenantId);
         command.Parameters.AddWithValue("$message", outcome.MessageToken);
-        command.Parameters.AddWithValue("$direction", outcome.Direction.ToString());
+        command.Parameters.AddWithValue("$direction", outcome.TrafficKind.ToString());
         command.Parameters.AddWithValue("$thread", outcome.ThreadToken);
         command.Parameters.AddWithValue("$account", outcome.AccountId);
         command.Parameters.AddWithValue("$at", Timestamp(outcome.ObservedAt));
@@ -460,7 +460,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "availability_reason=excluded.availability_reason;";
         command.Parameters.AddWithValue("$tenant", marker.TenantId);
         command.Parameters.AddWithValue("$message", marker.MessageToken);
-        command.Parameters.AddWithValue("$direction", marker.Direction.ToString());
+        command.Parameters.AddWithValue("$direction", marker.TrafficKind.ToString());
         command.Parameters.AddWithValue("$thread", marker.ThreadToken);
         command.Parameters.AddWithValue("$account", marker.AccountId);
         command.Parameters.AddWithValue("$kind", marker.MarkerKind.ToString());

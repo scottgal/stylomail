@@ -459,9 +459,8 @@ public sealed class ProxyRoutesTests
             {
                 TenantId = TestPrincipals.AcmeTenant,
                 AccountId = "pa_account",
-                Direction = ProxyWarningDirection.Retrieval,
-                MessageToken = "m-warn",
-                ThreadToken = "thread-warnings",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-warn",                ThreadToken = "thread-warnings",
                 MarkerKind = ProxyWarningMarkerKind.DisplayNameMismatch,
                 FindingId = "finding-1",
                 ObservedAt = now.AddMinutes(-3),
@@ -519,7 +518,7 @@ public sealed class ProxyRoutesTests
         {
             TenantId = TestPrincipals.AcmeTenant,
             AccountId = "pa_account",
-            Direction = ProxyWarningDirection.Retrieval,
+            TrafficKind = MessageTrafficKind.Retrieval,
             MessageToken = messageToken,
             ThreadToken = "thread-warnings",
             ObservedAt = observedAt,
