@@ -81,10 +81,32 @@ def embed_all(endpoint: str, token: str, texts: list[str], batch: int = 16) -> n
     return np.asarray(vectors, dtype=np.float32)
 
 
-def is_calibration(row: dict) -> bool:
-    """Stable 20 percent of the train rows, chosen by hash so it does not move between runs."""
-    return int(hashlib.sha256(row["id"].encode("utf-8")).hexdigest()[:8], 16) % 5 == 0
+def text_key(row: dict) -> str:
+    """Content identity: the basis of both the split and any stable identifier."""
+    basis = " ".join(row["text"].split()).lower()
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
+
+def calibration_set(rows: list[dict]) -> set[str]:
+    """A stratified 20 percent of each element and label, stable by TEXT.
+
+    Hashing the id was wrong and was caught by renaming exemplar ids: every id changed, so every row
+    moved between fit and calibration and the metrics moved with them. Hashing the text fixes that.
+    Stratifying by element and label fixes the other failure this had: a flat hash left an element
+    with 23 positives holding only 2 in calibration, which the trainer rightly refused.
+    """
+    chosen: set[str] = set()
+    for element in VOCABULARY:
+        for label in (0, 1):
+            group = sorted(
+                (row for row in rows
+                 if row["element"] == element and row["split"] == "train" and row["label"] == label),
+                key=text_key,
+            )
+            for index, row in enumerate(group):
+                if index % 5 == 0:
+                    chosen.add(text_key(row))
+    return chosen
 
 def fit_probe(vectors: np.ndarray, labels: np.ndarray) -> tuple[np.ndarray, float]:
     """L2 regularised logistic regression in float64 by gradient descent.
@@ -247,13 +269,14 @@ def main() -> int:
     model_tag = metadata["model_tag"]
 
     rows = load_rows(args.labels)
+    calibration = calibration_set(rows)
 
     problems = []
     for element in VOCABULARY:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
-                    and not is_calibration(row)]
+                    and text_key(row) not in calibration]
         calibration_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
-                            and is_calibration(row)]
+                            and text_key(row) in calibration]
         heldout_rows = [row for row in rows if row["element"] == element and row["split"] == "heldout"]
         for name, subset in (("fit", fit_rows), ("calibration", calibration_rows), ("heldout", heldout_rows)):
             for label, label_name in ((1, "positive"), (0, "negative")):
@@ -276,9 +299,9 @@ def main() -> int:
 
     for element in VOCABULARY:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
-                    and not is_calibration(row)]
+                    and text_key(row) not in calibration]
         calibration_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
-                            and is_calibration(row)]
+                            and text_key(row) in calibration]
         heldout_rows = [row for row in rows if row["element"] == element and row["split"] == "heldout"]
 
         def matrix_of(subset: list[dict]) -> np.ndarray:

@@ -9,6 +9,11 @@ What the labels mean, said plainly because the metrics depend on it:
   hard negative for that element; when an element has too few cue-bearing ham segments, the
   remainder is filled from other ham segments and marked as an easy negative.
 
+Exemplar identifiers are opaque and carry no version: they are "ex:<element>:<text digest>", so the
+same text keeps the same id across retrains and a renamed artefact never makes an id read as a
+provenance claim. Provenance travels in scorer_version and in the source and licence fields of the
+training rows.
+
 This is weak supervision, not ground truth. A phishing message can contain a segment that is not a
 credential request, and a ham message can quote one. The held-out numbers are therefore a statement
 about this labelling rule as much as about the classifier, and are reported with that caveat.
@@ -247,7 +252,7 @@ def main() -> int:
         chosen = choose(candidates, used, TARGET_PER_ELEMENT)
         for segment, hits in chosen:
             rows.append({
-                "id": f"nazario:{element}:{digest(segment)[:12]}",
+                "id": f"ex:{element}:{digest(segment)[:12]}",
                 "element": element,
                 "label": 1,
                 "split": "heldout" if int(digest(segment)[:2], 16) % 10 < 3 else "train",
@@ -291,7 +296,7 @@ def main() -> int:
         chosen_easy = choose(easy, used, TARGET_PER_ELEMENT - len(chosen_hard))
         for segment, hits in chosen_hard + chosen_easy:
             rows.append({
-                "id": f"spamassassin:{element}:{digest(segment)[:12]}",
+                "id": f"ex:{element}:{digest(segment)[:12]}",
                 "element": element,
                 "label": 0,
                 "split": "heldout" if int(digest(segment)[:2], 16) % 10 < 3 else "train",

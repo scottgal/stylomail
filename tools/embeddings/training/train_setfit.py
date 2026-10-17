@@ -28,9 +28,32 @@ ELEMENTS = (
 BUDGET = 0.01
 
 
-def is_calibration(row: dict) -> bool:
-    return int(hashlib.sha256(row["id"].encode("utf-8")).hexdigest()[:8], 16) % 5 == 0
+def text_key(row: dict) -> str:
+    """Content identity: the basis of both the split and any stable identifier."""
+    basis = " ".join(row["text"].split()).lower()
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
+
+def calibration_set(rows: list[dict]) -> set[str]:
+    """A stratified 20 percent of each element and label, stable by TEXT.
+
+    Hashing the id was wrong and was caught by renaming exemplar ids: every id changed, so every row
+    moved between fit and calibration and the metrics moved with them. Hashing the text fixes that.
+    Stratifying by element and label fixes the other failure this had: a flat hash left an element
+    with 23 positives holding only 2 in calibration, which the trainer rightly refused.
+    """
+    chosen: set[str] = set()
+    for element in VOCABULARY:
+        for label in (0, 1):
+            group = sorted(
+                (row for row in rows
+                 if row["element"] == element and row["split"] == "train" and row["label"] == label),
+                key=text_key,
+            )
+            for index, row in enumerate(group):
+                if index % 5 == 0:
+                    chosen.add(text_key(row))
+    return chosen
 
 def metrics(labels: np.ndarray, scores: np.ndarray, threshold: float, hard: np.ndarray) -> dict:
     predictions = (scores >= threshold).astype(int)
@@ -77,8 +100,8 @@ def main() -> int:
 
     for element in ELEMENTS:
         subset = [row for row in rows if row["element"] == element]
-        fit = [row for row in subset if row["split"] == "train" and not is_calibration(row)]
-        calibration = [row for row in subset if row["split"] == "train" and is_calibration(row)]
+        fit = [row for row in subset if row["split"] == "train" and text_key(row) not in calibration]
+        calibration = [row for row in subset if row["split"] == "train" and text_key(row) in calibration]
         heldout = [row for row in subset if row["split"] == "heldout"]
 
         def dataset(subset_rows: list[dict]) -> Dataset:

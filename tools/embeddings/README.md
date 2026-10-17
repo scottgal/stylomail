@@ -197,22 +197,21 @@ percent false-positive budget on negatives**, and applied unchanged to held-out.
 
 | element | scorer | P | R | FPR | n neg | hard neg | hard FPR | PR-AUC | threshold |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| credential_request | kNN | 1.00 | 0.91 | 0.00 | 22 | 4 | 0.00 | 0.98 | 0.030 |
-| credential_request | probe | 0.96 | 1.00 | 0.05 | 22 | 4 | 0.25 | 1.00 | 0.059 |
-| urgency_pressure | kNN | 1.00 | 0.90 | 0.00 | 15 | 12 | 0.00 | 1.00 | -0.011 |
-| urgency_pressure | probe | 0.87 | 1.00 | 0.20 | 15 | 12 | 0.25 | 1.00 | 0.330 |
-| threat | kNN | 0.95 | 0.95 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.014 |
-| threat | probe | 0.95 | 0.95 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.290 |
-| impersonated_greeting | kNN | 0.94 | 1.00 | 0.05 | 21 | 2 | 0.50 | 1.00 | 0.016 |
-| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.118 |
-| attachment_lure | kNN | 0.73 | 1.00 | 0.21 | 14 | 12 | 0.17 | 0.95 | -0.013 |
-| attachment_lure | probe | 0.58 | 0.88 | 0.36 | 14 | 12 | 0.33 | 0.91 | 0.291 |
+| credential_request | kNN | 1.00 | 0.91 | 0.00 | 22 | 4 | 0.00 | 0.98 | 0.008 |
+| credential_request | probe | 1.00 | 0.77 | 0.00 | 22 | 4 | 0.00 | 1.00 | 0.682 |
+| urgency_pressure | kNN | 1.00 | 0.85 | 0.00 | 15 | 12 | 0.00 | 0.99 | 0.029 |
+| urgency_pressure | probe | 0.95 | 0.95 | 0.07 | 15 | 12 | 0.08 | 1.00 | 0.360 |
+| threat | kNN | 0.94 | 0.89 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.014 |
+| threat | probe | 0.94 | 0.89 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.607 |
+| impersonated_greeting | kNN | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.019 |
+| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.219 |
+| attachment_lure | kNN | 0.83 | 0.62 | 0.07 | 14 | 12 | 0.08 | 0.91 | 0.023 |
+| attachment_lure | probe | 0.75 | 0.75 | 0.14 | 14 | 12 | 0.08 | 0.90 | 0.475 |
 
-The negative set was grown from the existing ham corpora by selecting benign segments that are
-about the same subject as each element (`TOPICS` in `ingest_corpora.py`), which is what makes them
-hard rather than random ham: password resets, invoices, security notices and urgent-but-legitimate
-business mail that ask for nothing. Each element now has 55 hard negatives in the full corpus, but
-the held-out split only sees 2 to 27 of them, which is the number in the table.
+The split is stratified by element and label and keyed by the TEXT digest, not the row id. Hashing
+the id was wrong and was caught by renaming exemplar ids: the rename moved every row between fit and
+calibration and the metrics moved with it. A flat text hash then left an element with 23 positives
+holding only 2 in calibration, which the trainer refused; the stratified version fixes both.
 
 **The one percent budget is NOT met, and at these sample sizes it cannot even be resolved.** The
 calibration negatives number 15 to 28 per element, and the held-out hard negatives 2 to 27. Resolving a
@@ -221,11 +220,17 @@ one percent rate needs at least 100 negatives, so every row in this artefact is 
 the four hard negatives available for credential_request. The artefact says this rather than quoting
 the budget as satisfied.
 
-**kNN margins are ordered but the classes overlap.** On held-out, PR-AUC is 0.95 to 1.00 and the
-budget-chosen thresholds land near zero (from -0.013 to 0.030), which is why recall is high. kNN can
-keep its own threshold; what it does not have yet is a negative set large enough to justify a tight
-operating point. `attachment_lure` is the weak element on both scorers (precision 0.73 and 0.58,
-FPR 0.21 and 0.36) and is reported as weak rather than averaged away.
+**kNN margins are ordered but the classes overlap.** On held-out, PR-AUC is 0.91 to 1.00 and the
+budget-chosen thresholds are 0.008 to 0.029, which is why recall is high. kNN can keep its own
+threshold; what it does not have yet is a negative set large enough to justify a tight operating
+point. `attachment_lure` is the weak element (kNN precision 0.83 and recall 0.62, probe 0.75 and
+0.75) and is reported as weak rather than averaged away.
+
+**Exemplar identifiers are opaque and carry no version.** They are `ex:<element>:<text digest>`, so
+the same text keeps the same id across retrains and renaming an artefact never makes an id read as a
+provenance claim. Provenance is carried by `scorer_version` on every block and by the source and
+licence columns of the training rows. The earlier `seed-1:` and `nazario:` prefixes were removed for
+exactly that reason.
 
 **The probe is now Platt scaled, and the name matches the evidence.** The transform is fitted on the
 calibration split and stored in the artefact (`platt_a`, `platt_b`) so the served number and the
