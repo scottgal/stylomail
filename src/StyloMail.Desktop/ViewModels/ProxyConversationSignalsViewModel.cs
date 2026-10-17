@@ -96,6 +96,11 @@ public sealed class ProxyConversationSignalsViewModel : ObservableObject
     {
         get
         {
+            // Before any read there is no window and no series, so a sentence about "turns in this
+            // window" would be a claim the screen has not made. The runtime capture found this: the
+            // unselected pane read "No turns to plot in this window." beside "Signals are not loaded."
+            if (!_hasLoaded) return string.Empty;
+
             var measured = _tone.Points.Where(point => point.Score.HasValue).Select(point => point.Score!.Value).ToArray();
 
             if (measured.Length == 0)
@@ -253,6 +258,7 @@ public sealed class ProxyConversationSignalsViewModel : ObservableObject
         StatusLabel = message;
         Raise(nameof(ShowEmpty));
         Raise(nameof(HasLoaded));
+        Raise(nameof(ToneRangeLabel));
     }
 
     private static string Format(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);

@@ -35,7 +35,12 @@
               <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
               <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding LastActivityLabel}" />
               <TextBlock Classes="signalReason" TextWrapping="Wrap" Text="{Binding AvailabilityDetail}" />
-              <Button Classes="rowButton" Content="Open signals" Click="OnOpenSignalsClick" />
+              <!-- The token is the row's own automation id: a name inside a data template is
+                   per-instance and unreachable from outside it. The token stays opaque. -->
+              <Button Classes="rowButton"
+                      Content="Open signals"
+                      Click="OnOpenSignalsClick"
+                      AutomationProperties.AutomationId="{Binding ThreadToken}" />
             </StackPanel>
           </Border>
         </DataTemplate>

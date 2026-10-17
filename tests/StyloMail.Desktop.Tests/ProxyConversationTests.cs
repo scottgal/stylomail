@@ -377,6 +377,18 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
+    public void Before_a_thread_is_selected_there_is_no_tone_claim()
+    {
+        // The runtime capture found the unselected pane saying "No turns to plot in this window."
+        // beside "Signals are not loaded.", which is a claim about a window nothing had read.
+        var model = new ProxyConversationSignalsViewModel();
+
+        Assert.Equal(string.Empty, model.ToneRangeLabel);
+        Assert.False(model.HasToneSeries);
+        Assert.Equal("No thread selected", model.ThreadLabel);
+    }
+
+    [Fact]
     public async Task An_empty_series_names_that_it_is_empty_and_is_not_an_error()
     {
         var handler = StubHttpMessageHandler.ReturningJson(SignalsJson("thread-token-1", string.Empty));
