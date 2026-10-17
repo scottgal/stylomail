@@ -47,7 +47,8 @@ static async Task RunImapAsync(string host, int port, string login, string passw
     if (summaries.Count == 0)
         throw new InvalidOperationException("IMAP harness inbox is empty; retrieval proof requires a seeded message.");
     var selected = summaries[^1];
-    if (selected.Size is not { } bytes or <= 0)
+    var bytes = selected.Size.GetValueOrDefault();
+    if (bytes <= 0)
         throw new InvalidOperationException("IMAP harness message has no demonstrable body size.");
     _ = await inbox.GetMessageAsync(selected.Index);
     Console.WriteLine($"IMAP client authenticated, listed INBOX, and fetched one body bytes={bytes}.");

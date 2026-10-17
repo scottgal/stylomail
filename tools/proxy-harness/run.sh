@@ -197,7 +197,10 @@ export StyloMail__Storage__DatabasePath="$run_dir/host.db"
 export StyloMail__Storage__SpoolRoot="$run_dir/spool"
 export ASPNETCORE_URLS="$PROXY_E2E_HOST_URL"
 
-dotnet build tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --nologo >"$run_dir/driver-build.log" 2>&1
+if ! dotnet build tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --nologo >"$run_dir/driver-build.log" 2>&1; then
+  print -u2 -- "Proxy harness driver build failed; see $run_dir/driver-build.log"
+  exit 1
+fi
 # Start the compiled Host directly in a dedicated session. `dotnet run` can leave its child alive
 # when the harness shell is interrupted, which strands the listener ports.
 python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' \
