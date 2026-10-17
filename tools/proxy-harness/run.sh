@@ -14,6 +14,7 @@ fi
 : "${PROXY_E2E_SENDER:=harness@example.test}"
 : "${PROXY_E2E_ACTOR:=harness}"
 : "${PROXY_E2E_HOST_URL:=http://127.0.0.1:5087}"
+: "${PROXY_E2E_KEEP_ALIVE_SECONDS:=0}"
 : "${PROXY_E2E_LOGIN:=harness-client@example.test}"
 : "${PROXY_E2E_BACKEND_USERNAME:=backend@example.test}"
 if [[ -z "${PROXY_E2E_CLIENT_PASSWORD:-}" ]]; then
@@ -33,6 +34,7 @@ chmod 700 "$secret_dir"
 host_log="$run_dir/host.log"
 imap_sessions="$run_dir/sessions-imap-live.json"
 smtp_sessions="$run_dir/sessions-smtp-live.json"
+idle_sessions="$run_dir/sessions-idle.json"
 transcript="$run_dir/client-transcript.txt"
 certificate="$run_dir/harness-smtp-cert.pem"
 certificate_key="$run_dir/harness-smtp-key.pem"
@@ -49,10 +51,11 @@ smtp_fixture_container=''
 
 stop_host() {
   if [[ -n "${host_pid:-}" ]] && kill -0 "$host_pid" 2>/dev/null; then
-    kill "$host_pid" 2>/dev/null || true
+    # The Host is its own session/process group so a dotnet child cannot outlive this harness.
+    kill -TERM -- "-$host_pid" 2>/dev/null || true
     wait "$host_pid" 2>/dev/null || true
   fi
-  if [[ -n "${host_pid:-}" ]] && ps -p "$host_pid" -o pid= | grep -q '[0-9]'; then
+  if [[ -n "${host_pid:-}" ]] && { kill -0 -- "-$host_pid" 2>/dev/null || ps -p "$host_pid" -o pid= | grep -q '[0-9]'; }; then
     print -u2 -- "Host process did not terminate cleanly."
     return 1
   fi
@@ -69,6 +72,8 @@ cleanup() {
   exit "$exit_code"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # These certificates exist only for this disposable loopback run. They are never deployment material.
 # The listener PEM includes its PKCS#8 private key because Host loads both from this one path.
@@ -179,8 +184,12 @@ export StyloMail__Storage__SpoolRoot="$run_dir/spool"
 export ASPNETCORE_URLS="$PROXY_E2E_HOST_URL"
 
 dotnet build tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --nologo >"$run_dir/driver-build.log" 2>&1
-dotnet run --project src/StyloMail.Host --no-build >"$host_log" 2>&1 &
+# Start the compiled Host directly in a dedicated session. `dotnet run` can leave its child alive
+# when the harness shell is interrupted, which strands the listener ports.
+python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' \
+  dotnet "$PWD/src/StyloMail.Host/bin/Debug/net10.0/StyloMail.Host.dll" >"$host_log" 2>&1 &
 host_pid=$!
+print -r -- "$host_pid" >"$run_dir/host.pid"
 
 # Readiness is the management route, not /health/ready. Bounded retries leave host diagnostics in host.log.
 for attempt in {1..30}; do
@@ -213,6 +222,12 @@ account_status=$(curl -sS --config "$secret_dir/curl.conf" -o "$run_dir/account-
 listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/imap-1/enable")
 imap_port=$(print -r -- "$listener_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bindPort"])')
 unset listener_json
+curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$idle_sessions"
+python3 - "$idle_sessions" <<'PY'
+import json, sys
+if json.load(open(sys.argv[1], encoding="utf-8"))["sessions"]:
+    raise SystemExit("Idle listener unexpectedly published a live authenticated session.")
+PY
 PROXY_E2E_DRIVER_PROTOCOL=imap PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$imap_port" \
   dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >"$transcript" 2>&1 &
 client_pid=$!
@@ -247,6 +262,14 @@ for root, dirs, files in os.walk(sys.argv[1]):
         if any(value and value in text for value in secrets):
             raise SystemExit("A harness artifact contained a credential value.")
 PY
-stop_host
 print -r -- "HARNESS CERTIFICATE ONLY; NOT DEPLOYMENT MATERIAL" >>"$transcript"
 print -r -- "IMAP+SMTP PASS artifacts=$run_dir" >>"$transcript"
+if [[ "$PROXY_E2E_KEEP_ALIVE_SECONDS" != <-> ]]; then
+  print -u2 -- 'PROXY_E2E_KEEP_ALIVE_SECONDS must be a non-negative integer.'
+  exit 1
+fi
+if (( PROXY_E2E_KEEP_ALIVE_SECONDS > 0 )); then
+  print -r -- "KEEP-ALIVE base-url=$PROXY_E2E_HOST_URL api-key-config=$secret_dir/curl.conf imap-port=$imap_port smtp-port=$smtp_port seconds=$PROXY_E2E_KEEP_ALIVE_SECONDS"
+  sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS"
+fi
+stop_host
