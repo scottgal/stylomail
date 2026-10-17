@@ -80,6 +80,7 @@ public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }
 public enum ProxyWarningAvailability { Available, NotProduced }
 public enum ProxyWarningAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent, ServiceUnavailable, TimedOut, Unauthorized, ContractViolation, UnsupportedModel, InvalidRequest }
+public enum ProxySegmentationAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent, ServiceUnavailable, TimedOut, Unauthorized, ContractViolation, UnsupportedModel, InvalidRequest }
 
 public sealed record ProxyDeterministicWarningEvent
 {
@@ -151,7 +152,7 @@ public sealed record ProxySegmentationOutcome
     public required string ThreadToken { get; init; }
     public required DateTimeOffset ObservedAt { get; init; }
     public required ProxyWarningAvailability Availability { get; init; }
-    public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
+    public required ProxySegmentationAvailabilityReason AvailabilityReason { get; init; }
     public required int SegmentCount { get; init; }
     public required bool Truncated { get; init; }
     public required int AppliedMaxSegments { get; init; }

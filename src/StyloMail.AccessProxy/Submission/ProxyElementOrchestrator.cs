@@ -18,7 +18,7 @@ public sealed class ProxyElementOrchestrator
         var segments = Segment(message, 32, 6000, out var truncated);
         try
         {
-            var baseOutcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
+            var baseOutcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxySegmentationAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
             var classified = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
             if (classified is ClassificationOutcome.Unavailable unavailable)
             {
@@ -28,7 +28,7 @@ public sealed class ProxyElementOrchestrator
             var result = ((ClassificationOutcome.Success)classified).Classification;
             if (result.Metadata is null)
             {
-                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.UnsupportedContent }, ct).ConfigureAwait(false);
+                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxySegmentationAvailabilityReason.ContractViolation }, ct).ConfigureAwait(false);
                 return;
             }
             if (result.Scorers.Any(s => s.Segments.Count != segments.Count)) throw new InvalidOperationException("Classifier returned incomplete segment coverage.");
@@ -39,16 +39,16 @@ public sealed class ProxyElementOrchestrator
         finally { foreach (var segment in segments) { /* strings are ephemeral and not retained beyond this call */ } }
     }
 
-    private static ProxyWarningAvailabilityReason Map(ClassificationUnavailableReason reason) => reason switch
+    private static ProxySegmentationAvailabilityReason Map(ClassificationUnavailableReason reason) => reason switch
     {
-        ClassificationUnavailableReason.NoAnalyserConfigured => ProxyWarningAvailabilityReason.NoAnalyserConfigured,
-        ClassificationUnavailableReason.ServiceUnavailable => ProxyWarningAvailabilityReason.ServiceUnavailable,
-        ClassificationUnavailableReason.TimedOut => ProxyWarningAvailabilityReason.TimedOut,
-        ClassificationUnavailableReason.Unauthorized => ProxyWarningAvailabilityReason.Unauthorized,
-        ClassificationUnavailableReason.ContractViolation => ProxyWarningAvailabilityReason.ContractViolation,
-        ClassificationUnavailableReason.UnsupportedModel => ProxyWarningAvailabilityReason.UnsupportedModel,
-        ClassificationUnavailableReason.InvalidRequest => ProxyWarningAvailabilityReason.InvalidRequest,
-        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Classifier unavailable reason must be named."),
+        ClassificationUnavailableReason.NoAnalyserConfigured => ProxySegmentationAvailabilityReason.NoAnalyserConfigured,
+        ClassificationUnavailableReason.ServiceUnavailable => ProxySegmentationAvailabilityReason.ServiceUnavailable,
+        ClassificationUnavailableReason.TimedOut => ProxySegmentationAvailabilityReason.TimedOut,
+        ClassificationUnavailableReason.Unauthorized => ProxySegmentationAvailabilityReason.Unauthorized,
+        ClassificationUnavailableReason.ContractViolation => ProxySegmentationAvailabilityReason.ContractViolation,
+        ClassificationUnavailableReason.UnsupportedModel => ProxySegmentationAvailabilityReason.UnsupportedModel,
+        ClassificationUnavailableReason.InvalidRequest => ProxySegmentationAvailabilityReason.InvalidRequest,
+        _ => ProxySegmentationAvailabilityReason.ContractViolation,
     };
 
     private static List<string> Segment(ReadOnlyMemory<byte> message, int maxSegments, int maxBytes, out bool truncated)
