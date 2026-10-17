@@ -1,6 +1,8 @@
 #!/bin/zsh
 # Proves the keep-alive interrupt path removes the Host session and releases all harness ports.
 set -euo pipefail
+signal=${1:-INT}
+[[ "$signal" == INT || "$signal" == TERM ]] || { print -u2 -- 'usage: verify-signal-teardown.sh [INT|TERM]'; exit 2; }
 run_log=$(mktemp)
 run_dir=".styloagent/artifacts/proxy-e2e-signal-$(date -u +%Y%m%dT%H%M%SZ)"
 PROXY_E2E_RUN_DIR="$run_dir" PROXY_E2E_KEEP_ALIVE_SECONDS=30 zsh tools/proxy-harness/run.sh >"$run_log" 2>&1 &
@@ -15,13 +17,13 @@ line=$(/usr/bin/grep '^KEEP-ALIVE ' "$run_log")
 host_pid=$(cat "$run_dir/host.pid")
 imap_port=$(print -r -- "$line" | sed -nE 's/.* imap-port=([0-9]+).*/\1/p')
 smtp_port=$(print -r -- "$line" | sed -nE 's/.* smtp-port=([0-9]+).*/\1/p')
-kill -INT "$runner"
+kill -"$signal" "$runner"
 wait "$runner" 2>/dev/null || true
 if kill -0 "$runner" 2>/dev/null; then
-  print -u2 -- 'Harness shell survived SIGINT.'; exit 1
+  print -u2 -- "Harness shell survived SIG$signal."; exit 1
 fi
 if kill -0 -- "-$host_pid" 2>/dev/null || ps -p "$host_pid" -o pid= | /usr/bin/grep -q '[0-9]'; then
-  print -u2 -- 'Host process group survived SIGINT.'; exit 1
+  print -u2 -- "Host process group survived SIG$signal."; exit 1
 fi
 python3 - "$imap_port" "$smtp_port" <<'PY'
 import errno, socket, sys, time
@@ -40,4 +42,4 @@ for port in (5087, *(int(value) for value in sys.argv[1:])):
         finally:
             sock.close()
 PY
-print -r -- "SIGNAL-TEARDOWN PASS artifacts=$run_dir"
+print -r -- "SIGNAL-TEARDOWN PASS signal=$signal artifacts=$run_dir"
