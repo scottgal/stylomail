@@ -22,6 +22,11 @@ fi
 : "${PROXY_E2E_EMBEDDING_TOKEN_FILE:=}"
 if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   [[ -n "$PROXY_E2E_EMBEDDING_TOKEN_FILE" ]] || { print -u2 -- 'PROXY_E2E_EMBEDDING_TOKEN_FILE is required for retrieval element proof.'; exit 1; }
+  [[ -r "$PROXY_E2E_EMBEDDING_TOKEN_FILE" ]] || { print -u2 -- 'PROXY_E2E_EMBEDDING_TOKEN_FILE must name a readable file for retrieval element proof.'; exit 1; }
+  if ! curl --silent --show-error --output /dev/null --connect-timeout 2 --max-time 3 "$PROXY_E2E_EMBEDDING_ENDPOINT"; then
+    print -u2 -- 'The configured loopback embedding endpoint is unreachable; retrieval proof was not started.'
+    exit 1
+  fi
 fi
 if [[ -z "${PROXY_E2E_CLIENT_PASSWORD:-}" ]]; then
   export PROXY_E2E_CLIENT_PASSWORD="$(openssl rand -hex 16)"
