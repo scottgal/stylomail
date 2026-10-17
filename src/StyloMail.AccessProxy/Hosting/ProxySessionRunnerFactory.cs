@@ -25,6 +25,7 @@ public sealed record ProxySessionRunnerDependencies
     public required SessionLimiter Limiter { get; init; }
     public required AccessProxyBounds Bounds { get; init; }
     public required TimeProvider TimeProvider { get; init; }
+    public required IProxySessionContextSink ContextSink { get; init; }
     public TlsServerOptions? Tls { get; init; }
     public IProxySubmissionAssessment? SubmissionAssessment { get; init; }
     public IEphemeralSubmissionStager? SubmissionStager { get; init; }

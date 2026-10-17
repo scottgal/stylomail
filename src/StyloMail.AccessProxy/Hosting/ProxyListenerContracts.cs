@@ -70,6 +70,43 @@ public interface IProxyListenerEventSink
     ValueTask PublishAsync(ProxySessionEvent sessionEvent, CancellationToken cancellationToken);
 }
 
+public interface IProxySessionContextSink
+{
+    ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset authenticatedAt, CancellationToken cancellationToken);
+}
+
+public enum ProxyWarningDirection { Retrieval, Submission }
+public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }
+public enum ProxyWarningAvailability { Available, NotProduced }
+public enum ProxyWarningAvailabilityReason { None, NoAnalyserConfigured, UnreadableMessage, UnsupportedContent }
+
+public sealed record ProxyDeterministicWarningEvent
+{
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required ProxyWarningDirection Direction { get; init; }
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required ProxyWarningMarkerKind MarkerKind { get; init; }
+    public required string FindingId { get; init; }
+    public required DateTimeOffset ObservedAt { get; init; }
+    public required ProxyWarningAvailability Availability { get; init; }
+    public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
+}
+
+public sealed record ProxyWarningAnalysisOutcome
+{
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required ProxyWarningDirection Direction { get; init; }
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required DateTimeOffset ObservedAt { get; init; }
+    public required ProxyWarningAvailability Availability { get; init; }
+    public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
+    public required int MarkerCount { get; init; }
+}
+
 public interface IProxyCertificateResolver
 {
     ValueTask<X509Certificate2?> ResolveAsync(string certificateReference, CancellationToken cancellationToken);
