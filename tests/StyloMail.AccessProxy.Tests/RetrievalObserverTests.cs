@@ -224,6 +224,30 @@ public sealed class RetrievalObserverTests
     }
 
     [Fact]
+    public async Task Far_oversized_fetch_literal_never_reaches_the_analyzer_as_a_large_copy()
+    {
+        const int messageCap = 64;
+        var sink = new CapturingWarningSink();
+        var analyzer = new RecordingInputWarningAnalyzer();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink, analyzer, TimeProvider.System,
+            new ProxyRetrievalWarningAssemblerOptions { MaximumMessageBytes = messageCap, MaximumSessionBufferedBytes = 16 * 1024 });
+        await using var assembler = factory.Create("tenant", "account");
+        var body = new string('x', messageCap * 128);
+        var header = Encoding.ASCII.GetBytes($"* 1 FETCH (BODY[] {{{body.Length}}}\r\n");
+
+        assembler.Observe(header);
+        await Task.Yield();
+        for (var offset = 0; offset < body.Length; offset += 32)
+            assembler.Observe(Encoding.ASCII.GetBytes(body.Substring(offset, Math.Min(32, body.Length - offset))));
+
+        await assembler.DisposeAsync();
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(ProxyWarningAvailability.NotProduced, outcome.Availability);
+        Assert.Equal(ProxyWarningAvailabilityReason.UnreadableMessage, outcome.AvailabilityReason);
+        Assert.True(analyzer.LargestInputBytes <= messageCap, "The assembler handed the analyzer a payload larger than its configured cap.");
+    }
+
+    [Fact]
     public async Task Truncated_fetch_literal_never_records_an_available_outcome()
     {
         var sink = new CapturingWarningSink();
@@ -318,5 +342,19 @@ public sealed class RetrievalObserverTests
             MessageToken = "message", ThreadToken = "thread", Availability = availability,
             AvailabilityReason = reason, Findings = [],
         });
+    }
+
+    private sealed class RecordingInputWarningAnalyzer : IProxyWarningAnalyzer
+    {
+        public int LargestInputBytes { get; private set; }
+        public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput input, CancellationToken cancellationToken)
+        {
+            LargestInputBytes = Math.Max(LargestInputBytes, input.Message.Length);
+            return ValueTask.FromResult(new ProxyWarningAnalysisResult
+            {
+                MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [],
+            });
+        }
     }
 }
