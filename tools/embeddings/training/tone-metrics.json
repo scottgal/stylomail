@@ -1,0 +1,31 @@
+{
+  "SamLowe/roberta-base-go_emotions": {
+    "load_seconds": 1.53,
+    "labels": 28,
+    "latency_ms_median": 6.3,
+    "latency_ms_min": 6.1,
+    "latency_ms_max": 10.9,
+    "coverage_top_ge_0_5": 1.0,
+    "active_labels": [
+      "gratitude",
+      "neutral"
+    ],
+    "active_label_count": 2,
+    "mean_top_score": 0.8409
+  },
+  "j-hartmann/emotion-english-distilroberta-base": {
+    "load_seconds": 10.65,
+    "labels": 7,
+    "latency_ms_median": 5.4,
+    "latency_ms_min": 4.8,
+    "latency_ms_max": 5.5,
+    "coverage_top_ge_0_5": 0.95,
+    "active_labels": [
+      "anger",
+      "neutral",
+      "sadness"
+    ],
+    "active_label_count": 3,
+    "mean_top_score": 0.6864
+  }
+}

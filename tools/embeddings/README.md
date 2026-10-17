@@ -248,9 +248,23 @@ were measured at a fixed 0.50 on an uncalibrated score and are not comparable wi
 
 ### Tone
 
-`ToneVocabulary` (`goemotions/1`, 28 labels) and `ToneSeries` are on disk in the C# project so the
-consumer can bind a sibling seam. No tone model is loaded and `/classify` does not emit tone. The
-model choice between `SamLowe/roberta-base-go_emotions` and `j-hartmann/...` is unmeasured here.
+`ToneVocabulary` (`goemotions/1`, 28 labels) and `ToneSeries` are on disk so the consumer can bind a
+sibling seam. No tone model is loaded by the service and `/classify` does not emit tone. Tone stays a
+separate series with its own `tone_model_tag` and never enters an element score.
+
+Both candidates were measured on the A4000 with `training/benchmark_tone.py` over 20 corpus segments
+and a 200 word probe (artifact `training/tone-metrics.json`):
+
+| model | labels | load s | latency ms median | top >= 0.50 | active labels | mean top |
+| --- | --- | --- | --- | --- | --- | --- |
+| SamLowe/roberta-base-go_emotions | 28 | 1.53 | 6.3 (6.1 to 10.9) | 1.00 | 2 | 0.84 |
+| j-hartmann/emotion-english-distilroberta-base | 7 | 10.65 | 5.4 (4.8 to 5.5) | 0.95 | 3 | 0.69 |
+
+Chosen: `tone_model_tag = SamLowe/roberta-base-go_emotions` (`ToneModels.GoEmotions`). The latency
+difference is under a millisecond and the vocabulary is four times wider; load time is seven times
+shorter. The "active labels" column is the honest caveat: on this sample most segments are neutral or
+gratitude, so a 28-label vocabulary does not mean 28 labels are exercised. Label coverage on real
+traffic is a property of the corpus, not of the model, and only two to three labels appear here.
 
 ## Running the service on the host
 

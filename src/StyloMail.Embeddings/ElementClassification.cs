@@ -275,6 +275,19 @@ public interface IElementClassifier
 /// version so a stored tone point is never compared with a point from another tag, and it is never
 /// blended into an element score.
 /// </remarks>
+public static class ToneModels
+{
+    /// <summary>
+    /// The GoEmotions model this deployment uses, chosen on measured latency and coverage on the
+    /// inference GPU: 28-label vocabulary, 6.3 ms median for a 200 word segment, load 1.53 s, top
+    /// label at or above 0.50 on 20 of 20 sample segments. The distilroberta arm was 5.4 ms with 7
+    /// labels and 0.95 coverage; the latency difference is under a millisecond and the vocabulary is
+    /// four times narrower, so the GoEmotions tag is the one. Measurements:
+    /// tools/embeddings/training/tone-metrics.json.
+    /// </summary>
+    public const string GoEmotions = "SamLowe/roberta-base-go_emotions";
+}
+
 public static class ToneVocabulary
 {
     public const string Version = "goemotions/1";
