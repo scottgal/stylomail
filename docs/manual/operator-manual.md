@@ -546,7 +546,105 @@ says so rather than offering a guessed conversation.
 > **Figure M22 (pending capture).** Assessed conversation history after **Load older** has appended
 > the second page. Requested as M22. Run directory: pending.
 
-### 4.6 Quarantine and release
+### 4.6 Element signals
+
+The element layer is a second, content-free view of a proxied submission. It splits the message into
+bounded segments and scores five named elements per segment at a loopback embedding service. The
+console does not render this series yet. The Host route is
+`GET /v1/proxy/conversations/{threadToken}/elements?window=last_24_hours`, with provenance
+`proxy_element_classification`. It is a sibling of the tone and warning series, not a replacement
+for either.
+
+#### What is scored
+
+| Element | What the name means |
+| --- | --- |
+| `credential_request` | A segment that asks the reader to supply or confirm a credential. |
+| `urgency_pressure` | A segment that presses for immediate action or a deadline. |
+| `threat` | A segment that threatens a consequence. |
+| `impersonated_greeting` | A greeting that claims an identity or relationship the sender does not have. |
+| `attachment_lure` | A segment that invites the reader to open an attachment. |
+
+The vocabulary is versioned `elements/1`. Adding or renaming an element is a version bump, not a
+quiet sixth name. Every score carries the vocabulary version it was produced under. The element
+vocabulary is not the warning-marker vocabulary: `link_domain_mismatch` and the other MIME findings
+are warning markers in a separate closed set, and moving a name from one set to the other is a
+version bump rather than an edit.
+
+#### What a score means depends on its scorer
+
+| Scorer | Version | What the number is |
+| --- | --- | --- |
+| `prototype_knn` | `prototype_knn/corpus-1` | A signed margin: the nearest threatening exemplar's cosine similarity minus the nearest benign exemplar's. Positive is closer to the threatening set, negative is closer to the benign set, zero is equidistant. It is not a probability. |
+| `linear_probe` | `linear_probe/corpus-1` | A logistic probability in [0, 1]. It is not a margin. |
+
+The scorer and its version travel with every score, because the two numbers answer different
+questions and must never be blended. A kNN margin must not be clamped into [0, 1] or read as a
+percentage. A negative margin is a measurement toward the benign exemplars, not a missing value. A
+`NearestExemplarId` is an opaque identifier such as `seed-1:credential_request:0007`; it is not a
+message fragment, an address or a subject.
+
+#### Availability is per element
+
+Each element on each segment is either available with a score, or not produced with a reason. The
+reason is per element, so one segment can carry a score for `credential_request` and no score for
+`threat`.
+
+| Reason group | Wire names | What it means |
+| --- | --- | --- |
+| Artefact | `no_exemplars`, `probe_not_trained`, `artefact_missing` | The deployed scorer lacks what that element needs. Fix the artefact, or accept that the element is unscored. |
+| Transport or contract | `unauthorized`, `service_unavailable`, `timed_out`, `circuit_open`, `model_tag_mismatch`, `dimension_mismatch`, `prefix_version_mismatch`, `unsupported_dtype`, `contract_violation` | The embedding service is unavailable, unauthorised, or answering a different model than the stored points expect. |
+| Segmentation | `too_many_segments`, `segment_too_long`, `empty_segment` | The bounded segmenter dropped or refused a segment. |
+
+A not-produced element is never zero and never a clean result. A margin of **0** is a measured value:
+the segment sits equidistant from the two exemplar sets, which is not the same as no analysis.
+
+#### Segments and ordinals
+
+A submission is split into zero-based contiguous ordinals, at most 32 segments and at most 6000
+bytes each. The layer records the applied bounds, the ordinals actually analysed, and whether any
+segment was dropped. The element series groups scores by turn token and ordinal, so available and
+not-produced entries for one segment sit in one list; it does not invent an entry the Host did not
+record.
+
+#### Tone is a separate series
+
+The element response carries a sibling `Tone` block with its own vocabulary (`goemotions/1`), its
+own model tag, its own availability and reason, and its top labels. **Tone is not produced in this
+build**: its reason is `tone_model_unavailable` and its model tag is null, because no tone model has
+been benchmarked and a placeholder tag would invite a comparison. A tone label is not an element
+score, and the two series must not be combined or drawn on one axis. M21 is the tone and warning
+figure; M26 is the element figure, and they stay distinct.
+
+#### Privacy
+
+The element layer is content-free by construction. Segments are examined by a local embedding
+service, and a stored point carries the element name, score, availability, reason and opaque exemplar
+id, together with its provenance: scorer, scorer version, vocabulary version, model tag, dimension,
+ordinal and time. It carries no segment text, digest, subject, address or message body, and none of
+those are logged. When element analysis is enabled, the Host refuses to start if the embedding
+endpoint is not a loopback address, because the point of this path is that message segments never
+leave the machine.
+
+#### How to read it
+
+- An element score is a lexical signal about a segment, not a verdict. Policy remains the only place
+  an action is chosen.
+- Compare scores only under the same scorer, scorer version and vocabulary version. A change in any
+  of them makes two numbers non-comparable.
+- A negative kNN margin is evidence toward benign exemplars, not absence of evidence.
+- Use the reason to separate a deployment gap (artefact or service) from an input gap
+  (segmentation).
+- Do not read the element series as a transcript. It is vocabulary names per segment, never text.
+
+> **Not available in this build.** The Host route and the semantics above are implemented; the
+> console does not render the element series yet. Figure M26 is pending capture.
+>
+> **Figure M26 (pending capture).** The element series for one analysed submission: one score per
+> element name with its scorer and version, per-element availability and reason, an opaque nearest
+> exemplar id where one exists, and the sibling tone block. Run directory: pending.
+
+### 4.7 Quarantine and release
 
 Open **Quarantined**. The listing shows the messages policy placed there. Selecting one offers
 **Release**, and only a message actually held in quarantine can be released.
@@ -733,6 +831,7 @@ signals, not message content, and its caption says that.
 | M23 | Quarantined listing | pending | requested |
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
+| M26 | Element signals | pending | blocked: console does not render the element series yet |
 
 Five frames in this table are captured, in two batches. M08 and M21a come from the first batch, whose
 host build id was not reported and is recorded as missing rather than filled from a later build. The
