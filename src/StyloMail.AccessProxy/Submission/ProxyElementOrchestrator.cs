@@ -26,10 +26,15 @@ public sealed class ProxyElementOrchestrator
                 return;
             }
             var result = ((ClassificationOutcome.Success)classified).Classification;
+            if (result.Metadata is null)
+            {
+                await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.UnsupportedContent }, ct).ConfigureAwait(false);
+                return;
+            }
             if (result.Scorers.Any(s => s.Segments.Count != segments.Count)) throw new InvalidOperationException("Classifier returned incomplete segment coverage.");
             await _sink.RecordOutcomeAsync(baseOutcome, ct).ConfigureAwait(false);
             foreach (var scorer in result.Scorers) foreach (var segment in scorer.Segments) foreach (var score in segment.Elements)
-                await _sink.RecordPointAsync(new ProxyElementPoint { TenantId=identity.TenantId, AccountId=identity.AccountId, TrafficKind=kind, MessageToken=messageToken, ThreadToken=threadToken, Ordinal=segment.Ordinal, Element=score.Element, Score=score.Score, Scorer=scorer.Scorer, ScorerVersion=scorer.ScorerVersion, NearestExemplarId=score.NearestExemplarId, Availability=score.Availability == ElementAvailability.Available ? ProxyWarningAvailability.Available : ProxyWarningAvailability.NotProduced, AvailabilityReason=ElementReasons.ToWireName(score.Reason), ModelTag=result.Metadata?.ModelTag ?? "unavailable", PrefixVersion=result.Metadata?.PrefixVersion ?? "unavailable", Dimension=result.Metadata?.Dimension ?? 0, VocabularyVersion=result.VocabularyVersion, ObservedAt=identity.ObservedAt }, ct).ConfigureAwait(false);
+                await _sink.RecordPointAsync(new ProxyElementPoint { TenantId=identity.TenantId, AccountId=identity.AccountId, TrafficKind=kind, MessageToken=messageToken, ThreadToken=threadToken, Ordinal=segment.Ordinal, Element=score.Element, Score=score.Score, Scorer=scorer.Scorer, ScorerVersion=scorer.ScorerVersion, NearestExemplarId=score.NearestExemplarId, Availability=score.Availability == ElementAvailability.Available ? ProxyWarningAvailability.Available : ProxyWarningAvailability.NotProduced, AvailabilityReason=ElementReasons.ToWireName(score.Reason), ModelTag=result.Metadata.ModelTag, PrefixVersion=result.Metadata.PrefixVersion, Dimension=result.Metadata.Dimension, VocabularyVersion=result.VocabularyVersion, ObservedAt=identity.ObservedAt }, ct).ConfigureAwait(false);
         }
         finally { foreach (var segment in segments) { /* strings are ephemeral and not retained beyond this call */ } }
     }
