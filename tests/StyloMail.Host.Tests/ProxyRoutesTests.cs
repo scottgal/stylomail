@@ -993,7 +993,7 @@ public sealed class ProxyRoutesTests
 
         var available = Assert.Single(point.Elements, element => element.Element == "credential_request");
         Assert.Equal("prototype_knn", available.Scorer);
-        Assert.Equal("prototype_knn/seed-1", available.ScorerVersion);
+        Assert.Equal(ElementScorers.PrototypeKnnVersion, available.ScorerVersion);
         Assert.Equal("elements/1", available.VocabularyVersion);
         Assert.Equal("google/embeddinggemma-2", available.ModelTag);
         Assert.Equal("classification/1", available.PrefixVersion);
