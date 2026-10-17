@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StyloMail.Desktop.Views.ProxyManagementDialog"
+        Title="Proxy management" Width="960" Height="660" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="24">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button Content="Refresh" Click="OnRefreshClick" />
+      <Button Content="Close" Click="OnCloseClick" />
+    </StackPanel>
+    <ScrollViewer>
+      <StackPanel Spacing="12">
+        <TextBlock Classes="paneTitle" Text="Proxy management" />
+        <TextBlock x:Name="StatusText" Classes="cardBody" TextWrapping="Wrap" />
+        <Border Classes="card"><StackPanel Spacing="6">
+          <TextBlock Classes="sectionLabel" Text="Operations (named window)" />
+          <TextBlock x:Name="OperationsText" Classes="cardBody" TextWrapping="Wrap" />
+        </StackPanel></Border>
+        <TextBlock Classes="sectionLabel" Text="Accounts" />
+        <ListBox x:Name="AccountsList"><ListBox.ItemTemplate><DataTemplate><Border Classes="card"><StackPanel Spacing="3">
+          <TextBlock Classes="rowTitle" Text="{Binding Summary}" />
+          <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+          <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Enable" IsVisible="{Binding CanEnable}" Click="OnEnableClick" /><Button Content="Disable" IsVisible="{Binding CanDisable}" Click="OnDisableClick" /><Button Content="Revoke credential" Click="OnRevokeClick" /></StackPanel>
+        </StackPanel></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+        <TextBlock Classes="sectionLabel" Text="Live sessions only" />
+        <TextBlock x:Name="SessionsText" Classes="cardBody" TextWrapping="Wrap" />
+        <ListBox x:Name="SessionsList"><ListBox.ItemTemplate><DataTemplate><Border Classes="card"><StackPanel Spacing="2">
+          <TextBlock Classes="rowTitle" Text="{Binding Summary}" /><TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+        </StackPanel></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

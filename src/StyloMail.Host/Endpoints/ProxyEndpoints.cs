@@ -436,7 +436,7 @@ internal static class ProxyEndpoints
                 Protocol = session.Protocol.ToString(),
                 Direction = session.Direction.ToString(),
                 StartedAt = session.StartedAt,
-                AuthenticatedAt = null,
+                AuthenticatedAt = session.AuthenticatedAt,
                 EndedAt = null,
                 Outcome = null,
                 // No byte counter is wired into the session lifecycle event yet. The event's numeric

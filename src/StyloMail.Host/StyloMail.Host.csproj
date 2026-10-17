@@ -42,4 +42,12 @@
     <ProjectReference Include="..\StyloMail.Cascade\StyloMail.Cascade.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The test assembly drives the proxy session-account binding, which is deliberately an
+         internal seam rather than a public API: it exists so the Host can attribute an account
+         lookup to the connection it belongs to, and nothing outside this assembly should call it. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>StyloMail.Host.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

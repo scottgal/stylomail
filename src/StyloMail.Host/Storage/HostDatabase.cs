@@ -137,6 +137,38 @@ public sealed class HostDatabase
         }
 
         ApplyConversationHistoryMigration(connection);
+        ApplyProxySessionAuthenticationMigration(connection);
+    }
+
+    /// <summary>
+    /// Adds the authentication instant to a session event table created before it existed.
+    /// </summary>
+    /// <remarks>
+    /// The sink updates an existing opened row in place, so the column has to exist on databases
+    /// created by the earlier build; <c>CREATE TABLE IF NOT EXISTS</c> would silently leave them
+    /// without it and every authentication update would fail.
+    /// </remarks>
+    private static void ApplyProxySessionAuthenticationMigration(SqliteConnection connection)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA table_info(proxy_session_event);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+
+        if (existing.Contains("authenticated_at"))
+        {
+            return;
+        }
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = "ALTER TABLE proxy_session_event ADD COLUMN authenticated_at TEXT NULL;";
+        alter.ExecuteNonQuery();
     }
 
     /// <summary>Adds indexed channel metadata and recovers it from legacy decision payloads.</summary>
@@ -429,6 +461,7 @@ public sealed class HostDatabase
             direction     TEXT NOT NULL,
             kind          TEXT NOT NULL,
             occurred_at   TEXT NOT NULL,
+            authenticated_at TEXT NULL,
             outcome       TEXT NULL,
             client_bytes  INTEGER NOT NULL,
             backend_bytes INTEGER NOT NULL,

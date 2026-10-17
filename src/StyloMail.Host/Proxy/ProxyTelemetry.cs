@@ -15,9 +15,28 @@ public sealed record ProxyLiveSession
 
     public required DateTimeOffset StartedAt { get; init; }
 
+    /// <summary>Set once the client and backend both authenticated; null means it never did.</summary>
+    public DateTimeOffset? AuthenticatedAt { get; init; }
+
     public long ClientBytes { get; init; }
 
     public long BackendBytes { get; init; }
+}
+
+/// <summary>Records the moment a live session authenticated, without opening a second session.</summary>
+/// <remarks>
+/// The protocol session is the only owner of the legitimate account id. This write updates the
+/// existing opened event in place; a failed write is swallowed by the caller because telemetry must
+/// never be able to drop a user's session.
+/// </remarks>
+public interface IProxySessionAuthenticator
+{
+    ValueTask MarkAuthenticatedAsync(
+        string tenantId,
+        string sessionId,
+        string accountId,
+        DateTimeOffset authenticatedAt,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>Counts over the named window. Null means "not produced", never zero.</summary>

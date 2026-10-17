@@ -1,0 +1,83 @@
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+using StyloMail.AccessProxy.Sessions;
+
+namespace StyloMail.AccessProxy.Hosting;
+
+public enum ProxyListenerProtocol { Imap, Pop3, Smtp }
+public enum ProxyListenerEventKind { Started, Stopped, Faulted }
+public enum ProxyListenerFaultReason { None, CertificateUnavailable, CertificateInvalid, BindFailed, AcceptLoopFaulted, StartupConfigurationInvalid }
+public enum ProxySessionEventKind { Opened, Closed }
+public enum ProxySessionDirection { ClientToProxy, ProxyToBackend }
+public enum ProxyBoundReason { None, AuthenticationTimeout, IdleTimeout, MaximumDuration, SubmissionLimit }
+public enum ProxyTlsPolicy { Required, LoopbackHarnessPlaintext }
+
+/// <summary>Host configuration for exactly one tenant-bound protocol listener.</summary>
+public sealed record ProxyListenerOptions
+{
+    public required string TenantId { get; init; }
+    public required IPAddress BindAddress { get; init; }
+    public required int Port { get; init; }
+    public required ProxyListenerProtocol Protocol { get; init; }
+    public string? CertificateReference { get; init; }
+    /// <summary>SMTP requires TLS; plaintext is available only for an explicit loopback harness.</summary>
+    public required ProxyTlsPolicy TlsPolicy { get; init; }
+    public bool Enabled { get; init; }
+}
+
+public sealed record ProxyListenerEvent
+{
+    public required ProxyListenerEventKind Kind { get; init; }
+    public required string TenantId { get; init; }
+    public required ProxyListenerProtocol Protocol { get; init; }
+    public required DateTimeOffset Timestamp { get; init; }
+    public int? BoundPort { get; init; }
+    public ProxyListenerFaultReason FaultReason { get; init; }
+    /// <summary>Short bounded safe detail, never exception text, endpoint, path, login or credential.</summary>
+    public string? SafeDetail { get; init; }
+}
+
+/// <summary>Bounded, header-only thread correlation metadata for one proxied message.</summary>
+public sealed record ProxyThreadingEvent
+{
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required ProxyListenerProtocol Protocol { get; init; }
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required int ReferenceDepth { get; init; }
+    public required DateTimeOffset Timestamp { get; init; }
+}
+
+public sealed record ProxySessionEvent
+{
+    public required ProxySessionEventKind Kind { get; init; }
+    public required string SessionId { get; init; }
+    public required string TenantId { get; init; }
+    public string? AccountId { get; init; }
+    public required ProxyListenerProtocol Protocol { get; init; }
+    public required ProxySessionDirection Direction { get; init; }
+    public required DateTimeOffset Timestamp { get; init; }
+    public SessionOutcome? Outcome { get; init; }
+    public long ClientBytes { get; init; }
+    public long BackendBytes { get; init; }
+    public ProxyBoundReason BoundReason { get; init; }
+}
+
+public interface IProxyListenerEventSink
+{
+    ValueTask PublishAsync(ProxyListenerEvent listenerEvent, CancellationToken cancellationToken);
+    ValueTask PublishAsync(ProxySessionEvent sessionEvent, CancellationToken cancellationToken);
+}
+
+public interface IProxyCertificateResolver
+{
+    ValueTask<X509Certificate2?> ResolveAsync(string certificateReference, CancellationToken cancellationToken);
+}
+
+/// <summary>Hosting-shaped lifecycle surface; ingress wires this to its host runtime.</summary>
+public interface IProxyListenerHostedService
+{
+    Task StartAsync(CancellationToken cancellationToken);
+    Task StopAsync(CancellationToken cancellationToken);
+}

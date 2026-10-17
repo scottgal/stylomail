@@ -785,6 +785,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (item.Title == "Proxy management")
+        {
+            await OpenProxyManagementDialogAsync().ConfigureAwait(true);
+            return;
+        }
+
         await SelectAsync(item).ConfigureAwait(true);
     }
 
@@ -888,6 +894,13 @@ public partial class MainWindow : Window
         }).ConfigureAwait(false);
 
         if (changed) await RefreshSendersAsync().ConfigureAwait(true);
+    }
+
+    private async Task OpenProxyManagementDialogAsync()
+    {
+        if (_services is null) return;
+        var dialog = new ProxyManagementDialog(_services.Client);
+        await dialog.ShowDialog(this).ConfigureAwait(true);
     }
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>

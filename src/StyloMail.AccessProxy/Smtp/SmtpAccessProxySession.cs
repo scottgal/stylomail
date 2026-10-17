@@ -135,16 +135,44 @@ public sealed class SmtpAccessProxySession
                             return SessionOutcome.AccountLimitReached;
                         }
 
-                        await writer.WriteLineAsync("235 Authentication successful", cancellationToken).ConfigureAwait(false);
-                        await using var backend = await _backend.ConnectAsync(new BackendConnectionRequest
+                        IDuplexChannel backend;
+                        try
                         {
-                            TenantId = account.TenantId,
-                            AccountId = account.BackendAccountId,
-                            Protocol = BackendProtocol.Smtp,
-                            TimeProvider = _timeProvider,
-                        }, cancellationToken).ConfigureAwait(false);
+                            backend = await _backend.ConnectAsync(new BackendConnectionRequest
+                            {
+                                TenantId = account.TenantId,
+                                AccountId = account.BackendAccountId,
+                                Protocol = BackendProtocol.Smtp,
+                                TimeProvider = _timeProvider,
+                            }, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (BackendAuthenticationRejectedException)
+                        {
+                            await writer.WriteLineAsync("535 Authentication failed", cancellationToken).ConfigureAwait(false);
+                            return SessionOutcome.BackendUnavailable;
+                        }
+                        catch (CredentialUnavailableException)
+                        {
+                            await writer.WriteLineAsync("454 4.7.0 Temporary authentication failure", cancellationToken)
+                                .ConfigureAwait(false);
+                            return SessionOutcome.BackendUnavailable;
+                        }
+                        catch (IOException)
+                        {
+                            await writer.WriteLineAsync("454 4.7.0 Temporary authentication failure", cancellationToken)
+                                .ConfigureAwait(false);
+                            return SessionOutcome.BackendUnavailable;
+                        }
+
+                        await using (backend.ConfigureAwait(false))
+                        {
+                        // Client success is truthful only after the backend connection has completed
+                        // its TLS, EHLO and SASL authentication. Advertising it earlier turns a
+                        // backend failure into a misleading post-authentication disconnect.
+                        await writer.WriteLineAsync("235 Authentication successful", cancellationToken).ConfigureAwait(false);
                         return await RunTransactionAsync(client, backend, reader, writer, cancellationToken)
                             .ConfigureAwait(false);
+                        }
                     }
                 case "AUTH":
                     await writer.WriteLineAsync("538 Encryption required for requested authentication mechanism", cancellationToken)

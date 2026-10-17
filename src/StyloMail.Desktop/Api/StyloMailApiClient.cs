@@ -271,6 +271,29 @@ public sealed class StyloMailApiClient
         return SendAsync<DecisionListingResponse>(HttpMethod.Get, path, body: null, cancellationToken);
     }
 
+    // ===================== proxy management =====================
+
+    public Task<ProxyAccountsResponse> GetProxyAccountsAsync(int limit = 100, string? after = null, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyAccountsResponse>(HttpMethod.Get, PagedPath("/v1/proxy/accounts", limit, after), body: null, cancellationToken);
+
+    public Task<ProxySessionsResponse> GetLiveProxySessionsAsync(int limit = 100, string? after = null, CancellationToken cancellationToken = default)
+        => SendAsync<ProxySessionsResponse>(HttpMethod.Get, "/v1/proxy/sessions?scope=live&" + PagedQuery(limit, after), body: null, cancellationToken);
+
+    public Task<ProxyOperationsResponse> GetProxyOperationsAsync(string window, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyOperationsResponse>(HttpMethod.Get, "/v1/proxy/operations?window=" + Uri.EscapeDataString(window), body: null, cancellationToken);
+
+    public Task<ProxyAccountResponse> SetProxyAccountEnabledAsync(string accountId, bool enabled, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyAccountResponse>(HttpMethod.Post, $"/v1/proxy/accounts/{Uri.EscapeDataString(accountId)}/{(enabled ? "enable" : "disable")}", body: new { }, cancellationToken);
+
+    public Task<ProxyAccountResponse> RevokeProxyCredentialAsync(string accountId, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyAccountResponse>(HttpMethod.Post, $"/v1/proxy/accounts/{Uri.EscapeDataString(accountId)}/credential/revoke", body: new { }, cancellationToken);
+
+    public Task<ProxyListenerResponse> SetProxyListenerEnabledAsync(string listenerId, bool enabled, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyListenerResponse>(HttpMethod.Post, $"/v1/proxy/listeners/{Uri.EscapeDataString(listenerId)}/{(enabled ? "enable" : "disable")}", body: null, cancellationToken);
+
+    private static string PagedPath(string path, int limit, string? after) => path + "?" + PagedQuery(limit, after);
+    private static string PagedQuery(int limit, string? after) => "limit=" + Math.Clamp(limit, 1, 100).ToString(System.Globalization.CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(after) ? string.Empty : "&after=" + Uri.EscapeDataString(after));
+
     /// <summary>
     /// Lists the principals this tenant can send as, with their pause state.
     /// </summary>

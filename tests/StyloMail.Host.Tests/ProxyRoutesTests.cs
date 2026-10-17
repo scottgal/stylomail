@@ -606,6 +606,57 @@ public sealed class ProxyRoutesTests
     }
 
     [Fact]
+    public async Task An_authenticated_live_session_shows_its_account_and_an_unauthenticated_one_does_not()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyListenerEventSink>();
+        var authenticator = host.Services.GetRequiredService<IProxySessionAuthenticator>();
+
+        await sink.PublishAsync(
+            new ProxyListenerEvent
+            {
+                Kind = ProxyListenerEventKind.Started,
+                TenantId = TestPrincipals.AcmeTenant,
+                Protocol = ProxyListenerProtocol.Imap,
+                Timestamp = DateTimeOffset.UtcNow,
+            },
+            CancellationToken.None);
+
+        foreach (var sessionId in new[] { "s-anon", "s-auth" })
+        {
+            await sink.PublishAsync(
+                new ProxySessionEvent
+                {
+                    Kind = ProxySessionEventKind.Opened,
+                    SessionId = sessionId,
+                    TenantId = TestPrincipals.AcmeTenant,
+                    Protocol = ProxyListenerProtocol.Imap,
+                    Direction = ProxySessionDirection.ClientToProxy,
+                    Timestamp = DateTimeOffset.UtcNow,
+                },
+                CancellationToken.None);
+        }
+
+        var authenticatedAt = DateTimeOffset.UtcNow.AddSeconds(1);
+        await authenticator.MarkAuthenticatedAsync(
+            TestPrincipals.AcmeTenant, "s-auth", "pa_authenticated", authenticatedAt, CancellationToken.None);
+
+        var live = await ReadAsync<ProxySessionsResponse>(
+            await reviewer.GetAsync("/v1/proxy/sessions?scope=live"));
+
+        Assert.Equal(2, live.Sessions.Count);
+
+        var authenticated = Assert.Single(live.Sessions, session => session.SessionId == "s-auth");
+        Assert.Equal("pa_authenticated", authenticated.AccountId);
+        Assert.NotNull(authenticated.AuthenticatedAt);
+
+        var anonymous = Assert.Single(live.Sessions, session => session.SessionId == "s-anon");
+        Assert.Null(anonymous.AccountId);
+        Assert.Null(anonymous.AuthenticatedAt);
+    }
+
+    [Fact]
     public async Task An_smtp_listener_binds_once_the_submission_gate_is_composed()
     {
         using var host = ProxyHost();

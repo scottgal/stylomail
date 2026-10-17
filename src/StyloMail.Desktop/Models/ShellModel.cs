@@ -634,6 +634,13 @@ public sealed class ShellModel : ObservableObject
                 "Group senders into companies",
                 "A company organises senders in this console. Nothing in the assessment pipeline "
                     + "reads one, so this groups your view rather than changing how mail is judged."),
+
+            new SidebarItem(
+                "Proxy management",
+                SidebarItemState.Available,
+                "GET /v1/proxy/accounts, sessions, operations",
+                "Review pseudonymous proxy accounts, live sessions, and named-window operations. "
+                    + "Unavailable telemetry is shown as not produced, never as zero."),
         ]));
 
         model.Sections.Add(new SidebarSection("Review",

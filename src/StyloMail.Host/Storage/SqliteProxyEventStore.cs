@@ -23,7 +23,8 @@ namespace StyloMail.Host.Storage;
 /// instead of inferring it from a count that happens to be nothing.
 /// </para>
 /// </remarks>
-public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThreadingEventSink, IProxyTelemetryReader
+public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThreadingEventSink,
+    IProxyTelemetryReader, IProxySessionAuthenticator
 {
     private readonly HostDatabase _database;
 
@@ -100,6 +101,36 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask MarkAuthenticatedAsync(
+        string tenantId,
+        string sessionId,
+        string accountId,
+        DateTimeOffset authenticatedAt,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
+        ArgumentException.ThrowIfNullOrEmpty(sessionId);
+        ArgumentException.ThrowIfNullOrEmpty(accountId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        // Update the existing opened row in place. "The newest event is Opened" is what makes the
+        // session live, so a session that closed before authentication is not resurrected by a late
+        // callback, and no second opened event is created.
+        command.CommandText =
+            "UPDATE proxy_session_event SET account_id=$account,authenticated_at=$at "
+            + "WHERE id=(SELECT MAX(x.id) FROM proxy_session_event x "
+            + "WHERE x.tenant_id=$tenant AND x.session_id=$session) "
+            + "AND tenant_id=$tenant AND kind='Opened';";
+        command.Parameters.AddWithValue("$account", accountId);
+        command.Parameters.AddWithValue("$at", Timestamp(authenticatedAt));
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$session", sessionId);
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<bool> HasListenerTelemetryAsync(string tenantId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -126,7 +157,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         // opaque session id rather than on time, so two events in the same millisecond cannot make
         // a closed session look live.
         command.CommandText =
-            "SELECT s.session_id,s.account_id,s.protocol,s.direction,s.occurred_at,"
+            "SELECT s.session_id,s.account_id,s.protocol,s.direction,s.occurred_at,s.authenticated_at,"
             + "s.client_bytes,s.backend_bytes "
             + "FROM proxy_session_event s "
             + "WHERE s.tenant_id=$tenant AND s.kind='Opened' "
@@ -149,8 +180,9 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
                 Protocol = ParseProtocol(reader.GetString(2)),
                 Direction = Enum.Parse<ProxySessionDirection>(reader.GetString(3), ignoreCase: true),
                 StartedAt = ParseTimestamp(reader.GetString(4)),
-                ClientBytes = reader.GetInt64(5),
-                BackendBytes = reader.GetInt64(6),
+                AuthenticatedAt = reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
+                ClientBytes = reader.GetInt64(6),
+                BackendBytes = reader.GetInt64(7),
             });
         }
 

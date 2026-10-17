@@ -79,7 +79,9 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     private readonly TimeProvider _clock;
     private readonly IProxyCertificateResolver _certificates;
     private readonly IProxyListenerEventSink _events;
+    private readonly IProxySessionAuthenticator _sessionAuthenticator;
     private readonly ILogger<AccessProxyListenerHandleFactory> _logger;
+    private int _telemetryFailures;
 
     public AccessProxyListenerHandleFactory(
         IServiceProvider services,
@@ -92,6 +94,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         TimeProvider clock,
         IProxyCertificateResolver certificates,
         IProxyListenerEventSink events,
+        IProxySessionAuthenticator sessionAuthenticator,
         ILogger<AccessProxyListenerHandleFactory> logger)
     {
         _services = services;
@@ -104,6 +107,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         _clock = clock;
         _certificates = certificates;
         _events = events;
+        _sessionAuthenticator = sessionAuthenticator;
         _logger = logger;
     }
 
@@ -174,7 +178,9 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
 
         var dependencies = new ProxySessionRunnerDependencies
         {
-            Accounts = _accounts,
+            // The decorator attributes the account lookup to the connection currently running on
+            // this async flow; access's session still only sees an account store.
+            Accounts = new ProxySessionAccountStore(_accounts, OnSessionAuthenticatedAsync),
             PasswordHasher = _passwordHasher,
             CredentialStore = _credentialStore,
             CredentialResolver = _credentialResolver,
@@ -191,6 +197,43 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         var run = ProxySessionRunnerFactory.Create(runnerOptions, dependencies);
 
         return new AccessProxyListenerHandle(runnerOptions, run, tls, _events, _clock, _logger);
+    }
+
+    /// <summary>
+    /// Records the account id on the session's existing opened row once the protocol session has
+    /// resolved it.
+    /// </summary>
+    /// <remarks>
+    /// This is an in-place update, not a second opened event: one session has one live row, and the
+    /// route's live query reads that row. A failed write is swallowed because telemetry must never
+    /// drop a user's session; the failure counter keeps the log bounded.
+    /// </remarks>
+    private async ValueTask OnSessionAuthenticatedAsync(string accountId)
+    {
+        if (ProxySessionContext.Current.Value is not { } binding)
+        {
+            return;
+        }
+
+        try
+        {
+            await _sessionAuthenticator.MarkAuthenticatedAsync(
+                binding.TenantId,
+                binding.SessionId,
+                accountId,
+                _clock.GetUtcNow(),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            var failures = Interlocked.Increment(ref _telemetryFailures);
+            if (failures == 1 || failures % 100 == 0)
+            {
+                _logger.LogWarning(
+                    "A proxy session authentication record could not be written ({Failures} total).",
+                    failures);
+            }
+        }
     }
 
     private sealed class AccessProxyListenerHandle : IProxyListenerHandle
@@ -260,13 +303,16 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             CancellationToken cancellationToken)
         {
             var sessionId = "ps_" + Guid.NewGuid().ToString("N");
+            ProxySessionContext.Current.Value =
+                new ProxySessionBinding(sessionId, tenantId, _options.Protocol);
             await PublishAsync(new ProxySessionEvent
             {
                 Kind = ProxySessionEventKind.Opened,
                 SessionId = sessionId,
                 TenantId = tenantId,
                 // The account is resolved inside the protocol session, after the client credential
-                // is verified. The connection-level event deliberately carries no guessed account.
+                // is verified. The connection-level event deliberately carries no guessed account;
+                // the account-store decorator publishes a follow-up opened event once it is known.
                 AccountId = null,
                 Protocol = _options.Protocol,
                 Direction = ProxySessionDirection.ClientToProxy,
@@ -279,8 +325,24 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
                 outcome = await _run(tenantId, channel, cancellationToken).ConfigureAwait(false);
                 return outcome.Value;
             }
+            catch (Exception exception)
+            {
+                // The access listener swallows session exceptions by design. Without this line a
+                // backend authentication failure is invisible: the client has already been told
+                // 235, so the only symptom is a disconnect. The type and bounded message name the
+                // stage; no credential, server line or address is included beyond the exception's
+                // own bounded text.
+                outcome = SessionOutcome.ProtocolError;
+                _logger.LogWarning(
+                    "Proxy session {SessionId} failed: {ExceptionType}: {Detail}",
+                    sessionId,
+                    exception.GetType().Name,
+                    exception.Message.Length > 200 ? exception.Message[..200] : exception.Message);
+                throw;
+            }
             finally
             {
+                ProxySessionContext.Current.Value = null;
                 await PublishAsync(new ProxySessionEvent
                 {
                     Kind = ProxySessionEventKind.Closed,
