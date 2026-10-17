@@ -802,11 +802,12 @@ internal static class ProxyEndpoints
             tenantId, threadToken, windowStart, windowEnd, cancellationToken).ConfigureAwait(false);
 
         var points = rows
-            .GroupBy(row => (row.MessageToken, row.Ordinal))
+            .GroupBy(row => (row.MessageToken, row.TrafficKind, row.Ordinal))
             .Select(group => new ProxyElementPointResponse
             {
                 ObservedAt = group.Max(row => row.ObservedAt),
                 TurnToken = group.Key.MessageToken,
+                TrafficKind = group.Key.TrafficKind,
                 Ordinal = group.Key.Ordinal,
                 Elements = [.. group.Select(row => new ProxyElementScoreResponse
                 {
@@ -836,6 +837,8 @@ internal static class ProxyEndpoints
                 },
             })
             .OrderBy(point => point.ObservedAt)
+            .ThenBy(point => point.TurnToken, StringComparer.Ordinal)
+            .ThenBy(point => point.TrafficKind, StringComparer.Ordinal)
             .ThenBy(point => point.Ordinal)
             .ToArray();
 

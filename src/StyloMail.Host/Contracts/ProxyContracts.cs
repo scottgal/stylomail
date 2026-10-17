@@ -335,6 +335,9 @@ public sealed record ProxyElementPointResponse
 
     public required string TurnToken { get; init; }
 
+    /// <summary><c>Retrieval</c> or <c>Submission</c>; directions are never mixed.</summary>
+    public required string TrafficKind { get; init; }
+
     public required int Ordinal { get; init; }
 
     public required IReadOnlyList<ProxyElementScoreResponse> Elements { get; init; }

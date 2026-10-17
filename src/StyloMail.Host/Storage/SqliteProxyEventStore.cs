@@ -619,13 +619,13 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT message_token,thread_token,ordinal,element,scorer,scorer_version,"
+            "SELECT message_token,thread_token,direction,ordinal,element,scorer,scorer_version,"
             + "vocabulary_version,model_tag,prefix_version,dimension,score,nearest_exemplar_id,"
             + "availability,availability_reason,observed_at "
             + "FROM proxy_element_point "
             + "WHERE tenant_id=$tenant AND thread_token=$thread "
             + "AND observed_at >= $from AND observed_at < $to "
-            + "ORDER BY observed_at,message_token,ordinal,element,scorer;";
+            + "ORDER BY observed_at,message_token,direction,ordinal,element,scorer;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$thread", threadToken);
         command.Parameters.AddWithValue("$from", Timestamp(from));
@@ -639,19 +639,20 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             {
                 MessageToken = reader.GetString(0),
                 ThreadToken = reader.GetString(1),
-                Ordinal = reader.GetInt32(2),
-                Element = reader.GetString(3),
-                Scorer = reader.GetString(4),
-                ScorerVersion = reader.IsDBNull(5) ? null : reader.GetString(5),
-                VocabularyVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
-                ModelTag = reader.IsDBNull(7) ? null : reader.GetString(7),
-                PrefixVersion = reader.IsDBNull(8) ? null : reader.GetString(8),
-                Dimension = reader.IsDBNull(9) ? null : reader.GetInt32(9),
-                Score = reader.IsDBNull(10) ? null : reader.GetDouble(10),
-                NearestExemplarId = reader.IsDBNull(11) ? null : reader.GetString(11),
-                Availability = reader.GetString(12),
-                AvailabilityReason = reader.GetString(13),
-                ObservedAt = ParseTimestamp(reader.GetString(14)),
+                TrafficKind = reader.GetString(2),
+                Ordinal = reader.GetInt32(3),
+                Element = reader.GetString(4),
+                Scorer = reader.GetString(5),
+                ScorerVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
+                VocabularyVersion = reader.IsDBNull(7) ? null : reader.GetString(7),
+                ModelTag = reader.IsDBNull(8) ? null : reader.GetString(8),
+                PrefixVersion = reader.IsDBNull(9) ? null : reader.GetString(9),
+                Dimension = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                Score = reader.IsDBNull(11) ? null : reader.GetDouble(11),
+                NearestExemplarId = reader.IsDBNull(12) ? null : reader.GetString(12),
+                Availability = reader.GetString(13),
+                AvailabilityReason = reader.GetString(14),
+                ObservedAt = ParseTimestamp(reader.GetString(15)),
             });
         }
 

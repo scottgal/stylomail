@@ -190,6 +190,13 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
                 "The proxy listener cannot start: SMTP requires TLS material and a submission assessment/stager.");
         }
 
+        // One orchestrator instance is shared by the submission and retrieval paths, so both emit
+        // through the same classifier and sink. Null composition is deliberate: with no classifier
+        // nothing is written, rather than a fabricated clean outcome.
+        var elementOrchestrator = _elementConfiguration.Classifier is { } classifier
+            ? new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(classifier, _elementSink)
+            : null;
+
         var dependencies = new ProxySessionRunnerDependencies
         {
             Accounts = _accounts,
@@ -203,17 +210,14 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             ContextSink = new ProxySessionContextSink(_sessionAuthenticator, _logger),
             WarningSink = _warningSink,
             WarningAnalyzer = _warningAnalyzer,
-            // Null composition is deliberate: with no classifier the SMTP session behaves exactly
-            // as no-analyser, and nothing is written rather than a fabricated clean outcome.
-            ElementOrchestrator = _elementConfiguration.Classifier is { } classifier
-                ? new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(classifier, _elementSink)
-                : null,
+            ElementOrchestrator = elementOrchestrator,
             // Retrieval warning analysis is independent of the element classifier: it is the
             // bounded FETCH assembler plus the deterministic warning analyzer. Null keeps IMAP
             // analysis entirely off rather than installing a half-configured observer.
             RetrievalWarningAssemblerFactory = _proxyEnabled
                 ? new StyloMail.AccessProxy.Sessions.ProxyRetrievalWarningAssemblerFactory(
-                    _warningSink, _warningAnalyzer, _clock)
+                    _warningSink, _warningAnalyzer, _clock,
+                    options: null, elementOrchestrator: elementOrchestrator)
                 : null,
             Tls = tls,
             SubmissionAssessment = assessment,

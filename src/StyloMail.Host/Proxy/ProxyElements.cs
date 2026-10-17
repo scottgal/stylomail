@@ -10,6 +10,9 @@ public sealed record ProxyElementRow
 
     public required string ThreadToken { get; init; }
 
+    /// <summary><c>Retrieval</c> or <c>Submission</c>.</summary>
+    public required string TrafficKind { get; init; }
+
     public required int Ordinal { get; init; }
 
     public required string Element { get; init; }

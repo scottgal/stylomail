@@ -1018,6 +1018,108 @@ public sealed class ProxyRoutesTests
     }
 
     [Fact]
+    public async Task Element_series_serves_both_traffic_kinds_for_one_thread_without_mixing()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        const string thread = "thread-bothDirectionsX";
+
+        foreach (var kind in new[] { MessageTrafficKind.Retrieval, MessageTrafficKind.Submission })
+        {
+            await sink.RecordOutcomeAsync(
+                new ProxySegmentationOutcome
+                {
+                    TenantId = TestPrincipals.AcmeTenant,
+                    AccountId = "pa_account",
+                    TrafficKind = kind,
+                    MessageToken = "m-shared",
+                    ThreadToken = thread,
+                    ObservedAt = at,
+                    Availability = ProxyWarningAvailability.Available,
+                    AvailabilityReason = ProxySegmentationAvailabilityReason.None,
+                    SegmentCount = 1,
+                    Truncated = false,
+                    AppliedMaxSegments = 32,
+                    AppliedMaxSegmentBytes = 6000,
+                    AnalysedOrdinals = [0],
+                    AnySegmentDropped = false,
+                },
+                CancellationToken.None);
+        }
+
+        await sink.RecordPointAsync(
+            new ProxyElementPoint
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-shared",
+                ThreadToken = thread,
+                Ordinal = 0,
+                Element = "credential_request",
+                Scorer = ElementScorers.PrototypeKnn,
+                ScorerVersion = ElementScorers.PrototypeKnnVersion,
+                Score = 0.31,
+                NearestExemplarId = "seed-1:credential_request:0007",
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = "none",
+                ModelTag = "google/embeddinggemma-2",
+                PrefixVersion = "classification/1",
+                Dimension = 256,
+                VocabularyVersion = ElementVocabulary.Version,
+                ObservedAt = at,
+            },
+            CancellationToken.None);
+
+        await sink.RecordPointAsync(
+            new ProxyElementPoint
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Submission,
+                MessageToken = "m-shared",
+                ThreadToken = thread,
+                Ordinal = 0,
+                Element = "threat",
+                Scorer = ElementScorers.LinearProbe,
+                ScorerVersion = ElementScorers.LinearProbeVersion,
+                Score = 0.8,
+                NearestExemplarId = null,
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = "none",
+                ModelTag = "google/embeddinggemma-2",
+                PrefixVersion = "classification/1",
+                Dimension = 256,
+                VocabularyVersion = ElementVocabulary.Version,
+                ObservedAt = at,
+            },
+            CancellationToken.None);
+
+        var series = await ReadAsync<ProxyElementSeriesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
+
+        // Same message token and ordinal, two directions: two points, never merged.
+        Assert.Equal(2, series.Points.Count);
+
+        var retrieval = Assert.Single(series.Points, point => point.TrafficKind == "Retrieval");
+        var retrievalElement = Assert.Single(retrieval.Elements);
+        Assert.Equal("credential_request", retrievalElement.Element);
+        Assert.Equal(ElementScorers.PrototypeKnn, retrievalElement.Scorer);
+        Assert.Equal(0.31, retrievalElement.Score);
+        Assert.Equal("available", retrievalElement.Availability);
+
+        var submission = Assert.Single(series.Points, point => point.TrafficKind == "Submission");
+        var submissionElement = Assert.Single(submission.Elements);
+        Assert.Equal("threat", submissionElement.Element);
+        Assert.Equal(ElementScorers.LinearProbe, submissionElement.Scorer);
+        Assert.Equal(0.8, submissionElement.Score);
+        Assert.Equal("available", submissionElement.Availability);
+        Assert.Null(submissionElement.NearestExemplarId);
+    }
+
+    [Fact]
     public async Task An_element_point_with_a_contract_break_is_refused_not_stored()
     {
         using var host = ProxyHost();
