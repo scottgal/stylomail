@@ -1,0 +1,22 @@
+name: console-conversation-signals-capture
+description: Selects the first opaque conversation row and captures its Host-produced signals.
+default_delay: 500
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Conversations)"
+  - type: Wait
+    value: "1000"
+  - type: Click
+    target: "type=ListBoxItem"
+    window_id: ConversationsDialog
+  - type: Wait
+    value: "1000"
+  - type: Screenshot
+    value: "M22-thread-signals"
+    composite: true
+    description: "Selected opaque conversation thread with Host-produced signal availability or gaps"

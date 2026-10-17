@@ -37,7 +37,17 @@ fi
 
 # Command substitution deliberately has no diagnostic output. The value becomes
 # a Debug-only console setting only; it is neither echoed nor passed as argv.
-key="$(<"$key_file")"
+# Accept either a raw one-line key or curl's `X-StyloMail-Key: …` header form.
+# Parsing emits only into this command substitution, never into the runner log.
+key="$(python3 - "$key_file" <<'PYEOF'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read().strip()
+match = re.search(r"X-StyloMail-Key\s*:\s*([^\"\r\n]+)", text, re.I)
+print((match.group(1).strip() if match else text).strip(), end="")
+PYEOF
+)"
 if [[ -z "$key" || "$key" == *$'\n'* || "$key" == *$'\r'* ]]; then
     echo "CONSOLE_EXTERNAL_API_KEY_FILE must contain one non-empty key line." >&2
     exit 2

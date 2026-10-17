@@ -1,0 +1,17 @@
+name: console-conversation-capture
+description: Captures the external-Host conversation page after its management navigation entry is selected.
+default_delay: 500
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Conversations)"
+  - type: Wait
+    value: "1500"
+  - type: Screenshot
+    value: "M21-conversation-list-and-signals"
+    composite: true
+    description: "Conversation list and its empty, not-produced, or selected-thread signal state"

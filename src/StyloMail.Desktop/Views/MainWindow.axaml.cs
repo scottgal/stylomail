@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -61,7 +62,6 @@ public partial class MainWindow : Window
     private object? _connectInFlight;
 
     private readonly ShellModel _model;
-    private ConversationPage? _conversationPage;
 
     /// <summary>
     /// Set while a row's open button is assigning the selection itself.
@@ -778,8 +778,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowConsole();
-
         // Connection opens a dialog rather than filling a pane: it has nothing
         // to list, and the one thing it does is a form.
         if (item.Title == ConnectionSectionTitle)
@@ -915,19 +913,8 @@ public partial class MainWindow : Window
     private async Task OpenConversationsAsync(SidebarItem item)
     {
         await OnUiThreadAsync(() => _model.SelectedItem = item).ConfigureAwait(false);
-        if (_conversationPage is null)
-        {
-            _conversationPage = new ConversationPage(_services?.Conversations);
-            ConversationHost.Children.Add(_conversationPage);
-        }
-        ConsoleGrid.IsVisible = false;
-        ConversationHost.IsVisible = true;
-    }
-
-    private void ShowConsole()
-    {
-        ConversationHost.IsVisible = false;
-        ConsoleGrid.IsVisible = true;
+        var dialog = new ConversationsDialog(_services?.Conversations);
+        await dialog.ShowDialog(this).ConfigureAwait(true);
     }
 
     /// <summary>Rebuilds against whatever the settings and keychain now say.</summary>

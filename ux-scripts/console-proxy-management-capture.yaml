@@ -1,0 +1,71 @@
+name: console-proxy-management-capture
+description: Captures the tenant-safe proxy management and conversation surfaces from an external Host.
+default_delay: 300
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Proxy management)"
+  - type: Expect
+    target: "text='Accounts'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Screenshot
+    value: "M08-accounts-settings"
+    composite: true
+    description: "Pseudonymous accounts and safe management boundary"
+  - type: Expect
+    target: "text='Listeners'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+  - type: Screenshot
+    value: "M10-listeners"
+    composite: true
+    description: "Listener state, TLS policy, and drain-aware controls"
+  - type: Expect
+    target: "text='Live sessions only'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+  - type: Scroll
+    target: "name=ProxyManagementScroll"
+    window_id: ProxyManagementDialog
+    value: "ScrollToEnd"
+  - type: Wait
+    value: "300"
+  - type: Screenshot
+    value: "M09-live-sessions"
+    composite: true
+    description: "Live IMAP and SMTP sessions without endpoint or credential disclosure"
+  - type: Expect
+    target: "text='Operations (named window)'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+  - type: Screenshot
+    value: "M11-operations"
+    composite: true
+    description: "Named last_24_hours operations window and non-zero-safe counters"
+  - type: Click
+    target: "type=Button:has-text(Close)"
+    window_id: ProxyManagementDialog
+  - type: Click
+    target: "type=Button:has-text(Conversations)"
+  - type: Expect
+    target: "text='Proxy conversations'"
+    matcher: IsVisible
+    timeout: 15000
+  - type: Screenshot
+    value: "M21-conversation-list"
+    description: "Pseudonymous conversation list, including empty or not-produced state when reported"
+  - type: Click
+    target: "type=ListBoxItem"
+  - type: Expect
+    target: "text='Thread signals'"
+    matcher: IsVisible
+    timeout: 15000
+  - type: Screenshot
+    value: "M22-thread-signals"
+    description: "One selected thread's signal observations and explicit gaps"

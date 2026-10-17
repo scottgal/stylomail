@@ -171,9 +171,7 @@
             </Grid>
         </Border>
 
-        <Grid x:Name="ConversationHost" IsVisible="False" />
-
-        <Grid x:Name="ConsoleGrid" ColumnDefinitions="228,1,340,1,*">
+        <Grid ColumnDefinitions="228,1,340,1,*">
 
             <!-- ============ 1. sidebar ============ -->
             <Border Grid.Column="0" Classes="sidebar">

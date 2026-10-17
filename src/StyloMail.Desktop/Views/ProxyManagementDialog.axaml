@@ -8,7 +8,7 @@
       <Button Content="Refresh" Click="OnRefreshClick" />
       <Button Content="Close" Click="OnCloseClick" />
     </StackPanel>
-    <ScrollViewer>
+    <ScrollViewer x:Name="ProxyManagementScroll">
       <StackPanel Spacing="12">
         <TextBlock Classes="paneTitle" Text="Proxy management" />
         <TextBlock x:Name="StatusText" Classes="cardBody" TextWrapping="Wrap" />
