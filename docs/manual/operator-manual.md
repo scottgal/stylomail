@@ -476,10 +476,10 @@ says why. The two are not the same fact and the view may not draw them alike.
 
 #### What the data shows today
 
-Threading facts exist: turns are recorded from threading headers. Warning analysis is linked: the
-Host runs its MIME analyser over a bounded copy and records a closed warning outcome per turn. Tone
-is not linked to a semantic provider on this tap. A turn can therefore carry two different absences
-and one measured zero:
+Threading facts exist: turns are recorded from threading headers. Warning analysis can be linked:
+when the Host has a MIME analyser, it reads a bounded copy and records a closed warning outcome per
+turn; when it does not, the point says `NoAnalyserConfigured`. Tone is not linked to a semantic
+provider on this tap. A turn can therefore carry two different absences and one measured zero:
 
 - **0 warnings, measured**: the warning analysis ran and found none. This is a measured clean.
 - **tone not produced**: no tone measurement exists for that turn. This is a gap, not zero.
