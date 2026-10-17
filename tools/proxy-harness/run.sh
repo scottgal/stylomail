@@ -49,6 +49,7 @@ imap_sessions="$run_dir/sessions-imap-live.json"
 smtp_sessions="$run_dir/sessions-smtp-live.json"
 idle_sessions="$run_dir/sessions-idle.json"
 retrieval_analysis="$run_dir/retrieval-analysis.json"
+submission_analysis="$run_dir/submission-analysis.json"
 transcript="$run_dir/client-transcript.txt"
 certificate="$run_dir/harness-smtp-cert.pem"
 certificate_key="$run_dir/harness-smtp-key.pem"
@@ -90,6 +91,54 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+assert_live_session() {
+  local snapshot=$1
+  local protocol=$2
+  python3 - "$snapshot" "$protocol" <<'PY'
+import json, sys
+snapshot, protocol = sys.argv[1:]
+sessions = json.load(open(snapshot, encoding='utf-8'))['sessions']
+if not any(session.get('protocol') == protocol and session.get('accountId') for session in sessions):
+    raise SystemExit(f'Live session readback lacks an authenticated {protocol} session.')
+PY
+}
+
+await_element_analysis() {
+  local direction=$1
+  local artifact=$2
+  for attempt in {1..30}; do
+    if python3 - "$run_dir/host.db" "$PROXY_E2E_TENANT" "$direction" "$artifact" <<'PY'
+import json, sqlite3, sys
+database, tenant, direction, artifact = sys.argv[1:]
+with sqlite3.connect(database) as connection:
+    segments = connection.execute(
+        "SELECT availability, availability_reason, segment_count FROM proxy_segment_outcome "
+        "WHERE tenant_id=? AND direction=? ORDER BY observed_at", (tenant, direction)).fetchall()
+    points = connection.execute(
+        "SELECT element, scorer, scorer_version FROM proxy_element_point "
+        "WHERE tenant_id=? AND direction=? ORDER BY observed_at", (tenant, direction)).fetchall()
+with open(artifact, 'w', encoding='utf-8') as stream:
+    json.dump({'direction': direction, 'segmentation': [dict(availability=row[0], availabilityReason=row[1], segmentCount=row[2]) for row in segments],
+               'elementPointCount': len(points), 'elements': [dict(element=row[0], scorer=row[1], scorerVersion=row[2]) for row in points]}, stream)
+if not segments or not points:
+    raise SystemExit(1)
+PY
+    then
+      return 0
+    fi
+    [[ "$attempt" == 30 ]] && { print -u2 -- "$direction analysis did not persist a segmentation outcome and element point."; return 1; }
+    sleep 1
+  done
+}
+
+stop_driver() {
+  local pid=$1
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || true
+}
 
 # These certificates exist only for this disposable loopback run. They are never deployment material.
 # The listener PEM includes its PKCS#8 private key because Host loads both from this one path.
@@ -271,35 +320,13 @@ if json.load(open(sys.argv[1], encoding="utf-8"))["sessions"]:
 PY
 if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   PROXY_E2E_DRIVER_PROTOCOL=imap PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$imap_port" \
-    dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >"$transcript" 2>&1 &
+    dotnet "$PWD/tools/proxy-harness/driver/bin/Debug/net10.0/StyloMail.ProxyHarness.Driver.dll" --hold >"$transcript" 2>&1 &
   client_pid=$!; sleep 1
   curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$imap_sessions"
+  assert_live_session "$imap_sessions" Imap
   # The FETCH worker is intentionally off relay. Poll its durable, content-free rows rather than
   # assuming the driver completion means the background classification has persisted already.
-  for attempt in {1..30}; do
-    if python3 - "$run_dir/host.db" "$PROXY_E2E_TENANT" "$retrieval_analysis" <<'PY'
-import json, sqlite3, sys
-database, tenant, artifact = sys.argv[1:]
-with sqlite3.connect(database) as connection:
-    segments = connection.execute(
-        "SELECT availability, availability_reason, segment_count FROM proxy_segment_outcome "
-        "WHERE tenant_id=? AND direction='Retrieval' ORDER BY observed_at", (tenant,)).fetchall()
-    points = connection.execute(
-        "SELECT element, scorer, scorer_version FROM proxy_element_point "
-        "WHERE tenant_id=? AND direction='Retrieval' ORDER BY observed_at", (tenant,)).fetchall()
-with open(artifact, 'w', encoding='utf-8') as stream:
-    json.dump({'direction': 'Retrieval', 'segmentation': [dict(availability=row[0], availabilityReason=row[1], segmentCount=row[2]) for row in segments],
-               'elementPointCount': len(points), 'elements': [dict(element=row[0], scorer=row[1], scorerVersion=row[2]) for row in points]}, stream)
-if not segments or not points:
-    raise SystemExit(1)
-PY
-    then
-      break
-    fi
-    [[ "$attempt" == 30 ]] && { print -u2 -- 'Retrieval analysis did not persist a Retrieval segmentation outcome and element point.'; exit 1; }
-    sleep 1
-  done
-  if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$client_pid"; fi
+  await_element_analysis Retrieval "$retrieval_analysis"
 fi
 
 smtp_listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/smtp-1/enable")
@@ -307,10 +334,16 @@ smtp_port=$(print -r -- "$smtp_listener_json" | python3 -c 'import json,sys; pri
 unset smtp_listener_json
 if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   PROXY_E2E_DRIVER_PROTOCOL=smtp PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_PORT="$smtp_port" \
-    PROXY_E2E_DRIVER_HARNESS_CERT="$certificate" dotnet run --project tools/proxy-harness/driver/StyloMail.ProxyHarness.Driver.csproj --no-build -- --hold >>"$transcript" 2>&1 &
+    PROXY_E2E_DRIVER_HARNESS_CERT="$certificate" dotnet "$PWD/tools/proxy-harness/driver/bin/Debug/net10.0/StyloMail.ProxyHarness.Driver.dll" --hold >>"$transcript" 2>&1 &
   smtp_client_pid=$!; sleep 1
   curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$smtp_sessions"
-  if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$smtp_client_pid"; fi
+  assert_live_session "$smtp_sessions" Imap
+  assert_live_session "$smtp_sessions" Smtp
+  await_element_analysis Submission "$submission_analysis"
+  stop_driver "$client_pid"
+  client_pid=''
+  stop_driver "$smtp_client_pid"
+  smtp_client_pid=''
 fi
 
 # Fail closed if any run artifact emitted a supplied or generated secret. Python receives values only via env.
