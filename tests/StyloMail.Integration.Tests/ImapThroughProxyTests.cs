@@ -65,7 +65,7 @@ public sealed class ImapThroughProxyTests
         var outcome = SessionOutcome.Relayed;
         var recorded = default(RecordingDuplex);
 
-        await using var proxy = ProxyListener.Start(async (channel, token) =>
+        await using var proxy = ProxyListener.Start("tenant-alpha", async (channel, token) =>
         {
             // Not disposed here: ProxyListener owns the channel and disposing the wrapper
             // would close the socket underneath it.

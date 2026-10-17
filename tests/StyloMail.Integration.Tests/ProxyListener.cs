@@ -25,10 +25,17 @@ public sealed class ProxyListener : IAsyncDisposable
 
     public int Port => _listener.BoundPort;
 
-    public static ProxyListener Start(Func<IDuplexChannel, CancellationToken, Task<SessionOutcome>> run)
+    public static ProxyListener Start(
+        string tenantId,
+        Func<IDuplexChannel, CancellationToken, Task<SessionOutcome>> run)
     {
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
         ArgumentNullException.ThrowIfNull(run);
-        return new ProxyListener(TcpAccessProxyListener.Start(IPAddress.Loopback, 0, run));
+        return new ProxyListener(TcpAccessProxyListener.Start(
+            IPAddress.Loopback,
+            0,
+            tenantId,
+            (_, channel, cancellationToken) => run(channel, cancellationToken)));
     }
 
     public ValueTask DisposeAsync() => _listener.DisposeAsync();

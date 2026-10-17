@@ -105,6 +105,9 @@ public sealed record AccessProxyBounds
     /// </remarks>
     public int RelayBufferBytes { get; init; } = 16 * 1024;
 
+    /// <summary>Maximum bytes held by the ephemeral SMTP DATA stager for one submission.</summary>
+    public long MaxSubmissionBytes { get; init; } = 25L * 1024 * 1024;
+
     /// <summary>Maximum concurrent client sessions this instance will hold.</summary>
     public int MaxConcurrentSessions { get; init; } = 512;
 
@@ -132,6 +135,10 @@ public sealed record AccessProxyBounds
         AtLeastOne(MaxAuthenticationCommands, nameof(MaxAuthenticationCommands));
         AtLeastOne(MaxBackendAuthRounds, nameof(MaxBackendAuthRounds));
         AtLeastOne(RelayBufferBytes, nameof(RelayBufferBytes));
+        if (MaxSubmissionBytes < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxSubmissionBytes), MaxSubmissionBytes, "Must be positive.");
+        }
         AtLeastOne(MaxConcurrentSessions, nameof(MaxConcurrentSessions));
         AtLeastOne(MaxSessionsPerAccount, nameof(MaxSessionsPerAccount));
 

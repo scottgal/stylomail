@@ -32,7 +32,8 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
 {
     private readonly IPEndPoint _endpoint;
     private readonly TcpListener _listener;
-    private readonly Func<IDuplexChannel, CancellationToken, Task<SessionOutcome>> _runSession;
+    private readonly string _tenantId;
+    private readonly Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> _runSession;
     private readonly CancellationTokenSource _acceptingStopping = new();
     private readonly CancellationTokenSource _sessionStopping = new();
     private readonly ConcurrentDictionary<long, TcpClient> _clients = new();
@@ -48,18 +49,30 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     /// <summary>Creates an unstarted listener for the configured endpoint.</summary>
     public TcpAccessProxyListener(
         IPEndPoint endpoint,
-        Func<IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession)
+        string tenantId,
+        Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrEmpty(tenantId);
         ArgumentNullException.ThrowIfNull(runSession);
 
         _endpoint = new IPEndPoint(endpoint.Address, endpoint.Port);
+        _tenantId = tenantId;
         _listener = new TcpListener(_endpoint);
         _runSession = runSession;
     }
 
     /// <summary>The configured bind endpoint.</summary>
     public IPEndPoint Endpoint => _endpoint;
+
+    /// <summary>
+    /// The configured tenant for every connection accepted by this listener.
+    /// </summary>
+    /// <remarks>
+    /// Tenant selection is a listener configuration boundary, never a lookup from a supplied login.
+    /// A multi-tenant Host composes one listener per tenant and bind endpoint.
+    /// </remarks>
+    public string TenantId => _tenantId;
 
     /// <summary>The port actually bound, including an operating-system-assigned port for zero.</summary>
     /// <exception cref="InvalidOperationException">The listener has not started.</exception>
@@ -109,7 +122,8 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     public static TcpAccessProxyListener Start(
         IPAddress bindAddress,
         int port,
-        Func<IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession)
+        string tenantId,
+        Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession)
     {
         ArgumentNullException.ThrowIfNull(bindAddress);
         ArgumentOutOfRangeException.ThrowIfNegative(port);
@@ -118,7 +132,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(port), port, "Must be a TCP port number.");
         }
 
-        var listener = new TcpAccessProxyListener(new IPEndPoint(bindAddress, port), runSession);
+        var listener = new TcpAccessProxyListener(new IPEndPoint(bindAddress, port), tenantId, runSession);
         listener.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         return listener;
     }
@@ -191,7 +205,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
             var description = $"client-session:{Guid.NewGuid():N}";
 
             await using var channel = new StreamDuplexChannel(stream, stream, description);
-            await _runSession(channel, _sessionStopping.Token).ConfigureAwait(false);
+            await _runSession(_tenantId, channel, _sessionStopping.Token).ConfigureAwait(false);
         }
     }
 

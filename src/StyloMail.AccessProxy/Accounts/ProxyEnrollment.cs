@@ -68,6 +68,66 @@ public sealed record ProxyEnrollment
     public required ProxyBackendCredentialEnrollment Credential { get; init; }
 }
 
+/// <summary>The declared reasons an enrolment write can be rejected.</summary>
+public enum ProxyEnrollmentConflict
+{
+    DuplicateLoginKey = 0,
+    DuplicateAccountId = 1,
+    TenantMismatch = 2,
+    /// <summary>The addressed tenant-scoped proxy account does not exist.</summary>
+    AccountNotFound = 3,
+    /// <summary>The addressed tenant-scoped backend credential does not exist.</summary>
+    CredentialNotFound = 4,
+    /// <summary>An existing backend credential is absent from service or has been revoked.</summary>
+    BackendCredentialUnavailable = 5,
+}
+
+/// <summary>A safe, typed persistence rejection that contains no login or credential material.</summary>
+public sealed class ProxyEnrollmentConflictException : Exception
+{
+    public ProxyEnrollmentConflictException(ProxyEnrollmentConflict conflict)
+        : base($"The proxy enrolment was rejected: {conflict}.")
+        => Conflict = conflict;
+
+    public ProxyEnrollmentConflict Conflict { get; }
+}
+
+/// <summary>Changes whether an account can establish new proxy sessions.</summary>
+public sealed record ProxyAccountStateChange
+{
+    public required string TenantId { get; init; }
+
+    public required string AccountId { get; init; }
+
+    public required bool Enabled { get; init; }
+
+    public required DateTimeOffset UpdatedAt { get; init; }
+}
+
+/// <summary>Marks a tenant-scoped backend credential unusable without deleting its audit state.</summary>
+public sealed record ProxyBackendCredentialRevocation
+{
+    public required string TenantId { get; init; }
+
+    public required string BackendAccountId { get; init; }
+
+    public required DateTimeOffset RevokedAt { get; init; }
+}
+
+/// <summary>Replaces only a credential's protected bytes and key identifier in one atomic write.</summary>
+public sealed record ProxyBackendCredentialRewrap
+{
+    public required string TenantId { get; init; }
+
+    public required string BackendAccountId { get; init; }
+
+    public required byte[] ProtectedSecret { get; init; }
+
+    public required string ProtectionKeyId { get; init; }
+
+    public required DateTimeOffset UpdatedAt { get; init; }
+}
+
 /// <summary>
 /// Atomic persistence boundary for a proxy account and its backend credential.
 /// </summary>
@@ -78,7 +138,27 @@ public sealed record ProxyEnrollment
 /// </remarks>
 public interface IProxyEnrollmentPersistence
 {
+    /// <exception cref="ProxyEnrollmentConflictException">A declared enrolment invariant was rejected.</exception>
     ValueTask EnrolAsync(ProxyEnrollment enrollment, CancellationToken cancellationToken);
+
+    /// <summary>Atomically changes the enabled state for a tenant-scoped account.</summary>
+    ValueTask SetAccountEnabledAsync(ProxyAccountStateChange change, CancellationToken cancellationToken);
+
+    /// <summary>Atomically marks a tenant-scoped backend credential revoked.</summary>
+    ValueTask RevokeBackendCredentialAsync(
+        ProxyBackendCredentialRevocation revocation,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Atomically replaces an existing account and its active backend credential during re-enrolment.
+    /// </summary>
+    /// <exception cref="ProxyEnrollmentConflictException">The replacement violates an enrolment invariant.</exception>
+    ValueTask ReenrolAsync(ProxyEnrollment enrollment, CancellationToken cancellationToken);
+
+    /// <summary>Atomically persists a ciphertext/key-id rewrap for an active backend credential.</summary>
+    ValueTask RewrapBackendCredentialAsync(
+        ProxyBackendCredentialRewrap rewrap,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>The access-layer service shape that converts enrolment secrets into durable records.</summary>

@@ -164,6 +164,14 @@ internal sealed class ProtocolLineWriter
             Array.Clear(frame);
         }
     }
+
+    /// <summary>Copies already-staged opaque bytes without interpreting or retaining them.</summary>
+    internal async ValueTask WriteStreamAsync(Stream source, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        await source.CopyToAsync(_output, cancellationToken).ConfigureAwait(false);
+        await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
 }
 
 /// <summary>

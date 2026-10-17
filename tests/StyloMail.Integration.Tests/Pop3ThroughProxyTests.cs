@@ -31,7 +31,7 @@ public sealed class Pop3ThroughProxyTests
 
         await harness.EnrolAsync(GreenMailServer.Login, GreenMailServer.AppPassword);
 
-        await using var proxy = ProxyListener.Start((channel, token) =>
+        await using var proxy = ProxyListener.Start("tenant-alpha", (channel, token) =>
             harness.NewPop3Session().RunAsync(channel, token));
 
         using var client = new Pop3Client();
