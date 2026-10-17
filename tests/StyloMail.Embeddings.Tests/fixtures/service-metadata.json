@@ -1,0 +1,23 @@
+{
+  "model_tag": "google/embeddinggemma-2",
+  "model_revision": null,
+  "dimension": 256,
+  "native_dimension": 768,
+  "prefix": "task: classification | query: ",
+  "prefix_version": "classification/1",
+  "dtype": "bfloat16",
+  "device": "cuda:0",
+  "normalized": true,
+  "truncation_dimensions": [
+    768,
+    512,
+    256,
+    128
+  ],
+  "max_tokens": 8192,
+  "max_segments": 32,
+  "max_segment_chars": 6000,
+  "max_total_chars": 32000,
+  "contract": "embeddinggemma-2/text-only/v1",
+  "request_id": "f893969f6ec24e36964374011d63cdec"
+}

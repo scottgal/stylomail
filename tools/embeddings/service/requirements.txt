@@ -1,0 +1,25 @@
+# Runtime requirements for the embedding service.
+#
+# torch is deliberately not listed with a version here: it must come from the CUDA wheel index
+# matching the host driver, which is a property of the machine rather than of this code. The
+# provisioning script installs torch==2.6.0 from https://download.pytorch.org/whl/cu124 and
+# prints the resolved build; pin whatever that reports into the deployment record.
+#
+# The two pinned libraries are pinned because the model's own loading path changed between
+# sentence-transformers majors. An unpinned install is not a different version of this service,
+# it is a different service.
+sentence-transformers==6.1.0
+transformers==5.20.1
+fastapi
+uvicorn
+
+# Required even for text-only loading: sentence-transformers constructs the model's multimodal
+# processor, which imports PIL, before the vision and audio configs are disabled. Measured as a
+# hard ImportError on the host, not as a warning.
+pillow
+# The same loader path also imports torchvision for the video processor. Installed from the cu124
+# index pinned to torch 2.6.0 by provision.sh, not from PyPI, so torch cannot be dragged forward.
+
+# Protocol checks only (no GPU, no model). httpx is the TestClient transport.
+pytest
+httpx

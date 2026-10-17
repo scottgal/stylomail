@@ -7,6 +7,7 @@
     <Project Path="src/StyloMail.Chat/StyloMail.Chat.csproj" />
     <Project Path="src/StyloMail.Core/StyloMail.Core.csproj" />
     <Project Path="src/StyloMail.Desktop/StyloMail.Desktop.csproj" />
+    <Project Path="src/StyloMail.Embeddings/StyloMail.Embeddings.csproj" />
     <Project Path="src/StyloMail.Host/StyloMail.Host.csproj" />
     <Project Path="src/StyloMail.Jev/StyloMail.Jev.csproj" />
     <Project Path="src/StyloMail.Mime/StyloMail.Mime.csproj" />
@@ -24,6 +25,7 @@
     <Project Path="tests/StyloMail.Chat.Tests/StyloMail.Chat.Tests.csproj" />
     <Project Path="tests/StyloMail.Core.Tests/StyloMail.Core.Tests.csproj" />
     <Project Path="tests/StyloMail.Desktop.Tests/StyloMail.Desktop.Tests.csproj" />
+    <Project Path="tests/StyloMail.Embeddings.Tests/StyloMail.Embeddings.Tests.csproj" />
     <Project Path="tests/StyloMail.Host.Tests/StyloMail.Host.Tests.csproj" />
     <Project Path="tests/StyloMail.Integration.Tests/StyloMail.Integration.Tests.csproj" />
     <Project Path="tests/StyloMail.Jev.Tests/StyloMail.Jev.Tests.csproj" />
