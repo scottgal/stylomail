@@ -146,6 +146,8 @@ class ElementClassifier:
             self._probe[element] = {
                 "weights": weights,
                 "bias": float(model.get("bias", 0.0)),
+                "platt_a": float(model.get("platt_a", 1.0)),
+                "platt_b": float(model.get("platt_b", 0.0)),
                 "threshold": float(model.get("threshold", 0.5)),
             }
 
@@ -209,7 +211,11 @@ class ElementClassifier:
         if model is None:
             return _absent(element, "probe_not_trained")
         logit = float(model["weights"] @ unit) + float(model["bias"])
-        probability = 1.0 / (1.0 + math.exp(-max(min(logit, 60.0), -60.0)))
+        # Platt scaling, fitted on the calibration split. Without it this number is a logistic score
+        # and is not a probability; the transform parameters travel in the artefact so the served
+        # number and the number the metrics describe are the same one.
+        scaled = float(model["platt_a"]) * logit + float(model["platt_b"])
+        probability = 1.0 / (1.0 + math.exp(-max(min(scaled, 60.0), -60.0)))
         return {
             "element": element,
             "availability": "available",

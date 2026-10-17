@@ -1,0 +1,75 @@
+{
+  "elements": [
+    "credential_request",
+    "urgency_pressure",
+    "threat",
+    "impersonated_greeting",
+    "attachment_lure"
+  ],
+  "sources": [
+    {
+      "url": "https://monkey.org/~jose/phishing/phishing0.mbox",
+      "label": "phishing",
+      "licence": "Nazario public corpus, see the LICENSE.txt at the index"
+    },
+    {
+      "url": "https://monkey.org/~jose/phishing/phishing1.mbox",
+      "label": "phishing",
+      "licence": "Nazario public corpus, see the LICENSE.txt at the index"
+    },
+    {
+      "url": "https://monkey.org/~jose/phishing/phishing2.mbox",
+      "label": "phishing",
+      "licence": "Nazario public corpus, see the LICENSE.txt at the index"
+    },
+    {
+      "url": "https://monkey.org/~jose/phishing/phishing3.mbox",
+      "label": "phishing",
+      "licence": "Nazario public corpus, see the LICENSE.txt at the index"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham.tar.bz2",
+      "label": "ham",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham_2.tar.bz2",
+      "label": "ham",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_hard_ham.tar.bz2",
+      "label": "ham",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20021010_easy_ham.tar.bz2",
+      "label": "ham",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20021010_hard_ham.tar.bz2",
+      "label": "ham",
+      "licence": "Apache SpamAssassin public corpus"
+    }
+  ],
+  "counts": {
+    "credential_request:positive": 60,
+    "urgency_pressure:positive": 60,
+    "threat:positive": 60,
+    "impersonated_greeting:positive": 60,
+    "attachment_lure:positive": 23,
+    "credential_request:negative": 60,
+    "credential_request:negative_hard": 8,
+    "urgency_pressure:negative": 60,
+    "urgency_pressure:negative_hard": 30,
+    "threat:negative": 60,
+    "threat:negative_hard": 30,
+    "impersonated_greeting:negative": 60,
+    "impersonated_greeting:negative_hard": 7,
+    "attachment_lure:negative": 60,
+    "attachment_lure:negative_hard": 30
+  },
+  "rows": 563,
+  "note": "Weak supervision. The corpus supplies the malicious or benign label; the cue rule only selects the element a segment is evidence about. Text is redacted for structured identifiers only and is not committed."
+}

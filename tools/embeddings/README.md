@@ -182,8 +182,9 @@ would be provenance theatre.
 ### Held-out metrics: corpus/1, weak supervision
 
 Built by `ingest_corpora.py` from the Nazario phishing corpus and the Apache SpamAssassin ham
-corpora, then trained by `train_elements.py`. 563 rows: 388 train and 175 held out. Per element the
-held-out split has 8 to 22 positives and 15 to 22 negatives.
+corpora, then trained by `train_elements.py`. 563 rows. The train split is split again by a stable
+hash into fit (80 percent) and calibration (20 percent); the calibration split chooses the operating
+point, and the held-out split is read once at that point.
 
 **What the labels mean.** A Nazario message is malicious by the corpus's own label; the segment
 chosen for an element is the one carrying that element's cues. A SpamAssassin ham message is benign;
@@ -191,36 +192,44 @@ a cue-bearing ham segment is a hard negative, and the rest are easy negatives. T
 the class, the cue rule only selects which element a segment is evidence about. This is weak
 supervision, and a held-out number here is a statement about the rule as much as about the model.
 
-| element | scorer | P | R | FPR | PR-AUC | threshold | n pos/neg |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| credential_request | kNN | 1.00 | 0.23 | 0.00 | 0.99 | 0.181 | 22/22 |
-| credential_request | probe | 0.96 | 1.00 | 0.05 | 1.00 | 0.500 | 22/22 |
-| urgency_pressure | kNN | 1.00 | 0.50 | 0.00 | 1.00 | 0.189 | 20/18 |
-| urgency_pressure | probe | 1.00 | 0.95 | 0.00 | 1.00 | 0.500 | 20/18 |
-| threat | kNN | 0.90 | 1.00 | 0.11 | 1.00 | 0.000 | 19/18 |
-| threat | probe | 1.00 | 0.89 | 0.00 | 0.99 | 0.500 | 19/18 |
-| impersonated_greeting | kNN | 1.00 | 0.33 | 0.00 | 1.00 | 0.170 | 15/15 |
-| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 1.00 | 0.500 | 15/15 |
-| attachment_lure | kNN | 1.00 | 0.38 | 0.00 | 0.94 | 0.164 | 8/18 |
-| attachment_lure | probe | 0.75 | 0.75 | 0.11 | 0.85 | 0.500 | 8/18 |
+**Operating point and its budget.** Thresholds are chosen on the calibration split for a **one
+percent false-positive budget on negatives**, and applied unchanged to held-out.
 
-The PR-AUCs are high partly because the negatives include easy ham. The hard-negative counts are 7
-to 30 per element, and the benign FPR column is the one that decides usability. It is not zero
-everywhere even at this size.
+| element | scorer | P | R | FPR | n neg | hard neg | hard FPR | PR-AUC | threshold |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| credential_request | kNN | 0.88 | 1.00 | 0.14 | 22 | 4 | 0.75 | 0.99 | -0.036 |
+| credential_request | probe | 0.79 | 1.00 | 0.27 | 22 | 4 | 1.00 | 1.00 | 0.018 |
+| urgency_pressure | kNN | 0.83 | 1.00 | 0.22 | 18 | 8 | 0.38 | 0.99 | -0.031 |
+| urgency_pressure | probe | 0.80 | 1.00 | 0.28 | 18 | 8 | 0.38 | 1.00 | 0.141 |
+| threat | kNN | 0.95 | 1.00 | 0.06 | 18 | 10 | 0.00 | 1.00 | 0.000 |
+| threat | probe | 1.00 | 0.89 | 0.00 | 18 | 10 | 0.00 | 0.99 | 0.462 |
+| impersonated_greeting | kNN | 1.00 | 1.00 | 0.00 | 15 | 2 | 0.00 | 1.00 | 0.022 |
+| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 15 | 2 | 0.00 | 1.00 | 0.293 |
+| attachment_lure | kNN | 0.86 | 0.75 | 0.06 | 18 | 7 | 0.14 | 0.91 | 0.034 |
+| attachment_lure | probe | 0.78 | 0.88 | 0.11 | 18 | 7 | 0.29 | 0.87 | 0.325 |
 
-**kNN margins are not too compressed to threshold, and the threshold matters more than the ranking.**
-Held-out margins on positives have medians of +0.11 to +0.20; on negatives, -0.05 to -0.10. The full
-observed range is about -0.23 to +0.24, so the classes overlap but are ordered (PR-AUC 0.94 to 1.00).
-The thresholds in the table are the ones that maximise F1 on the TRAIN split, applied unchanged to
-held-out; they are why kNN recall is low while precision is high. A threshold near 0.10 would trade
-some precision for recall, and that choice belongs to whoever sets the operating point, not to this
-seed.
+**The one percent budget is NOT met, and at these sample sizes it cannot even be resolved.** The
+calibration negatives number 15 to 22 per element, and the hard negatives only 2 to 10. Resolving a
+one percent rate needs at least 100 negatives, so every row in this artefact is marked
+`fpr_budget_resolvable: false`, and observed held-out FPRs reach 0.28 on all negatives and 1.00 on
+the four hard negatives available for credential_request. The artefact says this rather than quoting
+the budget as satisfied.
 
-**The probe is not calibrated.** Brier is 0.10 to 0.15 and the reliability bins are badly behaved at
-both ends: the 0.28 bin contains 18 rows of which none is positive, and the 0.71 bin is 1.00
-observed. A probability threshold is therefore a policy choice, not a calibrated operating point.
-That is the honest state of the linear probe and the reason calibration is reported rather than a
-single AUC.
+**kNN margins are ordered but the classes overlap.** On held-out, positive margins have medians of
++0.11 to +0.20 and negatives -0.05 to -0.10, across a range of about -0.23 to +0.24; PR-AUC is 0.91
+to 1.00. The budget-chosen thresholds land near zero (from -0.036 to 0.034), which is why recall is
+high and precision is lower than at the earlier train-F1 thresholds. kNN can keep its own threshold;
+what it does not have yet is a negative set large enough to justify a tight operating point.
+
+**The probe is now Platt scaled, and the name matches the evidence.** The transform is fitted on the
+calibration split and stored in the artefact (`platt_a`, `platt_b`) so the served number and the
+measured number are the same one. Held-out Brier after scaling is 0.02 to 0.10 (previously 0.10 to
+0.15), and the reliability bins are consistent at the ends: the low bin predicts 0.002 to 0.044 and
+observes 0.00, the high bin predicts 0.95 to 0.99 and observes 0.83 to 1.00. The middle bins are
+sparse, with two or three rows, so the calibration claim is about the ends and says so.
+
+Between rows and across tiles, the older 0.50-threshold table is superseded by this one; its numbers
+were measured at a fixed 0.50 on an uncalibrated score and are not comparable with these.
 
 ### Tone
 

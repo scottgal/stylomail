@@ -40,7 +40,7 @@ DEFAULT_PREFIX_VERSION = "classification/1"
 # service directory so the deployed layout and the repository layout are the same thing: the first
 # version resolved one directory too high on the host and asked for /home/scott/artefacts, which is
 # a path that only looked right in the checkout.
-DEFAULT_ARTEFACT_PATH = pathlib.Path(__file__).resolve().parent / "artefacts" / "elements-seed-1.json"
+DEFAULT_ARTEFACT_PATH = pathlib.Path(__file__).resolve().parent / "artefacts" / "elements-corpus-1.json"
 
 
 class ConfigError(RuntimeError):
