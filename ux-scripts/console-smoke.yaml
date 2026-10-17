@@ -172,9 +172,41 @@ actions:
     value: "Live"
     timeout: 15000
 
+  # The initial decision arrives independently during startup. Make the
+  # connected-state capture a deliberately decision-free Host selection, so it
+  # cannot be a duplicate of the evidence capture below.
+  - type: Click
+    target: "type=Button:has-text(Host)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Host"
+    timeout: 10000
+
   - type: Screenshot
     value: "01-connected"
-    description: "The console on open: connected, senders grouped by company, live feed"
+    description: "The connected Host view: senders grouped by company and a live feed, with no decision open"
+
+  # Reopen the real decision through its ledger after clearing it above. This
+  # keeps the two captures semantically distinct while still exercising the
+  # console's shipped decision route.
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+    timeout: 15000
+
+  - type: Click
+    target: "type=Button:has-text(Open decision)"
+
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+    timeout: 10000
 
   # ---- the decision pane, over a decision the Host produced ----------------
   #

@@ -429,21 +429,33 @@
                              IsVisible="{Binding HasDecisions}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="0,4" Spacing="2">
+                                <StackPanel Margin="0,4" Spacing="2" ClipToBounds="True">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock Grid.Column="0"
                                                    Classes="rowTitle"
-                                                   Text="{Binding HeadlineReason}"
-                                                   TextWrapping="Wrap" />
+                                                   Text="{Binding ActionLabel}" />
 
-                                        <StackPanel Grid.Column="1"
-                                                    HorizontalAlignment="Right"
-                                                    Margin="8,0,0,0">
-                                            <TextBlock Classes="rowTitle" Text="{Binding ActionLabel}" />
-                                            <TextBlock Classes="rowSubtitle"
-                                                       Text="{Binding AssessedAtLabel}" />
-                                        </StackPanel>
+                                        <TextBlock Grid.Column="1"
+                                                   Classes="rowSubtitle"
+                                                   HorizontalAlignment="Right"
+                                                   Margin="8,0,0,0"
+                                                   Text="{Binding AssessedAtLabel}" />
                                     </Grid>
+
+                                    <!--
+                                        The policy reason gets a whole line of
+                                        the ledger column. Sharing it with the
+                                        action made a long honest explanation
+                                        expand through the separator into the
+                                        decision pane at 1180x720. The action
+                                        and timestamp above remain scannable;
+                                        the reason now wraps inside the row.
+                                    -->
+                                    <TextBlock Classes="rowSubtitle"
+                                               HorizontalAlignment="Stretch"
+                                               Text="{Binding HeadlineReason}"
+                                               TextTrimming="None"
+                                               TextWrapping="Wrap" />
 
                                     <!--
                                         The one line in this row with an id of

@@ -2,7 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="StyloMail.Desktop.Views.CompaniesDialog"
         Title="Companies"
-        Width="640" Height="480"
+        Width="720" Height="520"
+        MinWidth="640" MinHeight="480"
         WindowStartupLocation="CenterOwner">
 
     <DockPanel Margin="24">

@@ -435,6 +435,8 @@ The screenshots below are from the controlled local Host harness; none is
 production mailbox evidence. The Host decision frame is real Host output. The
 trend frame is explicitly a fixture, while the separate history frame shows
 three original decisions fetched from that run's local Host.
+Composite dialog captures are not acceptance evidence for layout in the owner
+window behind them; assess a ledger row only in an unobscured capture.
 
 - [Decision detail with evidence and feedback](console-state4-decision-open.png)
 - [Decision ledger with no item selected](console-state4-pane-empty.png)

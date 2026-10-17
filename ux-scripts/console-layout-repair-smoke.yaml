@@ -1,0 +1,89 @@
+name: console-layout-repair-smoke
+description: >
+  Focused 1180x720 evidence for the ledger-row wrapping, the distinct connected
+  and decision captures, and the company dialog's usable pane. This is not the
+  full console verifier: it captures only the screens changed by the layout
+  repair.
+
+default_delay: 250
+
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=pause-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Expect
+    target: "name=LiveFeedText"
+    matcher: HasText
+    value: "Live"
+    timeout: 15000
+
+  # Clear the independently loaded decision before the connected-state capture.
+  - type: Click
+    target: "type=Button:has-text(Host)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Host"
+    timeout: 10000
+
+  - type: Screenshot
+    value: "01-connected"
+    description: "Connected Host state with no decision open"
+
+  # Reopen the Host-created decision from its ledger, then capture its wrapped
+  # policy reason at the constrained desktop viewport.
+  - type: Click
+    target: "type=Button:has-text(Decisions)"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Decisions"
+    timeout: 15000
+
+  - type: Click
+    target: "type=Button:has-text(Open decision)"
+
+  - type: Expect
+    target: "name=DecisionPaneScroll"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "text='not produced'"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "02-decision-pane"
+    description: "Real Host decision after its distinct connected-state capture"
+
+  - type: Click
+    target: "type=Button:has-text(Companies)"
+
+  - type: Wait
+    value: "800"
+
+  - type: Expect
+    target: "text='Company'"
+    window_id: CompaniesDialog
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "text=Acme"
+    window_id: CompaniesDialog
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "15-companies"
+    composite: true
+    description: "Company management pane at 1180x720"
