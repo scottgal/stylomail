@@ -270,6 +270,9 @@ if [[ "$PROXY_E2E_KEEP_ALIVE_SECONDS" != <-> ]]; then
 fi
 if (( PROXY_E2E_KEEP_ALIVE_SECONDS > 0 )); then
   print -r -- "KEEP-ALIVE base-url=$PROXY_E2E_HOST_URL api-key-config=$secret_dir/curl.conf imap-port=$imap_port smtp-port=$smtp_port seconds=$PROXY_E2E_KEEP_ALIVE_SECONDS"
-  sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS"
+  # Waiting on a child lets INT/TERM reach this trapping shell immediately; foreground sleep does not.
+  sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS" &
+  keepalive_timer=$!
+  wait "$keepalive_timer"
 fi
 stop_host

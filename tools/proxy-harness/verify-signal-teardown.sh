@@ -17,6 +17,9 @@ imap_port=$(print -r -- "$line" | sed -nE 's/.* imap-port=([0-9]+).*/\1/p')
 smtp_port=$(print -r -- "$line" | sed -nE 's/.* smtp-port=([0-9]+).*/\1/p')
 kill -INT "$runner"
 wait "$runner" 2>/dev/null || true
+if kill -0 "$runner" 2>/dev/null; then
+  print -u2 -- 'Harness shell survived SIGINT.'; exit 1
+fi
 if kill -0 -- "-$host_pid" 2>/dev/null || ps -p "$host_pid" -o pid= | /usr/bin/grep -q '[0-9]'; then
   print -u2 -- 'Host process group survived SIGINT.'; exit 1
 fi
