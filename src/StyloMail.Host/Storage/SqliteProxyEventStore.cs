@@ -140,7 +140,17 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
     public ValueTask<bool> HasThreadingTelemetryAsync(string tenantId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Exists("proxy_threading_event", tenantId));
+
+        // Conversation facts now come from two producers: structural threading events and the
+        // warning tap's per-message outcomes (a submission may have an outcome without a threading
+        // row). Either one makes the stream readable; absence of both is not-produced.
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT 1 FROM proxy_threading_event WHERE tenant_id=$tenant "
+            + "UNION ALL SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant LIMIT 1;";
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        return ValueTask.FromResult(command.ExecuteScalar() is not null);
     }
 
     public ValueTask<IReadOnlyList<ProxyLiveSession>> ListLiveSessionsAsync(
@@ -262,15 +272,19 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT t.thread_token,MAX(t.reference_depth),MAX(t.occurred_at),"
-            + "GROUP_CONCAT(t.account_id,'|'),"
-            + "(SELECT x.account_id FROM proxy_threading_event x "
-            + " WHERE x.tenant_id=t.tenant_id AND x.thread_token=t.thread_token "
-            + " ORDER BY x.occurred_at DESC,x.id DESC LIMIT 1) "
-            + "FROM proxy_threading_event t "
-            + "WHERE t.tenant_id=$tenant AND t.occurred_at >= $from AND t.occurred_at < $to "
-            + "AND ($after IS NULL OR t.thread_token > $after) "
-            + "GROUP BY t.thread_token ORDER BY t.thread_token LIMIT $limit;";
+            "SELECT u.thread_token,MAX(u.reference_depth),MAX(u.occurred_at),"
+            + "MAX(u.account_id),GROUP_CONCAT(u.account_id,'|') "
+            + "FROM ("
+            + "SELECT thread_token,reference_depth,occurred_at,account_id "
+            + "FROM proxy_threading_event WHERE tenant_id=$tenant "
+            + "AND occurred_at >= $from AND occurred_at < $to "
+            + "UNION ALL "
+            + "SELECT thread_token,NULL,observed_at,account_id "
+            + "FROM proxy_warning_outcome WHERE tenant_id=$tenant "
+            + "AND observed_at >= $from AND observed_at < $to"
+            + ") u "
+            + "WHERE ($after IS NULL OR u.thread_token > $after) "
+            + "GROUP BY u.thread_token ORDER BY u.thread_token LIMIT $limit;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$from", Timestamp(from));
         command.Parameters.AddWithValue("$to", Timestamp(to));
@@ -281,7 +295,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         var rows = new List<ProxyConversationRow>();
         while (reader.Read())
         {
-            var participants = (reader.IsDBNull(3) ? string.Empty : reader.GetString(3))
+            var participants = (reader.IsDBNull(4) ? string.Empty : reader.GetString(4))
                 .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
@@ -289,9 +303,9 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             rows.Add(new ProxyConversationRow
             {
                 ThreadToken = reader.GetString(0),
-                ReferenceDepth = reader.GetInt32(1),
+                ReferenceDepth = reader.IsDBNull(1) ? null : reader.GetInt32(1),
                 LastActivityAt = ParseTimestamp(reader.GetString(2)),
-                AccountId = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                AccountId = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                 ParticipantTokens = participants,
                 Availability = "available",
             });
@@ -310,7 +324,10 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT 1 FROM proxy_threading_event WHERE tenant_id=$tenant AND thread_token=$thread LIMIT 1;";
+            "SELECT 1 FROM proxy_threading_event WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "UNION ALL "
+            + "SELECT 1 FROM proxy_warning_outcome WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "LIMIT 1;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$thread", threadToken);
         return ValueTask.FromResult(command.ExecuteScalar() is not null);
@@ -362,14 +379,23 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         // analysis ran; a clean message is Available with zero markers, while a message with no
         // outcome at all is NotProduced with the no-analyser reason.
         command.CommandText =
-            "SELECT t.occurred_at,t.message_token,o.availability,o.availability_reason "
-            + "FROM proxy_threading_event t "
-            + "LEFT JOIN proxy_warning_outcome o "
-            + "ON o.tenant_id=t.tenant_id AND o.message_token=t.message_token "
-            + "AND o.direction=CASE WHEN t.protocol='Smtp' THEN 'Submission' ELSE 'Retrieval' END "
-            + "WHERE t.tenant_id=$tenant AND t.thread_token=$thread "
-            + "AND t.occurred_at >= $from AND t.occurred_at < $to "
-            + "ORDER BY t.occurred_at,t.id;";
+            "SELECT u.message_token,MAX(u.occurred_at),"
+            + "(SELECT o.availability FROM proxy_warning_outcome o "
+            + " WHERE o.tenant_id=$tenant AND o.message_token=u.message_token "
+            + " ORDER BY o.observed_at DESC LIMIT 1),"
+            + "(SELECT o.availability_reason FROM proxy_warning_outcome o "
+            + " WHERE o.tenant_id=$tenant AND o.message_token=u.message_token "
+            + " ORDER BY o.observed_at DESC LIMIT 1) "
+            + "FROM ("
+            + "SELECT message_token,occurred_at FROM proxy_threading_event "
+            + "WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "AND occurred_at >= $from AND occurred_at < $to "
+            + "UNION ALL "
+            + "SELECT message_token,observed_at FROM proxy_warning_outcome "
+            + "WHERE tenant_id=$tenant AND thread_token=$thread "
+            + "AND observed_at >= $from AND observed_at < $to"
+            + ") u "
+            + "GROUP BY u.message_token ORDER BY MAX(u.occurred_at),u.message_token;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$thread", threadToken);
         command.Parameters.AddWithValue("$from", Timestamp(from));
@@ -379,7 +405,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         var points = new List<ProxyThreadPoint>();
         while (reader.Read())
         {
-            var message = reader.GetString(1);
+            var message = reader.GetString(0);
             var storedAvailability = reader.IsDBNull(2) ? null : reader.GetString(2);
             var storedReason = reader.IsDBNull(3) ? null : reader.GetString(3);
             var available = string.Equals(
@@ -392,7 +418,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
 
             points.Add(new ProxyThreadPoint
             {
-                ObservedAt = ParseTimestamp(reader.GetString(0)),
+                ObservedAt = ParseTimestamp(reader.GetString(1)),
                 TurnToken = message,
                 // Tone remains not produced: no local semantic provider is linked to this tap.
                 ToneScore = null,

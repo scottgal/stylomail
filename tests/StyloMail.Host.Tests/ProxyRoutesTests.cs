@@ -25,6 +25,7 @@ public sealed class ProxyRoutesTests
     private static readonly string[] ExpectedParticipantTokens = ["pa_account"];
     private static readonly string[] ExpectedWarningMarkers = ["DisplayNameMismatch"];
     private static readonly string[] ExpectedFindingIds = ["finding-1"];
+    private static readonly string[] ExpectedWarningMarkersForSubmission = ["AuthenticationFailed"];
 
     // ---------------------------------------------------------------------------------------------
     // Privilege split and tenant scope
@@ -506,6 +507,62 @@ public sealed class ProxyRoutesTests
 
         // Tone is a separate, unproduced measurement on every point.
         Assert.All(signals.Points, point => Assert.Null(point.ToneScore));
+    }
+
+    [Fact]
+    public async Task A_submission_outcome_without_a_threading_event_still_appears_as_a_measured_point()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var warnings = host.Services.GetRequiredService<IProxyWarningEventSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+        await warnings.RecordOutcomeAsync(
+            new ProxyWarningAnalysisOutcome
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Submission,
+                MessageToken = "m-submission",
+                ThreadToken = "thread-submissionA",
+                ObservedAt = at,
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = ProxyWarningAvailabilityReason.None,
+                MarkerCount = 1,
+            },
+            CancellationToken.None);
+
+        await warnings.RecordMarkerAsync(
+            new ProxyDeterministicWarningEvent
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Submission,
+                MessageToken = "m-submission",
+                ThreadToken = "thread-submissionA",
+                MarkerKind = ProxyWarningMarkerKind.AuthenticationFailed,
+                FindingId = "deterministic.trusted_authentication_failure:0",
+                ObservedAt = at,
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = ProxyWarningAvailabilityReason.None,
+            },
+            CancellationToken.None);
+
+        var conversations = await ReadAsync<ProxyConversationsResponse>(
+            await reviewer.GetAsync("/v1/proxy/conversations?window=last_24_hours"));
+        var conversation = Assert.Single(conversations.Conversations);
+        Assert.Equal("thread-submissionA", conversation.ThreadToken);
+        // Depth was not recorded by the warning outcome, so it is unknown rather than 1.
+        Assert.Null(conversation.ReferenceDepth);
+        Assert.Equal("available", conversation.Availability);
+
+        var signals = await ReadAsync<ProxyConversationSignalsResponse>(
+            await reviewer.GetAsync("/v1/proxy/conversations/thread-submissionA/signals?window=last_24_hours"));
+        var point = Assert.Single(signals.Points);
+        Assert.Equal("m-submission", point.TurnToken);
+        Assert.Equal("available", point.Availability);
+        Assert.Equal(1, point.MarkerCount);
+        Assert.Equal(ExpectedWarningMarkersForSubmission, point.WarningMarkers);
     }
 
     private static ProxyWarningAnalysisOutcome Outcome(

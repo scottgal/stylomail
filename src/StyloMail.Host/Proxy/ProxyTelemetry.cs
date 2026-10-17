@@ -51,7 +51,11 @@ public sealed record ProxyConversationRow
 
     public required IReadOnlyList<string> ParticipantTokens { get; init; }
 
-    public required int ReferenceDepth { get; init; }
+    /// <summary>
+    /// Structural depth when a threading event supplied one; null when only a warning outcome
+    /// exists and depth was not recorded. Never fabricated as 1.
+    /// </summary>
+    public required int? ReferenceDepth { get; init; }
 
     public required DateTimeOffset LastActivityAt { get; init; }
 
@@ -100,7 +104,7 @@ public interface IProxyTelemetryReader
     /// <summary>Whether any listener event has ever been recorded for this tenant.</summary>
     ValueTask<bool> HasListenerTelemetryAsync(string tenantId, CancellationToken cancellationToken);
 
-    /// <summary>Whether any structural threading event has ever been recorded for this tenant.</summary>
+    /// <summary>Whether any structural threading fact or warning outcome has ever been recorded.</summary>
     ValueTask<bool> HasThreadingTelemetryAsync(string tenantId, CancellationToken cancellationToken);
 
     ValueTask<IReadOnlyList<ProxyLiveSession>> ListLiveSessionsAsync(

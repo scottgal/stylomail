@@ -80,6 +80,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     private readonly IProxyCertificateResolver _certificates;
     private readonly IProxyListenerEventSink _events;
     private readonly IProxySessionAuthenticator _sessionAuthenticator;
+    private readonly IProxyWarningEventSink _warningSink;
+    private readonly IProxyWarningAnalyzer _warningAnalyzer;
     private readonly ILogger<AccessProxyListenerHandleFactory> _logger;
 
     public AccessProxyListenerHandleFactory(
@@ -94,6 +96,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         IProxyCertificateResolver certificates,
         IProxyListenerEventSink events,
         IProxySessionAuthenticator sessionAuthenticator,
+        IProxyWarningEventSink warningSink,
+        IProxyWarningAnalyzer warningAnalyzer,
         ILogger<AccessProxyListenerHandleFactory> logger)
     {
         _services = services;
@@ -107,6 +111,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         _certificates = certificates;
         _events = events;
         _sessionAuthenticator = sessionAuthenticator;
+        _warningSink = warningSink;
+        _warningAnalyzer = warningAnalyzer;
         _logger = logger;
     }
 
@@ -186,6 +192,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             Bounds = _bounds,
             TimeProvider = _clock,
             ContextSink = new ProxySessionContextSink(_sessionAuthenticator, _logger),
+            WarningSink = _warningSink,
+            WarningAnalyzer = _warningAnalyzer,
             Tls = tls,
             SubmissionAssessment = assessment,
             SubmissionStager = stager,
@@ -215,7 +223,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         private readonly TimeProvider _clock;
         private readonly ILogger _logger;
         private TcpAccessProxyListener? _listener;
-        private bool _started;
+        private int? _boundPort;
 
         public AccessProxyListenerHandle(
             ProxyListenerOptions options,
@@ -233,7 +241,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             _logger = logger;
         }
 
-        public int? BoundPort => _started ? _listener?.BoundPort : null;
+        public int? BoundPort => _boundPort;
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -250,7 +258,10 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         private async Task StartCoreAsync(CancellationToken cancellationToken)
         {
             await _listener!.StartAsync(cancellationToken).ConfigureAwait(false);
-            _started = true;
+            // Cache the actual port while the socket is bound. The access listener's BoundPort
+            // reads its local endpoint and throws once stopped, so a management read during or
+            // after a drain must not call it.
+            _boundPort = _listener.BoundPort;
         }
 
         private async Task<SessionOutcome> RunSessionAsync(

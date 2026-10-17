@@ -254,7 +254,7 @@ public sealed record ProxyConversationResponse
 
     public required IReadOnlyList<string> ParticipantTokens { get; init; }
 
-    public required int ReferenceDepth { get; init; }
+    public required int? ReferenceDepth { get; init; }
 
     public required DateTimeOffset LastActivityAt { get; init; }
 

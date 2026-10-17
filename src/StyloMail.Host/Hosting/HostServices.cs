@@ -9,6 +9,7 @@ using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.AccessProxy.Threading;
 using StyloMail.Cascade;
 using StyloMail.Core;
 using StyloMail.Host.Assessors;
@@ -98,6 +99,13 @@ public static class HostServices
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IProxyWarningEventSink>(
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IThreadTokenDeriver>(ProxyThreadTokens.Create);
+        services.AddSingleton(sp => new ThreadingHeaderExtractor(
+            sp.GetRequiredService<IThreadTokenDeriver>()));
+        services.AddSingleton<IProxyWarningAnalyzer>(sp => new HostProxyWarningAnalyzer(
+            sp.GetService<IMimeMessageAnalyzer>(),
+            sp.GetRequiredService<ThreadingHeaderExtractor>(),
+            sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<AccessProxyBounds>();
         services.AddSingleton<SessionLimiter>();
         services.AddSingleton<IBackendCredentialProvider, AppPasswordCredentialProvider>();
@@ -1018,6 +1026,10 @@ public static class HostServices
         {
             _ = services.GetRequiredService<IProxyLoginKeyDeriver>();
             _ = services.GetRequiredService<ISecretKeyRing>().CurrentKeyId;
+
+            // A warning tap without an analyser would store fabricated clean outcomes. Resolve it
+            // here so an enabled deployment fails at startup instead of emitting empties.
+            _ = services.GetRequiredService<IProxyWarningAnalyzer>();
 
             // A configured backend trust anchor is loaded and validated here, so a missing, empty
             // or expired CA file stops the host instead of falling back to the public roots.
