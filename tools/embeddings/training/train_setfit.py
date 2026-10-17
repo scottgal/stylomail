@@ -43,7 +43,7 @@ def calibration_set(rows: list[dict]) -> set[str]:
     with 23 positives holding only 2 in calibration, which the trainer rightly refused.
     """
     chosen: set[str] = set()
-    for element in VOCABULARY:
+    for element in ELEMENTS:
         for label in (0, 1):
             group = sorted(
                 (row for row in rows
