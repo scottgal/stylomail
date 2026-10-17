@@ -12,7 +12,7 @@
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
     <StackPanel Grid.Row="0" Spacing="4">
       <TextBlock Classes="paneTitle" Text="Thread signals" />
-      <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ThreadLabel}" />
+      <TextBlock x:Name="ThreadLabelText" Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ThreadLabel}" />
       <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ProvenanceLine}" />
       <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding StatusLabel}" />
     </StackPanel>

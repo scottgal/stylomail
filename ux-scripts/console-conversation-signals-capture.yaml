@@ -21,9 +21,10 @@ actions:
     window_id: ConversationsDialog
     matcher: IsVisible
   - type: Expect
-    target: "text='No thread selected'"
+    target: "name=ThreadLabelText"
     window_id: ConversationsDialog
-    matcher: Not.IsVisible
+    matcher: ContainsText
+    value: "Thread "
   - type: Screenshot
     value: "M22-thread-signals"
     composite: true

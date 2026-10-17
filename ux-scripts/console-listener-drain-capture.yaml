@@ -1,0 +1,30 @@
+name: console-listener-drain-capture
+description: Disables one runtime listener through the drain-aware console control and captures its observed drain state.
+default_delay: 400
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Proxy management)"
+  - type: Expect
+    target: "text='Listeners'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Click
+    target: "text='Disable (drain)'"
+    window_id: ProxyManagementDialog
+  - type: Wait
+    value: "1000"
+  - type: Expect
+    target: "text=Draining"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+    timeout: 10000
+  - type: Screenshot
+    value: "M10-listener-draining"
+    composite: true
+    description: "A listener in drain mode: no new sessions while connected sessions finish"
