@@ -88,9 +88,28 @@ public sealed class SmtpSubmissionTests
         }
     }
 
-    private static SmtpAccessProxySession NewSession(ProxyHarness h, IBackendConnector backend, IProxySubmissionAssessment assessment, IEphemeralSubmissionStager stager)
+    [Fact]
+    public async Task Warning_tap_records_clean_and_marked_submissions_once_each()
+    {
+        foreach (var findings in new[] { Array.Empty<ProxyWarningFinding>(), new[] { Finding(ProxyWarningMarkerKind.LinkDomainMismatch), Finding(ProxyWarningMarkerKind.DisplayNameMismatch) } })
+        {
+            var h = new ProxyHarness(); h.AddAccount();
+            var sink = new CapturingWarningSink();
+            var session = NewSession(h, new ScriptedSmtpConnector(), new AllowAssessment(), new InMemoryEphemeralSubmissionStager(), sink, new StaticWarningAnalyzer(findings));
+            var client = await AuthenticateAsync(session);
+            await client.Pipe.SendAsync("MAIL FROM:<a@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+            await client.Pipe.SendAsync("RCPT TO:<b@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+            await client.Pipe.SendAsync("DATA\r\nbody\r\n.\r\n"); await client.Pipe.ReadLineAsync(); await client.Pipe.ReadLineAsync();
+            Assert.Single(sink.Outcomes);
+            Assert.Equal(findings.Length, sink.Outcomes[0].MarkerCount);
+            Assert.Equal(findings.Length, sink.Markers.Count);
+            await client.Pipe.ClosePeerWriteAsync();
+        }
+    }
+
+    private static SmtpAccessProxySession NewSession(ProxyHarness h, IBackendConnector backend, IProxySubmissionAssessment assessment, IEphemeralSubmissionStager stager, IProxyWarningEventSink? warningSink = null, IProxyWarningAnalyzer? warningAnalyzer = null)
         => new(ProxyHarness.TenantId, h.AccountStore, h.PasswordHasher, backend, h.Limiter, h.Bounds, h.Clock, assessment, stager,
-            warningSink: new WarningSink(), warningAnalyzer: new WarningAnalyzer());
+            warningSink: warningSink ?? new WarningSink(), warningAnalyzer: warningAnalyzer ?? new WarningAnalyzer());
 
     private static async Task<StartTlsTestChannel> AuthenticateAsync(SmtpAccessProxySession session)
     {
@@ -117,4 +136,7 @@ public sealed class SmtpSubmissionTests
     }
     private sealed class WarningSink : IProxyWarningEventSink { public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) => ValueTask.CompletedTask; public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [] }); }
+    private sealed class CapturingWarningSink : IProxyWarningEventSink { public List<ProxyWarningAnalysisOutcome> Outcomes { get; } = []; public List<ProxyDeterministicWarningEvent> Markers { get; } = []; public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) { Outcomes.Add(o); return ValueTask.CompletedTask; } public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) { Markers.Add(m); return ValueTask.CompletedTask; } }
+    private sealed class StaticWarningAnalyzer(IReadOnlyList<ProxyWarningFinding> findings) : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = findings }); }
+    private static ProxyWarningFinding Finding(ProxyWarningMarkerKind kind) => new() { MarkerKind = kind, FindingId = kind.ToString() };
 }
