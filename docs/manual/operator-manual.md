@@ -607,14 +607,35 @@ segment was dropped. The element series groups scores by turn token and ordinal,
 not-produced entries for one segment sit in one list; it does not invent an entry the Host did not
 record.
 
+#### Both directions
+
+Element points have been recorded in both directions, in separate runs. A submission run recorded
+five points, one for each element, all `prototype_knn/corpus-1` and all available:
+`.styloagent/artifacts/proxy-e2e-20261017T231711Z`. A retrieval run recorded five `Retrieval` points
+from a real IMAP body fetch, one segment, all available under the same scorer:
+`.styloagent/artifacts/proxy-e2e-20261017T233813Z`, whose `retrieval-analysis.json` reports
+`segmentCount: 1` and `elementPointCount: 5`. The two were separate runs, not one message in both
+directions, and this manual does not claim a single combined run.
+
+#### Calibration and the false-positive budget
+
+The scorer aims at a one percent false-positive rate among scorers whose recall is at least 0.85.
+That budget is **not met and cannot yet be resolved**. Held-out negatives number 51 to 70 per
+element, and resolving a one percent rate needs at least 100, so the scoring artefact marks every
+element `fpr_budget_resolvable: false`. Two elements, `threat` and `attachment_lure`, do not clear
+the 0.85 recall floor, so their operating scorer is the fallback arm. An element score is evidence,
+not a calibrated alarm. A quoted false-positive rate must name the element and its hard-negative
+count.
+
 #### Tone is a separate series
 
 The element response carries a sibling `Tone` block with its own vocabulary (`goemotions/1`), its
 own model tag, its own availability and reason, and its top labels. **Tone is not produced in this
-build**: its reason is `tone_model_unavailable` and its model tag is null, because no tone model has
-been benchmarked and a placeholder tag would invite a comparison. A tone label is not an element
-score, and the two series must not be combined or drawn on one axis. M21 is the tone and warning
-figure; M26 is the element figure, and they stay distinct.
+build**: its reason is `tone_model_unavailable` and its model tag is null, because no tone model is
+served on this deployment. A placeholder tag would invite a comparison against a model that is not
+producing the series. A tone label is not an element score, and the two series must not be combined
+or drawn on one axis. M21 is the tone and warning figure; M26 is the element figure, and they stay
+distinct.
 
 #### Privacy
 
