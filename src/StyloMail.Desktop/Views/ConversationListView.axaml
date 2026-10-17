@@ -35,6 +35,7 @@
               <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
               <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding LastActivityLabel}" />
               <TextBlock Classes="signalReason" TextWrapping="Wrap" Text="{Binding AvailabilityDetail}" />
+              <Button Classes="rowButton" Content="Open signals" Click="OnOpenSignalsClick" />
             </StackPanel>
           </Border>
         </DataTemplate>

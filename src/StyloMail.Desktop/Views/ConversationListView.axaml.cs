@@ -30,4 +30,12 @@ public partial class ConversationListView : UserControl
             await model.LoadAsync(append: true);
         }
     }
+
+    private void OnOpenSignalsClick(object? sender, RoutedEventArgs e)
+    {
+        if (Model is { } model && sender is Control { DataContext: ProxyConversationRowView row })
+        {
+            model.SelectedConversation = row;
+        }
+    }
 }

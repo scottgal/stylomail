@@ -16,6 +16,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 base="${CONSOLE_EXTERNAL_HOST_URL:-}"
 key_file="${CONSOLE_EXTERNAL_API_KEY_FILE:-}"
+build_id_file="${CONSOLE_EXTERNAL_HOST_BUILD_ID_FILE:-}"
 script="${CONSOLE_EXTERNAL_SCRIPT:-ux-scripts/console-smoke.yaml}"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 output="${CONSOLE_EXTERNAL_OUTPUT:-$REPO/ux-results/console-external-host/$run_id}"
@@ -27,6 +28,10 @@ esac
 
 if [[ -z "$key_file" || ! -f "$key_file" || ! -r "$key_file" ]]; then
     echo "CONSOLE_EXTERNAL_API_KEY_FILE must name a readable regular file." >&2
+    exit 2
+fi
+if [[ -z "$build_id_file" || ! -f "$build_id_file" || ! -r "$build_id_file" ]]; then
+    echo "CONSOLE_EXTERNAL_HOST_BUILD_ID_FILE must name the Host host-build.id file." >&2
     exit 2
 fi
 
@@ -80,7 +85,8 @@ if [[ ! -f "$output/result.json" ]]; then
 fi
 if [[ "$status" -ne 0 ]]; then exit "$status"; fi
 
-python3 - "$output/result.json" <<'PYEOF'
+python3 - "$output/result.json" "$build_id_file" <<'PYEOF'
+import hashlib
 import json
 import sys
 
@@ -89,6 +95,22 @@ with open(sys.argv[1], encoding="utf-8") as source:
 if result.get("success") is not True:
     print("External-Host capture reported failed actions; see the result artifact.", file=sys.stderr)
     raise SystemExit(1)
+host_build_id = open(sys.argv[2], encoding="utf-8").read().strip()
+if not host_build_id:
+    print("The supplied host-build.id is empty.", file=sys.stderr)
+    raise SystemExit(1)
+paths = [item.get("screenshotPath") for item in result.get("actionResults", []) if item.get("screenshotPath")]
+hashes = []
+for path in paths:
+    with open(path, "rb") as image:
+        hashes.append(hashlib.sha256(image.read()).hexdigest())
+if any(left == right for left, right in zip(hashes, hashes[1:])):
+    print("Adjacent screenshot frames are byte-identical; refusing duplicate evidence.", file=sys.stderr)
+    raise SystemExit(1)
+result["hostBuildId"] = host_build_id
+with open(sys.argv[1], "w", encoding="utf-8") as destination:
+    json.dump(result, destination, indent=2)
+    destination.write("\n")
 print("External-Host capture verdict: passed.")
 PYEOF
 

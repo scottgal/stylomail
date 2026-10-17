@@ -1,0 +1,26 @@
+name: console-sessions-capture
+description: Captures only the below-fold live-session rows from an external Host.
+default_delay: 300
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Proxy management)"
+  - type: Expect
+    target: "name=ProxyManagementScroll"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Scroll
+    target: "name=ProxyManagementScroll"
+    window_id: ProxyManagementDialog
+    value: "ScrollToEnd"
+  - type: Wait
+    value: "300"
+  - type: Screenshot
+    value: "M09-live-sessions"
+    composite: true
+    description: "Live IMAP and SMTP session rows after scrolling the management dialog"
