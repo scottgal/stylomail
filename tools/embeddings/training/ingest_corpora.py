@@ -72,6 +72,18 @@ CUES = {
     ],
 }
 
+# Topical terms used to find HARD negatives in ham: benign mail that talks about the same subject as
+# an element without asking for anything. This is what makes the negative set hard, and it is also
+# how the count grows without inventing rows: SpamAssassin ham contains real password-reset
+# confirmations, invoices, security notices and urgent-but-legitimate business mail.
+TOPICS = {
+    "credential_request": r"\b(password|credentials|login|log in|sign in|account|verify|verification|reset|security|two factor|2fa|pin)\b",
+    "urgency_pressure": r"\b(urgent|immediately|today|deadline|expires?|expiring|final|reminder|asap|time sensitive|last day)\b",
+    "threat": r"\b(legal|lawyer|attorney|court|police|claim|fine|penalty|compliance|action|dispute|debt)\b",
+    "impersonated_greeting": r"\b(dear customer|dear client|dear member|support team|customer service|security team|account team|bank|official|notification)\b",
+    "attachment_lure": r"\b(attached|attachment|invoice|statement|receipt|document|pdf|file|enclosed|purchase order)\b",
+}
+
 NAZARIO = [
     "https://monkey.org/~jose/phishing/phishing0.mbox",
     "https://monkey.org/~jose/phishing/phishing1.mbox",
@@ -88,6 +100,7 @@ SPAMASSASSIN = [
 ]
 
 TARGET_PER_ELEMENT = 60
+HARD_NEGATIVE_TARGET = 55
 MAX_SEGMENTS = 32
 MAX_SEGMENT_CHARS = 6000
 
@@ -267,9 +280,14 @@ def main() -> int:
         provenance["sources"].append({"url": url, "label": "ham", "licence": "Apache SpamAssassin public corpus"})
 
     for element in ELEMENTS:
-        hard = [(segment, hits) for segment, hits in ham_segments if hits[element] > 0]
-        easy = [(segment, hits) for segment, hits in ham_segments if hits[element] == 0]
-        chosen_hard = choose(hard, used, TARGET_PER_ELEMENT // 2)
+        topic = re.compile(TOPICS[element], re.IGNORECASE)
+        hard = [(segment, hits) for segment, hits in ham_segments
+                if hits[element] > 0 or topic.search(segment)]
+        # Deterministic order: cue hits first, then the digest, so a rerun picks the same rows.
+        hard.sort(key=lambda item: (-item[1][element], digest(item[0])))
+        easy = [(segment, hits) for segment, hits in ham_segments
+                if hits[element] == 0 and not topic.search(segment)]
+        chosen_hard = choose(hard, used, HARD_NEGATIVE_TARGET)
         chosen_easy = choose(easy, used, TARGET_PER_ELEMENT - len(chosen_hard))
         for segment, hits in chosen_hard + chosen_easy:
             rows.append({

@@ -197,29 +197,35 @@ percent false-positive budget on negatives**, and applied unchanged to held-out.
 
 | element | scorer | P | R | FPR | n neg | hard neg | hard FPR | PR-AUC | threshold |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| credential_request | kNN | 0.88 | 1.00 | 0.14 | 22 | 4 | 0.75 | 0.99 | -0.036 |
-| credential_request | probe | 0.79 | 1.00 | 0.27 | 22 | 4 | 1.00 | 1.00 | 0.018 |
-| urgency_pressure | kNN | 0.83 | 1.00 | 0.22 | 18 | 8 | 0.38 | 0.99 | -0.031 |
-| urgency_pressure | probe | 0.80 | 1.00 | 0.28 | 18 | 8 | 0.38 | 1.00 | 0.141 |
-| threat | kNN | 0.95 | 1.00 | 0.06 | 18 | 10 | 0.00 | 1.00 | 0.000 |
-| threat | probe | 1.00 | 0.89 | 0.00 | 18 | 10 | 0.00 | 0.99 | 0.462 |
-| impersonated_greeting | kNN | 1.00 | 1.00 | 0.00 | 15 | 2 | 0.00 | 1.00 | 0.022 |
-| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 15 | 2 | 0.00 | 1.00 | 0.293 |
-| attachment_lure | kNN | 0.86 | 0.75 | 0.06 | 18 | 7 | 0.14 | 0.91 | 0.034 |
-| attachment_lure | probe | 0.78 | 0.88 | 0.11 | 18 | 7 | 0.29 | 0.87 | 0.325 |
+| credential_request | kNN | 1.00 | 0.91 | 0.00 | 22 | 4 | 0.00 | 0.98 | 0.030 |
+| credential_request | probe | 0.96 | 1.00 | 0.05 | 22 | 4 | 0.25 | 1.00 | 0.059 |
+| urgency_pressure | kNN | 1.00 | 0.90 | 0.00 | 15 | 12 | 0.00 | 1.00 | -0.011 |
+| urgency_pressure | probe | 0.87 | 1.00 | 0.20 | 15 | 12 | 0.25 | 1.00 | 0.330 |
+| threat | kNN | 0.95 | 0.95 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.014 |
+| threat | probe | 0.95 | 0.95 | 0.04 | 28 | 27 | 0.00 | 0.99 | 0.290 |
+| impersonated_greeting | kNN | 0.94 | 1.00 | 0.05 | 21 | 2 | 0.50 | 1.00 | 0.016 |
+| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 21 | 2 | 0.00 | 1.00 | 0.118 |
+| attachment_lure | kNN | 0.73 | 1.00 | 0.21 | 14 | 12 | 0.17 | 0.95 | -0.013 |
+| attachment_lure | probe | 0.58 | 0.88 | 0.36 | 14 | 12 | 0.33 | 0.91 | 0.291 |
+
+The negative set was grown from the existing ham corpora by selecting benign segments that are
+about the same subject as each element (`TOPICS` in `ingest_corpora.py`), which is what makes them
+hard rather than random ham: password resets, invoices, security notices and urgent-but-legitimate
+business mail that ask for nothing. Each element now has 55 hard negatives in the full corpus, but
+the held-out split only sees 2 to 27 of them, which is the number in the table.
 
 **The one percent budget is NOT met, and at these sample sizes it cannot even be resolved.** The
-calibration negatives number 15 to 22 per element, and the hard negatives only 2 to 10. Resolving a
+calibration negatives number 15 to 28 per element, and the held-out hard negatives 2 to 27. Resolving a
 one percent rate needs at least 100 negatives, so every row in this artefact is marked
 `fpr_budget_resolvable: false`, and observed held-out FPRs reach 0.28 on all negatives and 1.00 on
 the four hard negatives available for credential_request. The artefact says this rather than quoting
 the budget as satisfied.
 
-**kNN margins are ordered but the classes overlap.** On held-out, positive margins have medians of
-+0.11 to +0.20 and negatives -0.05 to -0.10, across a range of about -0.23 to +0.24; PR-AUC is 0.91
-to 1.00. The budget-chosen thresholds land near zero (from -0.036 to 0.034), which is why recall is
-high and precision is lower than at the earlier train-F1 thresholds. kNN can keep its own threshold;
-what it does not have yet is a negative set large enough to justify a tight operating point.
+**kNN margins are ordered but the classes overlap.** On held-out, PR-AUC is 0.95 to 1.00 and the
+budget-chosen thresholds land near zero (from -0.013 to 0.030), which is why recall is high. kNN can
+keep its own threshold; what it does not have yet is a negative set large enough to justify a tight
+operating point. `attachment_lure` is the weak element on both scorers (precision 0.73 and 0.58,
+FPR 0.21 and 0.36) and is reported as weak rather than averaged away.
 
 **The probe is now Platt scaled, and the name matches the evidence.** The transform is fitted on the
 calibration split and stored in the artefact (`platt_a`, `platt_b`) so the served number and the
