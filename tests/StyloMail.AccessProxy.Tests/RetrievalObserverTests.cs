@@ -1,7 +1,9 @@
 using System.Text;
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.AccessProxy.Submission;
 using StyloMail.AccessProxy.Tests.Support;
+using StyloMail.Embeddings;
 
 namespace StyloMail.AccessProxy.Tests;
 
@@ -207,11 +209,31 @@ public sealed class RetrievalObserverTests
     }
 
     [Fact]
+    public async Task Complete_fetch_literal_emits_retrieval_element_points_after_its_warning_outcome()
+    {
+        var warningSink = new CapturingWarningSink();
+        var elementSink = new CapturingElementSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(warningSink, new StaticWarningAnalyzer(), TimeProvider.System,
+            elementOrchestrator: new ProxyElementOrchestrator(new CompleteElementClassifier(), elementSink));
+        await using var assembler = factory.Create("tenant", "account");
+
+        FeedFetchLiteral(assembler, "Subject: clean\r\n\r\nbody", splitAt: 7);
+
+        await assembler.DisposeAsync();
+        Assert.Single(warningSink.Outcomes);
+        Assert.Single(elementSink.Outcomes);
+        Assert.NotEmpty(elementSink.Points);
+        Assert.All(elementSink.Points, point => Assert.Equal(MessageTrafficKind.Retrieval, point.TrafficKind));
+    }
+
+    [Fact]
     public async Task Oversized_fetch_literal_records_unreadable_and_never_available()
     {
         var sink = new CapturingWarningSink();
+        var elementSink = new CapturingElementSink();
         var factory = new ProxyRetrievalWarningAssemblerFactory(sink, new StaticWarningAnalyzer(), TimeProvider.System,
-            new ProxyRetrievalWarningAssemblerOptions { MaximumMessageBytes = 4, MaximumSessionBufferedBytes = 128 });
+            new ProxyRetrievalWarningAssemblerOptions { MaximumMessageBytes = 4, MaximumSessionBufferedBytes = 128 },
+            new ProxyElementOrchestrator(new CompleteElementClassifier(), elementSink));
         await using var assembler = factory.Create("tenant", "account");
 
         FeedFetchLiteral(assembler, "12345", splitAt: 2);
@@ -221,6 +243,7 @@ public sealed class RetrievalObserverTests
         Assert.Equal(ProxyWarningAvailability.NotProduced, outcome.Availability);
         Assert.Equal(ProxyWarningAvailabilityReason.UnreadableMessage, outcome.AvailabilityReason);
         Assert.Empty(sink.Markers);
+        Assert.Empty(elementSink.Points);
     }
 
     [Fact]
@@ -301,6 +324,33 @@ public sealed class RetrievalObserverTests
         Assert.Equal(SessionOutcome.Relayed, await run);
     }
 
+    [Fact]
+    public async Task Throwing_retrieval_element_sink_cannot_drop_the_fetch_or_session()
+    {
+        var harness = new ProxyHarness();
+        await harness.EnrolAppPasswordAccountAsync();
+        var warningSink = new CapturingWarningSink();
+        var elementSink = new ThrowingElementSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(warningSink, new StaticWarningAnalyzer(), harness.Clock,
+            elementOrchestrator: new ProxyElementOrchestrator(new CompleteElementClassifier(), elementSink));
+        var client = new PipeDuplex("client");
+        var run = harness.NewImapSession(retrievalAssemblerFactory: factory).RunAsync(client, CancellationToken.None);
+
+        await client.ReadLineAsync();
+        await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
+        await client.ReadLineAsync();
+        var literal = Encoding.ASCII.GetBytes("* 1 FETCH (BODY[] {4}\r\ntest\r\n)\r\n");
+        await harness.Transport.Channel!.SendRawAsync(literal);
+        var received = new byte[literal.Length];
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await client.PeerInput.ReadExactlyAsync(received, cts.Token);
+        Assert.Equal(literal, received);
+
+        await client.ClosePeerWriteAsync();
+        Assert.Equal(SessionOutcome.Relayed, await run);
+        Assert.True(elementSink.PointAttempts > 0, "The element sink was never exercised.");
+    }
+
     private static async Task<byte[]> WaitForObservationAsync(RecordingRetrievalObserver observer, int expectedLength)
     {
         for (var attempt = 0; attempt < 50; attempt++)
@@ -355,6 +405,37 @@ public sealed class RetrievalObserverTests
                 MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available,
                 AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [],
             });
+        }
+    }
+
+    private sealed class CapturingElementSink : IProxyElementSink
+    {
+        public List<ProxySegmentationOutcome> Outcomes { get; } = [];
+        public List<ProxyElementPoint> Points { get; } = [];
+        public ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken) { Outcomes.Add(outcome); return ValueTask.CompletedTask; }
+        public ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken) { Points.Add(point); return ValueTask.CompletedTask; }
+    }
+
+    private sealed class ThrowingElementSink : IProxyElementSink
+    {
+        public int PointAttempts { get; private set; }
+        public ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken)
+        {
+            PointAttempts++;
+            throw new InvalidOperationException("element store failed");
+        }
+    }
+
+    private sealed class CompleteElementClassifier : IElementClassifier
+    {
+        public Task<ClassificationOutcome> ClassifyAsync(IReadOnlyList<string> segments, IReadOnlyList<string>? scorers = null, CancellationToken cancellationToken = default)
+        {
+            var results = ElementScorers.All.Select(scorer => new ElementScorerResult(scorer, ElementScorers.VersionOf(scorer)!,
+                segments.Select((_, ordinal) => new SegmentElementScores(ordinal,
+                    ElementVocabulary.All.Select(element => new ElementScore(element, ElementAvailability.Available, 0.5, null, ElementNotProducedReason.None)).ToArray())).ToArray())).ToArray();
+            return Task.FromResult<ClassificationOutcome>(new ClassificationOutcome.Success(new ElementClassification(
+                new EmbeddingMetadata("test-model", null, 3, 3, "test-prefix", "float32", "test-contract"), ElementVocabulary.Version, results)));
         }
     }
 }

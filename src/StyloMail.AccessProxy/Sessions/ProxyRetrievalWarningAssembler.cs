@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.Channels;
 using System.Runtime.InteropServices;
 using StyloMail.AccessProxy.Hosting;
+using StyloMail.AccessProxy.Submission;
 
 namespace StyloMail.AccessProxy.Sessions;
 
@@ -19,23 +20,26 @@ public sealed class ProxyRetrievalWarningAssemblerFactory : IProxyRetrievalWarni
     private readonly IProxyWarningAnalyzer _analyzer;
     private readonly TimeProvider _timeProvider;
     private readonly ProxyRetrievalWarningAssemblerOptions _options;
+    private readonly ProxyElementOrchestrator? _elementOrchestrator;
 
     public ProxyRetrievalWarningAssemblerFactory(
         IProxyWarningEventSink sink,
         IProxyWarningAnalyzer analyzer,
         TimeProvider timeProvider,
-        ProxyRetrievalWarningAssemblerOptions? options = null)
+        ProxyRetrievalWarningAssemblerOptions? options = null,
+        ProxyElementOrchestrator? elementOrchestrator = null)
     {
         _sink = sink ?? throw new ArgumentNullException(nameof(sink));
         _analyzer = analyzer ?? throw new ArgumentNullException(nameof(analyzer));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _options = options ?? new ProxyRetrievalWarningAssemblerOptions();
+        _elementOrchestrator = elementOrchestrator;
         if (_options.MaximumMessageBytes < 1 || _options.MaximumSessionBufferedBytes < _options.MaximumMessageBytes)
             throw new ArgumentOutOfRangeException(nameof(options), "Session cap must be at least the per-message cap.");
     }
 
     public IProxyRetrievalWarningAssembler Create(string tenantId, string accountId) =>
-        new ProxyRetrievalWarningAssembler(tenantId, accountId, _sink, _analyzer, _timeProvider, _options);
+        new ProxyRetrievalWarningAssembler(tenantId, accountId, _sink, _analyzer, _timeProvider, _options, _elementOrchestrator);
 }
 
 /// <summary>
@@ -51,6 +55,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
     private readonly IProxyWarningAnalyzer _analyzer;
     private readonly TimeProvider _timeProvider;
     private readonly ProxyRetrievalWarningAssemblerOptions _options;
+    private readonly ProxyElementOrchestrator? _elementOrchestrator;
     private readonly Channel<byte[]> _chunks = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly CancellationTokenSource _stopping = new();
     private readonly List<byte> _line = [];
@@ -68,7 +73,8 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         IProxyWarningEventSink sink,
         IProxyWarningAnalyzer analyzer,
         TimeProvider timeProvider,
-        ProxyRetrievalWarningAssemblerOptions options)
+        ProxyRetrievalWarningAssemblerOptions options,
+        ProxyElementOrchestrator? elementOrchestrator)
     {
         _tenantId = string.IsNullOrWhiteSpace(tenantId) ? throw new ArgumentException("Tenant is required.", nameof(tenantId)) : tenantId;
         _accountId = string.IsNullOrWhiteSpace(accountId) ? throw new ArgumentException("Account is required.", nameof(accountId)) : accountId;
@@ -76,6 +82,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         _analyzer = analyzer;
         _timeProvider = timeProvider;
         _options = options;
+        _elementOrchestrator = elementOrchestrator;
         _worker = Task.Run(ProcessAsync);
     }
 
@@ -208,16 +215,29 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
                 MarkerCount = availability == ProxyWarningAvailability.Available ? analysis.Findings.Count : 0,
             }, cancellationToken).ConfigureAwait(false);
             if (availability != ProxyWarningAvailability.Available)
-                return;
+            {
+                foreach (var finding in analysis.Findings)
+                    await _sink.RecordMarkerAsync(new ProxyDeterministicWarningEvent
+                    {
+                        TenantId = _tenantId, AccountId = _accountId, TrafficKind = MessageTrafficKind.Retrieval,
+                        MessageToken = analysis.MessageToken, ThreadToken = analysis.ThreadToken,
+                        MarkerKind = finding.MarkerKind, FindingId = finding.FindingId, ObservedAt = input.ObservedAt,
+                        Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None,
+                    }, cancellationToken).ConfigureAwait(false);
+            }
 
-            foreach (var finding in analysis.Findings)
-                await _sink.RecordMarkerAsync(new ProxyDeterministicWarningEvent
+            if (!unreadable && _elementOrchestrator is not null)
+            {
+                try
                 {
-                    TenantId = _tenantId, AccountId = _accountId, TrafficKind = MessageTrafficKind.Retrieval,
-                    MessageToken = analysis.MessageToken, ThreadToken = analysis.ThreadToken,
-                    MarkerKind = finding.MarkerKind, FindingId = finding.FindingId, ObservedAt = input.ObservedAt,
-                    Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None,
-                }, cancellationToken).ConfigureAwait(false);
+                    await _elementOrchestrator.EmitAsync(input, literal!, analysis.MessageToken, analysis.ThreadToken,
+                        MessageTrafficKind.Retrieval, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Element classification and storage are observational; they cannot drop a fetch.
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
