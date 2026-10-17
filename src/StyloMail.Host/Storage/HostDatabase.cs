@@ -487,6 +487,43 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_proxy_threading_event_thread
             ON proxy_threading_event (tenant_id, thread_token, occurred_at, id);
 
+        -- One outcome row per attempted message, including a clean one. Markers alone cannot tell a
+        -- measured clean message from one no analyser saw; this row is that evidence.
+        CREATE TABLE IF NOT EXISTS proxy_warning_outcome (
+            tenant_id           TEXT NOT NULL,
+            message_token       TEXT NOT NULL,
+            direction           TEXT NOT NULL,
+            thread_token        TEXT NOT NULL,
+            account_id          TEXT NOT NULL,
+            observed_at         TEXT NOT NULL,
+            availability        TEXT NOT NULL,
+            availability_reason TEXT NOT NULL,
+            marker_count        INTEGER NOT NULL,
+            PRIMARY KEY (tenant_id, message_token, direction)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_warning_outcome_thread
+            ON proxy_warning_outcome (tenant_id, thread_token, observed_at);
+
+        -- Derived markers only: a closed kind and a bounded local finding id. No source text,
+        -- header value, address or content is stored here.
+        CREATE TABLE IF NOT EXISTS proxy_warning_marker (
+            tenant_id           TEXT NOT NULL,
+            message_token       TEXT NOT NULL,
+            direction           TEXT NOT NULL,
+            thread_token        TEXT NOT NULL,
+            account_id          TEXT NOT NULL,
+            marker_kind         TEXT NOT NULL,
+            finding_id          TEXT NOT NULL,
+            observed_at         TEXT NOT NULL,
+            availability        TEXT NOT NULL,
+            availability_reason TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, message_token, direction, marker_kind, finding_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_warning_marker_thread
+            ON proxy_warning_marker (tenant_id, thread_token, observed_at);
+
         CREATE TABLE IF NOT EXISTS host_schema_migration (
             name       TEXT NOT NULL PRIMARY KEY,
             applied_at TEXT NOT NULL

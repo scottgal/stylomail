@@ -75,6 +75,32 @@ public sealed record ProxyThreadPoint
 
     /// <summary><c>available</c> or <c>not_produced</c>. A missing point is explicit, never omitted.</summary>
     public required string Availability { get; init; }
+
+    /// <summary>
+    /// The closed reason vocabulary from the analysis outcome: None, NoAnalyserConfigured,
+    /// UnreadableMessage or UnsupportedContent. A NotProduced point always names one.
+    /// </summary>
+    public required string AvailabilityReason { get; init; }
+
+    /// <summary>Equals the marker count on an available point; zero is a measured clean message.</summary>
+    public required int MarkerCount { get; init; }
+}
+
+/// <summary>Accepts deterministic warning outcomes and their markers from the analysis tap.</summary>
+/// <remarks>
+/// An outcome is recorded for every attempted message, including a clean one (Available with
+/// MarkerCount 0). Markers alone cannot distinguish a clean message from an unanalysed one, so the
+/// outcome is the evidence that analysis ran.
+/// </remarks>
+public interface IProxyWarningEventSink
+{
+    ValueTask RecordOutcomeAsync(
+        ProxyWarningAnalysisOutcome outcome,
+        CancellationToken cancellationToken);
+
+    ValueTask RecordMarkerAsync(
+        ProxyDeterministicWarningEvent marker,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>The latest listener fact recorded for a protocol.</summary>

@@ -81,7 +81,6 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     private readonly IProxyListenerEventSink _events;
     private readonly IProxySessionAuthenticator _sessionAuthenticator;
     private readonly ILogger<AccessProxyListenerHandleFactory> _logger;
-    private int _telemetryFailures;
 
     public AccessProxyListenerHandleFactory(
         IServiceProvider services,
@@ -178,9 +177,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
 
         var dependencies = new ProxySessionRunnerDependencies
         {
-            // The decorator attributes the account lookup to the connection currently running on
-            // this async flow; access's session still only sees an account store.
-            Accounts = new ProxySessionAccountStore(_accounts, OnSessionAuthenticatedAsync),
+            Accounts = _accounts,
             PasswordHasher = _passwordHasher,
             CredentialStore = _credentialStore,
             CredentialResolver = _credentialResolver,
@@ -188,6 +185,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             Limiter = _limiter,
             Bounds = _bounds,
             TimeProvider = _clock,
+            ContextSink = new ProxySessionContextSink(_sessionAuthenticator, _logger),
             Tls = tls,
             SubmissionAssessment = assessment,
             SubmissionStager = stager,
@@ -208,34 +206,6 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
     /// route's live query reads that row. A failed write is swallowed because telemetry must never
     /// drop a user's session; the failure counter keeps the log bounded.
     /// </remarks>
-    private async ValueTask OnSessionAuthenticatedAsync(string accountId)
-    {
-        if (ProxySessionContext.Current.Value is not { } binding)
-        {
-            return;
-        }
-
-        try
-        {
-            await _sessionAuthenticator.MarkAuthenticatedAsync(
-                binding.TenantId,
-                binding.SessionId,
-                accountId,
-                _clock.GetUtcNow(),
-                CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            var failures = Interlocked.Increment(ref _telemetryFailures);
-            if (failures == 1 || failures % 100 == 0)
-            {
-                _logger.LogWarning(
-                    "A proxy session authentication record could not be written ({Failures} total).",
-                    failures);
-            }
-        }
-    }
-
     private sealed class AccessProxyListenerHandle : IProxyListenerHandle
     {
         private readonly ProxyListenerOptions _options;

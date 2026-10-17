@@ -293,4 +293,14 @@ public sealed record ProxySignalPointResponse
 
     /// <summary><c>available</c> or <c>not_produced</c>.</summary>
     public required string Availability { get; init; }
+
+    /// <summary>
+    /// None for an available point; otherwise one of NoAnalyserConfigured, UnreadableMessage or
+    /// UnsupportedContent. A NotProduced point always names its reason rather than leaving the
+    /// console to guess.
+    /// </summary>
+    public required string AvailabilityReason { get; init; }
+
+    /// <summary>Zero on an available point means a measured clean message, not an absent analysis.</summary>
+    public required int MarkerCount { get; init; }
 }

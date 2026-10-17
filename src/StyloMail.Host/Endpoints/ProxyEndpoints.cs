@@ -744,6 +744,8 @@ internal static class ProxyEndpoints
                 WarningMarkers = point.WarningMarkers,
                 DimensionIds = point.DimensionIds,
                 Availability = point.Availability,
+                AvailabilityReason = point.AvailabilityReason,
+                MarkerCount = point.MarkerCount,
             })],
         });
     }

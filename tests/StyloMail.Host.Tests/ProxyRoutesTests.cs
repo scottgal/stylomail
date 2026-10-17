@@ -23,6 +23,8 @@ public sealed class ProxyRoutesTests
 {
     private const string ProxyEnabled = "StyloMail:Proxy:Enabled";
     private static readonly string[] ExpectedParticipantTokens = ["pa_account"];
+    private static readonly string[] ExpectedWarningMarkers = ["DisplayNameMismatch"];
+    private static readonly string[] ExpectedFindingIds = ["finding-1"];
 
     // ---------------------------------------------------------------------------------------------
     // Privilege split and tenant scope
@@ -405,11 +407,126 @@ public sealed class ProxyRoutesTests
 
         var point = Assert.Single(signals.Points);
         Assert.Equal("not_produced", point.Availability);
+        Assert.Equal("NoAnalyserConfigured", point.AvailabilityReason);
         Assert.Null(point.ToneScore);
         Assert.Equal("message-one", point.TurnToken);
         Assert.Empty(point.WarningMarkers);
+        Assert.Equal(0, point.MarkerCount);
         Assert.Equal("proxy_threading_and_assessment", signals.Provenance);
     }
+
+    [Fact]
+    public async Task A_clean_measured_point_and_an_unmeasured_point_are_distinguishable()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var threading = host.Services.GetRequiredService<IProxyThreadingEventSink>();
+        var warnings = host.Services.GetRequiredService<IProxyWarningEventSink>();
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (message, minutes) in new[]
+                 {
+                     ("m-clean", 4), ("m-warn", 3), ("m-unmeasured", 2), ("m-no-outcome", 1),
+                 })
+        {
+            await threading.PublishAsync(
+                new ProxyThreadingEvent
+                {
+                    TenantId = TestPrincipals.AcmeTenant,
+                    AccountId = "pa_account",
+                    Protocol = ProxyListenerProtocol.Imap,
+                    MessageToken = message,
+                    ThreadToken = "thread-warnings",
+                    ReferenceDepth = 1,
+                    Timestamp = now.AddMinutes(-minutes),
+                },
+                CancellationToken.None);
+        }
+
+        // A measured clean message: the analysis ran and found nothing.
+        await warnings.RecordOutcomeAsync(
+            Outcome("m-clean", ProxyWarningAvailability.Available,
+                ProxyWarningAvailabilityReason.None, markerCount: 0, now.AddMinutes(-4)),
+            CancellationToken.None);
+
+        // A measured message with one derived marker.
+        await warnings.RecordOutcomeAsync(
+            Outcome("m-warn", ProxyWarningAvailability.Available,
+                ProxyWarningAvailabilityReason.None, markerCount: 1, now.AddMinutes(-3)),
+            CancellationToken.None);
+        await warnings.RecordMarkerAsync(
+            new ProxyDeterministicWarningEvent
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                Direction = ProxyWarningDirection.Retrieval,
+                MessageToken = "m-warn",
+                ThreadToken = "thread-warnings",
+                MarkerKind = ProxyWarningMarkerKind.DisplayNameMismatch,
+                FindingId = "finding-1",
+                ObservedAt = now.AddMinutes(-3),
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = ProxyWarningAvailabilityReason.None,
+            },
+            CancellationToken.None);
+
+        // The analysis was attempted but the message could not be read.
+        await warnings.RecordOutcomeAsync(
+            Outcome("m-unmeasured", ProxyWarningAvailability.NotProduced,
+                ProxyWarningAvailabilityReason.UnreadableMessage, markerCount: 0, now.AddMinutes(-2)),
+            CancellationToken.None);
+
+        // m-no-outcome deliberately has no outcome row at all: no analysis was produced.
+
+        var signals = await ReadAsync<ProxyConversationSignalsResponse>(
+            await reviewer.GetAsync(
+                "/v1/proxy/conversations/thread-warnings/signals?window=last_24_hours"));
+
+        Assert.Equal(4, signals.Points.Count);
+
+        var clean = Assert.Single(signals.Points, point => point.TurnToken == "m-clean");
+        Assert.Equal("available", clean.Availability);
+        Assert.Equal("None", clean.AvailabilityReason);
+        Assert.Equal(0, clean.MarkerCount);
+        Assert.Empty(clean.WarningMarkers);
+
+        var warned = Assert.Single(signals.Points, point => point.TurnToken == "m-warn");
+        Assert.Equal("available", warned.Availability);
+        Assert.Equal(1, warned.MarkerCount);
+        Assert.Equal(ExpectedWarningMarkers, warned.WarningMarkers);
+        Assert.Equal(ExpectedFindingIds, warned.DimensionIds);
+
+        var unmeasured = Assert.Single(signals.Points, point => point.TurnToken == "m-unmeasured");
+        Assert.Equal("not_produced", unmeasured.Availability);
+        Assert.Equal("UnreadableMessage", unmeasured.AvailabilityReason);
+        Assert.Equal(0, unmeasured.MarkerCount);
+
+        var absent = Assert.Single(signals.Points, point => point.TurnToken == "m-no-outcome");
+        Assert.Equal("not_produced", absent.Availability);
+        Assert.Equal("NoAnalyserConfigured", absent.AvailabilityReason);
+
+        // Tone is a separate, unproduced measurement on every point.
+        Assert.All(signals.Points, point => Assert.Null(point.ToneScore));
+    }
+
+    private static ProxyWarningAnalysisOutcome Outcome(
+        string messageToken,
+        ProxyWarningAvailability availability,
+        ProxyWarningAvailabilityReason reason,
+        int markerCount,
+        DateTimeOffset observedAt)
+        => new()
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            Direction = ProxyWarningDirection.Retrieval,
+            MessageToken = messageToken,
+            ThreadToken = "thread-warnings",
+            ObservedAt = observedAt,
+            Availability = availability,
+            AvailabilityReason = reason,
+            MarkerCount = markerCount,
+        };
 
     [Fact]
     public async Task Conversations_report_not_produced_without_telemetry_and_zero_with_it()

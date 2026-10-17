@@ -24,7 +24,7 @@ namespace StyloMail.Host.Storage;
 /// </para>
 /// </remarks>
 public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThreadingEventSink,
-    IProxyTelemetryReader, IProxySessionAuthenticator
+    IProxyTelemetryReader, IProxySessionAuthenticator, IProxyWarningEventSink
 {
     private readonly HostDatabase _database;
 
@@ -326,11 +326,50 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         cancellationToken.ThrowIfCancellationRequested();
 
         using var connection = _database.Open();
+
+        // Markers are loaded once per thread rather than per point. A point's marker count is the
+        // number of markers actually stored for its message.
+        var markerKinds = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var markerIds = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        using (var markerCommand = connection.CreateCommand())
+        {
+            markerCommand.CommandText =
+                "SELECT message_token,marker_kind,finding_id FROM proxy_warning_marker "
+                + "WHERE tenant_id=$tenant AND thread_token=$thread "
+                + "ORDER BY message_token,marker_kind,finding_id;";
+            markerCommand.Parameters.AddWithValue("$tenant", tenantId);
+            markerCommand.Parameters.AddWithValue("$thread", threadToken);
+
+            using var markerReader = markerCommand.ExecuteReader();
+            while (markerReader.Read())
+            {
+                var message = markerReader.GetString(0);
+                if (!markerKinds.TryGetValue(message, out var kinds))
+                {
+                    kinds = [];
+                    markerKinds[message] = kinds;
+                    markerIds[message] = [];
+                }
+
+                kinds.Add(markerReader.GetString(1));
+                markerIds[message].Add(markerReader.GetString(2));
+            }
+        }
+
         using var command = connection.CreateCommand();
+        // Every transport turn is a point. The outcome row (not the marker set) says whether the
+        // analysis ran; a clean message is Available with zero markers, while a message with no
+        // outcome at all is NotProduced with the no-analyser reason.
         command.CommandText =
-            "SELECT occurred_at,message_token FROM proxy_threading_event "
-            + "WHERE tenant_id=$tenant AND thread_token=$thread "
-            + "AND occurred_at >= $from AND occurred_at < $to ORDER BY occurred_at,id;";
+            "SELECT t.occurred_at,t.message_token,o.availability,o.availability_reason "
+            + "FROM proxy_threading_event t "
+            + "LEFT JOIN proxy_warning_outcome o "
+            + "ON o.tenant_id=t.tenant_id AND o.message_token=t.message_token "
+            + "AND o.direction=CASE WHEN t.protocol='Smtp' THEN 'Submission' ELSE 'Retrieval' END "
+            + "WHERE t.tenant_id=$tenant AND t.thread_token=$thread "
+            + "AND t.occurred_at >= $from AND t.occurred_at < $to "
+            + "ORDER BY t.occurred_at,t.id;";
         command.Parameters.AddWithValue("$tenant", tenantId);
         command.Parameters.AddWithValue("$thread", threadToken);
         command.Parameters.AddWithValue("$from", Timestamp(from));
@@ -340,21 +379,97 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         var points = new List<ProxyThreadPoint>();
         while (reader.Read())
         {
-            // The transport fact exists; the semantic measurement does not. The point is emitted
-            // rather than omitted so a gap in the series is an explicit not_produced observation,
-            // never something a renderer can draw as a straight line through.
+            var message = reader.GetString(1);
+            var storedAvailability = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var storedReason = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var available = string.Equals(
+                storedAvailability,
+                nameof(ProxyWarningAvailability.Available),
+                StringComparison.Ordinal);
+
+            var kinds = markerKinds.TryGetValue(message, out var foundKinds) ? foundKinds : [];
+            var ids = markerIds.TryGetValue(message, out var foundIds) ? foundIds : [];
+
             points.Add(new ProxyThreadPoint
             {
                 ObservedAt = ParseTimestamp(reader.GetString(0)),
-                TurnToken = reader.GetString(1),
+                TurnToken = message,
+                // Tone remains not produced: no local semantic provider is linked to this tap.
                 ToneScore = null,
-                WarningMarkers = [],
-                DimensionIds = [],
-                Availability = "not_produced",
+                WarningMarkers = kinds,
+                DimensionIds = ids,
+                Availability = available ? "available" : "not_produced",
+                AvailabilityReason = available
+                    ? nameof(ProxyWarningAvailabilityReason.None)
+                    : storedReason ?? nameof(ProxyWarningAvailabilityReason.NoAnalyserConfigured),
+                MarkerCount = kinds.Count,
             });
         }
 
         return ValueTask.FromResult<IReadOnlyList<ProxyThreadPoint>>(points);
+    }
+
+    public ValueTask RecordOutcomeAsync(
+        ProxyWarningAnalysisOutcome outcome,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO proxy_warning_outcome "
+            + "(tenant_id,message_token,direction,thread_token,account_id,observed_at,"
+            + "availability,availability_reason,marker_count) "
+            + "VALUES ($tenant,$message,$direction,$thread,$account,$at,$availability,$reason,$count) "
+            + "ON CONFLICT(tenant_id,message_token,direction) DO UPDATE SET "
+            + "thread_token=excluded.thread_token,account_id=excluded.account_id,"
+            + "observed_at=excluded.observed_at,availability=excluded.availability,"
+            + "availability_reason=excluded.availability_reason,marker_count=excluded.marker_count;";
+        command.Parameters.AddWithValue("$tenant", outcome.TenantId);
+        command.Parameters.AddWithValue("$message", outcome.MessageToken);
+        command.Parameters.AddWithValue("$direction", outcome.Direction.ToString());
+        command.Parameters.AddWithValue("$thread", outcome.ThreadToken);
+        command.Parameters.AddWithValue("$account", outcome.AccountId);
+        command.Parameters.AddWithValue("$at", Timestamp(outcome.ObservedAt));
+        command.Parameters.AddWithValue("$availability", outcome.Availability.ToString());
+        command.Parameters.AddWithValue("$reason", outcome.AvailabilityReason.ToString());
+        command.Parameters.AddWithValue("$count", outcome.MarkerCount);
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RecordMarkerAsync(
+        ProxyDeterministicWarningEvent marker,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(marker);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO proxy_warning_marker "
+            + "(tenant_id,message_token,direction,thread_token,account_id,marker_kind,finding_id,"
+            + "observed_at,availability,availability_reason) "
+            + "VALUES ($tenant,$message,$direction,$thread,$account,$kind,$finding,$at,$availability,$reason) "
+            + "ON CONFLICT(tenant_id,message_token,direction,marker_kind,finding_id) DO UPDATE SET "
+            + "thread_token=excluded.thread_token,account_id=excluded.account_id,"
+            + "observed_at=excluded.observed_at,availability=excluded.availability,"
+            + "availability_reason=excluded.availability_reason;";
+        command.Parameters.AddWithValue("$tenant", marker.TenantId);
+        command.Parameters.AddWithValue("$message", marker.MessageToken);
+        command.Parameters.AddWithValue("$direction", marker.Direction.ToString());
+        command.Parameters.AddWithValue("$thread", marker.ThreadToken);
+        command.Parameters.AddWithValue("$account", marker.AccountId);
+        command.Parameters.AddWithValue("$kind", marker.MarkerKind.ToString());
+        command.Parameters.AddWithValue("$finding", marker.FindingId);
+        command.Parameters.AddWithValue("$at", Timestamp(marker.ObservedAt));
+        command.Parameters.AddWithValue("$availability", marker.Availability.ToString());
+        command.Parameters.AddWithValue("$reason", marker.AvailabilityReason.ToString());
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
     }
 
     private bool Exists(string table, string tenantId)

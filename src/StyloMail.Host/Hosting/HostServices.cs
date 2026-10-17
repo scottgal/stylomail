@@ -96,6 +96,8 @@ public static class HostServices
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IProxySessionAuthenticator>(
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
+        services.AddSingleton<IProxyWarningEventSink>(
+            sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<AccessProxyBounds>();
         services.AddSingleton<SessionLimiter>();
         services.AddSingleton<IBackendCredentialProvider, AppPasswordCredentialProvider>();
