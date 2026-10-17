@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
+    <ProjectReference Include="..\StyloMail.Embeddings\StyloMail.Embeddings.csproj" />
   </ItemGroup>
 
   <ItemGroup>

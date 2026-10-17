@@ -1,0 +1,37 @@
+using System.Text;
+using StyloMail.AccessProxy.Hosting;
+using StyloMail.Embeddings;
+
+namespace StyloMail.AccessProxy.Submission;
+
+/// <summary>Bounded, local-only segment/classify emission. Callers keep this optional.</summary>
+public sealed class ProxyElementOrchestrator
+{
+    private readonly IElementClassifier _classifier;
+    private readonly IProxyElementSink _sink;
+
+    public ProxyElementOrchestrator(IElementClassifier classifier, IProxyElementSink sink)
+        => (_classifier, _sink) = (classifier ?? throw new ArgumentNullException(nameof(classifier)), sink ?? throw new ArgumentNullException(nameof(sink)));
+
+    public async ValueTask EmitAsync(ProxyWarningAnalysisInput identity, ReadOnlyMemory<byte> message, string messageToken, string threadToken, MessageTrafficKind kind, CancellationToken ct)
+    {
+        var segments = Segment(message, 32, 6000, out var truncated);
+        try
+        {
+            var outcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
+            var result = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
+            if (result.Scorers.Any(s => s.Segments.Count != segments.Count)) throw new InvalidOperationException("Classifier returned incomplete segment coverage.");
+            await _sink.RecordOutcomeAsync(outcome, ct).ConfigureAwait(false);
+            foreach (var scorer in result.Scorers) foreach (var segment in scorer.Segments) foreach (var score in segment.Elements)
+                await _sink.RecordPointAsync(new ProxyElementPoint { TenantId=identity.TenantId, AccountId=identity.AccountId, TrafficKind=kind, MessageToken=messageToken, ThreadToken=threadToken, Ordinal=segment.Ordinal, Element=score.Element, Score=score.Score, Scorer=scorer.Scorer, ScorerVersion=scorer.ScorerVersion, NearestExemplarId=score.NearestExemplarId, Availability=score.Availability == ElementAvailability.Available ? ProxyWarningAvailability.Available : ProxyWarningAvailability.NotProduced, AvailabilityReason=ElementReasons.ToWireName(score.Reason), ModelTag=result.Metadata?.ModelTag ?? "unavailable", PrefixVersion=result.Metadata?.PrefixVersion ?? "unavailable", Dimension=result.Metadata?.Dimension ?? 0, VocabularyVersion=result.VocabularyVersion, ObservedAt=identity.ObservedAt }, ct).ConfigureAwait(false);
+        }
+        finally { foreach (var segment in segments) { /* strings are ephemeral and not retained beyond this call */ } }
+    }
+
+    private static List<string> Segment(ReadOnlyMemory<byte> message, int maxSegments, int maxBytes, out bool truncated)
+    {
+        var text = Encoding.UTF8.GetString(message.Span); var result = new List<string>(); truncated = false;
+        foreach (var paragraph in text.Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { if (result.Count == maxSegments) { truncated=true; break; } var bytes=Encoding.UTF8.GetBytes(paragraph); if(bytes.Length>maxBytes) { result.Add(Encoding.UTF8.GetString(bytes,0,maxBytes)); truncated=true; } else result.Add(paragraph); Array.Clear(bytes); }
+        return result;
+    }
+}
