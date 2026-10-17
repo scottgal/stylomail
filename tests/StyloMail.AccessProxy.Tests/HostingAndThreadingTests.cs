@@ -40,7 +40,7 @@ public sealed class HostingAndThreadingTests
         {
             Accounts = h.AccountStore, PasswordHasher = h.PasswordHasher, CredentialStore = h.CredentialStore,
             CredentialResolver = h.Resolver, BackendConnectors = new Connectors(), Limiter = h.Limiter,
-            Bounds = h.Bounds, TimeProvider = h.Clock,
+            Bounds = h.Bounds, TimeProvider = h.Clock, ContextSink = new ContextSink(),
         };
         var options = new ProxyListenerOptions { TenantId = ProxyHarness.TenantId, BindAddress = IPAddress.Loopback,
             Port = 0, Protocol = ProxyListenerProtocol.Smtp, TlsPolicy = ProxyTlsPolicy.Required, Enabled = true };
@@ -50,5 +50,6 @@ public sealed class HostingAndThreadingTests
     private sealed class Tokens : IThreadTokenDeriver { public string Derive(string tenantId, string value) => "token:" + value; }
     private sealed class Certificates : IProxyCertificateResolver { public ValueTask<X509Certificate2?> ResolveAsync(string r, CancellationToken c) => ValueTask.FromResult<X509Certificate2?>(null); }
     private sealed class Events : IProxyListenerEventSink { public ValueTask PublishAsync(ProxyListenerEvent e, CancellationToken c) => ValueTask.CompletedTask; public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken c) => ValueTask.CompletedTask; }
+    private sealed class ContextSink : IProxySessionContextSink { public ValueTask OnAuthenticatedAsync(string a, DateTimeOffset t, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class Connectors : IProxyBackendConnectorFactory { public StyloMail.AccessProxy.Backends.IBackendConnector Create(ProxyListenerProtocol p) => throw new NotSupportedException(); }
 }

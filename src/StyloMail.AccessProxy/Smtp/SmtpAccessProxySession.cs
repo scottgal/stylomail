@@ -2,6 +2,7 @@ using System.Text;
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
 using StyloMail.AccessProxy.Submission;
 
@@ -28,6 +29,7 @@ public sealed class SmtpAccessProxySession
     private readonly TimeProvider _timeProvider;
     private readonly IProxySubmissionAssessment _assessment;
     private readonly IEphemeralSubmissionStager _stager;
+    private readonly IProxySessionContextSink? _contextSink;
 
     public SmtpAccessProxySession(
         string tenantId,
@@ -38,7 +40,8 @@ public sealed class SmtpAccessProxySession
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IProxySubmissionAssessment assessment,
-        IEphemeralSubmissionStager stager)
+        IEphemeralSubmissionStager stager,
+        IProxySessionContextSink? contextSink = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _tenantId = tenantId;
@@ -50,6 +53,7 @@ public sealed class SmtpAccessProxySession
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _assessment = assessment ?? throw new ArgumentNullException(nameof(assessment));
         _stager = stager ?? throw new ArgumentNullException(nameof(stager));
+        _contextSink = contextSink;
         _bounds.Validate();
     }
 
@@ -166,6 +170,7 @@ public sealed class SmtpAccessProxySession
 
                         await using (backend.ConfigureAwait(false))
                         {
+                        await PublishAuthenticatedAsync(account).ConfigureAwait(false);
                         // Client success is truthful only after the backend connection has completed
                         // its TLS, EHLO and SASL authentication. Advertising it earlier turns a
                         // backend failure into a misleading post-authentication disconnect.
@@ -185,6 +190,22 @@ public sealed class SmtpAccessProxySession
         }
 
         return SessionOutcome.ProtocolError;
+    }
+
+    private async ValueTask PublishAuthenticatedAsync(StyloMailAccount account)
+    {
+        if (_contextSink is null)
+            return;
+
+        try
+        {
+            await _contextSink.OnAuthenticatedAsync(account.AccountId, _timeProvider.GetUtcNow(), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Session context is observational: an unavailable sink must never change protocol auth.
+        }
     }
 
     private async ValueTask<ClientCredentials?> ReadAuthAsync(

@@ -3,6 +3,7 @@ using System.Text;
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
 
 namespace StyloMail.AccessProxy.Pop3;
@@ -36,8 +37,9 @@ public sealed class Pop3AccessProxySession : AccessProxySessionBase
         SessionLimiter limiter,
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
-        IRetrievalObserver? observer = null)
-        : base(tenantId, accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer)
+        IRetrievalObserver? observer = null,
+        IProxySessionContextSink? contextSink = null)
+        : base(tenantId, accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer, contextSink)
     {
     }
 

@@ -1,6 +1,7 @@
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
+using StyloMail.AccessProxy.Hosting;
 
 namespace StyloMail.AccessProxy.Sessions;
 
@@ -82,6 +83,7 @@ public abstract class AccessProxySessionBase
     private readonly IBackendConnector _backend;
     private readonly SessionLimiter _limiter;
     private readonly IRetrievalObserver? _observer;
+    private readonly IProxySessionContextSink? _contextSink;
     private readonly string _tenantId;
     private IDuplexChannel? _client;
     private ProtocolLineWriter? _writer;
@@ -95,7 +97,8 @@ public abstract class AccessProxySessionBase
         SessionLimiter limiter,
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
-        IRetrievalObserver? observer = null)
+        IRetrievalObserver? observer = null,
+        IProxySessionContextSink? contextSink = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _accounts = accounts ?? throw new ArgumentNullException(nameof(accounts));
@@ -107,6 +110,7 @@ public abstract class AccessProxySessionBase
         Bounds = bounds ?? throw new ArgumentNullException(nameof(bounds));
         Bounds.Validate();
         _observer = observer;
+        _contextSink = contextSink;
         _tenantId = tenantId;
     }
 
@@ -267,6 +271,7 @@ public abstract class AccessProxySessionBase
 
         await using (backend.ConfigureAwait(false))
         {
+            await PublishAuthenticatedAsync(account).ConfigureAwait(false);
             // The client is told only now, with a backend already authenticated behind it.
             await WriteAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -275,6 +280,22 @@ public abstract class AccessProxySessionBase
                 .ConfigureAwait(false);
 
             return bounded ? SessionOutcome.Timeout : SessionOutcome.Relayed;
+        }
+    }
+
+    private async ValueTask PublishAuthenticatedAsync(StyloMailAccount account)
+    {
+        if (_contextSink is null)
+            return;
+
+        try
+        {
+            await _contextSink.OnAuthenticatedAsync(account.AccountId, TimeProvider.GetUtcNow(), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // Session context is observational: an unavailable sink must never change protocol auth.
         }
     }
 

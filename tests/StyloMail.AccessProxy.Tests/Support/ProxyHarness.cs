@@ -3,6 +3,7 @@ using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
 using StyloMail.AccessProxy.Imap;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Pop3;
 using StyloMail.AccessProxy.Sessions;
 
@@ -156,8 +157,10 @@ internal sealed class ProxyHarness
             secret: RefreshTokenSecret);
     }
 
-    public ImapAccessProxySession NewImapSession(IRetrievalObserver? observer = null) =>
-        new(TenantId, AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer);
+    public ImapAccessProxySession NewImapSession(
+        IRetrievalObserver? observer = null,
+        IProxySessionContextSink? contextSink = null) =>
+        new(TenantId, AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer, contextSink);
 
     public Pop3AccessProxySession NewPop3Session(IRetrievalObserver? observer = null) =>
         new(TenantId, AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock, observer);

@@ -1,5 +1,6 @@
 using System.Text;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Tests.Support;
 
 namespace StyloMail.AccessProxy.Tests;
@@ -9,6 +10,62 @@ namespace StyloMail.AccessProxy.Tests;
 /// </summary>
 public sealed class ImapSessionTests
 {
+    [Fact]
+    public async Task Context_sink_runs_once_only_after_the_backend_has_authenticated()
+    {
+        var harness = new ProxyHarness();
+        await harness.EnrolAppPasswordAccountAsync();
+        var sink = new RecordingSink();
+        var client = new PipeDuplex("client");
+        var run = harness.NewImapSession(contextSink: sink).RunAsync(client, CancellationToken.None);
+
+        await client.ReadLineAsync();
+        await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
+        Assert.StartsWith("a1 OK", await client.ReadLineAsync(), StringComparison.Ordinal);
+        Assert.Equal(["acct-1"], sink.AccountIds);
+
+        await client.ClosePeerWriteAsync();
+        await run;
+    }
+
+    [Fact]
+    public async Task Context_sink_is_not_called_for_rejected_or_unavailable_authentication()
+    {
+        var rejected = new ProxyHarness();
+        await rejected.EnrolAppPasswordAccountAsync();
+        var rejectedSink = new RecordingSink();
+        var rejectedClient = new PipeDuplex("rejected-client");
+        var rejectedRun = rejected.NewImapSession(contextSink: rejectedSink).RunAsync(rejectedClient, CancellationToken.None);
+        await rejectedClient.ReadLineAsync();
+        await rejectedClient.SendAsync($"a1 LOGIN {ProxyHarness.Login} wrong-password\r\n");
+        await rejectedClient.ReadLineAsync();
+        Assert.Equal(SessionOutcome.ClientRejected, await rejectedRun);
+        Assert.Empty(rejectedSink.AccountIds);
+
+        var unavailable = new ProxyHarness();
+        unavailable.AddAccount();
+        await unavailable.AddBackendCredentialAsync(revoked: true);
+        var unavailableSink = new RecordingSink();
+        var unavailableClient = new PipeDuplex("unavailable-client");
+        var unavailableRun = unavailable.NewImapSession(contextSink: unavailableSink).RunAsync(unavailableClient, CancellationToken.None);
+        await unavailableClient.ReadLineAsync();
+        await unavailableClient.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
+        await unavailableClient.ReadLineAsync();
+        Assert.Equal(SessionOutcome.BackendUnavailable, await unavailableRun);
+        Assert.Empty(unavailableSink.AccountIds);
+    }
+
+    private sealed class RecordingSink : IProxySessionContextSink
+    {
+        public List<string> AccountIds { get; } = [];
+
+        public ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset authenticatedAt, CancellationToken cancellationToken)
+        {
+            AccountIds.Add(accountId);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     [Fact]
     public async Task ClientAuthenticatesWithStyloMailCredentials_AndReachesTheBackend()
     {

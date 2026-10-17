@@ -49,16 +49,17 @@ public sealed class ProxySessionRunnerFactory
             ProxyListenerProtocol.Imap => new ImapAccessProxySession(tenantId, dependencies.Accounts,
                 dependencies.PasswordHasher, dependencies.CredentialResolver,
                 dependencies.BackendConnectors.Create(options.Protocol), dependencies.Limiter, dependencies.Bounds,
-                dependencies.TimeProvider, dependencies.RetrievalObserver).RunAsync(channel, cancellationToken),
+                dependencies.TimeProvider, dependencies.RetrievalObserver, dependencies.ContextSink).RunAsync(channel, cancellationToken),
             ProxyListenerProtocol.Pop3 => new Pop3AccessProxySession(tenantId, dependencies.Accounts,
                 dependencies.PasswordHasher, dependencies.CredentialResolver,
                 dependencies.BackendConnectors.Create(options.Protocol), dependencies.Limiter, dependencies.Bounds,
-                dependencies.TimeProvider, dependencies.RetrievalObserver).RunAsync(channel, cancellationToken),
+                dependencies.TimeProvider, dependencies.RetrievalObserver, dependencies.ContextSink).RunAsync(channel, cancellationToken),
             ProxyListenerProtocol.Smtp => new SmtpAccessProxySession(tenantId, dependencies.Accounts,
                 dependencies.PasswordHasher, dependencies.BackendConnectors.Create(options.Protocol), dependencies.Limiter,
                 dependencies.Bounds, dependencies.TimeProvider,
                 dependencies.SubmissionAssessment ?? throw new InvalidOperationException("SMTP assessment is required."),
-                dependencies.SubmissionStager ?? throw new InvalidOperationException("SMTP stager is required."))
+                dependencies.SubmissionStager ?? throw new InvalidOperationException("SMTP stager is required."),
+                dependencies.ContextSink)
                 .RunAsync(channel, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(options.Protocol)),
         };
