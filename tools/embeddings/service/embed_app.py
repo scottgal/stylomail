@@ -23,12 +23,14 @@ import time
 import uuid
 from typing import Any, Optional
 
+import numpy as np
 import uvicorn
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
+from embed_classify import SCORERS, VOCABULARY, VOCABULARY_VERSION, ArtefactError, ElementClassifier
 from embed_config import Config, ConfigError
 from embed_encoder import EmbeddingEncoder, EncoderUnavailable, VectorContractError
 
@@ -45,7 +47,18 @@ class EmbedRequest(BaseModel):
     segments: list[str] = Field(min_length=1)
 
 
-def create_app(config: Config, encoder: EmbeddingEncoder) -> FastAPI:
+class ClassifyRequest(BaseModel):
+    """Segments plus an optional subset of the closed scorer set, and nothing else."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segments: list[str] = Field(min_length=1)
+    scorers: Optional[list[str]] = None
+
+
+def create_app(
+    config: Config, encoder: EmbeddingEncoder, classifier: ElementClassifier | None = None
+) -> FastAPI:
     app = FastAPI(title="stylomail-embeddings", version="1", docs_url=None, redoc_url=None)
 
     @app.middleware("http")
@@ -86,6 +99,11 @@ def create_app(config: Config, encoder: EmbeddingEncoder) -> FastAPI:
             return denied
         payload = encoder.metadata()
         payload["request_id"] = uuid.uuid4().hex
+        payload["vocabulary_version"] = VOCABULARY_VERSION
+        payload["elements"] = list(VOCABULARY)
+        payload["classify"] = (
+            classifier.describe() if classifier is not None and classifier.loaded else {"artefact_version": None}
+        )
         return JSONResponse(payload)
 
     @app.post("/embed")
@@ -150,6 +168,64 @@ def create_app(config: Config, encoder: EmbeddingEncoder) -> FastAPI:
             }
         )
 
+    @app.post("/classify")
+    async def classify(body: ClassifyRequest, authorization: Optional[str] = Header(default=None)) -> Any:
+        denied = authorize(authorization)
+        if denied is not None:
+            return denied
+
+        request_id = uuid.uuid4().hex
+        segments = body.segments
+        chars = sum(len(segment) for segment in segments)
+        scorers = tuple(body.scorers or ("prototype_knn",))
+
+        if classifier is None or not classifier.loaded:
+            return _failure(503, "artefact_missing", request_id)
+        for scorer in scorers:
+            if scorer not in SCORERS:
+                return _failure(422, "contract_violation", request_id)
+        if len(segments) > config.max_segments:
+            return _failure(413, "too_many_segments", request_id, limit=config.max_segments)
+        if chars > config.max_total_chars:
+            return _failure(413, "batch_too_large", request_id, limit=config.max_total_chars)
+        for index, segment in enumerate(segments):
+            if not segment.strip():
+                return _failure(422, "empty_segment", request_id, index=index)
+            if len(segment) > config.max_segment_chars:
+                return _failure(413, "segment_too_long", request_id, index=index, limit=config.max_segment_chars)
+
+        started = time.perf_counter()
+        try:
+            encoded = await run_in_threadpool(encoder.encode, segments)
+            vectors = np.asarray(encoded.vectors, dtype=np.float32)
+            results = classifier.classify(vectors, scorers)
+        except EncoderUnavailable as exc:
+            return _failure(503, str(exc), request_id)
+        except VectorContractError as exc:
+            return _failure(500, exc.reason, request_id)
+        except ArtefactError as exc:
+            _log.error("classify artefact error request_id=%s reason=%s", request_id, exc.reason)
+            return _failure(503, exc.reason, request_id)
+
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        _log.info(
+            "classify ok request_id=%s segments=%d chars=%d scorers=%s encode_ms=%.1f request_ms=%.1f",
+            request_id, len(segments), chars, ",".join(scorers), encoded.elapsed_ms, elapsed_ms,
+        )
+
+        return JSONResponse(
+            {
+                "request_id": request_id,
+                "model_tag": config.model,
+                "prefix_version": config.prefix_version,
+                "dimension": config.dimension,
+                "dtype": encoder.dtype_name,
+                "vocabulary_version": VOCABULARY_VERSION,
+                "scorers": results,
+                "encode_ms": round(encoded.elapsed_ms, 3),
+            }
+        )
+
     return app
 
 
@@ -187,6 +263,16 @@ def main() -> int:
         print(f"REFUSING: model load failed: {exc}", file=sys.stderr)
         return 3
 
+    classifier = ElementClassifier(
+        config.artefact_path, config.model, config.dimension, config.prefix_version
+    )
+    try:
+        classifier.load()
+    except ArtefactError as exc:
+        # The embedding path is still useful without a prototype set, so this is a named absence
+        # on /classify rather than a refusal to start.
+        print(f"WARNING: classify artefact not usable: {exc}", file=sys.stderr)
+
     _log.info(
         "start bind=%s:%d model=%s dimension=%d dtype=%s device=%s prefix_version=%s "
         "max_tokens=%d max_segments=%d",
@@ -194,7 +280,7 @@ def main() -> int:
         encoder.device, config.prefix_version, encoder.max_tokens_applied, config.max_segments,
     )
 
-    app = create_app(config, encoder)
+    app = create_app(config, encoder, classifier)
     uvicorn.run(app, host=config.host, port=config.port, access_log=False, log_config=None)
     return 0
 

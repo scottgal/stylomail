@@ -230,6 +230,22 @@ public enum ToneNotProducedReason
     UnsupportedModel,
 }
 
+/// <summary>Wire names for <see cref="ToneNotProducedReason"/>.</summary>
+public static class ToneReasons
+{
+    public static string ToWireName(this ToneNotProducedReason reason) => reason switch
+    {
+        ToneNotProducedReason.None => "none",
+        ToneNotProducedReason.ToneModelUnavailable => "tone_model_unavailable",
+        ToneNotProducedReason.ServiceUnavailable => "service_unavailable",
+        ToneNotProducedReason.TimedOut => "timed_out",
+        ToneNotProducedReason.Unauthorized => "unauthorized",
+        ToneNotProducedReason.ContractViolation => "contract_violation",
+        ToneNotProducedReason.UnsupportedModel => "unsupported_model",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "no wire name for this reason"),
+    };
+}
+
 /// <summary>One label and its score.</summary>
 public sealed record ToneLabelScore(string Label, double Score);
 

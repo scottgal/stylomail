@@ -12,12 +12,20 @@ service/
   embed_encoder.py     model load, dtype selection, prefix, truncate-then-renormalise, vector checks
   embed_app.py         FastAPI surface: /health, /metadata, /embed
   protocol_check.py    HTTP contract tests with a stub encoder (no GPU, no model)
+  embed_classify.py    prototype kNN and optional linear probe over the same vectors
+  artefacts/           the versioned prototype artefact (vectors and ids, no text)
   measure.sh           latency and dimension, measured over HTTP on the host
+  capture-contract.sh  save real responses, replayed by the provider's contract tests
   provision.sh         provision or verify ~/emb2 on the inference host, one writer, explicit reset
   deploy.sh            copy the service to the host
   run.sh               start the service, one instance, loopback only
   make-token.sh        create the bearer token file (0600, value never printed)
   requirements.txt     libraries; torch comes from the CUDA wheel index separately
+  window-launcher.ps1  Windows-side supervisor, because WSL kills host daemons when idle
+training/
+  seed-labels.jsonl    labelled seed segments with provenance and split
+  train_elements.py    embeds, fits the probe, evaluates both scorers, writes the artefact
+tunnel.sh              start the service and forward its port; the tunnel is the supervisor
 PROVIDER.md            the interface access- and proxyapi- consume
 ```
 
@@ -141,3 +149,66 @@ Two findings from those runs that change the code rather than decorate it:
    reason, and there is no code path that returns zeroes.
 4. **A float16 fallback** would produce NaN or a silent quality loss. Both the encoder and the
    provider refuse it by name.
+
+## Element classification
+
+`POST /classify` scores each bounded segment against the five elements in `elements/1` and returns,
+for each requested scorer, one point per (segment ordinal, element). The client in
+`src/StyloMail.Embeddings/` is the source of truth for the shape; `tools/embeddings/PROVIDER.md`
+describes the interface a caller binds.
+
+Two scorers, deliberately not blended:
+
+* `prototype_knn` scores a signed margin: the cosine similarity of the nearest TRAIN threatening
+  exemplar minus that of the nearest TRAIN benign or hard-negative exemplar, with the threatening
+  exemplar's opaque identifier returned so every score has a case-based reason.
+* `linear_probe` scores a logistic probability in [0, 1], trained on the same artefact by
+  `training/train_elements.py` and stored in the artefact as weights and a bias, so the service
+  needs no machine-learning library at runtime.
+
+A point with no measurement is `not_produced` with a reason, never a zero: a zero margin is a real
+point (the two nearest exemplars are equally close) and would be indistinguishable from "not scored"
+if absence were drawn the same way.
+
+### The seed artefact, and what it is not
+
+`service/artefacts/elements-seed-1.json` is built from `training/seed-labels.jsonl`: 100
+**authored** segments, 10 positive and 10 hard-negative per element, 60 used for training and 40
+held out. It is deliberately labelled `source: authored-seed` and `licence: project-owned`. This is
+not the Nazario, SpamAssassin, CEAS or Enron material the next iteration calls for: those corpora
+have not been ingested, vetted or PII-stripped here, and writing their names beside authored rows
+would be provenance theatre.
+
+### Held-out metrics on seed/1
+
+Measured by `train_elements.py` on the 40 held-out rows (4 positives and 4 negatives per element),
+threshold 0.5 for the probe and 0.0 margin for kNN. These sample sizes are small enough that a
+single row moves precision by 0.25, so they are a shape rather than a verdict.
+
+| element | kNN P | kNN R | kNN FPR | probe P | probe R | probe FPR |
+| --- | --- | --- | --- | --- | --- | --- |
+| credential_request | 0.75 | 0.75 | 0.25 | 1.00 | 1.00 | 0.00 |
+| urgency_pressure | 1.00 | 0.75 | 0.00 | 1.00 | 0.50 | 0.00 |
+| threat | 0.80 | 1.00 | 0.25 | 1.00 | 1.00 | 0.00 |
+| impersonated_greeting | 1.00 | 0.50 | 0.00 | 1.00 | 1.00 | 0.00 |
+| attachment_lure | 1.00 | 0.75 | 0.00 | 1.00 | 1.00 | 0.00 |
+
+The number that decides usability is the false positive rate on the benign subset, and it is not
+zero for kNN on two elements even at this size. The probe looks stronger here partly because it has
+256 free parameters fitted on 12 rows per element; that is a reason to distrust the gap, not a
+reason to prefer it.
+
+### Tone
+
+`ToneVocabulary` (`goemotions/1`, 28 labels) and `ToneSeries` are on disk in the C# project so the
+consumer can bind a sibling seam. No tone model is loaded and `/classify` does not emit tone. The
+model choice between `SamLowe/roberta-base-go_emotions` and `j-hartmann/...` is unmeasured here.
+
+## Running the service on the host
+
+The service is started by `tools/embeddings/tunnel.sh up`, which runs it inside an ssh session and
+forwards the port. That is not a convenience: this host tears down processes started in a WSL session
+once the last client disconnects, which was measured against `nohup`, a lingering `systemd --user`
+unit, and a detached tmux server. The tunnel session is the supervisor, so "tunnel up" and "service
+up" cannot disagree. A stale tunnel that answers 000 while the service is healthy means the tunnel,
+not the service, needs restarting.

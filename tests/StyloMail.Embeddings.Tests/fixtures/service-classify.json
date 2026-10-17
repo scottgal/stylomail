@@ -1,0 +1,203 @@
+{
+  "request_id": "d7182b46b0144779bd2c3cb91677bf23",
+  "model_tag": "google/embeddinggemma-2",
+  "prefix_version": "classification/1",
+  "dimension": 256,
+  "dtype": "bfloat16",
+  "vocabulary_version": "elements/1",
+  "scorers": [
+    {
+      "scorer": "prototype_knn",
+      "scorer_version": "prototype_knn/seed-1",
+      "segments": [
+        {
+          "ordinal": 0,
+          "elements": [
+            {
+              "element": "credential_request",
+              "availability": "available",
+              "score": 0.029555,
+              "nearest_exemplar_id": "seed-1:credential_request:0004",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "urgency_pressure",
+              "availability": "available",
+              "score": 0.101642,
+              "nearest_exemplar_id": "seed-1:urgency_pressure:0001",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "threat",
+              "availability": "available",
+              "score": 0.029606,
+              "nearest_exemplar_id": "seed-1:threat:0005",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "impersonated_greeting",
+              "availability": "available",
+              "score": 0.084415,
+              "nearest_exemplar_id": "seed-1:impersonated_greeting:0003",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "attachment_lure",
+              "availability": "available",
+              "score": 0.06318,
+              "nearest_exemplar_id": "seed-1:attachment_lure:0002",
+              "reason": null,
+              "scorer": "prototype_knn"
+            }
+          ]
+        },
+        {
+          "ordinal": 1,
+          "elements": [
+            {
+              "element": "credential_request",
+              "availability": "available",
+              "score": -0.02077,
+              "nearest_exemplar_id": "seed-1:credential_request:0005",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "urgency_pressure",
+              "availability": "available",
+              "score": -0.026749,
+              "nearest_exemplar_id": "seed-1:urgency_pressure:0003",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "threat",
+              "availability": "available",
+              "score": 0.002392,
+              "nearest_exemplar_id": "seed-1:threat:0004",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "impersonated_greeting",
+              "availability": "available",
+              "score": -0.077943,
+              "nearest_exemplar_id": "seed-1:impersonated_greeting:0005",
+              "reason": null,
+              "scorer": "prototype_knn"
+            },
+            {
+              "element": "attachment_lure",
+              "availability": "available",
+              "score": -0.135153,
+              "nearest_exemplar_id": "seed-1:attachment_lure:0001",
+              "reason": null,
+              "scorer": "prototype_knn"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scorer": "linear_probe",
+      "scorer_version": "linear_probe/seed-1",
+      "segments": [
+        {
+          "ordinal": 0,
+          "elements": [
+            {
+              "element": "credential_request",
+              "availability": "available",
+              "score": 0.573337,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "urgency_pressure",
+              "availability": "available",
+              "score": 0.63118,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "threat",
+              "availability": "available",
+              "score": 0.508847,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "impersonated_greeting",
+              "availability": "available",
+              "score": 0.63816,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "attachment_lure",
+              "availability": "available",
+              "score": 0.582802,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            }
+          ]
+        },
+        {
+          "ordinal": 1,
+          "elements": [
+            {
+              "element": "credential_request",
+              "availability": "available",
+              "score": 0.420257,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "urgency_pressure",
+              "availability": "available",
+              "score": 0.336065,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "threat",
+              "availability": "available",
+              "score": 0.460778,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "impersonated_greeting",
+              "availability": "available",
+              "score": 0.339352,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            },
+            {
+              "element": "attachment_lure",
+              "availability": "available",
+              "score": 0.251009,
+              "nearest_exemplar_id": null,
+              "reason": null,
+              "scorer": "linear_probe"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "encode_ms": 424.949
+}

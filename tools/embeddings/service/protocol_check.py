@@ -178,6 +178,86 @@ def test_a_dimension_mismatch_is_refused_rather_than_returned(tmp_path: pathlib.
     assert response.json()["reason"] == "dimension_mismatch"
 
 
+class StubClassifier:
+    """Enough of the classifier for the HTTP contract: one scorer, five elements, no model."""
+
+    loaded = True
+
+    def describe(self) -> dict[str, object]:
+        return {
+            "artefact_version": "seed-1",
+            "vocabulary_version": "elements/1",
+            "scorers": [{"scorer": "prototype_knn", "scorer_version": "prototype_knn/seed-1"}],
+        }
+
+    def classify(self, vectors, scorers):
+        results = []
+        for scorer in scorers:
+            segments = [
+                {
+                    "ordinal": ordinal,
+                    "elements": [
+                        {
+                            "element": element,
+                            "availability": "available",
+                            "score": 0.25,
+                            "nearest_exemplar_id": f"seed-1:{element}:0001",
+                            "reason": None,
+                        }
+                        for element in (
+                            "credential_request",
+                            "urgency_pressure",
+                            "threat",
+                            "impersonated_greeting",
+                            "attachment_lure",
+                        )
+                    ],
+                }
+                for ordinal in range(len(vectors))
+            ]
+            results.append(
+                {"scorer": scorer, "scorer_version": f"{scorer}/seed-1", "segments": segments}
+            )
+        return results
+
+
+def test_classify_without_an_artefact_is_a_named_absence(tmp_path: pathlib.Path) -> None:
+    response = client(tmp_path).post("/classify", headers=auth(), json={"segments": [SEGMENT]})
+    assert response.status_code == 503
+    assert response.json()["reason"] == "artefact_missing"
+
+
+def test_classify_returns_one_point_per_element_per_segment(tmp_path: pathlib.Path) -> None:
+    config = make_config(tmp_path)
+    app = create_app(config, StubEncoder(256), StubClassifier())
+    response = TestClient(app).post("/classify", headers=auth(), json={"segments": [SEGMENT]})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["vocabulary_version"] == "elements/1"
+    assert body["dimension"] == 256
+    points = body["scorers"][0]["segments"][0]["elements"]
+    assert len(points) == 5
+    assert all(point["availability"] == "available" for point in points)
+    assert all(point["score"] == 0.25 for point in points)
+
+
+def test_classify_refuses_an_unknown_scorer(tmp_path: pathlib.Path) -> None:
+    config = make_config(tmp_path)
+    app = create_app(config, StubEncoder(256), StubClassifier())
+    response = TestClient(app).post(
+        "/classify", headers=auth(), json={"segments": [SEGMENT], "scorers": ["magic"]}
+    )
+    assert response.status_code == 422
+    assert response.json()["reason"] == "contract_violation"
+
+
+def test_classify_requires_a_token(tmp_path: pathlib.Path) -> None:
+    config = make_config(tmp_path)
+    app = create_app(config, StubEncoder(256), StubClassifier())
+    response = TestClient(app).post("/classify", json={"segments": [SEGMENT]})
+    assert response.status_code == 401
+
+
 def test_health_is_unauthenticated_and_carries_no_content(tmp_path: pathlib.Path) -> None:
     response = client(tmp_path).get("/health")
     assert response.status_code == 200

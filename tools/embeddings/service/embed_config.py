@@ -36,6 +36,12 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 DEFAULT_PREFIX = "task: classification | query: "
 DEFAULT_PREFIX_VERSION = "classification/1"
 
+# The prototype artefact the classify endpoint reads, beside the code that uses it. It lives in the
+# service directory so the deployed layout and the repository layout are the same thing: the first
+# version resolved one directory too high on the host and asked for /home/scott/artefacts, which is
+# a path that only looked right in the checkout.
+DEFAULT_ARTEFACT_PATH = pathlib.Path(__file__).resolve().parent / "artefacts" / "elements-seed-1.json"
+
 
 class ConfigError(RuntimeError):
     """The service will not start, and the message names which setting is wrong."""
@@ -56,6 +62,7 @@ class Config:
     max_tokens: int
     batch_size: int
     native_dimension: int = 768
+    artefact_path: pathlib.Path = DEFAULT_ARTEFACT_PATH
 
     @staticmethod
     def from_env(env: Mapping[str, str] | None = None) -> "Config":
@@ -96,6 +103,9 @@ class Config:
             max_total_chars=_int(source, "EMB_MAX_TOTAL_CHARS", 32000),
             max_tokens=_int(source, "EMB_MAX_TOKENS", 8192),
             batch_size=_int(source, "EMB_BATCH_SIZE", 8),
+            artefact_path=pathlib.Path(
+                source.get("EMB_ARTEFACT", str(DEFAULT_ARTEFACT_PATH))
+            ).expanduser(),
         )
 
     def read_token(self) -> bytes:
