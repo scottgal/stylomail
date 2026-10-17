@@ -22,6 +22,10 @@ public sealed record ProxyAccountResponse
     public DateTimeOffset? RevokedAt { get; init; }
 }
 
+/// <summary>Write-only enrolment material. Never retain or render its secret fields after submit.</summary>
+public sealed record ProxyAccountCreateRequest(string Login, string ClientPassword, string BackendAccountId, string ProviderId, string CredentialDiscriminator, string BackendUsername, string? GrantedScopes, string BackendSecret);
+public sealed record ProxyAccountCreatedResponse { public required string TenantId { get; init; } public required string AccountId { get; init; } public required bool Enabled { get; init; } public required string EnrollmentState { get; init; } public required DateTimeOffset CreatedAt { get; init; } public required DateTimeOffset UpdatedAt { get; init; } }
+
 public sealed record ProxySessionsResponse
 {
     public required string TenantId { get; init; }

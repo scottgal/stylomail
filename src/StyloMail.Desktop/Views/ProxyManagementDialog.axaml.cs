@@ -44,6 +44,7 @@ public partial class ProxyManagementDialog : Window
     private async void OnDisableClick(object? sender, RoutedEventArgs e) => await SetEnabled(sender, false);
     private async Task SetEnabled(object? sender, bool enabled) { if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return; await _client.SetProxyAccountEnabledAsync(row.AccountId, enabled); await RefreshAsync(); }
     private async void OnRevokeClick(object? sender, RoutedEventArgs e) { if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return; await _client.RevokeProxyCredentialAsync(row.AccountId); await RefreshAsync(); }
+    private async void OnCreateAccountClick(object? sender, RoutedEventArgs e) { if (_client is null) return; await new ProxyAccountCreateDialog(_client).ShowDialog(this); await RefreshAsync(); }
     private async void OnEnableListenerClick(object? sender, RoutedEventArgs e) => await SetListenerEnabled(sender, true);
     private async void OnDisableListenerClick(object? sender, RoutedEventArgs e) => await SetListenerEnabled(sender, false);
     private async Task SetListenerEnabled(object? sender, bool enabled)

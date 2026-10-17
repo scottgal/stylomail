@@ -276,6 +276,9 @@ public sealed class StyloMailApiClient
     public Task<ProxyAccountsResponse> GetProxyAccountsAsync(int limit = 100, string? after = null, CancellationToken cancellationToken = default)
         => SendAsync<ProxyAccountsResponse>(HttpMethod.Get, PagedPath("/v1/proxy/accounts", limit, after), body: null, cancellationToken);
 
+    public Task<ProxyAccountCreatedResponse> CreateProxyAccountAsync(ProxyAccountCreateRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<ProxyAccountCreatedResponse>(HttpMethod.Post, "/v1/proxy/accounts", request, cancellationToken);
+
     public Task<ProxySessionsResponse> GetLiveProxySessionsAsync(int limit = 100, string? after = null, CancellationToken cancellationToken = default)
         => SendAsync<ProxySessionsResponse>(HttpMethod.Get, "/v1/proxy/sessions?scope=live&" + PagedQuery(limit, after), body: null, cancellationToken);
 
