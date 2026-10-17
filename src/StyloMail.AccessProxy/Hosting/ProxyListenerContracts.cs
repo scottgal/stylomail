@@ -141,6 +141,31 @@ public interface IProxyWarningAnalyzer
         CancellationToken cancellationToken);
 }
 
+/// <summary>Content-free per-message segmentation fact for management projection.</summary>
+public sealed record ProxySegmentationOutcome
+{
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required MessageTrafficKind TrafficKind { get; init; }
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required DateTimeOffset ObservedAt { get; init; }
+    public required ProxyWarningAvailability Availability { get; init; }
+    public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
+    public required int SegmentCount { get; init; }
+    public required bool Truncated { get; init; }
+    public required int AppliedMaxSegments { get; init; }
+    public required int AppliedMaxSegmentBytes { get; init; }
+    /// <summary>Zero-based contiguous ordinals actually analysed; no text or digest is retained.</summary>
+    public required IReadOnlyList<int> AnalysedOrdinals { get; init; }
+    public required bool AnySegmentDropped { get; init; }
+}
+
+public interface IProxySegmentationOutcomeSink
+{
+    ValueTask RecordAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken);
+}
+
 public sealed record ProxyWarningAnalysisResult
 {
     public required string MessageToken { get; init; }
