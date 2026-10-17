@@ -30,7 +30,7 @@ namespace StyloMail.Embeddings;
 /// spend a delivery path's latency budget discovering repeatedly.
 /// </para>
 /// </remarks>
-public sealed class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
+public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider, IElementClassifier
 {
     private const int MaxResponseBytes = 8 * 1024 * 1024;
     private const float NormTolerance = 1e-4f;
