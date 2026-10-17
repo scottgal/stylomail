@@ -3,9 +3,9 @@
 Draft of 17 October 2026.
 
 This manual is written for the person who runs StyloMail and its client access proxy. It walks
-through the Avalonia console screen by screen. It is a draft: five figures are captured from
-verified runs, and the rest name the state they must show and stay pending until a verified run
-produces them. No figure is a mockup, and no screen is described as available unless it is in the build.
+through the Avalonia console screen by screen. It is a draft: nine figures are captured from
+verified runs, three more are covered by a frame already used, and the rest name the state they must
+show and stay pending until a verified run produces them. No figure is a mockup, and no screen is described as available unless it is in the build.
 
 Four conventions are used throughout:
 
@@ -87,7 +87,9 @@ clears it; nothing on screen can reveal it.
 > **No API key set**. Requested from the console owner as M01. Run directory: pending.
 >
 > **Figure M03 (pending capture).** The Connection screen with a Host address, an empty key field and
-> the never-shown-again note. Requested as M03. Run directory: pending.
+> the never-shown-again note. Requested as M03. Run directory: pending. A partial frame exists
+> (`12-connection.png` in the same run), but it shows a re-connection over an existing key with a
+> documentation placeholder address, so it is not used for the strict M03 state.
 
 ### 2.4 Readiness is not reachability
 
@@ -110,8 +112,15 @@ When the Host is up and not accepting mail, it names the checks it failed. The l
 rather than behind a banner, because the remedy differs per check. Unknown, empty and not-yet-read
 are three different states and the console does not render them as one.
 
-> **Figure M02 (pending capture).** The connected console, status **Connected** and feed **Live**,
-> with senders loaded. Requested as M02. Run directory: pending.
+![Figure M02: connected and live](images/m02-connected-live.png)
+
+> **Figure M02.** The console on a live harness Host. Status **Connected** and feed **Live**. The
+> company **Acme** contains the sender **Acme outbound**, shown as Active with Pause and Edit; the
+> middle pane says **Nothing to list** for the selected Host item, and the right pane says **No
+> decision open**. Captured from `ux-results/console-smoke`, scenario `console-smoke` (success, 106
+> actions), host build `7e498edf538a` as reported by the console lane; this run's `result.json`
+> does not stamp it. sha256
+> `20d6c5bd66cd1199101bc8aec42dee1141d7c6e5966c5226ecbaff26fba53c10`.
 >
 > **Figure M04 (pending capture).** Status **Connected, not accepting mail** with the failed-checks
 > list visible. Requested as M04. Run directory: pending.
@@ -348,11 +357,20 @@ with no company are two different cases: a null company means nobody has describ
 an id with no matching company means somebody filed it under a company since deleted. The console
 labels them differently because the remedies differ.
 
-> **Figure M15 (pending capture).** The sender rail grouped by company, with one company section and
-> one sender row. Requested as M15. Run directory: pending.
+> **Figure M15.** Covered by Figure M02, which shows the sender rail grouped by company: the heading
+> **Acme** with the sender **Acme outbound** beneath it, its Active state, and its Pause and Edit
+> controls. No separate frame is used, so the same run and build apply.
 >
-> **Figure M16 (pending capture).** The sender profile with Pause or Resume and Edit visible, and no
-> real address. Requested as M16. Run directory: pending.
+![Figure M16: sender profile](images/m16-sender-profile.png)
+
+> **Figure M16.** The Sender profile dialog for **Acme outbound**, with Label, Company **Acme**,
+> Notes, External reference and Notification target visible, and the stored-only note under the
+> notification target. The sender rail behind it shows the same sender's **Pause** and **Edit**
+> controls. Posture is not visible in this frame, and the dialog itself shows Cancel and Save rather
+> than Pause or Resume. Captured from `ux-results/console-smoke`, scenario `console-smoke` (success,
+> 106 actions), host build `7e498edf538a` as reported by the console lane; this run's `result.json`
+> does not stamp it. sha256
+> `c4ceb77729e4a6be634e95995c252fadfd995cf45af49bb32bef7d81e7cc8c11`.
 
 ### 4.3 Respondents
 
@@ -403,11 +421,29 @@ Two labels matter when they appear:
 > **Figure M17 (pending capture).** The empty Decisions ledger. Requested as M17.
 > Run directory: pending.
 >
-> **Figure M18 (pending capture).** The decision pane with action, time, risk index, coverage,
-> ordered reasons and their evidence. Requested as M18. Run directory: pending.
+![Figure M18: decision pane with unavailable evidence](images/m18-decision-pane-unavailable.png)
+
+> **Figure M18.** A real **Defer** decision with its assessment time, shown as an
+> unavailable-evidence decision. The ledger row carries the headline reason that semantic evidence
+> was entirely unavailable, so no assessment could be made and responsibility was declined; it also
+> gives risk index 0.323 (an index, not a probability) and 1 coverage flag. The pane shows the
+> action, the time and the Conversation trends. The ordered **Why** list is not visible in this
+> frame, so this figure does not illustrate available evidence. Captured from
+> `ux-results/console-smoke`, scenario `console-smoke` (success, 106 actions), host build
+> `7e498edf538a` as reported by the console lane; this run's `result.json` does not stamp it. sha256
+> `860bb17ce3e12f07ff00289b0106e98bfc9c24f1bf2f1bd570cd9dc1e7e0399b`.
 >
-> **Figure M19 (pending capture).** A decision whose evidence is unavailable, showing **not
-> produced** rather than zero. Requested as M19. Run directory: pending.
+![Figure M19: decision with unavailable semantic evidence and zero-sample trends](images/m19-decision-unavailable-evidence.png)
+
+> **Figure M19.** A real **Defer** decision whose semantic evidence was unavailable. The ledger row
+> says semantic evidence was entirely unavailable, so no assessment could be made and
+> responsibility is declined rather than assumed; it gives risk index 0.323 and 1 coverage flag. The
+> Conversation trends panel shows three individual observations, each **Unavailable**, each **0
+> samples**, each **not produced**, with its observed time. A missing measurement is stated, not
+> drawn as zero. Captured from `ux-results/console-smoke`, scenario `console-smoke` (success, 106
+> actions), host build `7e498edf538a` as reported by the console lane; this run's `result.json` does
+> not stamp it. sha256
+> `58dfacd242f46015d68c65495782257d3bd5cf8e608cf6abc8ea992818946729`.
 
 ### 4.5 Conversation signals: tone and warnings
 
@@ -532,8 +568,11 @@ A few rules follow from the spec and are visible in the panel's wording:
 > not the per-thread graph in the previous subsection. Until the graph exists, read the cards: a
 > missing value is stated, not drawn.
 >
-> **Figure M20 (pending capture).** Real Host observation rows with **Unavailable** and **0 samples**
-> visible, and the assessment time above them. Requested as M20. Run directory: pending.
+> **Figure M20.** Covered by Figure M19, which shows three real Host observation rows in the
+> Conversation trends panel: `behavioural.trend.velocity` for the burst window,
+> `behavioural.trend.acceleration` for the burst window, and `behavioural.trend.velocity` for the
+> slow window. Each is **Unavailable**, **0 samples** and **not produced**, with the assessment time
+> above them. No separate frame is used, so the same run and build apply.
 
 #### Assessed conversation history
 
@@ -827,8 +866,8 @@ signals, not message content, and its caption says that.
 | Figure | State | Run directory | Status |
 | --- | --- | --- | --- |
 | M01 | No API key set | pending | requested |
-| M02 | Connected and live | pending | requested |
-| M03 | Connection screen | pending | requested |
+| M02 | Connected and live | ux-results/console-smoke | captured; build 7e498edf538a reported, not stamped; sha256 20d6c5bd… |
+| M03 | Connection screen | pending | requested; 12-connection is partial (existing key, placeholder address) and not used |
 | M04 | Connected, not accepting mail | pending | requested |
 | M05 | Cannot reach the Host | pending | requested |
 | M06 | Not a StyloMail Host | pending | requested |
@@ -840,12 +879,12 @@ signals, not message content, and its caption says that.
 | M12 | Create account form | pending | not built |
 | M13 | Listener enable and disable | covered by M08 | captured within M08: Disable (drain) and notice visible; Enable state not shown |
 | M14 | Listener fault detail | pending | requested |
-| M15 | Senders grouped by company | pending | requested |
-| M16 | Sender profile | pending | requested |
+| M15 | Senders grouped by company | ux-results/console-smoke | covered by M02 (same frame) |
+| M16 | Sender profile | ux-results/console-smoke | captured; sha256 c4ceb777…; posture not in frame |
 | M17 | Empty decisions ledger | pending | requested |
-| M18 | Decision pane with evidence | pending | requested |
-| M19 | Unavailable evidence | pending | requested |
-| M20 | Trend observations | pending | requested |
+| M18 | Decision pane, unavailable-evidence variant | ux-results/console-smoke | captured; sha256 860bb17c…; ordered Why list not in frame |
+| M19 | Unavailable evidence | ux-results/console-smoke | captured; sha256 58dfacd2…; 0-sample trends in the same frame |
+| M20 | Trend observations | ux-results/console-smoke | covered by M19 (same frame) |
 | M21a | Conversation list | ux-results/console-external-host/20261017T220912Z-43052 | captured; sha256 270978f8…; host build id not reported |
 | M21 | Conversation signals, mixed measured and not produced | ux-results/console-external-host/20261017T221612Z-47466 | captured; build 60716c32c85a; sha256 a28e2f9…; file named M22-thread-signals |
 | M21b | Measured tone series | pending | blocked: tone not linked to a semantic provider |
@@ -855,10 +894,12 @@ signals, not message content, and its caption says that.
 | M25 | After release | pending | requested |
 | M26 | Element signals | pending | blocked: console does not render the element series yet |
 
-Five frames in this table are captured, in two batches. M08 and M21a come from the first batch, whose
-host build id was not reported and is recorded as missing rather than filled from a later build. The
-second batch's M09, M10 and M21 carry host build `60716c32c85a` in their `result.json`. All five
-carry their run directory, scenario and sha256.
+Nine frames in this table are captured, in three batches. M08 and M21a come from the first batch,
+whose host build id was not reported. M09, M10 and M21 come from the second batch, build
+`60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
+actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
+not stamp it, and that gap is recorded rather than filled. M13, M15 and M20 are covered by M08, M02
+and M19. All images carry their run directory, scenario and sha256.
 
 **The four files M08-M11 in the first run are byte-identical** (sha256
 `ced0c85c684e8f1132efc84b30e9087566f2bccb6b8207089360d2a92ca500a2`): one unique settings frame,
@@ -866,6 +907,11 @@ not four. Only M08 uses it; the second batch's M09 and M10 are distinct files wi
 hashes. That first run's `result.json` records `success: false` at the conversation-locator step
 **after** its four screenshot actions had succeeded, which is why the frame is retained and the
 later step is not.
+
+In the `console-smoke` run, `04-queue-selected`, `04b-empty-queue-says-why` and `07-cancelled` are
+byte-identical (sha256 `89046bd39210045a724735e3fd52d857ed4ebaef314afa54ec982e5a11e0ea5e`) and are
+not used. `05` and `06` are pause-sender confirmations, not quarantine release, so they are not
+M24. `12-connection` is a partial connection form and is not used as M03.
 
 A figure whose row says **requested** has a running request with the console lane. It is not a
 promise that the state is reachable today: if the capture cannot be produced from a verified run,
