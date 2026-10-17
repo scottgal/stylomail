@@ -38,8 +38,9 @@ public sealed class ImapAccessProxySession : AccessProxySessionBase
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer = null,
-        IProxySessionContextSink? contextSink = null)
-        : base(tenantId, accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer, contextSink)
+        IProxySessionContextSink? contextSink = null,
+        IProxyRetrievalWarningAssemblerFactory? retrievalAssemblerFactory = null)
+        : base(tenantId, accounts, passwordHasher, credentials, backend, limiter, bounds, timeProvider, observer, contextSink, retrievalAssemblerFactory)
     {
     }
 

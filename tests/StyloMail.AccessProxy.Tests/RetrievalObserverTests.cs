@@ -1,3 +1,5 @@
+using System.Text;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
 using StyloMail.AccessProxy.Tests.Support;
 
@@ -159,6 +161,122 @@ public sealed class RetrievalObserverTests
         Assert.Equal(typeof(void), method!.ReturnType);
     }
 
+    [Fact]
+    public async Task Fetch_literal_assembler_records_a_clean_available_outcome()
+    {
+        var sink = new CapturingWarningSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink, new StaticWarningAnalyzer(), TimeProvider.System);
+        await using var assembler = factory.Create("tenant", "account");
+
+        FeedFetchLiteral(assembler, "Subject: clean\r\n\r\nbody", splitAt: 11);
+
+        await assembler.DisposeAsync();
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(MessageTrafficKind.Retrieval, outcome.TrafficKind);
+        Assert.Equal(ProxyWarningAvailability.Available, outcome.Availability);
+        Assert.Equal(ProxyWarningAvailabilityReason.None, outcome.AvailabilityReason);
+        Assert.Equal(0, outcome.MarkerCount);
+        Assert.Empty(sink.Markers);
+    }
+
+    [Fact]
+    public async Task Session_factory_analyzes_a_complete_fetch_literal_after_authentication()
+    {
+        var harness = new ProxyHarness();
+        await harness.EnrolAppPasswordAccountAsync();
+        var sink = new CapturingWarningSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink, new StaticWarningAnalyzer(), harness.Clock);
+        var client = new PipeDuplex("client");
+        var run = harness.NewImapSession(retrievalAssemblerFactory: factory).RunAsync(client, CancellationToken.None);
+
+        await client.ReadLineAsync();
+        await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
+        await client.ReadLineAsync();
+        var literal = Encoding.ASCII.GetBytes("* 1 FETCH (BODY[] {4}\r\ntest\r\n)\r\n");
+        await harness.Transport.Channel!.SendRawAsync(literal);
+        var received = new byte[literal.Length];
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await client.PeerInput.ReadExactlyAsync(received, cts.Token);
+        Assert.Equal(literal, received);
+
+        await client.ClosePeerWriteAsync();
+        Assert.Equal(SessionOutcome.Relayed, await run);
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(MessageTrafficKind.Retrieval, outcome.TrafficKind);
+        Assert.Equal(ProxyWarningAvailability.Available, outcome.Availability);
+    }
+
+    [Fact]
+    public async Task Oversized_fetch_literal_records_unreadable_and_never_available()
+    {
+        var sink = new CapturingWarningSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink, new StaticWarningAnalyzer(), TimeProvider.System,
+            new ProxyRetrievalWarningAssemblerOptions { MaximumMessageBytes = 4, MaximumSessionBufferedBytes = 128 });
+        await using var assembler = factory.Create("tenant", "account");
+
+        FeedFetchLiteral(assembler, "12345", splitAt: 2);
+
+        await assembler.DisposeAsync();
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(ProxyWarningAvailability.NotProduced, outcome.Availability);
+        Assert.Equal(ProxyWarningAvailabilityReason.UnreadableMessage, outcome.AvailabilityReason);
+        Assert.Empty(sink.Markers);
+    }
+
+    [Fact]
+    public async Task Truncated_fetch_literal_never_records_an_available_outcome()
+    {
+        var sink = new CapturingWarningSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink, new StaticWarningAnalyzer(), TimeProvider.System);
+        await using var assembler = factory.Create("tenant", "account");
+
+        assembler.Observe("* 1 FETCH (BODY[] {20}\r\npartial"u8);
+
+        await assembler.DisposeAsync();
+        Assert.DoesNotContain(sink.Outcomes, outcome => outcome.Availability == ProxyWarningAvailability.Available);
+        Assert.Empty(sink.Outcomes);
+    }
+
+    [Fact]
+    public async Task Configured_unavailable_analyzer_records_no_analyser_configured()
+    {
+        var sink = new CapturingWarningSink();
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink,
+            new StaticWarningAnalyzer(ProxyWarningAvailability.NotProduced, ProxyWarningAvailabilityReason.NoAnalyserConfigured),
+            TimeProvider.System);
+        await using var assembler = factory.Create("tenant", "account");
+
+        FeedFetchLiteral(assembler, "body", splitAt: 3);
+
+        await assembler.DisposeAsync();
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(ProxyWarningAvailability.NotProduced, outcome.Availability);
+        Assert.Equal(ProxyWarningAvailabilityReason.NoAnalyserConfigured, outcome.AvailabilityReason);
+        Assert.Empty(sink.Markers);
+    }
+
+    [Fact]
+    public async Task No_assembler_factory_means_retrieval_analysis_is_off()
+    {
+        var harness = new ProxyHarness();
+        await harness.EnrolAppPasswordAccountAsync();
+        var client = new PipeDuplex("client");
+        var run = harness.NewImapSession(retrievalAssemblerFactory: null).RunAsync(client, CancellationToken.None);
+
+        await client.ReadLineAsync();
+        await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
+        await client.ReadLineAsync();
+        var literal = Encoding.ASCII.GetBytes("* 1 FETCH (BODY[] {4}\r\ntest\r\n)\r\n");
+        await harness.Transport.Channel!.SendRawAsync(literal);
+        var received = new byte[literal.Length];
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await client.PeerInput.ReadExactlyAsync(received, cts.Token);
+        Assert.Equal(literal, received);
+
+        await client.ClosePeerWriteAsync();
+        Assert.Equal(SessionOutcome.Relayed, await run);
+    }
+
     private static async Task<byte[]> WaitForObservationAsync(RecordingRetrievalObserver observer, int expectedLength)
     {
         for (var attempt = 0; attempt < 50; attempt++)
@@ -173,5 +291,32 @@ public sealed class RetrievalObserverTests
         }
 
         return observer.Observed;
+    }
+
+    private static void FeedFetchLiteral(IProxyRetrievalWarningAssembler assembler, string message, int splitAt)
+    {
+        var payload = Encoding.ASCII.GetBytes($"* 1 FETCH (BODY[] {{{Encoding.ASCII.GetByteCount(message)}}}\r\n{message}\r\n)\r\n");
+        assembler.Observe(payload.AsSpan(0, splitAt));
+        assembler.Observe(payload.AsSpan(splitAt));
+        Array.Clear(payload);
+    }
+
+    private sealed class CapturingWarningSink : IProxyWarningEventSink
+    {
+        public List<ProxyWarningAnalysisOutcome> Outcomes { get; } = [];
+        public List<ProxyDeterministicWarningEvent> Markers { get; } = [];
+        public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome outcome, CancellationToken cancellationToken) { Outcomes.Add(outcome); return ValueTask.CompletedTask; }
+        public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent marker, CancellationToken cancellationToken) { Markers.Add(marker); return ValueTask.CompletedTask; }
+    }
+
+    private sealed class StaticWarningAnalyzer(
+        ProxyWarningAvailability availability = ProxyWarningAvailability.Available,
+        ProxyWarningAvailabilityReason reason = ProxyWarningAvailabilityReason.None) : IProxyWarningAnalyzer
+    {
+        public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput input, CancellationToken cancellationToken) => ValueTask.FromResult(new ProxyWarningAnalysisResult
+        {
+            MessageToken = "message", ThreadToken = "thread", Availability = availability,
+            AvailabilityReason = reason, Findings = [],
+        });
     }
 }

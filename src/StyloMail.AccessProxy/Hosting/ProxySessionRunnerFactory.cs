@@ -33,6 +33,8 @@ public sealed record ProxySessionRunnerDependencies
     public Submission.ProxyElementOrchestrator? ElementOrchestrator { get; init; }
     public IEphemeralSubmissionStager? SubmissionStager { get; init; }
     public IRetrievalObserver? RetrievalObserver { get; init; }
+    /// <summary>Optional off-relay IMAP FETCH-literal analysis. Null means retrieval analysis is off.</summary>
+    public IProxyRetrievalWarningAssemblerFactory? RetrievalWarningAssemblerFactory { get; init; }
 }
 
 /// <summary>Builds the listener session delegate from one tenant-bound listener options record.</summary>
@@ -52,7 +54,8 @@ public sealed class ProxySessionRunnerFactory
             ProxyListenerProtocol.Imap => new ImapAccessProxySession(tenantId, dependencies.Accounts,
                 dependencies.PasswordHasher, dependencies.CredentialResolver,
                 dependencies.BackendConnectors.Create(options.Protocol), dependencies.Limiter, dependencies.Bounds,
-                dependencies.TimeProvider, dependencies.RetrievalObserver, dependencies.ContextSink).RunAsync(channel, cancellationToken),
+                dependencies.TimeProvider, dependencies.RetrievalObserver, dependencies.ContextSink,
+                dependencies.RetrievalWarningAssemblerFactory).RunAsync(channel, cancellationToken),
             ProxyListenerProtocol.Pop3 => new Pop3AccessProxySession(tenantId, dependencies.Accounts,
                 dependencies.PasswordHasher, dependencies.CredentialResolver,
                 dependencies.BackendConnectors.Create(options.Protocol), dependencies.Limiter, dependencies.Bounds,

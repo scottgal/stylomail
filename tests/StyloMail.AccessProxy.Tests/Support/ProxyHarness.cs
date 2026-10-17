@@ -159,8 +159,9 @@ internal sealed class ProxyHarness
 
     public ImapAccessProxySession NewImapSession(
         IRetrievalObserver? observer = null,
-        IProxySessionContextSink? contextSink = null) =>
-        new(TenantId, AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer, contextSink);
+        IProxySessionContextSink? contextSink = null,
+        IProxyRetrievalWarningAssemblerFactory? retrievalAssemblerFactory = null) =>
+        new(TenantId, AccountStore, PasswordHasher, Resolver, NewImapConnector(), Limiter, Bounds, Clock, observer, contextSink, retrievalAssemblerFactory);
 
     public Pop3AccessProxySession NewPop3Session(IRetrievalObserver? observer = null) =>
         new(TenantId, AccountStore, PasswordHasher, Resolver, NewPop3Connector(), Limiter, Bounds, Clock, observer);
