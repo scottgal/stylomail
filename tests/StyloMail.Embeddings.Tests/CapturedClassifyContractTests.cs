@@ -108,6 +108,42 @@ public sealed class CapturedClassifyContractTests : IDisposable
             Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
     }
 
+    [Fact]
+    public async Task A_missing_scorer_version_is_refused_rather_than_defaulted()
+    {
+        var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
+        var classify = (await File.ReadAllTextAsync(Fixture("service-classify.json")))
+            .Replace("\"scorer_version\"", "\"scorer_version_removed\"", StringComparison.Ordinal);
+
+        var options = new EmbeddingOptions { TokenFilePath = _tokenPath, Dimension = 256 };
+        var provider = new SegmentEmbeddingProvider(
+            new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
+
+        var outcome = await provider.ClassifyAsync(Segments, new[] { ElementScorers.PrototypeKnn });
+
+        Assert.Equal(
+            ClassificationUnavailableReason.ContractViolation,
+            Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
+    }
+
+    [Fact]
+    public async Task A_scorer_version_that_is_not_the_served_one_is_refused()
+    {
+        var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
+        var classify = (await File.ReadAllTextAsync(Fixture("service-classify.json")))
+            .Replace(ElementScorers.PrototypeKnnVersion, "prototype_knn/seed-1", StringComparison.Ordinal);
+
+        var options = new EmbeddingOptions { TokenFilePath = _tokenPath, Dimension = 256 };
+        var provider = new SegmentEmbeddingProvider(
+            new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
+
+        var outcome = await provider.ClassifyAsync(Segments, new[] { ElementScorers.PrototypeKnn });
+
+        Assert.Equal(
+            ClassificationUnavailableReason.ContractViolation,
+            Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
+    }
+
     private static string Fixture(string name) =>
         Path.Combine(AppContext.BaseDirectory, "fixtures", name);
 

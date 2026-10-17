@@ -49,8 +49,14 @@ public static class ElementScorers
     /// <summary>Logistic regression over the same vector. A probability.</summary>
     public const string LinearProbe = "linear_probe";
 
-    public const string PrototypeKnnVersion = "prototype_knn/seed-1";
-    public const string LinearProbeVersion = "linear_probe/seed-1";
+    /// <summary>
+    /// The version the served artefact reports. It moves when the artefact moves, in the same
+    /// commit: the store validates a point's version against these constants, so a mismatch is a
+    /// point that never lands. The service reports corpus-1 because that is the artefact it serves.
+    /// </summary>
+    public const string PrototypeKnnVersion = "prototype_knn/corpus-1";
+
+    public const string LinearProbeVersion = "linear_probe/corpus-1";
 
     public static readonly IReadOnlyList<string> All = new[] { PrototypeKnn, LinearProbe };
 

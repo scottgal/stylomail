@@ -258,6 +258,28 @@ def test_classify_requires_a_token(tmp_path: pathlib.Path) -> None:
     assert response.status_code == 401
 
 
+def test_the_committed_artefact_names_a_version_for_every_scorer() -> None:
+    import numpy as np
+    from embed_classify import ElementClassifier
+
+    artefact = pathlib.Path(__file__).parent / "artefacts" / "elements-corpus-1.json"
+    classifier = ElementClassifier(artefact, "google/embeddinggemma-2", 256, "classification/1")
+    classifier.load()
+
+    described = classifier.describe()
+    assert described["scorers"], "no scorers described"
+    for block in described["scorers"]:
+        assert isinstance(block["scorer_version"], str) and block["scorer_version"]
+        assert block["scorer_version"].startswith(block["scorer"] + "/")
+
+    unit = (np.ones((1, 256), dtype=np.float32) / 16.0)[0]
+    results = classifier.classify(np.asarray([unit]), ("prototype_knn", "linear_probe"))
+    assert len(results) == 2
+    for block in results:
+        assert block["scorer_version"], f"scorer_version missing for {block['scorer']}"
+        assert block["scorer_version"].split("/", 1)[0] == block["scorer"]
+
+
 def test_health_is_unauthenticated_and_carries_no_content(tmp_path: pathlib.Path) -> None:
     response = client(tmp_path).get("/health")
     assert response.status_code == 200

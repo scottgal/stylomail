@@ -111,11 +111,14 @@ class ElementClassifier:
 
         self._artefact_version = str(document.get("artefact_version", "unknown"))
         self._scorer_versions[PROTOTYPE_KNN] = str(
-            document.get("knn_version", f"prototype_knn/{self._artefact_version}")
+            document.get("knn_version") or f"prototype_knn/{self._artefact_version}"
         )
         self._scorer_versions[LINEAR_PROBE] = str(
-            document.get("probe_version", f"linear_probe/{self._artefact_version}")
+            document.get("probe_version") or f"linear_probe/{self._artefact_version}"
         )
+        for scorer, version in self._scorer_versions.items():
+            if not version or version.endswith("/"):
+                raise ArtefactError("contract_violation", f"scorer version missing for {scorer}")
 
         for element in VOCABULARY:
             for label, target in ((1, self._positive), (0, self._negative)):

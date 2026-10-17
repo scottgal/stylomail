@@ -181,6 +181,16 @@ public sealed partial class SegmentEmbeddingProvider
                 return Unavailable(ClassificationUnavailableReason.ContractViolation);
             }
 
+            // A missing version is not defaulted. The store validates every point against
+            // ElementScorers.VersionOf, so a client that filled this in would turn a server defect
+            // into a row that looks sourced and is not.
+            if (string.IsNullOrWhiteSpace(scorer.ScorerVersion)
+                || !string.Equals(scorer.ScorerVersion, ElementScorers.VersionOf(scorerName), StringComparison.Ordinal))
+            {
+                _breaker.RecordFailure();
+                return Unavailable(ClassificationUnavailableReason.ContractViolation);
+            }
+
             var rows = new List<SegmentElementScores>(count);
             for (var ordinal = 0; ordinal < count; ordinal++)
             {
@@ -215,10 +225,7 @@ public sealed partial class SegmentEmbeddingProvider
                 rows.Add(new SegmentElementScores(ordinal, points));
             }
 
-            results.Add(new ElementScorerResult(
-                scorerName,
-                scorer.ScorerVersion ?? ElementScorers.VersionOf(scorerName) ?? "unknown",
-                rows));
+            results.Add(new ElementScorerResult(scorerName, scorer.ScorerVersion, rows));
         }
 
         _metadata ??= new EmbeddingMetadata(
