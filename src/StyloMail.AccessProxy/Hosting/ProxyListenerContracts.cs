@@ -166,6 +166,35 @@ public interface IProxySegmentationOutcomeSink
     ValueTask RecordAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken);
 }
 
+/// <summary>Content-free classifier point. Segment text is structurally excluded.</summary>
+public sealed record ProxyElementPoint
+{
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required MessageTrafficKind TrafficKind { get; init; }
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required int Ordinal { get; init; }
+    public required string Element { get; init; }
+    public double? Score { get; init; }
+    public required string Scorer { get; init; }
+    public required string ScorerVersion { get; init; }
+    public string? NearestExemplarId { get; init; }
+    public required ProxyWarningAvailability Availability { get; init; }
+    public required string AvailabilityReason { get; init; }
+    public required string ModelTag { get; init; }
+    public required string PrefixVersion { get; init; }
+    public required int Dimension { get; init; }
+    public required string VocabularyVersion { get; init; }
+    public required DateTimeOffset ObservedAt { get; init; }
+}
+
+public interface IProxyElementSink
+{
+    ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken);
+    ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken);
+}
+
 public sealed record ProxyWarningAnalysisResult
 {
     public required string MessageToken { get; init; }
