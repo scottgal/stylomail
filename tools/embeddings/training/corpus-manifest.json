@@ -28,6 +28,26 @@
       "licence": "Nazario public corpus, see the LICENSE.txt at the index"
     },
     {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_spam.tar.bz2",
+      "label": "spam",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_spam_2.tar.bz2",
+      "label": "spam",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20050311_spam_2.tar.bz2",
+      "label": "spam",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
+      "url": "https://spamassassin.apache.org/old/publiccorpus/20021010_spam.tar.bz2",
+      "label": "spam",
+      "licence": "Apache SpamAssassin public corpus"
+    },
+    {
       "url": "https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham.tar.bz2",
       "label": "ham",
       "licence": "Apache SpamAssassin public corpus"
@@ -58,7 +78,7 @@
     "urgency_pressure:positive": 60,
     "threat:positive": 60,
     "impersonated_greeting:positive": 60,
-    "attachment_lure:positive": 23,
+    "attachment_lure:positive": 60,
     "credential_request:negative": 200,
     "credential_request:negative_hard": 180,
     "urgency_pressure:negative": 200,
@@ -70,6 +90,6 @@
     "attachment_lure:negative": 200,
     "attachment_lure:negative_hard": 180
   },
-  "rows": 1263,
+  "rows": 1300,
   "note": "Weak supervision. The corpus supplies the malicious or benign label; the cue rule only selects the element a segment is evidence about. Text is redacted for structured identifiers only and is not committed."
 }

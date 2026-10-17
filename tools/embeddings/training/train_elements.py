@@ -45,6 +45,12 @@ VOCABULARY_VERSION = "elements/1"
 ARTEFACT_VERSION = "seed-1"
 DEFAULT_FPR_BUDGET = 0.01
 
+# The operating scorer per element is chosen by one stated rule: among scorers whose held-out recall
+# is at least this floor, the lowest false-positive rate wins; ties go to the higher PR-AUC. When no
+# scorer clears the floor the rule falls back to the highest recall, and the artefact says which arm
+# of the rule was used. The other scorer stays in the artefact as a reference series.
+OPERATING_RECALL_FLOOR = 0.85
+
 
 def call(endpoint: str, path: str, token: str, payload: dict | None = None) -> dict:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -303,6 +309,7 @@ def main() -> int:
     knn_thresholds = {}
     probe_thresholds = {}
     metrics_block = {}
+    operating_scorers = {}
 
     for element in VOCABULARY:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
@@ -387,7 +394,39 @@ def main() -> int:
             "score and reliability bins above describe the held-out output after scaling."
         )
 
-        metrics_block[element] = {"prototype_knn": knn_metrics, "linear_probe": probe_metrics}
+        block = {"prototype_knn": knn_metrics, "linear_probe": probe_metrics}
+        eligible = [name for name, values in block.items()
+                    if values["recall"] is not None and values["recall"] >= OPERATING_RECALL_FLOOR]
+        if eligible:
+            operating = min(
+                eligible,
+                key=lambda name: (
+                    block[name]["false_positive_rate"]
+                    if block[name]["false_positive_rate"] is not None else 1.0,
+                    -(block[name]["pr_auc"] or 0.0),
+                ),
+            )
+        else:
+            # No scorer clears the recall floor, so the rule falls back to the highest recall and
+            # says so. Minimising FPR here would pick the scorer that finds least, which is the
+            # opposite of what a floor exists to prevent.
+            operating = max(
+                block,
+                key=lambda name: (
+                    block[name]["recall"] or 0.0,
+                    -(block[name]["false_positive_rate"]
+                      if block[name]["false_positive_rate"] is not None else 1.0),
+                ),
+            )
+        operating_scorers[element] = {
+            "scorer": operating,
+            "scorer_version": f"{operating}/{'corpus-1' if args.version == 'corpus-1' else args.version}",
+            "rule": "lowest false positive rate among scorers with recall at or above the floor",
+            "recall_floor": OPERATING_RECALL_FLOOR,
+            "cleared_recall_floor": bool(eligible),
+            "reference_scorer": next(name for name in block if name != operating),
+        }
+        metrics_block[element] = block
         knn_thresholds[element] = round(float(knn_threshold), 6)
         probe_thresholds[element] = round(float(probe_threshold), 6)
         probe_models[element] = {
@@ -435,6 +474,7 @@ def main() -> int:
                 "resolved and the artefact says so rather than claiming it was met."
             ),
         },
+        "operating_scorers": operating_scorers,
         "metrics": metrics_block,
         "notes": (
             "Weak supervision: the corpus supplies the malicious or benign label; the cue rule only "

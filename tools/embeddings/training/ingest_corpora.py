@@ -96,6 +96,13 @@ NAZARIO = [
     "https://monkey.org/~jose/phishing/phishing3.mbox",
 ]
 
+SPAMASSASSIN_SPAM = [
+    "https://spamassassin.apache.org/old/publiccorpus/20030228_spam.tar.bz2",
+    "https://spamassassin.apache.org/old/publiccorpus/20030228_spam_2.tar.bz2",
+    "https://spamassassin.apache.org/old/publiccorpus/20050311_spam_2.tar.bz2",
+    "https://spamassassin.apache.org/old/publiccorpus/20021010_spam.tar.bz2",
+]
+
 SPAMASSASSIN = [
     "https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham.tar.bz2",
     "https://spamassassin.apache.org/old/publiccorpus/20030228_easy_ham_2.tar.bz2",
@@ -221,7 +228,9 @@ def main() -> int:
     used = set(seed_hashes)
     provenance = {"elements": list(ELEMENTS), "sources": [], "counts": {}}
 
-    # Positives: Nazario, element chosen by the strongest cue in a segment.
+    # Positives: Nazario phishing plus SpamAssassin's spam archive. Both are malicious by corpus
+    # label; the cue rule decides which element a segment is evidence about, and a segment may be
+    # evidence for more than one element.
     phishing_segments = []
     for url in NAZARIO:
         data = fetch(url, args.cache)
@@ -242,23 +251,54 @@ def main() -> int:
                     total = sum(hits.values())
                     if total == 0:
                         continue
-                    element = max(ELEMENTS, key=lambda name: (hits[name], -ELEMENTS.index(name)))
-                    phishing_segments.append((element, segment, hits))
+                    # Every element whose cue fires may claim the segment. Elements are multi-label by
+                    # design (several can hold at once), and the single-element assignment this
+                    # replaced starved attachment_lure to 23 positives because it lost the segments
+                    # where another cue fired more strongly.
+                    phishing_segments.append((segment, hits, "nazario-public-corpus",
+                                              "Nazario public corpus (research corpus, see its LICENSE.txt)"))
         finally:
             os.unlink(temporary_path)
         provenance["sources"].append({"url": url, "label": "phishing", "licence": "Nazario public corpus, see the LICENSE.txt at the index"})
 
+    for url in SPAMASSASSIN_SPAM:
+        data = fetch(url, args.cache)
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:bz2") as archive:
+            for member in archive.getmembers():
+                if not member.isfile():
+                    continue
+                handle = archive.extractfile(member)
+                if handle is None:
+                    continue
+                try:
+                    message = email.message_from_bytes(handle.read())
+                    text = body_of(message)
+                except Exception:
+                    continue
+                for segment in segments(text):
+                    hits = cue_counts(segment)
+                    if sum(hits.values()) == 0:
+                        continue
+                    phishing_segments.append((segment, hits, "spamassassin-spam",
+                                              "Apache SpamAssassin public corpus (spam archive)"))
+        provenance["sources"].append({"url": url, "label": "spam", "licence": "Apache SpamAssassin public corpus"})
+
     for element in ELEMENTS:
-        candidates = [(segment, hits) for name, segment, hits in phishing_segments if name == element]
-        chosen = choose(candidates, used, TARGET_PER_ELEMENT)
+        candidates = [(segment, hits, source, licence)
+                      for segment, hits, source, licence in phishing_segments
+                      if hits[element] > 0]
+        candidates.sort(key=lambda item: (-item[1][element], digest(item[0])))
+        chosen = choose([(item[0], item[1]) for item in candidates], used, TARGET_PER_ELEMENT)
+        by_text = {digest(segment): (source, licence) for segment, _, source, licence in candidates}
         for segment, hits in chosen:
+            source, licence = by_text[digest(segment)]
             rows.append({
                 "id": f"ex:{element}:{digest(segment)[:12]}",
                 "element": element,
                 "label": 1,
                 "split": "heldout" if int(digest(segment)[:2], 16) % 10 < 3 else "train",
-                "source": "nazario-public-corpus",
-                "licence": "Nazario public corpus (research corpus, see its LICENSE.txt)",
+                "source": source,
+                "licence": licence,
                 "hard_negative": False,
                 "cue_hits": hits[element],
                 "text": redact(segment),

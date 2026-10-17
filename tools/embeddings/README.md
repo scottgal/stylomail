@@ -181,44 +181,51 @@ would be provenance theatre.
 
 ### Held-out metrics: corpus/1, weak supervision
 
-Built by `ingest_corpora.py` from the Nazario phishing corpus and the Apache SpamAssassin ham
-corpora, then trained by `train_elements.py`. 1,263 rows: 60 Nazario positives per element (23 for
-attachment_lure) and 200 ham negatives per element, of which 120 to 180 are hard negatives selected
-by subject. The train split is divided by a stable text digest into fit and calibration, stratified
-per element and label; calibration chooses the operating point and held-out is read once.
+Built by `ingest_corpora.py` from the Nazario phishing corpus, the Apache SpamAssassin ham and spam
+archives, then trained by `train_elements.py`. 1,300 rows: 60 positives per element (Nazario plus the
+spam archive, every element whose cue fires may claim a segment) and 200 ham negatives per element,
+of which 120 to 180 are hard negatives selected by subject. The train split is divided by a stable
+text digest into fit and calibration, stratified per element and label; calibration chooses the
+operating point and held-out is read once.
 
-**What the labels mean.** A Nazario message is malicious by the corpus's own label; the segment
-chosen for an element is the one carrying that element's cues. A SpamAssassin ham message is benign;
-a segment selected by subject is a hard negative, and the rest are easy negatives. The corpus
-supplies the class, the cue and topic rules only select which element a segment is evidence about.
-This is weak supervision, and a held-out number here is a statement about the rule as much as about
-the model.
+**What the labels mean.** A corpus message is malicious or benign by the corpus's own label; the cue
+and topic rules only select which element a segment is evidence about. This is weak supervision, and
+a held-out number here is a statement about the rule as much as about the model.
 
-**Operating point and its budget.** Thresholds are chosen on the calibration split for a **one
-percent false-positive budget on negatives**, applied unchanged to held-out.
+**One operating scorer per element**, chosen by a stated rule: lowest false-positive rate among
+scorers whose recall is at least 0.85, ties to the higher PR-AUC. When no scorer clears the floor the
+rule falls back to the highest recall and the artefact records `cleared_recall_floor: false`. Both
+scorers remain in the artefact and in the response as a reference series; consumers read
+`operating_scorers` from `/metadata` and must not present the two numbers as one score.
 
-| element | scorer | P | R | FPR | n neg | hard neg | hard FPR | PR-AUC | threshold |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| credential_request | kNN | 0.95 | 0.95 | 0.01 | 70 | 65 | 0.02 | 0.98 | 0.008 |
-| credential_request | probe | 0.94 | 0.77 | 0.01 | 70 | 65 | 0.02 | 0.98 | 0.627 |
-| urgency_pressure | kNN | 0.78 | 0.90 | 0.09 | 57 | 48 | 0.08 | 0.96 | -0.019 |
-| urgency_pressure | probe | 1.00 | 0.85 | 0.00 | 57 | 48 | 0.00 | 0.97 | 0.726 |
-| threat | kNN | 0.94 | 0.89 | 0.02 | 65 | 58 | 0.02 | 0.98 | -0.008 |
-| threat | probe | 0.94 | 0.89 | 0.02 | 65 | 58 | 0.02 | 0.99 | 0.785 |
-| impersonated_greeting | kNN | 0.94 | 1.00 | 0.02 | 61 | 39 | 0.03 | 1.00 | 0.006 |
-| impersonated_greeting | probe | 0.94 | 1.00 | 0.02 | 61 | 39 | 0.03 | 1.00 | 0.110 |
-| attachment_lure | kNN | 0.71 | 0.62 | 0.04 | 51 | 46 | 0.04 | 0.82 | -0.005 |
-| attachment_lure | probe | 0.83 | 0.62 | 0.02 | 51 | 46 | 0.07 | 0.66 | 0.651 |
+| element | operating | floor cleared | P | R | FPR | n neg | hard neg | PR-AUC |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| credential_request | linear_probe | yes | 0.96 | 0.93 | 0.01 | 70 | 65 | 0.99 |
+| urgency_pressure | linear_probe | yes | 1.00 | 0.89 | 0.00 | 57 | 48 | 0.99 |
+| threat | linear_probe | no | 0.80 | 0.57 | 0.03 | 65 | 58 | 0.79 |
+| impersonated_greeting | prototype_knn | yes | 0.96 | 0.96 | 0.02 | 61 | 39 | 0.99 |
+| attachment_lure | linear_probe | no | 0.89 | 0.84 | 0.04 | 51 | 46 | 0.90 |
 
-Held-out hard negatives are now 39 to 65 per element, which is the first table where most elements
-carry enough negatives to say something. `attachment_lure` is the exception in the other direction:
-its ranking is weak (PR-AUC 0.82 kNN, 0.66 probe) even with 46 hard negatives, and its 23 positives
-are the smallest positive set. `urgency_pressure` is the element where kNN carries visible cost:
-FPR 0.09 on 57 negatives at a threshold chosen for a one percent budget.
+Reference series at the same thresholds:
 
-**The one percent budget is NOT met, and it still cannot be resolved.** Held-out negatives now number
-51 to 70 per element, and hard negatives 39 to 65, but resolving a one percent rate needs at least
-100 negatives, so every row is still marked `fpr_budget_resolvable: false`. Resolving a
+| element | kNN P | kNN R | kNN FPR | kNN PR-AUC | probe P | probe R | probe FPR | probe PR-AUC |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| credential_request | 0.97 | 1.00 | 0.01 | 0.98 | 0.96 | 0.93 | 0.01 | 0.99 |
+| urgency_pressure | 0.78 | 0.95 | 0.09 | 0.98 | 1.00 | 0.89 | 0.00 | 0.99 |
+| threat | 1.00 | 0.43 | 0.00 | 0.83 | 0.80 | 0.57 | 0.03 | 0.79 |
+| impersonated_greeting | 0.96 | 0.96 | 0.02 | 0.99 | 0.86 | 1.00 | 0.07 | 1.00 |
+| attachment_lure | 0.93 | 0.74 | 0.02 | 0.92 | 0.89 | 0.84 | 0.04 | 0.90 |
+
+`threat` is the element the harder negative set hurt most: neither scorer reaches 0.85 recall, so
+its operating scorer is the fallback arm. `attachment_lure` improved materially once its positives
+grew from 23 to 60 with the spam archive (PR-AUC 0.82 to 0.92 for kNN) but still does not clear the
+floor. The one percent budget remains unmet and unresolvable at these sample sizes.
+
+**The one percent budget is NOT met, and it still cannot be resolved.** Held-out negatives number 51
+to 70 per element, and hard negatives 39 to 65, but resolving a one percent rate needs at least 100
+negatives, so every row is still marked `fpr_budget_resolvable: false`. Reaching 100 is possible from
+the available corpora by lowering the hard-negative selection threshold; that would be data volume,
+not evidence, so it is not done silently. Resolving a
 one percent rate needs at least 100 negatives, so every row in this artefact is marked
 `fpr_budget_resolvable: false`, and observed held-out FPRs reach 0.28 on all negatives and 1.00 on
 the four hard negatives available for credential_request. The artefact says this rather than quoting
@@ -265,6 +272,28 @@ difference is under a millisecond and the vocabulary is four times wider; load t
 shorter. The "active labels" column is the honest caveat: on this sample most segments are neutral or
 gratitude, so a 28-label vocabulary does not mean 28 labels are exercised. Label coverage on real
 traffic is a property of the corpus, not of the model, and only two to three labels appear here.
+
+## The operator dataset, as a generation-artifact probe
+
+`ingest_operator_dataset.py` reads only `subject`, `email_body` and `label` from the operator CSV.
+Every precomputed score in that file is ignored as label leakage. Provenance per row is
+`kaggle:phishing_email_detection_dataset_v2`, licence recorded as operator-confirmed, generator
+suspected. Text is redacted for structured identifiers and the derived JSONL is git-ignored; only
+counts and metrics are committed.
+
+50,000 rows survived ingestion with zero duplicate text digests, split 34,802 train / 15,198 held out.
+`baseline_operator.py` fits word 1-2 gram TF-IDF with logistic regression on text alone:
+
+| baseline | ROC-AUC | PR-AUC | precision | recall | FPR | Brier |
+| --- | --- | --- | --- | --- | --- | --- |
+| TF-IDF + logistic, text only | 0.9921 | 0.9936 | 1.00 | 0.9817 | 0.00 | 0.0075 |
+| cue counting (9 words) | 0.7122 | 0.5906 | 1.00 | 0.0172 | 0.00 | 0.2454 |
+
+**That near-perfect result is the finding, and it is about the generator.** A bag of words separates
+the classes almost completely on body text, with phrases like "immediate action", "expires today" and
+"verify your" carrying the separation. The dataset is therefore used for scale, benign volume and
+teacher-labelling raw text, never as evidence of real-world detection quality and never as the
+hard-negative set.
 
 ## Running the service on the host
 

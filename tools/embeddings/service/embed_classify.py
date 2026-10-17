@@ -58,6 +58,7 @@ class ElementClassifier:
             PROTOTYPE_KNN: "prototype_knn/unknown",
             LINEAR_PROBE: "linear_probe/unknown",
         }
+        self._operating = {}
 
     @property
     def loaded(self) -> bool:
@@ -78,6 +79,7 @@ class ElementClassifier:
         return {
             "artefact_version": self._artefact_version,
             "vocabulary_version": self._vocabulary_version,
+            "operating_scorers": self._operating,
             "scorers": [
                 {"scorer": scorer, "scorer_version": self.scorer_version(scorer)}
                 for scorer in SCORERS
@@ -110,6 +112,7 @@ class ElementClassifier:
                 )
 
         self._artefact_version = str(document.get("artefact_version", "unknown"))
+        self._operating = dict(document.get("operating_scorers") or {})
         self._scorer_versions[PROTOTYPE_KNN] = str(
             document.get("knn_version") or f"prototype_knn/{self._artefact_version}"
         )

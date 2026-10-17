@@ -1,0 +1,62 @@
+{
+  "rows": {
+    "train": 34802,
+    "heldout": 15198
+  },
+  "tfidf_logistic": {
+    "roc_auc": 0.9921,
+    "pr_auc": 0.9936,
+    "brier": 0.0075,
+    "precision": 1.0,
+    "recall": 0.9817,
+    "false_positive_rate": 0.0,
+    "positives": 6176,
+    "negatives": 9022
+  },
+  "cue_count_baseline": {
+    "roc_auc": 0.7122,
+    "pr_auc": 0.5906,
+    "brier": 0.2454,
+    "precision": 1.0,
+    "recall": 0.0172,
+    "false_positive_rate": 0.0,
+    "positives": 6176,
+    "negatives": 9022
+  },
+  "top_phishing_terms": [
+    "immediate",
+    "expires",
+    "now",
+    "verification",
+    "immediate action",
+    "account",
+    "login",
+    "update your",
+    "billing",
+    "your billing",
+    "be",
+    "verify your",
+    "verify",
+    "expires today",
+    "restore"
+  ],
+  "top_legitimate_terms": [
+    "been",
+    "support",
+    "additional",
+    "no additional",
+    "no",
+    "additional action",
+    "completed",
+    "you",
+    "we",
+    "for",
+    "please",
+    "meeting",
+    "appreciate",
+    "we appreciate",
+    "appreciate your"
+  ],
+  "interpretation": "A near-perfect text-only result on this dataset is an artifact signal. The generator's templates are separable by bag of words, so this measures the generator, not phishing detection. It is not comparable with the corpus-based element numbers.",
+  "provenance": "operator-provided dataset, licence unknown, generator suspected"
+}
