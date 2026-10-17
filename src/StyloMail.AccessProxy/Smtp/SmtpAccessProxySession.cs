@@ -30,6 +30,8 @@ public sealed class SmtpAccessProxySession
     private readonly IProxySubmissionAssessment _assessment;
     private readonly IEphemeralSubmissionStager _stager;
     private readonly IProxySessionContextSink? _contextSink;
+    private readonly IProxyWarningEventSink _warningSink;
+    private readonly IProxyWarningAnalyzer _warningAnalyzer;
 
     public SmtpAccessProxySession(
         string tenantId,
@@ -41,7 +43,9 @@ public sealed class SmtpAccessProxySession
         TimeProvider timeProvider,
         IProxySubmissionAssessment assessment,
         IEphemeralSubmissionStager stager,
-        IProxySessionContextSink? contextSink = null)
+        IProxySessionContextSink? contextSink = null,
+        IProxyWarningEventSink? warningSink = null,
+        IProxyWarningAnalyzer? warningAnalyzer = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
         _tenantId = tenantId;
@@ -54,6 +58,8 @@ public sealed class SmtpAccessProxySession
         _assessment = assessment ?? throw new ArgumentNullException(nameof(assessment));
         _stager = stager ?? throw new ArgumentNullException(nameof(stager));
         _contextSink = contextSink;
+        _warningSink = warningSink ?? throw new ArgumentNullException(nameof(warningSink));
+        _warningAnalyzer = warningAnalyzer ?? throw new ArgumentNullException(nameof(warningAnalyzer));
         _bounds.Validate();
     }
 
@@ -175,7 +181,7 @@ public sealed class SmtpAccessProxySession
                         // its TLS, EHLO and SASL authentication. Advertising it earlier turns a
                         // backend failure into a misleading post-authentication disconnect.
                         await writer.WriteLineAsync("235 Authentication successful", cancellationToken).ConfigureAwait(false);
-                        return await RunTransactionAsync(client, backend, reader, writer, cancellationToken)
+                        return await RunTransactionAsync(client, backend, reader, writer, account, cancellationToken)
                             .ConfigureAwait(false);
                         }
                     }
@@ -301,6 +307,7 @@ public sealed class SmtpAccessProxySession
         IDuplexChannel backend,
         BoundedLineReader clientReader,
         ProtocolLineWriter clientWriter,
+        StyloMailAccount account,
         CancellationToken cancellationToken)
     {
         var backendReader = new BoundedLineReader(backend.Input, _bounds, _timeProvider);
@@ -341,7 +348,7 @@ public sealed class SmtpAccessProxySession
                     break;
                 case "DATA" when hasMail && recipients > 0:
                     var outcome = await AssessThenRelayDataAsync(
-                        clientReader, clientWriter, backendReader, backendWriter, cancellationToken).ConfigureAwait(false);
+                        clientReader, clientWriter, backendReader, backendWriter, account, cancellationToken).ConfigureAwait(false);
                     hasMail = false; recipients = 0;
                     if (outcome != SessionOutcome.Relayed) return outcome;
                     break;
@@ -370,6 +377,7 @@ public sealed class SmtpAccessProxySession
         ProtocolLineWriter clientWriter,
         BoundedLineReader backendReader,
         ProtocolLineWriter backendWriter,
+        StyloMailAccount account,
         CancellationToken cancellationToken)
     {
         await clientWriter.WriteLineAsync("354 End data with <CR><LF>.<CR><LF>", cancellationToken).ConfigureAwait(false);
@@ -397,6 +405,7 @@ public sealed class SmtpAccessProxySession
 
             staged.Content.Position = 0;
             var assessment = await _assessment.AssessAsync(staged, cancellationToken).ConfigureAwait(false);
+            await PublishWarningsAsync(staged, account, cancellationToken).ConfigureAwait(false);
             if (assessment.Disposition == ProxySubmissionDisposition.Refuse && assessment.IsDeterministic)
             {
                 await clientWriter.WriteLineAsync("554 Submission refused by local policy", cancellationToken).ConfigureAwait(false);
@@ -424,5 +433,40 @@ public sealed class SmtpAccessProxySession
             // The stager handle is disposed on allow, refusal, abort and exceptions. Its contract
             // also requires TTL cleanup for a process crash before this finally can execute.
         }
+    }
+
+    private async ValueTask PublishWarningsAsync(
+        IStagedProxySubmission staged,
+        StyloMailAccount account,
+        CancellationToken cancellationToken)
+    {
+        var bytes = new byte[checked((int)staged.Length)];
+        try
+        {
+            staged.Content.Position = 0;
+            await staged.Content.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            var observedAt = _timeProvider.GetUtcNow();
+            var analysis = await _warningAnalyzer.AnalyzeAsync(new ProxyWarningAnalysisInput
+            {
+                Message = bytes, TenantId = account.TenantId, AccountId = account.AccountId, ObservedAt = observedAt,
+            }, cancellationToken).ConfigureAwait(false);
+            await _warningSink.RecordOutcomeAsync(new ProxyWarningAnalysisOutcome
+            {
+                TenantId = account.TenantId, AccountId = account.AccountId, TrafficKind = MessageTrafficKind.Submission,
+                MessageToken = analysis.MessageToken, ThreadToken = analysis.ThreadToken, ObservedAt = observedAt,
+                Availability = analysis.Availability, AvailabilityReason = analysis.AvailabilityReason,
+                MarkerCount = analysis.Availability == ProxyWarningAvailability.Available ? analysis.Findings.Count : 0,
+            }, cancellationToken).ConfigureAwait(false);
+            if (analysis.Availability != ProxyWarningAvailability.Available) return;
+            foreach (var finding in analysis.Findings)
+                await _warningSink.RecordMarkerAsync(new ProxyDeterministicWarningEvent
+                {
+                    TenantId = account.TenantId, AccountId = account.AccountId, TrafficKind = MessageTrafficKind.Submission,
+                    MessageToken = analysis.MessageToken, ThreadToken = analysis.ThreadToken, MarkerKind = finding.MarkerKind,
+                    FindingId = finding.FindingId, ObservedAt = observedAt, Availability = ProxyWarningAvailability.Available,
+                    AvailabilityReason = ProxyWarningAvailabilityReason.None,
+                }, cancellationToken).ConfigureAwait(false);
+        }
+        finally { Array.Clear(bytes); }
     }
 }

@@ -3,6 +3,7 @@ using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Backends;
 using StyloMail.AccessProxy.Credentials;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Smtp;
 using StyloMail.AccessProxy.Submission;
 using StyloMail.AccessProxy.Tests.Support;
@@ -88,7 +89,8 @@ public sealed class SmtpSubmissionTests
     }
 
     private static SmtpAccessProxySession NewSession(ProxyHarness h, IBackendConnector backend, IProxySubmissionAssessment assessment, IEphemeralSubmissionStager stager)
-        => new(ProxyHarness.TenantId, h.AccountStore, h.PasswordHasher, backend, h.Limiter, h.Bounds, h.Clock, assessment, stager);
+        => new(ProxyHarness.TenantId, h.AccountStore, h.PasswordHasher, backend, h.Limiter, h.Bounds, h.Clock, assessment, stager,
+            warningSink: new WarningSink(), warningAnalyzer: new WarningAnalyzer());
 
     private static async Task<StartTlsTestChannel> AuthenticateAsync(SmtpAccessProxySession session)
     {
@@ -113,4 +115,6 @@ public sealed class SmtpSubmissionTests
         public ValueTask<IDuplexChannel> ConnectAsync(BackendConnectionRequest request, CancellationToken cancellationToken) { ConnectCount++; LastRequest = request; var p = new PipeDuplex("smtp-backend"); _ = Serve(p); return ValueTask.FromResult<IDuplexChannel>(p); }
         private async Task Serve(PipeDuplex p) { while (true) { var line = await p.ReadLineAsync(); if (line.Length == 0) return; Received.Add(line); if (line == "DATA") { await p.SendAsync("354 go\r\n"); while (await p.ReadLineAsync() != ".") { } await p.SendAsync("250 ok\r\n"); } else await p.SendAsync("250 ok\r\n"); } }
     }
+    private sealed class WarningSink : IProxyWarningEventSink { public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) => ValueTask.CompletedTask; public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) => ValueTask.CompletedTask; }
+    private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [] }); }
 }

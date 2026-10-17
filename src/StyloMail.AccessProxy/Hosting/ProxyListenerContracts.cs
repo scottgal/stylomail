@@ -119,6 +119,37 @@ public interface IProxyWarningEventSink
     ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent marker, CancellationToken cancellationToken);
 }
 
+public sealed record ProxyWarningAnalysisInput
+{
+    public required ReadOnlyMemory<byte> Message { get; init; }
+    public required string TenantId { get; init; }
+    public required string AccountId { get; init; }
+    public required DateTimeOffset ObservedAt { get; init; }
+}
+
+public sealed record ProxyWarningFinding
+{
+    public required ProxyWarningMarkerKind MarkerKind { get; init; }
+    public required string FindingId { get; init; }
+}
+
+/// <summary>Host-composed bounded local analysis. It derives tokens and never retains input bytes.</summary>
+public interface IProxyWarningAnalyzer
+{
+    ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(
+        ProxyWarningAnalysisInput input,
+        CancellationToken cancellationToken);
+}
+
+public sealed record ProxyWarningAnalysisResult
+{
+    public required string MessageToken { get; init; }
+    public required string ThreadToken { get; init; }
+    public required ProxyWarningAvailability Availability { get; init; }
+    public required ProxyWarningAvailabilityReason AvailabilityReason { get; init; }
+    public required IReadOnlyList<ProxyWarningFinding> Findings { get; init; }
+}
+
 public interface IProxyCertificateResolver
 {
     ValueTask<X509Certificate2?> ResolveAsync(string certificateReference, CancellationToken cancellationToken);

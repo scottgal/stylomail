@@ -40,7 +40,7 @@ public sealed class HostingAndThreadingTests
         {
             Accounts = h.AccountStore, PasswordHasher = h.PasswordHasher, CredentialStore = h.CredentialStore,
             CredentialResolver = h.Resolver, BackendConnectors = new Connectors(), Limiter = h.Limiter,
-            Bounds = h.Bounds, TimeProvider = h.Clock, ContextSink = new ContextSink(),
+            Bounds = h.Bounds, TimeProvider = h.Clock, ContextSink = new ContextSink(), WarningSink = new WarningSink(), WarningAnalyzer = new WarningAnalyzer(),
         };
         var options = new ProxyListenerOptions { TenantId = ProxyHarness.TenantId, BindAddress = IPAddress.Loopback,
             Port = 0, Protocol = ProxyListenerProtocol.Smtp, TlsPolicy = ProxyTlsPolicy.Required, Enabled = true };
@@ -51,5 +51,7 @@ public sealed class HostingAndThreadingTests
     private sealed class Certificates : IProxyCertificateResolver { public ValueTask<X509Certificate2?> ResolveAsync(string r, CancellationToken c) => ValueTask.FromResult<X509Certificate2?>(null); }
     private sealed class Events : IProxyListenerEventSink { public ValueTask PublishAsync(ProxyListenerEvent e, CancellationToken c) => ValueTask.CompletedTask; public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class ContextSink : IProxySessionContextSink { public ValueTask OnAuthenticatedAsync(string a, DateTimeOffset t, CancellationToken c) => ValueTask.CompletedTask; }
+    private sealed class WarningSink : IProxyWarningEventSink { public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) => ValueTask.CompletedTask; public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) => ValueTask.CompletedTask; }
+    private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.NoAnalyserConfigured, Findings = [] }); }
     private sealed class Connectors : IProxyBackendConnectorFactory { public StyloMail.AccessProxy.Backends.IBackendConnector Create(ProxyListenerProtocol p) => throw new NotSupportedException(); }
 }

@@ -26,6 +26,8 @@ public sealed record ProxySessionRunnerDependencies
     public required AccessProxyBounds Bounds { get; init; }
     public required TimeProvider TimeProvider { get; init; }
     public required IProxySessionContextSink ContextSink { get; init; }
+    public required IProxyWarningEventSink WarningSink { get; init; }
+    public required IProxyWarningAnalyzer WarningAnalyzer { get; init; }
     public TlsServerOptions? Tls { get; init; }
     public IProxySubmissionAssessment? SubmissionAssessment { get; init; }
     public IEphemeralSubmissionStager? SubmissionStager { get; init; }
@@ -59,7 +61,7 @@ public sealed class ProxySessionRunnerFactory
                 dependencies.Bounds, dependencies.TimeProvider,
                 dependencies.SubmissionAssessment ?? throw new InvalidOperationException("SMTP assessment is required."),
                 dependencies.SubmissionStager ?? throw new InvalidOperationException("SMTP stager is required."),
-                dependencies.ContextSink)
+                dependencies.ContextSink, dependencies.WarningSink, dependencies.WarningAnalyzer)
                 .RunAsync(channel, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(options.Protocol)),
         };
