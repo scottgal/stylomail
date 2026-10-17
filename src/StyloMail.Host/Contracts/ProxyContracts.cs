@@ -376,6 +376,12 @@ public sealed record ProxyElementScoreResponse
 /// </summary>
 public sealed record ProxyToneResponse
 {
+    /// <summary>The label set version; pinned independently of the model tag.</summary>
+    public required string VocabularyVersion { get; init; }
+
+    /// <summary>Null until a tone model is benchmarked and chosen; never a placeholder constant.</summary>
+    public string? ModelTag { get; init; }
+
     public required string Availability { get; init; }
 
     public required string AvailabilityReason { get; init; }

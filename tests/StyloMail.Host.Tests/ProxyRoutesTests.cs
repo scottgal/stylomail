@@ -898,8 +898,10 @@ public sealed class ProxyRoutesTests
         Assert.Equal("no_exemplars", missing.AvailabilityReason);
 
         // Tone is a sibling series and its service is not published: not produced, never zeros.
+        Assert.Equal("goemotions/1", point.Tone.VocabularyVersion);
+        Assert.Null(point.Tone.ModelTag);
         Assert.Equal("not_produced", point.Tone.Availability);
-        Assert.Equal("ToneModelUnavailable", point.Tone.AvailabilityReason);
+        Assert.Equal("tone_model_unavailable", point.Tone.AvailabilityReason);
         Assert.Empty(point.Tone.Top);
     }
 

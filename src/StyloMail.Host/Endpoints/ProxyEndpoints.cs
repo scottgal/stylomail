@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Credentials;
+using StyloMail.Embeddings;
 using StyloMail.Host.Auth;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Proxy;
@@ -823,8 +824,12 @@ internal static class ProxyEndpoints
                 // not produced with the type's own reason, never as zeros or an empty mood.
                 Tone = new ProxyToneResponse
                 {
+                    VocabularyVersion = ToneVocabulary.Version,
+                    // No tone model has been benchmarked; a placeholder tag would invite a
+                    // comparison against a model that was never chosen.
+                    ModelTag = null,
                     Availability = "not_produced",
-                    AvailabilityReason = "ToneModelUnavailable",
+                    AvailabilityReason = ToneNotProducedReason.ToneModelUnavailable.ToWireName(),
                     Top = [],
                 },
             })
