@@ -179,24 +179,48 @@ not the Nazario, SpamAssassin, CEAS or Enron material the next iteration calls f
 have not been ingested, vetted or PII-stripped here, and writing their names beside authored rows
 would be provenance theatre.
 
-### Held-out metrics on seed/1
+### Held-out metrics: corpus/1, weak supervision
 
-Measured by `train_elements.py` on the 40 held-out rows (4 positives and 4 negatives per element),
-threshold 0.5 for the probe and 0.0 margin for kNN. These sample sizes are small enough that a
-single row moves precision by 0.25, so they are a shape rather than a verdict.
+Built by `ingest_corpora.py` from the Nazario phishing corpus and the Apache SpamAssassin ham
+corpora, then trained by `train_elements.py`. 563 rows: 388 train and 175 held out. Per element the
+held-out split has 8 to 22 positives and 15 to 22 negatives.
 
-| element | kNN P | kNN R | kNN FPR | probe P | probe R | probe FPR |
-| --- | --- | --- | --- | --- | --- | --- |
-| credential_request | 0.75 | 0.75 | 0.25 | 1.00 | 1.00 | 0.00 |
-| urgency_pressure | 1.00 | 0.75 | 0.00 | 1.00 | 0.50 | 0.00 |
-| threat | 0.80 | 1.00 | 0.25 | 1.00 | 1.00 | 0.00 |
-| impersonated_greeting | 1.00 | 0.50 | 0.00 | 1.00 | 1.00 | 0.00 |
-| attachment_lure | 1.00 | 0.75 | 0.00 | 1.00 | 1.00 | 0.00 |
+**What the labels mean.** A Nazario message is malicious by the corpus's own label; the segment
+chosen for an element is the one carrying that element's cues. A SpamAssassin ham message is benign;
+a cue-bearing ham segment is a hard negative, and the rest are easy negatives. The corpus supplies
+the class, the cue rule only selects which element a segment is evidence about. This is weak
+supervision, and a held-out number here is a statement about the rule as much as about the model.
 
-The number that decides usability is the false positive rate on the benign subset, and it is not
-zero for kNN on two elements even at this size. The probe looks stronger here partly because it has
-256 free parameters fitted on 12 rows per element; that is a reason to distrust the gap, not a
-reason to prefer it.
+| element | scorer | P | R | FPR | PR-AUC | threshold | n pos/neg |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| credential_request | kNN | 1.00 | 0.23 | 0.00 | 0.99 | 0.181 | 22/22 |
+| credential_request | probe | 0.96 | 1.00 | 0.05 | 1.00 | 0.500 | 22/22 |
+| urgency_pressure | kNN | 1.00 | 0.50 | 0.00 | 1.00 | 0.189 | 20/18 |
+| urgency_pressure | probe | 1.00 | 0.95 | 0.00 | 1.00 | 0.500 | 20/18 |
+| threat | kNN | 0.90 | 1.00 | 0.11 | 1.00 | 0.000 | 19/18 |
+| threat | probe | 1.00 | 0.89 | 0.00 | 0.99 | 0.500 | 19/18 |
+| impersonated_greeting | kNN | 1.00 | 0.33 | 0.00 | 1.00 | 0.170 | 15/15 |
+| impersonated_greeting | probe | 1.00 | 1.00 | 0.00 | 1.00 | 0.500 | 15/15 |
+| attachment_lure | kNN | 1.00 | 0.38 | 0.00 | 0.94 | 0.164 | 8/18 |
+| attachment_lure | probe | 0.75 | 0.75 | 0.11 | 0.85 | 0.500 | 8/18 |
+
+The PR-AUCs are high partly because the negatives include easy ham. The hard-negative counts are 7
+to 30 per element, and the benign FPR column is the one that decides usability. It is not zero
+everywhere even at this size.
+
+**kNN margins are not too compressed to threshold, and the threshold matters more than the ranking.**
+Held-out margins on positives have medians of +0.11 to +0.20; on negatives, -0.05 to -0.10. The full
+observed range is about -0.23 to +0.24, so the classes overlap but are ordered (PR-AUC 0.94 to 1.00).
+The thresholds in the table are the ones that maximise F1 on the TRAIN split, applied unchanged to
+held-out; they are why kNN recall is low while precision is high. A threshold near 0.10 would trade
+some precision for recall, and that choice belongs to whoever sets the operating point, not to this
+seed.
+
+**The probe is not calibrated.** Brier is 0.10 to 0.15 and the reliability bins are badly behaved at
+both ends: the 0.28 bin contains 18 rows of which none is positive, and the 0.71 bin is 1.00
+observed. A probability threshold is therefore a policy choice, not a calibrated operating point.
+That is the honest state of the linear probe and the reason calibration is reported rather than a
+single AUC.
 
 ### Tone
 
