@@ -419,6 +419,10 @@ public sealed class SmtpAccessProxySession
                     await _elementOrchestrator.EmitAsync(warning.Input, elementBytes, warning.Result.MessageToken,
                         warning.Result.ThreadToken, MessageTrafficKind.Submission, cancellationToken).ConfigureAwait(false);
                 }
+                catch
+                {
+                    // Element telemetry is optional. Its classifier or store must never drop mail.
+                }
                 finally { Array.Clear(elementBytes); }
             }
             if (assessment.Disposition == ProxySubmissionDisposition.Refuse && assessment.IsDeterministic)
