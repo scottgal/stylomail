@@ -64,6 +64,8 @@ stop_host() {
 
 cleanup() {
   local exit_code=$?
+  [[ -n "${client_pid:-}" ]] && kill -TERM "$client_pid" 2>/dev/null || true
+  [[ -n "${smtp_client_pid:-}" ]] && kill -TERM "$smtp_client_pid" 2>/dev/null || true
   stop_host || exit_code=1
   [[ -n "$dovecot_container" ]] && docker rm -f "$dovecot_container" >/dev/null 2>&1 || true
   [[ -n "$smtp_fixture_container" ]] && docker rm -f "$smtp_fixture_container" >/dev/null 2>&1 || true
@@ -233,7 +235,7 @@ PROXY_E2E_DRIVER_PROTOCOL=imap PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_
 client_pid=$!
 sleep 1
 curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$imap_sessions"
-wait "$client_pid"
+if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$client_pid"; fi
 
 smtp_listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/smtp-1/enable")
 smtp_port=$(print -r -- "$smtp_listener_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bindPort"])')
@@ -243,7 +245,7 @@ PROXY_E2E_DRIVER_PROTOCOL=smtp PROXY_E2E_DRIVER_HOST=127.0.0.1 PROXY_E2E_DRIVER_
 smtp_client_pid=$!
 sleep 1
 curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$smtp_sessions"
-wait "$smtp_client_pid"
+if (( PROXY_E2E_KEEP_ALIVE_SECONDS == 0 )); then wait "$smtp_client_pid"; fi
 
 # Fail closed if any run artifact emitted a supplied or generated secret. Python receives values only via env.
 python3 - "$run_dir" "$secret_dir" <<'PY'

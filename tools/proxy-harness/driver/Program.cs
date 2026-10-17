@@ -44,7 +44,7 @@ static async Task RunImapAsync(string host, int port, string login, string passw
     Console.WriteLine("IMAP client authenticated and listed INBOX.");
     if (hold)
     {
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
     await client.DisconnectAsync(true);
@@ -68,7 +68,7 @@ static async Task RunSmtpAsync(string host, int port, string login, string passw
     Console.WriteLine("SMTP client completed STARTTLS, authenticated, and submitted one message.");
     if (hold)
     {
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
     await client.DisconnectAsync(true);
