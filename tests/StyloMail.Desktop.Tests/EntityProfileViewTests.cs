@@ -14,6 +14,25 @@ public sealed class EntityProfileViewTests
         Assert.Contains("Trend not produced: prior_window_empty", view.Tiles.Single().Trend);
     }
 
+    [Fact]
+    public void Reduced_coverage_keeps_the_value_and_names_its_limit()
+    {
+        var profile = Profile() with
+        {
+            Kpis = [new KpiValueResponse
+            {
+                Definition = new() { Id = "pressure", Label = "Pressure", Question = "Was pressure language observed?", MinimumSample = 5, Unit = KpiUnit.Ratio, Version = "1.1.0" },
+                State = KpiState.ReducedCoverage, Value = .6, Reason = "reply_candidates_incomplete",
+                Coverage = new() { Analysed = 5, Total = 6, Truncated = true, Reason = "reply_candidates_incomplete" },
+                Trend = new() { State = KpiTrendState.NotProduced, PriorTruncated = false, Reason = "prior_window_reduced_coverage" }
+            }]
+        };
+
+        var tile = new EntityProfileView(profile).Tiles.Single();
+        Assert.Contains("Observed with reduced coverage: 60%", tile.Observation);
+        Assert.Contains("reply_candidates_incomplete", tile.Observation);
+    }
+
     private static ProfileResponse Profile() => new()
     {
         TenantId = "tenant", Scope = new() { Kind = "entity", Id = "entity-identifier-long" },

@@ -59,6 +59,7 @@ public sealed class KpiTileView
         Observation = value.State switch
         {
             KpiState.Produced when value.Value is { } result => $"Observed: {Format(result, value.Definition.Unit)}.",
+            KpiState.ReducedCoverage when value.Value is { } result => $"Observed with reduced coverage: {Format(result, value.Definition.Unit)}. {value.Reason ?? value.Coverage.Reason ?? "reason not supplied"}",
             KpiState.NotEnoughHistory => $"Not enough history ({value.Denominator ?? 0} seen; needs {value.Definition.MinimumSample}).",
             _ => $"Not produced: {value.Reason ?? value.Detail ?? "reason not supplied"}.",
         };

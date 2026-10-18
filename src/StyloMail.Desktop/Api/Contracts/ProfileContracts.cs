@@ -1,6 +1,10 @@
 namespace StyloMail.Desktop.Api.Contracts;
 
-public enum KpiState { Produced, NotEnoughHistory, NotProduced }
+/// <summary>
+/// A KPI's production state. Reduced coverage still has a value, but the named
+/// input limitation prevents it from being presented as an ordinary result.
+/// </summary>
+public enum KpiState { Produced, NotEnoughHistory, NotProduced, ReducedCoverage }
 public enum KpiUnit { Ratio, Multiple, Milliseconds, Hours, Count }
 public enum KpiTrendState { Produced, NotEnoughHistory, NotProduced, NotApplicable }
 public enum KpiTrendMovement { Up, Down, Flat }

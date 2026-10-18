@@ -1,5 +1,5 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="StyloMail.Desktop.Views.EntityProfileDialog" Title="Entity profile" Width="900" Height="720" MinWidth="700" MinHeight="500">
+        x:Class="StyloMail.Desktop.Views.EntityProfileDialog" Title="Entity profile" Width="1180" Height="720" MinWidth="700" MinHeight="500">
   <ScrollViewer><StackPanel Margin="24" Spacing="12">
     <TextBlock x:Name="EntityProfileTitle" Classes="paneTitle" Text="{Binding Title}" />
     <TextBlock Classes="paneDetail" Text="{Binding LabelDetail}" />
