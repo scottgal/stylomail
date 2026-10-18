@@ -858,6 +858,95 @@ public sealed class HostDatabase
             PRIMARY KEY (tenant_id, message_token, ordinal, model_tag)
         );
 
+        -- Image observation. One account-scoped content observation per observation_key; the
+        -- association token is a parent link, never the unique key. At most two admitted parts and
+        -- a realised Core evidence row count of at most 13. No bytes, filename, subject or address.
+        CREATE TABLE IF NOT EXISTS proxy_image_outcome (
+            tenant_id                  TEXT NOT NULL,
+            account_id                 TEXT NOT NULL,
+            message_token              TEXT NOT NULL,
+            direction                  TEXT NOT NULL,
+            thread_token               TEXT NOT NULL,
+            observation_key            TEXT NOT NULL,
+            content_fingerprint        TEXT NOT NULL,
+            accepted_epoch             INTEGER NOT NULL,
+            accepted_sequence          INTEGER NOT NULL,
+            result_digest              TEXT NOT NULL,
+            observed_at                TEXT NOT NULL,
+            availability               TEXT NOT NULL,
+            availability_reason        TEXT NOT NULL,
+            source_version             TEXT NOT NULL,
+            image_parts                INTEGER NOT NULL,
+            images_skipped_as_chrome   INTEGER NOT NULL,
+            images_admitted            INTEGER NOT NULL,
+            images_produced            INTEGER NOT NULL,
+            images_not_produced        INTEGER NOT NULL,
+            images_over_budget         INTEGER NOT NULL,
+            first_over_budget_ordinal  INTEGER NULL,
+            last_over_budget_ordinal   INTEGER NULL,
+            evidence_row_count         INTEGER NOT NULL,
+            usage_bytes                INTEGER NOT NULL,
+            expires_at                 TEXT NOT NULL,
+            retention_days             INTEGER NOT NULL,
+            PRIMARY KEY (tenant_id, account_id, direction, observation_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_image_outcome_thread
+            ON proxy_image_outcome (tenant_id, thread_token, observed_at);
+        CREATE INDEX IF NOT EXISTS ix_proxy_image_outcome_child
+            ON proxy_image_outcome (tenant_id, account_id, message_token, direction, thread_token);
+        CREATE INDEX IF NOT EXISTS ix_proxy_image_outcome_expiry
+            ON proxy_image_outcome (expires_at);
+
+        CREATE TABLE IF NOT EXISTS proxy_image_part (
+            tenant_id                  TEXT NOT NULL,
+            account_id                 TEXT NOT NULL,
+            message_token              TEXT NOT NULL,
+            direction                  TEXT NOT NULL,
+            thread_token               TEXT NOT NULL,
+            observation_key            TEXT NOT NULL,
+            ordinal                    INTEGER NOT NULL,
+            observed_at                TEXT NOT NULL,
+            disposition                TEXT NOT NULL,
+            availability               TEXT NOT NULL,
+            availability_reason        TEXT NOT NULL,
+            format                     TEXT NOT NULL,
+            declared_format            TEXT NULL,
+            width                      INTEGER NULL,
+            height                     INTEGER NULL,
+            pixels                     INTEGER NULL,
+            image_end_offset           INTEGER NULL,
+            trailing_bytes             INTEGER NULL,
+            observed_trailing_bytes    INTEGER NULL,
+            trailing_scan_complete     INTEGER NULL,
+            transparency_declared      INTEGER NULL,
+            source_version             TEXT NOT NULL,
+            findings                   TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, account_id, direction, observation_key, ordinal)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_proxy_image_part_thread
+            ON proxy_image_part (tenant_id, thread_token, observed_at, ordinal);
+
+        CREATE TABLE IF NOT EXISTS proxy_image_tenant_usage (
+            tenant_id  TEXT NOT NULL PRIMARY KEY,
+            outcomes   INTEGER NOT NULL,
+            used_bytes INTEGER NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS proxy_image_sweep_state (
+            id             INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+            last_tenant_id TEXT NULL,
+            updated_at     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS proxy_image_epoch (
+            id         INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+            epoch      INTEGER NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS host_schema_migration (
             name       TEXT NOT NULL PRIMARY KEY,
             applied_at TEXT NOT NULL
@@ -865,6 +954,20 @@ public sealed class HostDatabase
 
         INSERT OR IGNORE INTO host_schema_migration (name, applied_at)
             VALUES ('proxy-store-v1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+        -- Seed the epoch/marker only when the image migration marker is absent AND no image
+        -- outcome history exists. If history exists without the marker, this is a repair fault:
+        -- nothing is reseeded and InitializeEpochAsync fails closed.
+        INSERT OR IGNORE INTO proxy_image_epoch (id, epoch, updated_at)
+            SELECT 1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE NOT EXISTS (
+                SELECT 1 FROM host_schema_migration WHERE name = 'proxy-image-v1'
+            )
+            AND NOT EXISTS (SELECT 1 FROM proxy_image_outcome LIMIT 1);
+
+        INSERT OR IGNORE INTO host_schema_migration (name, applied_at)
+            SELECT 'proxy-image-v1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE NOT EXISTS (SELECT 1 FROM proxy_image_outcome LIMIT 1);
 
         -- Minted API keys. A row holds a per-key salt and a slow-KDF digest and NEVER the key, so
         -- copying this file does not hand over a usable credential and does not hand over a fast

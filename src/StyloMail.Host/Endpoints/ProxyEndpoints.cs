@@ -1,9 +1,11 @@
 using System.Buffers.Text;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StyloMail.AccessProxy.Accounts;
 using StyloMail.AccessProxy.Credentials;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.Embeddings;
 using StyloMail.Host.Auth;
 using StyloMail.Host.Contracts;
@@ -90,6 +92,9 @@ internal static class ProxyEndpoints
             .RequireAuthorization(HostPolicies.Review);
 
         proxy.MapGet("/conversations/{threadToken}/elements", ConversationElementsAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        proxy.MapGet("/conversations/{threadToken}/images", ConversationImagesAsync)
             .RequireAuthorization(HostPolicies.Review);
     }
 
@@ -877,6 +882,387 @@ internal static class ProxyEndpoints
             Points = points,
         });
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Image observations
+    // ---------------------------------------------------------------------------------------------
+
+    internal static async Task<IResult> ConversationImagesAsync(
+        string threadToken,
+        string? window,
+        string? limit,
+        string? after,
+        string? childAfter,
+        string? account,
+        string? message,
+        ClaimsPrincipal user,
+        IProxyImageObservationReader images,
+        IProxyTelemetryReader telemetry,
+        IOptions<HostImageOptions> imageOptions,
+        IOptions<HostProxyOptions> proxyOptions,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (Tenant(user) is not { } tenantId)
+        {
+            return EndpointResults.Forbidden("tenant_required", "The principal has no tenant.");
+        }
+
+        if (!ProxyTokens.IsUrlSafe(threadToken))
+        {
+            return EndpointResults.Invalid(
+                "invalid_thread_token",
+                "A thread token must be unpadded base64url (A-Z, a-z, 0-9, '-' and '_').");
+        }
+
+        if (!IsLast24Hours(window))
+        {
+            return InvalidWindow();
+        }
+
+        if (!TryLimit(limit, out var pageSize, out var limitError))
+        {
+            return limitError;
+        }
+
+        var exists = await telemetry.HasConversationAsync(tenantId, threadToken, cancellationToken)
+            .ConfigureAwait(false);
+        if (!exists)
+        {
+            return EndpointResults.NotFound(
+                "conversation_not_found",
+                "No conversation with that thread token is recorded for this tenant.");
+        }
+
+        var now = clock.GetUtcNow();
+        var retentionDays = proxyOptions.Value.ImageObservationRetentionDays;
+
+        if (!string.IsNullOrWhiteSpace(childAfter))
+        {
+            if (!ProxyTokens.IsUrlSafe(account) || !ProxyTokens.IsUrlSafe(message))
+            {
+                return EndpointResults.Invalid(
+                    "invalid_image_parent",
+                    "Child continuation requires the parent account and message tokens.");
+            }
+
+            var childScope = ChildScope(threadToken, account!, message!);
+            if (!TryAfter(childAfter, tenantId, childScope, ChildPageSize, out var childKey))
+            {
+                return InvalidCursor();
+            }
+
+            if (!TryImageWindowFromCursor(childKey ?? string.Empty, out var childWindowStart, out var childWindowEnd))
+            {
+                return InvalidCursor();
+            }
+
+            ProxyImageChildPage children;
+            try
+            {
+                children = await images.ListChildrenAsync(
+                    tenantId, threadToken, account!, message!, MessageTrafficKind.Retrieval,
+                    ChildPageSize, childKey, childWindowStart, childWindowEnd, now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ArgumentException)
+            {
+                return InvalidCursor();
+            }
+
+            return Results.Ok(new ProxyImageChildrenResponse
+            {
+                TenantId = tenantId,
+                ThreadToken = threadToken,
+                AccountId = account!,
+                MessageToken = message!,
+                TrafficKind = MessageTrafficKind.Retrieval.ToString(),
+                WindowStart = childWindowStart,
+                WindowEnd = childWindowEnd,
+                Observations = [.. children.Observations.Select(observation =>
+                    ImageObservation(observation, retentionDays))],
+                Next = children.NextCursor is null
+                    ? null
+                    : ProxyCursors.Encode(tenantId, childScope, ChildPageSize, children.NextCursor),
+            });
+        }
+
+        var parentScope = ParentScope(threadToken);
+        if (!TryAfter(after, tenantId, parentScope, pageSize, out var parentKey))
+        {
+            return InvalidCursor();
+        }
+
+        var windowEnd = now;
+        var windowStart = windowEnd.AddHours(-24);
+        if (parentKey is not null)
+        {
+            if (!TryImageWindowFromCursor(parentKey, out windowStart, out windowEnd))
+            {
+                return InvalidCursor();
+            }
+        }
+
+        ProxyImageMessagePage page;
+        try
+        {
+            page = await images.ListAsync(
+                tenantId, threadToken, windowStart, windowEnd, pageSize, parentKey, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ArgumentException)
+        {
+            return InvalidCursor();
+        }
+
+        return Results.Ok(new ProxyConversationImagesResponse
+        {
+            TenantId = tenantId,
+            ThreadToken = threadToken,
+            Window = Last24Hours,
+            WindowStart = windowStart,
+            WindowEnd = windowEnd,
+            Provenance = "proxy_image_observation/1",
+            ImagesEnabled = imageOptions.Value.Enabled,
+            RetentionDays = retentionDays,
+            Messages = [.. page.Messages.Select(parent => ImageMessage(
+                parent, retentionDays, imageOptions.Value.Enabled))],
+            Next = page.NextCursor is null
+                ? null
+                : ProxyCursors.Encode(tenantId, parentScope, pageSize, page.NextCursor),
+        });
+    }
+
+    private static bool TryImageWindowFromCursor(
+        string cursor,
+        out DateTimeOffset windowStart,
+        out DateTimeOffset windowEnd)
+    {
+        windowStart = default;
+        windowEnd = default;
+        var parts = cursor.Split('|');
+        if (parts.Length < 2 ||
+            !long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var startTicks) ||
+            !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var endTicks) ||
+            startTicks < 0 || endTicks < 0 ||
+            startTicks > DateTimeOffset.MaxValue.UtcTicks ||
+            endTicks > DateTimeOffset.MaxValue.UtcTicks)
+        {
+            return false;
+        }
+
+        try
+        {
+            windowStart = new DateTimeOffset(startTicks, TimeSpan.Zero);
+            windowEnd = new DateTimeOffset(endTicks, TimeSpan.Zero);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+
+        return windowEnd > windowStart && windowEnd - windowStart == TimeSpan.FromHours(24);
+    }
+
+    private const int ChildPageSize = 8;
+
+    private static string ParentScope(string threadToken) => "conversation-images:" + threadToken;
+
+    private static string ChildScope(string threadToken, string account, string message) =>
+        "image-children:" + threadToken + ":" + account + ":" + message;
+
+    private static ProxyImageMessageResponse ImageMessage(
+        ProxyImageMessage parent,
+        int retentionDays,
+        bool imagesEnabled)
+    {
+        if (parent.Observations.Count == 0)
+        {
+            return new ProxyImageMessageResponse
+            {
+                MessageToken = parent.MessageToken,
+                AccountId = parent.AccountId,
+                ObservedAt = parent.ObservedAt,
+                TrafficKind = parent.TrafficKind.ToString(),
+                State = imagesEnabled ? "no_observation" : "disabled",
+                Observations = [],
+                ChildrenOverflowCount = parent.ChildrenOverflowCount,
+                ChildrenNext = null,
+            };
+        }
+
+        var observations = parent.Observations
+            .Select(observation => ImageObservation(observation, retentionDays))
+            .ToArray();
+
+        return new ProxyImageMessageResponse
+        {
+            MessageToken = parent.MessageToken,
+            AccountId = parent.AccountId,
+            ObservedAt = parent.ObservedAt,
+            TrafficKind = parent.TrafficKind.ToString(),
+            State = AggregateState(observations),
+            Observations = observations,
+            ChildrenOverflowCount = parent.ChildrenOverflowCount,
+            ChildrenNext = parent.ChildrenNext is null
+                ? null
+                : ProxyCursors.Encode(
+                    parent.TenantId,
+                    ChildScope(parent.ThreadToken, parent.AccountId, parent.MessageToken),
+                    ChildPageSize,
+                    parent.ChildrenNext),
+        };
+    }
+
+    private static ProxyImageObservationResponse ImageObservation(
+        ProxyImageObservation observation,
+        int configuredRetentionDays)
+    {
+        var retentionDays = observation.RetentionDays > 0
+            ? observation.RetentionDays
+            : configuredRetentionDays;
+
+        return new ProxyImageObservationResponse
+        {
+            ObservationKey = observation.ObservationKey,
+            ObservedAt = observation.ObservedAt,
+            State = ObservationState(observation),
+            Availability = ImageAvailabilityWire(observation.Availability),
+            AvailabilityReason = ImageReasonWire(observation.AvailabilityReason),
+            Counts = new ProxyImageCountsResponse
+            {
+                ImageParts = observation.ImageParts,
+                ImagesSkippedAsChrome = observation.ImagesSkippedAsChrome,
+                ImagesAdmitted = observation.ImagesAdmitted,
+                ImagesProduced = observation.ImagesProduced,
+                ImagesNotProduced = observation.ImagesNotProduced,
+                ImagesOverBudget = observation.ImagesOverBudget,
+            },
+            FirstOverBudgetOrdinal = observation.FirstOverBudgetOrdinal,
+            LastOverBudgetOrdinal = observation.LastOverBudgetOrdinal,
+            SourceVersion = observation.SourceVersion,
+            ExpiresAt = observation.ObservedAt.AddDays(retentionDays),
+            Parts = [.. observation.Parts.Select(part => new ProxyImagePartResponse
+            {
+                Ordinal = part.Ordinal,
+                Disposition = ImageDispositionWire(part.Disposition),
+                Availability = ImageAvailabilityWire(part.Availability),
+                AvailabilityReason = ImageReasonWire(part.AvailabilityReason),
+                Format = part.Format,
+                DeclaredFormat = part.DeclaredFormat,
+                Width = part.Width,
+                Height = part.Height,
+                PixelCount = part.PixelCount,
+                ImageEndOffset = part.ImageEndOffset,
+                TrailingByteCount = part.TrailingByteCount,
+                TrailingBytesObserved = part.TrailingBytesObserved,
+                TrailingScanComplete = part.TrailingScanComplete,
+                TransparencyDeclared = part.TransparencyDeclared,
+                SourceVersion = part.SourceVersion,
+                Findings = [.. part.Findings.Select(finding => new ProxyImageFindingResponse
+                {
+                    Code = ImageFindingWire(finding.Kind),
+                    Offset = finding.Offset,
+                    Detail = finding.Detail,
+                })],
+            })],
+        };
+    }
+
+    private static string ObservationState(ProxyImageObservation observation)
+    {
+        if (observation.Availability == ProxyImageAvailability.Unavailable &&
+            observation.AvailabilityReason == ProxyImageReason.StorageError)
+        {
+            return "not_produced";
+        }
+
+        if (observation.ImageParts == 0)
+        {
+            return "not_applicable";
+        }
+
+        if (observation.ImagesAdmitted == 0)
+        {
+            return observation.ImagesOverBudget > 0 ? "not_produced" : "all_chrome";
+        }
+
+        if (observation.ImagesProduced == 0)
+        {
+            return "not_produced";
+        }
+
+        if (observation.ImagesProduced < observation.ImagesAdmitted || observation.ImagesOverBudget > 0)
+        {
+            return "partial";
+        }
+
+        return observation.Parts.Any(part => part.Findings.Count > 0) ? "findings" : "clean";
+    }
+
+    private static string AggregateState(IReadOnlyList<ProxyImageObservationResponse> observations)
+    {
+        foreach (var state in new[] { "findings", "partial", "not_produced", "all_chrome", "not_applicable" })
+        {
+            if (observations.Any(observation => observation.State == state))
+            {
+                return state;
+            }
+        }
+
+        return observations.All(observation => observation.State == "clean") ? "clean" : "no_observation";
+    }
+
+
+    private static string ImageAvailabilityWire(ProxyImageAvailability value) => value switch
+    {
+        ProxyImageAvailability.Available => "available",
+        ProxyImageAvailability.ReducedCoverage => "reduced_coverage",
+        ProxyImageAvailability.Unavailable => "unavailable",
+        ProxyImageAvailability.NotApplicable => "not_applicable",
+        _ => "unavailable",
+    };
+
+    private static string ImageDispositionWire(ProxyImageDisposition value) => value switch
+    {
+        ProxyImageDisposition.Inspected => "inspected",
+        ProxyImageDisposition.Refused => "refused",
+        ProxyImageDisposition.NotProduced => "not_produced",
+        _ => "not_produced",
+    };
+
+    private static string ImageReasonWire(ProxyImageReason value) => value switch
+    {
+        ProxyImageReason.None => "none",
+        ProxyImageReason.EmptyContent => "empty_content",
+        ProxyImageReason.NotAnImage => "not_an_image",
+        ProxyImageReason.UnsupportedFormat => "unsupported_format",
+        ProxyImageReason.FormatMismatch => "format_mismatch",
+        ProxyImageReason.TruncatedHeader => "truncated_header",
+        ProxyImageReason.HeaderBudgetExceeded => "header_budget_exceeded",
+        ProxyImageReason.InvalidDimensions => "invalid_dimensions",
+        ProxyImageReason.InvalidStructure => "invalid_structure",
+        ProxyImageReason.InsufficientDecodedLength => "insufficient_decoded_length",
+        ProxyImageReason.InspectionBudgetExhausted => "inspection_budget_exhausted",
+        ProxyImageReason.ImagesNotProduced => "images_not_produced",
+        ProxyImageReason.ServiceUnavailable => "service_unavailable",
+        ProxyImageReason.StorageError => "storage_error",
+        ProxyImageReason.CapacityExceeded => "capacity_exceeded",
+        _ => "invalid_structure",
+    };
+
+    private static string ImageFindingWire(ProxyImageFindingKind value) => value switch
+    {
+        ProxyImageFindingKind.TypeMagicMismatch => "type_magic_mismatch",
+        ProxyImageFindingKind.TrailingData => "trailing_data",
+        ProxyImageFindingKind.EmbeddedArchive => "embedded_archive",
+        ProxyImageFindingKind.EmbeddedExecutable => "embedded_executable",
+        ProxyImageFindingKind.ScriptableFormat => "scriptable_format",
+        ProxyImageFindingKind.ZeroDimensions => "zero_dimensions",
+        ProxyImageFindingKind.DimensionLimitExceeded => "dimension_limit_exceeded",
+        ProxyImageFindingKind.PixelLimitExceeded => "pixel_limit_exceeded",
+        _ => "invalid_structure",
+    };
 
     // ---------------------------------------------------------------------------------------------
     // Shapes and validation

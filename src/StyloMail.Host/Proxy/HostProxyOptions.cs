@@ -56,6 +56,17 @@ public sealed class HostProxyOptions
     public TimeSpan SubmissionStagingTtl { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// How long image observation rows are retained before expiry deletion. Bounded 1..365 days.
+    /// </summary>
+    public int ImageObservationRetentionDays { get; set; } = 30;
+
+    /// <summary>Per-tenant cap on image outcomes. Volume cap in addition to time retention.</summary>
+    public int ImageObservationMaxOutcomesPerTenant { get; set; } = 250_000;
+
+    /// <summary>Per-tenant cap on serialized observation bytes. Payload plus fixed overhead.</summary>
+    public long ImageObservationMaxUsedBytesPerTenant { get; set; } = 256L * 1024 * 1024;
+
+    /// <summary>
     /// Backend endpoints by provider id, e.g. <c>gmail</c>. Deployment configuration only.
     /// </summary>
     /// <remarks>
