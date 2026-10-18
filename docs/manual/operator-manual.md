@@ -3,7 +3,7 @@
 Draft of 17 October 2026.
 
 This manual is written for the person who runs StyloMail and its client access proxy. It walks
-through the Avalonia console screen by screen. It is a draft: ten figures are captured from
+through the Avalonia console screen by screen. It is a draft: eleven figures are captured from
 verified runs, three more are covered by a frame already used, and the rest name the state they must
 show and stay pending until a verified run produces them. No figure is a mockup, and no screen is described as available unless it is in the build.
 
@@ -731,11 +731,21 @@ leave the machine.
   (segmentation).
 - Do not read the element series as a transcript. It is vocabulary names per segment, never text.
 
-> **Figure M26 (pending capture).** The **Element signals** tab for the current `elements/3`
-> vocabulary: one `urgency_pressure` entry with its scorer and version, a signed margin with its
-> direction, availability or the not-produced reason, and a shortened opaque exemplar id where one
-> exists, plus the sibling tone gap. An earlier frame was captured under a superseded vocabulary and
-> is not used. Run directory: pending.
+![Figure M26: element signals under elements/3](images/m26-elements3-urgency-pressure.png)
+
+> **Figure M26.** The **Element signals** tab for a selected opaque thread. The window is
+> `last_24_hours` with its UTC bounds and source `proxy_element_classification`; the point is
+> **Retrieval · segment 0** with its UTC time and opaque turn token. The vocabulary is `elements/3`
+> and exactly one card appears, `urgency_pressure`, because that is the measured element; the
+> `credential_request` and `threat` research items are not in this vocabulary. The card shows the
+> scorer `prototype kNN · prototype_knn/teacher-urgency-1`, **Available**, a signed margin of
+> **+0.001 (toward threatening exemplars)**, and a shortened opaque exemplar. A margin of +0.001 is
+> near zero and is weak evidence on this message. The sibling tone line reads **Tone not produced:
+> tone_model_unavailable**, with no zero implied. Segmentation remains provisional: the card
+> describes the analysed segment, not whole-message analysis. Captured from
+> `ux-results/console-external-host/20261018T125450Z-68237`, scenario
+> `console-m26-elements3-capture` (12 of 12 actions passed), host build `09bed8235ebd`, sha256
+> `b9d1acf5fe15911c6b2fc12a1ad999643677e65cacec08ab024ea4ff1a199448`.
 
 ### 4.7 Quarantine and release
 
@@ -924,19 +934,21 @@ signals, not message content, and its caption says that.
 | M23 | Quarantined listing | pending | requested |
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
-| M26 | Element signals | pending | blocked: earlier frame predates elements/3; re-capture needed |
+| M26 | Element signals | ux-results/console-external-host/20261018T125450Z-68237 | captured; build 09bed8235ebd; sha256 b9d1acf5…; one urgency_pressure card, +0.001 weak evidence |
 
-Ten frames in this table are captured, in three batches. M08 and M21a come from the first batch,
+Eleven frames in this table are captured, in five batches. M08 and M21a come from the first batch,
 whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
 not stamp it, and that gap is recorded rather than filled. M12 comes from the fourth, the
-`console-m26-m12-capture` run (13 of 13 actions passed), host build `f8c74d98f829`. M13, M15 and M20
-are covered by M08, M02 and M19. All images carry their run directory, scenario and sha256.
+`console-m26-m12-capture` run (13 of 13 actions passed), host build `f8c74d98f829`. M26 comes from
+the fifth, the `console-m26-elements3-capture` run (12 of 12 actions passed), host build
+`09bed8235ebd`. M13, M15 and M20 are covered by M08, M02 and M19. All images carry their run
+directory, scenario and sha256.
 
-The M26 frame from the fourth run was captured under a superseded vocabulary and is not used; M26 is
-pending a re-capture under `elements/3`. The frame stays in the run directory and is not deleted, but
-it is not evidence for the current chapter.
+The earlier M26 frame from the `m26-m12` run was captured under a superseded vocabulary and is not
+used; the M26 figure now comes from the `elements/3` run. The old frame stays in its run directory
+and is not deleted.
 
 **The four files M08-M11 in the first run are byte-identical** (sha256
 `ced0c85c684e8f1132efc84b30e9087566f2bccb6b8207089360d2a92ca500a2`): one unique settings frame,
