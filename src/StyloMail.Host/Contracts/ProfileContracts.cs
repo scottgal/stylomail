@@ -101,6 +101,44 @@ public sealed record KpiMeasurementResponse
     };
 }
 
+/// <summary>A prior-window comparison. Never a restatement of definition.direction.</summary>
+public sealed record KpiTrendResponse
+{
+    public required KpiTrendState State { get; init; }
+
+    public double? PriorValue { get; init; }
+
+    public double? Delta { get; init; }
+
+    public double? RelativeDelta { get; init; }
+
+    public KpiTrendMovement? Movement { get; init; }
+
+    public required DateTimeOffset PriorWindowStart { get; init; }
+
+    public required DateTimeOffset PriorWindowEnd { get; init; }
+
+    public required bool PriorTruncated { get; init; }
+
+    public string? Reason { get; init; }
+
+    public string? Detail { get; init; }
+
+    public static KpiTrendResponse From(KpiTrend trend) => new()
+    {
+        State = trend.State,
+        PriorValue = trend.PriorValue,
+        Delta = trend.Delta,
+        RelativeDelta = trend.RelativeDelta,
+        Movement = trend.Movement,
+        PriorWindowStart = trend.PriorWindowStart,
+        PriorWindowEnd = trend.PriorWindowEnd,
+        PriorTruncated = trend.PriorTruncated,
+        Reason = trend.Reason,
+        Detail = trend.Detail,
+    };
+}
+
 /// <summary>One KPI: its definition, its state, its value and its coverage together.</summary>
 public sealed record KpiValueResponse
 {
@@ -122,6 +160,9 @@ public sealed record KpiValueResponse
 
     public IReadOnlyList<KpiMeasurementResponse> Measurements { get; init; } = [];
 
+    /// <summary>Prior-window comparison. Null only where no window was read (the catalogue).</summary>
+    public KpiTrendResponse? Trend { get; init; }
+
     public static KpiValueResponse From(KpiValue value) => new()
     {
         Definition = KpiDefinitionResponse.From(value.Definition),
@@ -133,6 +174,7 @@ public sealed record KpiValueResponse
         Reason = value.Reason,
         Detail = value.Detail,
         Measurements = [.. value.Measurements.Select(KpiMeasurementResponse.From)],
+        Trend = value.Trend is null ? null : KpiTrendResponse.From(value.Trend),
     };
 }
 
@@ -253,6 +295,18 @@ public sealed record ProfileResponse
 
     public required PropertyScopeResponse Scope { get; init; }
 
+    /// <summary>A stored human label, or null. Never derived from content or a hash.</summary>
+    public string? DisplayLabel { get; init; }
+
+    /// <summary>False when no stored label exists; render "Entity &lt;opaque&gt;".</summary>
+    public required bool DisplayLabelAvailable { get; init; }
+
+    /// <summary><c>sender_profile</c>, <c>company</c> or <c>domain</c>, or null when unavailable.</summary>
+    public string? DisplayLabelSource { get; init; }
+
+    /// <summary>A named reason when unavailable (<c>no_stored_label</c>).</summary>
+    public string? DisplayLabelReason { get; init; }
+
     public required DateTimeOffset WindowStart { get; init; }
 
     public required DateTimeOffset WindowEnd { get; init; }
@@ -271,6 +325,10 @@ public sealed record ProfileResponse
     {
         TenantId = tenantId,
         Scope = PropertyScopeResponse.From(snapshot.Scope),
+        DisplayLabel = snapshot.DisplayLabel,
+        DisplayLabelAvailable = snapshot.DisplayLabelAvailable,
+        DisplayLabelSource = snapshot.DisplayLabelSource,
+        DisplayLabelReason = snapshot.DisplayLabelReason,
         WindowStart = snapshot.WindowStart,
         WindowEnd = snapshot.WindowEnd,
         Coverage = ProfileCoverageResponse.From(snapshot.Coverage),

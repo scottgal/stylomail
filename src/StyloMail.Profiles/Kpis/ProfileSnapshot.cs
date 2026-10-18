@@ -102,6 +102,23 @@ public sealed record ProfileSnapshot
 {
     public required PropertyScope Scope { get; init; }
 
+    /// <summary>
+    /// A human label that was already stored, or null. Never derived from content or a hash.
+    /// </summary>
+    public string? DisplayLabel { get; init; }
+
+    /// <summary>False when no stored label exists; the UI shows "Entity &lt;opaque&gt;".</summary>
+    public required bool DisplayLabelAvailable { get; init; }
+
+    /// <summary>
+    /// Where the label came from: <c>sender_profile</c>, <c>company</c> or <c>domain</c>.
+    /// Null when unavailable.
+    /// </summary>
+    public string? DisplayLabelSource { get; init; }
+
+    /// <summary>A named reason when no label is available (<c>no_stored_label</c>).</summary>
+    public string? DisplayLabelReason { get; init; }
+
     public required DateTimeOffset WindowStart { get; init; }
 
     public required DateTimeOffset WindowEnd { get; init; }
