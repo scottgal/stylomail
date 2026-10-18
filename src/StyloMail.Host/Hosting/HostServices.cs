@@ -79,6 +79,12 @@ public static class HostServices
         services.Configure<PropertyOptions>(configuration.GetSection(PropertyOptions.SectionName));
         services.AddSingleton<IPropertyStore, SqlitePropertyStore>();
 
+        // Profile reads. The pseudonym source is lazy: a deployment with no profile key serves
+        // profiles with a named `no_profile_key` absence rather than failing the read, while the
+        // assessor's own composition remains the place that refuses to start without one.
+        services.AddSingleton<IAddressPseudonymSource, AssessmentAddressPseudonymSource>();
+        services.AddSingleton<ProfileQueryStore>();
+
         // Policy packs, rule sets and bindings. The read ports are what the decision path may
         // resolve; the lifecycle stores are reached only by the administration endpoints. Phase 1
         // registers them without calling the evaluator from any route.

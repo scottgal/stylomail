@@ -298,6 +298,16 @@ internal sealed class TestHost : WebApplicationFactory<Program>
     /// </summary>
     private const string UnreachableProvider = "http://127.0.0.1:1/";
 
+    public TestHost WithProfileMasterKey(string masterKey)
+    {
+        return Override(services =>
+        {
+            RemoveAll<IAssessmentSecretSource>(services);
+            services.AddSingleton<IAssessmentSecretSource>(
+                new FixedAssessmentSecretSource(null, masterKey));
+        });
+    }
+
     /// <summary>
     /// Gives the host fixed assessment secrets and leaves its own composition in place, so the
     /// provider selection and the credential decision both run for real against a known pair of

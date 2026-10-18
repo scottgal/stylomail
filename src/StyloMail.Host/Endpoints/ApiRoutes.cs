@@ -82,6 +82,14 @@ public static class ApiRoutes
         v1.MapDelete("/properties/{kind}/{id}/{key}", PropertyEndpoints.ClearAsync)
             .RequireAuthorization(HostPolicies.Administer);
 
+        // Profile surface. Read-only and reviewer-level: the catalogue of versioned KPI definitions,
+        // and one entity/domain/company/conversation profile with its coverage and named absences.
+        v1.MapGet("/kpis", ProfileEndpoints.GetKpis)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/profiles/{kind}/{id}", ProfileEndpoints.GetProfileAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
         // Policy administration. Reading a pack, its versions or a binding is reviewer visibility;
         // drafting, approving, activating, withdrawing, binding and revoking change what policy
         // will do and are administrative. The capability catalogue is static and reads no pack.
