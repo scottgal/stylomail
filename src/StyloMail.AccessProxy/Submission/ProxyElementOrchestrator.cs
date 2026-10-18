@@ -19,6 +19,20 @@ public sealed class ProxyElementOrchestrator
     public ProxyElementOrchestrator(IElementClassifier classifier, IProxyElementSink sink)
         => (_classifier, _sink) = (classifier ?? throw new ArgumentNullException(nameof(classifier)), sink ?? throw new ArgumentNullException(nameof(sink)));
 
+    // The FETCH item determines eligibility before MIME parsing. Partial literals have no new
+    // body contract, even when their bytes happen to resemble a complete MIME message.
+    internal ValueTask RecordUnsupportedRetrievalAsync(string tenantId, string accountId,
+        string messageToken, string threadToken, DateTimeOffset observedAt, CancellationToken ct)
+        => _sink.RecordOutcomeAsync(new ProxySegmentationOutcome
+        {
+            TenantId = tenantId, AccountId = accountId, TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = observedAt,
+            Availability = ProxyWarningAvailability.NotProduced,
+            AvailabilityReason = ProxySegmentationAvailabilityReason.UnsupportedContent,
+            SegmentCount = 0, Truncated = false, AppliedMaxSegments = MaxSegments,
+            AppliedMaxSegmentBytes = MaxSegmentBytes, AnalysedOrdinals = [], AnySegmentDropped = false,
+        }, ct);
+
     public async ValueTask EmitAsync(ProxyWarningAnalysisInput identity, ReadOnlyMemory<byte> message, string messageToken, string threadToken, MessageTrafficKind kind, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

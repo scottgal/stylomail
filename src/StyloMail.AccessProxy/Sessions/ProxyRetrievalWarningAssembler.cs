@@ -64,6 +64,8 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
     private int _literalWritten;
     private long _literalRemaining;
     private bool _literalUnreadable;
+    private bool _literalPartial;
+    private bool _fetchResponseOpen;
     private int _reservedBytes;
     private int _disposed;
 
@@ -141,7 +143,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         {
             if (_literalRemaining > 0)
             {
-                if (!_literalUnreadable)
+                if (!_literalUnreadable && !_literalPartial)
                     _literal![_literalWritten++] = chunk[index];
                 _literalRemaining--;
                 if (_literalRemaining == 0)
@@ -156,7 +158,11 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
                 ClearLine();
 
             if (value == (byte)'\n')
+            {
                 StartLiteralIfFetchLine();
+                if (_literalRemaining == 0 && (_literalPartial || _literal is not null))
+                    await CompleteLiteralAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
@@ -164,15 +170,37 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
     {
         var line = Encoding.ASCII.GetString(CollectionsMarshal.AsSpan(_line));
         ClearLine();
-        if (!line.Contains("FETCH", StringComparison.OrdinalIgnoreCase))
-            return;
+        var prefix = line.AsSpan().Trim();
+        if (prefix.StartsWith("* ", StringComparison.Ordinal))
+        {
+            // A fresh untagged response must identify FETCH, not merely contain that substring.
+            var sequenceEnd = prefix[2..].IndexOf(' ');
+            if (sequenceEnd < 0 || !uint.TryParse(prefix.Slice(2, sequenceEnd), out _))
+            {
+                _fetchResponseOpen = false;
+                return;
+            }
+            var response = prefix[(sequenceEnd + 3)..].TrimStart();
+            _fetchResponseOpen = response.StartsWith("FETCH (", StringComparison.OrdinalIgnoreCase);
+        }
+        if (!_fetchResponseOpen) return;
 
         var close = line.LastIndexOf('}');
         var open = close > 0 ? line.LastIndexOf('{', close) : -1;
         if (open < 0 || close != line.Length - 3 || !long.TryParse(line.AsSpan(open + 1, close - open - 1), out var length) || length < 0)
+        {
+            _fetchResponseOpen = false;
             return;
+        }
 
         _literalRemaining = length;
+        _literalUnreadable = false;
+        _literalPartial = !IsWholeMessageItem(line.AsSpan(0, open));
+        if (_literalPartial)
+        {
+            // Consume framing but do not allocate a message buffer or send a partial to parsing.
+            return;
+        }
         if (length > _options.MaximumMessageBytes || length > int.MaxValue || !TryReserve((int)length))
         {
             _literalUnreadable = true;
@@ -182,20 +210,38 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         _literal = GC.AllocateUninitializedArray<byte>((int)length);
         _literalWritten = 0;
         _literalUnreadable = false;
-        if (length == 0)
-            _ = CompleteLiteralAsync(CancellationToken.None);
     }
 
     private async ValueTask CompleteLiteralAsync(CancellationToken cancellationToken)
     {
         var literal = _literal;
         var unreadable = _literalUnreadable;
+        var partial = _literalPartial;
         _literal = null;
         _literalWritten = 0;
         _literalUnreadable = false;
+        _literalPartial = false;
 
         try
         {
+            if (partial)
+            {
+                // A partial FETCH does not establish message/thread identity. Use fresh opaque
+                // tokens for this excluded observation; do not derive identity from its content.
+                var token = "partial_" + Guid.NewGuid().ToString("N");
+                var observedAt = _timeProvider.GetUtcNow();
+                await _sink.RecordOutcomeAsync(new ProxyWarningAnalysisOutcome
+                {
+                    TenantId = _tenantId, AccountId = _accountId, TrafficKind = MessageTrafficKind.Retrieval,
+                    MessageToken = token, ThreadToken = token, ObservedAt = observedAt,
+                    Availability = ProxyWarningAvailability.NotProduced,
+                    AvailabilityReason = ProxyWarningAvailabilityReason.UnsupportedContent, MarkerCount = 0,
+                }, cancellationToken).ConfigureAwait(false);
+                if (_elementOrchestrator is not null)
+                    await _elementOrchestrator.RecordUnsupportedRetrievalAsync(_tenantId, _accountId,
+                        token, token, observedAt, cancellationToken).ConfigureAwait(false);
+                return;
+            }
             var message = unreadable ? ReadOnlyMemory<byte>.Empty : literal!.AsMemory();
             var input = new ProxyWarningAnalysisInput
             {
@@ -255,6 +301,19 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
                 Release(literal.Length);
             }
         }
+    }
+
+    private static bool IsWholeMessageItem(ReadOnlySpan<char> prefix)
+    {
+        prefix = prefix.TrimEnd();
+        return EndsWithItem(prefix, "BODY[]") || EndsWithItem(prefix, "BODY.PEEK[]") || EndsWithItem(prefix, "RFC822");
+    }
+
+    private static bool EndsWithItem(ReadOnlySpan<char> prefix, ReadOnlySpan<char> item)
+    {
+        if (!prefix.EndsWith(item, StringComparison.OrdinalIgnoreCase)) return false;
+        var start = prefix.Length - item.Length;
+        return start == 0 || prefix[start - 1] is ' ' or '\t' or '(';
     }
 
     private bool TryReserve(int bytes)
