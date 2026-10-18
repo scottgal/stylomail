@@ -111,6 +111,7 @@ public static class HostServices
         // layers its configuration in, so gating registration on it here would read the wrong values.
         // Startup validation below is what makes an enabled deployment with no key fail loudly.
         services.Configure<HostProxyOptions>(configuration.GetSection(HostProxyOptions.SectionName));
+        services.Configure<HostImageOptions>(configuration.GetSection(HostImageOptions.SectionName));
         services.AddSingleton<IProxySecretSource, EnvironmentProxySecretSource>();
         services.AddSingleton<IProxyLoginKeyDeriver>(ProxyLoginKeys.Create);
         services.AddSingleton<ISecretKeyRing>(ProxyLoginKeys.CreateKeyRing);
@@ -127,6 +128,12 @@ public static class HostServices
         services.AddSingleton<IBackendCredentialStore>(
             sp => sp.GetRequiredService<SqliteBackendCredentialStore>());
         services.AddSingleton<SqliteProxyEventStore>();
+        services.AddSingleton<SqliteProxyImageStore>();
+        services.AddSingleton<IProxyImageObservationSink>(
+            sp => sp.GetRequiredService<SqliteProxyImageStore>());
+        services.AddSingleton<IProxyImageObservationReader>(
+            sp => sp.GetRequiredService<SqliteProxyImageStore>());
+        services.AddHostedService<ProxyImageRetentionSweep>();
         services.AddHostedService<ProxyRetrievalObservationLog>();
         services.AddSingleton<ProxyConnectionOutcomes>();
         services.AddSingleton<IProxyConnectionOutcomeReader>(sp => sp.GetRequiredService<ProxyConnectionOutcomes>());
@@ -1143,6 +1150,22 @@ public static class HostServices
     public static async Task InitialiseStorageAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         services.GetRequiredService<HostDatabase>().EnsureCreated();
+
+        // The image retention window is a bounded setting; an out-of-range value is a startup
+        // fault rather than a sweep that silently does nothing.
+        var imageRetentionDays = services.GetRequiredService<IOptions<HostProxyOptions>>()
+            .Value.ImageObservationRetentionDays;
+        if (imageRetentionDays is < 1 or > 365)
+        {
+            throw new InvalidOperationException(
+                "StyloMail:Proxy:ImageObservationRetentionDays must be between 1 and 365.");
+        }
+
+        // Increment the persisted image-observation epoch once per process. A missing epoch after
+        // the migration marker is a repair fault: the store reports unavailable and the sink fails
+        // closed rather than resetting history.
+        var imageStore = services.GetRequiredService<SqliteProxyImageStore>();
+        await imageStore.InitializeEpochAsync(cancellationToken).ConfigureAwait(false);
 
         // An enabled proxy with no usable key is a startup fault, not a condition to discover on the
         // first login. Resolving these constructs the deriver and key ring from the environment, so a
