@@ -71,10 +71,13 @@ The order is fixed:
    `Quarantine > Review > Hold > Allow`. Legacy Defer and Reject are never replaced. A pack Permit
    cannot turn a legacy protective outcome into Allow; recipient preference remains last and cannot
    relax a pack Review, Hold or Quarantine.
-5. Admission. If the queue refuses admission (missing payload, spool failure, quota), the final
-   action is Defer because responsibility never transferred. The record has `Applied = false`,
-   `AdmissionRefused = true`; a pack cannot claim Review/Quarantine durability that admission did
-   not take. Only policy evaluation is "never Defer"; Step 7 can still Defer.
+5. Admission. A pre-acceptance decline (legacy Reject or Defer, or a composed action that is
+   Reject/Defer) never reaches acceptance: `Admission = NotAttempted`, `Durable = false`,
+   `Applied = false`, and acceptance is not called. If acceptance is attempted and the queue refuses
+   (missing payload, spool failure, quota), the final action is Defer because responsibility never
+   transferred: `Admission = Refused`, `Durable = false`, `Applied = false`. A pack cannot claim
+   Review/Quarantine durability that admission did not take. Only policy evaluation is "never
+   Defer"; Step 7 can still Defer.
 
 The ceiling caps a fired band and never an escalation. Missing evidence, conflicting evidence,
 insufficient coverage/sample, zero tolerance and a missing required property key are escalations
@@ -175,20 +178,26 @@ Support in Phase 3:
 - Absolute deadlines are resolved once at the decision instant (`now + span`) and copied unchanged
   into the decision record, opening record, queue row and readback. Nothing recomputes them later.
 - **No-cache Unavailable fallback**: use the configured `FallbackReviewDeadline` (default 24h,
-  bounded 1h–7d), compose it as a Review candidate, and record:
-  `Applied = true`, `Authoritative = false`, `Shadow = false`, `PolicySource = Fallback`,
-  `PackUnavailable = true`, `FallbackReason`, `OpeningSource = fallback`, and **null pack id,
-  version, rule-set id/version, rule id/version and evidence digest**. Do not invent values. The
-  queue opening record and event carry the same null provenance and a fallback reason.
+  bounded 1h–7d), compose it as a Review candidate, and record `Source = Fallback`,
+  `Authoritative = false`, `Shadow = false`, `FallbackAttempted = true`, `PackUnavailable = true`,
+  `FallbackReason`, `OpeningSource = fallback`, and **null pack id, version, rule-set id/version,
+  rule id/version and evidence digest**. Do not invent values. `PolicyContributed`, `Applied`,
+  `Durable` and `Admission` follow the canonical rules in section 8; the fallback does not get a
+  hard-coded `Applied`. The queue opening record and event carry the same null provenance and a
+  fallback reason.
 - A missing rule set for a configured pack is Unavailable, not Absent: fallback Review (bounded),
   never legacy.
 - If the Review state is unavailable, the fallback candidate becomes Quarantine with
   `policy.review_state_unavailable`.
-- `Applied` means the final action changed from the legacy action and admission succeeded.
-  `Applied = true, Authoritative = false, Shadow = false` is the fallback record, and the console
-  must not render it as shadow or no-policy.
-- Admission refusal: if the queue refuses, the final action is Defer and `Applied = false`,
-  `AdmissionRefused = true`; policy evaluation never claims durability it did not get.
+- `PolicyContributed = ComposedAction != LegacyAction`. A fallback candidate can contribute when
+  legacy is Allow and cannot when legacy Reject/Quarantine/Defer wins; it is never hard-coded.
+- `Applied = PolicyContributed && Durable && !Shadow && Source != GlobalShadow &&
+  FinalAction != LegacyAction`. A fallback with legacy Allow and a durable Review applies; a
+  fallback overridden by legacy Reject/Defer/Quarantine does not. The console must not render a
+  fallback as shadow or no-policy; it renders the admission and action fields.
+- Admission refusal: if acceptance was attempted and refused, the final action is Defer,
+  `Admission = Refused`, `Durable = false`, `Applied = false`; policy evaluation never claims
+  durability it did not get. Pre-acceptance decisions have `Admission = NotAttempted`.
 
 ## 7. Cache
 
@@ -213,7 +222,13 @@ The cache owns an immutable **pack + live rule-set version pair**, keyed by
 
 ```csharp
 enum PolicySource { Pack, Shadow, Fallback, GlobalShadow }
-enum AdmissionOutcome { Admitted, Refused, NotApplicableForAssessmentOnly }
+enum AdmissionOutcome
+{
+    NotAttempted,                       // pre-acceptance decline; acceptance must not run
+    Admitted,                           // acceptance succeeded
+    Refused,                            // acceptance attempted and failed
+    NotApplicableForAssessmentOnly,     // no delivery path exists
+}
 
 public PolicySource Source { get; init; }
 
@@ -270,10 +285,13 @@ CHECK, and a failed event insertion rolls the opening and state back atomically.
 
 - `PolicyContributed = composedAction != legacyAction`. A fallback candidate overridden by a legacy
   Reject/Defer/Quarantine has `FallbackAttempted = true` but `PolicyContributed = false`.
-- `Applied = PolicyContributed && Durable`. It is computed after composition and admission, never
-  from `Source`.
-- `Durable = AdmissionOutcome == Admitted`. On a refused submission it is false and `Applied` is
-  false even if the composed action was more protective.
+- `Applied = PolicyContributed && Durable && !Shadow && Source != GlobalShadow &&
+  FinalAction != LegacyAction`. It is computed after composition and admission, never from
+  `Source` alone.
+- `Durable = Admission == Admitted`. On a refused submission it is false and `Applied` is false even
+  if the composed action was more protective.
+- `NotAttempted`: a pre-acceptance decline (legacy Reject/Defer). `Durable = false`, `Applied =
+  false`, and acceptance is never called. It is not assessment-only and not a refusal.
 - `AssessmentOnly`: `Admission = NotApplicableForAssessmentOnly`, `Durable = false`, `Applied =
   false`; the assessment's action is still the composed action for explanation, but nothing was
   applied to delivery.
@@ -284,8 +302,8 @@ CHECK, and a failed event insertion rolls the opening and state back atomically.
 - `Source = GlobalShadow`, `Authoritative = true`, `Shadow = true`, `Applied = false`,
   `PolicyContributed` computed from the composed/legacy pair but never applied.
 - `Source = Fallback`, `Authoritative = false`, `Shadow = false`, `FallbackAttempted = true`,
-  null pack provenance as in section 6; `PolicyContributed` and `Applied` are computed, not
-  hard-coded.
+  null pack provenance as in section 6; `PolicyContributed` and `Applied` are computed by the
+  canonical formula, not hard-coded.
 - Null `Policy` still means no pack was active **or the path was not entered**; it is never Permit.
   `Source` plus the flags is the discriminator.
 - `Applied = false` means no policy intervention took effect. It does not mean "the pack agreed":
@@ -322,8 +340,12 @@ Enablement/absence:
   Unavailable, not Absent.
 
 Ordering/shadow:
-- Global `ShadowMode` + flag on: action unchanged, `Source=GlobalShadow`, `Applied=false`,
-  `Authoritative=true`, `Shadow=true`, reason; pack verdict preserved.
+- Global `ShadowMode` + flag on with legacy Allow + pack Review + ordinary payload admitted as
+  Queued: action unchanged, `Source=GlobalShadow`, `PolicyContributed=true`, `Durable=true`,
+  `Applied=false`, `Authoritative=true`, `Shadow=true`, reason; pack verdict preserved. This is the
+  positive-contribution/durable-but-shadowed control, not only a no-op verdict.
+- Legacy Reject and legacy Defer with a real pack record and with a fallback: `Admission=NotAttempted`,
+  `Durable=false`, `Applied=false`, zero acceptance calls.
 - Every legacy protective outcome (Allow/Hold/Quarantine/Defer/Reject) against every pack verdict,
   including the fallback candidate.
 
@@ -343,7 +365,7 @@ Deadlines/admission:
   admitted.
 - Successful admission after a pack Review: `Applied=true`, `Durable=true`, `Admission=Admitted`.
 - Refused admission ends in Defer with `Applied=false`, `Durable=false`, `Admission=Refused`; actual
-  queue state shows zero admissions.
+  queue state shows zero admissions. The pack record does not claim Review/Quarantine durability.
 - AssessmentOnly: `Applied=false`, `Durable=false`, `Admission=NotApplicableForAssessmentOnly`.
 - Review capability unsupported before admission composes Quarantine with
   `policy.review_state_unavailable`; a Review admission refused on spool storage ends in Defer with
@@ -384,7 +406,7 @@ Replay/cache/parity:
 ## Desktop needs
 
 - `PolicyDecisionRecord`: `Source`, `Applied`, `LegacyAction`, `ComposedAction`, `Authoritative`,
-  `PackUnavailable`, `FallbackReason`, `AdmissionRefused`, `PropertyFactsUnavailable`,
+  `PackUnavailable`, `FallbackReason`, `Admission`, `PropertyFactsUnavailable`,
   `MissingPropertyKeys`, `EffectiveInput` and `EffectiveInputDigest`.
 - A status read: `GET /v1/policy/status` returns tenant, authoritative enabled, effective pack,
   shadow enabled, review state available, cache age.
