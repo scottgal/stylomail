@@ -12,17 +12,25 @@ flag is on.
 StyloMail:
   Policy:
     Authoritative:
-      Tenants: []          # explicit tenant ids; empty is off for everyone
-      Jurisdiction: ""     # the deployment's declared jurisdiction
+      Tenants:
+        acme: GB           # tenant id -> declared jurisdiction; presence = enabled
+        globex: US
 ```
+
+A tenant is opted in by being a key. The value is its required jurisdiction; there is no host-wide
+jurisdiction, because one Host can serve tenants in different legal contexts. An empty map (or an
+absent section) is off everywhere. A present tenant with a blank jurisdiction is a startup fault for
+that tenant, not a silent fallback to legacy: a deployment that believes it enabled policy must not
+quietly be running the old path.
 
 Rules:
 
 - The flag is consulted per assessment from the authenticated tenant. There is no process-wide
   on-switch.
-- A tenant is authoritative only when **all** of these hold: it is listed, an approved effective pack
-  exists for the deployment jurisdiction, its referenced rule set is live, and the Profiles read
-  contract is available.
+- A tenant is authoritative only when **all** of these hold: it is listed with a non-blank
+  jurisdiction, an approved effective pack exists for that tenant and jurisdiction, and its
+  referenced rule set is live. Profiles availability is not an enablement condition: a missing
+  property is a named absence for the rules that need it, not a global outage.
 - **Flag off is the legacy decision byte-for-byte.** With both the authoritative and shadow flags
   off, the assessment is identical to a build without pack evaluation: same action, reasons, risk
   arithmetic and queue admission. The test serialises the assessment and compares bytes.
@@ -56,10 +64,14 @@ composed by the table already implemented in `PackPolicyComposer`:
   evidence, conflicting evidence, insufficient coverage/sample and zero tolerance. The ceiling is
   read from the resolved effective policy, not from the raw pack, so a binding cannot raise it.
 - **The evaluator evaluates over the effective policy, not the raw pack.** `PolicyEvaluationInput`
-  gains an `EffectivePolicy` carrying the resolved levels, ceiling, binding ids, property facts and
-  `ForcedReviewCategories`. A fired candidate in a forced category escalates to Review. The raw
-  `PolicyPack` stays on the input and in the record as provenance; it is not the source of the
-  thresholds.
+  gains an `EffectivePolicy` carrying the resolved levels, ceiling, binding ids, property facts,
+  missing property keys and `ForcedReviewCategories`. The raw `PolicyPack` stays on the input and in
+  the record as provenance; it is not the source of the thresholds.
+- **A rule declares the property keys it needs.** `PolicyRule.RequiredPropertyKeys` names them (for
+  example `age_band` or `country`). If a required key is absent, that rule escalates to Review with
+  `policy.property_facts_unavailable`; rules that do not require it compose normally on message
+  evidence. A pack must not read a missing fact as low risk, and must not turn one missing fact into
+  a mailbox-wide hold.
 - `Observe` changes no action. It adds an Observe record and a reason; it never maps to a hold.
 
 ## 3. Action mapping
@@ -122,9 +134,11 @@ assert hard floors >= Strict
   decision record. The facts are the replay input: a later reader can recompute the levels without
   reading the live profile, and a suggestion that has since been confirmed does not rewrite the
   decision.
-- A Profiles read failure is **not** a permissive default. Unknown facts force review for the
-  categories that depend on them, and the record names `policy.properties_unavailable`. It never
-  silently lowers a protection.
+- A Profiles read failure is **not** a permissive default and **not** a global outage. Missing facts
+  are recorded as `PropertyFactsUnavailable` plus the missing keys on the decision. Only rules that
+  declare a missing key in `RequiredPropertyKeys` escalate to Review; every other rule composes
+  normally on message evidence. A protection is never lowered by absence, and the mailbox is not
+  stopped because one property could not be read.
 
 ## 5. Store outage and cache
 
@@ -137,7 +151,8 @@ assert hard floors >= Strict
 - Rule-set read failure: `Review` with `policy.rule_set_unavailable` (or the cached immutable rule
   set for that exact version, with `policy.rule_cache_used` when it is used). A pack is never
   evaluated against a different rule version.
-- Profiles read failure: unknown facts and forced review, as in section 4.
+- Profiles read failure: named absence (`PropertyFactsUnavailable` and the missing keys); only rules
+  that require a missing key escalate to Review. This is not a global Review and not a global hold.
 - Review state unavailable: `Quarantine` with `policy.review_state_unavailable`.
 - The cache is tenant-scoped, so a tenant cannot read another's pack through a cache key.
 
@@ -149,13 +164,16 @@ assert hard floors >= Strict
 public bool Applied { get; init; }            // true only when the pack changed the action
 public MailAction? LegacyAction { get; init; } // the action the legacy tiers chose
 public MailAction? ComposedAction { get; init; } // the action after composition
-public bool Authoritative { get; init; }      // false for a shadow record
+public bool Authoritative { get; init; }      // true only when the tenant flag is on and the pack ran
+public bool PropertyFactsUnavailable { get; init; }
+public IReadOnlyList<string> MissingPropertyKeys { get; init; } // empty when facts were available
 ```
 
 - `Applied = composedAction != legacyAction`. A pack verdict equal to the legacy action is still
   recorded, with `Applied = false`, because "the pack agreed" is a fact worth keeping.
-- `Shadow = false` and `Authoritative = true` on this path. The existing shadow record keeps
-  `Shadow = true`, `Applied = false`.
+- `Shadow = false` and `Authoritative = true` only when the tenant flag is on and the pack actually
+  ran; a pack that agreed with the legacy action is still authoritative and `Applied = false`. The
+  existing shadow record keeps `Shadow = true`, `Authoritative = false`, `Applied = false`.
 - The record carries pack id/version, rule-set id/version, scorer version, deciding rule
   id/version/threshold, reason code and text, missing dimensions, coverage, evidence digest,
   binding ids and property facts. The console can answer "why did the action change" from the record
@@ -176,8 +194,11 @@ public bool Authoritative { get; init; }      // false for a shadow record
   chain and the resolved deadline; a pack Hold/Quarantine maps to the existing paths; a pack
   Observe changes no action.
 - **Outage fallback**: pack-store failure with no cache → Review; with a cache → cached pack and a
-  `policy.pack_cache_used` reason; rule-set failure → Review; Review state unavailable → Quarantine;
-  Profiles failure → forced review, never lowered.
+  `policy.pack_cache_used` reason; rule-set failure → Review; Review state unavailable → Quarantine.
+- **Profiles fact absence, refined**: a rule whose `RequiredPropertyKeys` include a missing key
+  escalates to Review and the record carries `PropertyFactsUnavailable` plus the key; a rule that does
+  not require it composes normally, and the decision is not a global Review. The same test also
+  proves a missing fact never lowers a protection.
 - **Property-fact replay**: a record replays to the same levels and verdict from its facts alone; a
   Suggested minor raises; an inferred adult does not lower a declared minor; a later confirmation
   does not rewrite the record.
@@ -194,7 +215,7 @@ public bool Authoritative { get; init; }      // false for a shadow record
 | `EffectivePolicy` resolver, evaluator input, `PackPolicyComposer`, record fields and tests | `policy-` |
 | `PolicyDecisionRecord` additions (`Applied`, `LegacyAction`, `ComposedAction`, `Authoritative`) | `policy-` with `overview-` approval (Core contract) |
 | Profiles ProjectReference and effective-property adapter | `policy-` (reads only; no writes) |
-| Host config, pack/rule cache, `IPolicyBindingReader` implementation, status route, contracts | Host owner (`ingress-` if it returns; otherwise assigned) |
+| Host config, pack/rule cache, `IPolicyBindingReader` implementation, status route, contracts | **`policy-` for this slice** (ruling e), with `review-` verifying the Host code; hand back when `ingress-` returns |
 | Pack/binding lifecycle and review surface | already landed; Policy/Host owners as above |
 | Console pack/binding/review panels and the "action changed" explanation | `desktop-` |
 
@@ -215,10 +236,9 @@ public bool Authoritative { get; init; }      // false for a shadow record
 
 ## Open questions for `overview-`
 
-1. Approve the Core record additions (`Applied`, `LegacyAction`, `ComposedAction`, `Authoritative`).
-2. Approve the config shape and per-tenant list; confirm the deployment jurisdiction lives in
-   `StyloMail:Policy:Authoritative:Jurisdiction`.
-3. Confirm `MonitorAllMail` stays an operator capability and is not a pack verdict in v1.
-4. Confirm the Profiles ProjectReference direction and that Policy may reference Profiles now that
-   the library is merged.
-5. Who owns the Host cache/status route while `ingress-` is exited?
+All five were ruled on 18 Oct 2026: record additions approved; per-tenant jurisdiction map approved;
+MonitorAllMail stays an operator capability; Policy -> Profiles approved; `policy-` owns the Host
+cache/status route for this slice with `review-` verification.
+
+The Profiles-outage refinement is incorporated: fact absence is named per decision and only rules
+that declare a missing key escalate. No further ruling is needed before implementation.
