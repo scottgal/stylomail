@@ -44,7 +44,8 @@ public sealed class ChatAssessor : IChatAssessor
     public ChatAssessor(
         IAdaptiveProfileStore profileStore,
         MailAssessorOptions options,
-        IEmergencyKillSwitch? killSwitch = null)
+        IEmergencyKillSwitch? killSwitch = null,
+        IPolicyShadowEvaluator? policyShadow = null)
     {
         ArgumentNullException.ThrowIfNull(profileStore);
         ArgumentNullException.ThrowIfNull(options);
@@ -53,13 +54,16 @@ public sealed class ChatAssessor : IChatAssessor
         _recorder = new ChatObservationRecorder(profileStore, options);
         _options = options;
         _killSwitch = killSwitch ?? NeverEngagedKillSwitch.Instance;
+        _policyShadow = policyShadow;
     }
 
     private readonly ChatObservationRecorder _recorder;
 
     private readonly IEmergencyKillSwitch _killSwitch;
 
-    public ValueTask<MailAssessment> AssessAsync(
+    private readonly IPolicyShadowEvaluator? _policyShadow;
+
+    public async ValueTask<MailAssessment> AssessAsync(
         ChatAnalysisInput input,
         AssessmentContext context,
         CancellationToken cancellationToken)
@@ -124,7 +128,15 @@ public sealed class ChatAssessor : IChatAssessor
         // assessed rather than the ones that turned out to be interesting.
         _recorder.Record(input, context.TenantId, now);
 
-        return ValueTask.FromResult(new MailAssessment
+        // The pack evaluates beside the chat decision and is recorded only. Chat already takes no
+        // action; the record is the audit trail a later decision about interventions will read.
+        var policyRecord = _policyShadow is null
+            ? null
+            : await _policyShadow
+                .EvaluateAsync(context.TenantId, evidence, now, cancellationToken)
+                .ConfigureAwait(false);
+
+        return new MailAssessment
         {
             AssessmentId = BuildAssessmentId(context, input),
             InternalMessageId = input.EventId,
@@ -142,6 +154,7 @@ public sealed class ChatAssessor : IChatAssessor
             // decision about interventions later, without this path having performed one.
             Action = MailAction.Allow,
             ProposedActionInShadow = decision.Action,
+            Policy = policyRecord,
 
             DeliveryTiming = DeliveryTiming.PostDelivery,
             Reasons = [.. gap.Reasons, .. behavioural.Reasons, .. decision.Reasons],
@@ -152,7 +165,7 @@ public sealed class ChatAssessor : IChatAssessor
             // is no submission to name and no disposition to record per recipient.
             RecipientDispositions = [],
             AssessedAt = now,
-        });
+        };
     }
 
     private BehaviouralOutcome Behavioural(

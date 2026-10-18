@@ -28,6 +28,15 @@ public sealed record DecisionResponse
     public MailAction? ProposedActionInShadow { get; init; }
 
     /// <summary>
+    /// The pack's shadow evaluation. Null means no pack was active, never Permit.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ProposedActionInShadow"/>, which is the legacy engine's candidate.
+    /// Phase 2 records the pack's verdict with Shadow=true and does not apply it.
+    /// </remarks>
+    public PolicyDecisionRecord? Policy { get; init; }
+
+    /// <summary>
     /// Which channel the decision is about.
     /// </summary>
     /// <remarks>
@@ -110,6 +119,7 @@ public sealed record DecisionResponse
         InternalMessageId = assessment.InternalMessageId,
         Action = assessment.Action,
         ProposedActionInShadow = assessment.ProposedActionInShadow,
+        Policy = assessment.Policy,
         Channel = assessment.Channel,
         DeliveryTiming = assessment.DeliveryTiming,
         RiskIndex = assessment.RiskIndex,

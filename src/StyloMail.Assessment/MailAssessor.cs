@@ -167,6 +167,7 @@ public sealed class MailAssessor : IMailAssessor
     private readonly CampaignNearDuplicateDetector _campaign;
     private readonly SendingQuotaLedger _quotaLedger;
     private readonly TrustedLearningGate _learningGate;
+    private readonly IPolicyShadowEvaluator? _policyShadow;
     private readonly MailAssessorOptions _options;
     private readonly IReadOnlyList<string> _dimensionIds;
 
@@ -180,7 +181,8 @@ public sealed class MailAssessor : IMailAssessor
         IAssessmentPolicyContextSource? policyContext = null,
         RecentCampaignWindow? campaignWindow = null,
         SendingQuotaLedger? quotaLedger = null,
-        TrustedLearningGate? learningGate = null)
+        TrustedLearningGate? learningGate = null,
+        IPolicyShadowEvaluator? policyShadow = null)
     {
         ArgumentNullException.ThrowIfNull(mimeAnalyzer);
         ArgumentNullException.ThrowIfNull(semanticClassifier);
@@ -204,6 +206,7 @@ public sealed class MailAssessor : IMailAssessor
             options.OutboundRecipientBudgetPerPrincipal,
             options.OutboundRecipientBudgetWindow);
         _learningGate = learningGate ?? new TrustedLearningGate();
+        _policyShadow = policyShadow;
         _dimensionIds = [.. options.Dimensions.Select(dimension => dimension.Id)];
     }
 
@@ -518,6 +521,14 @@ public sealed class MailAssessor : IMailAssessor
         // either, so nothing is learned. The gate is what refuses it, not this method's restraint.
         CommitAssessmentLearning(context, profiles, dimensionVector, now);
 
+        // A second opinion, recorded and never applied. The legacy action above is the action this
+        // message gets; the pack's candidate is explanation only until Phase 3.
+        var policyRecord = _policyShadow is null
+            ? null
+            : await _policyShadow
+                .EvaluateAsync(context.TenantId, evidence, now, cancellationToken)
+                .ConfigureAwait(false);
+
         return new MailAssessment
         {
             AssessmentId = assessmentId,
@@ -534,6 +545,7 @@ public sealed class MailAssessor : IMailAssessor
             CoveredWeightFraction = risk.CoveredWeightFraction,
             Action = action,
             ProposedActionInShadow = proposedInShadow,
+            Policy = policyRecord,
             DeliveryTiming = DeliveryTiming.PreAcceptance,
             Reasons = [.. outageReasons, .. decision.Reasons, .. acceptance.Reasons],
             Versions = BuildVersions(profiles, resolvedModelVersion),
