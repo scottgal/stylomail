@@ -280,8 +280,8 @@ public sealed class RetrievalObserverTests
 
         assembler.Observe(header);
         await Task.Yield();
-        for (var offset = 0; offset < body.Length; offset += 32)
-            assembler.Observe(Encoding.ASCII.GetBytes(body.Substring(offset, Math.Min(32, body.Length - offset))));
+        // Exercise the per-literal size guard without overflowing the separate64-item queue.
+        assembler.Observe(Encoding.ASCII.GetBytes(body));
 
         await assembler.DisposeAsync();
         var outcome = Assert.Single(sink.Outcomes);

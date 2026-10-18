@@ -90,6 +90,7 @@ public sealed class ProxyElementOrchestrator
         try
         {
             var classified = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
             if (classified is ClassificationOutcome.Unavailable unavailable)
             {
                 await _sink.RecordOutcomeAsync(baseOutcome with { Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = Map(unavailable.Reason) }, ct).ConfigureAwait(false);
