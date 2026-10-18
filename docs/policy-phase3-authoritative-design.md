@@ -212,7 +212,11 @@ The cache owns an immutable **pack + live rule-set version pair**, keyed by
 `PolicyDecisionRecord` gains and clarifies:
 
 ```csharp
-public PolicySource Source { get; init; }          // Pack | Shadow | Fallback | GlobalShadow
+enum PolicySource { Pack, Shadow, Fallback, GlobalShadow }
+enum AdmissionOutcome { Admitted, Refused, NotApplicableForAssessmentOnly }
+
+public PolicySource Source { get; init; }
+
 public bool PolicyContributed { get; init; }        // composed action differs from legacy
 public bool Applied { get; init; }                  // composed action actually applied
 public bool Durable { get; init; }                  // admission succeeded
@@ -256,10 +260,13 @@ opening_source = 'fallback':
 ```
 
 No mixed row is legal: a CHECK (or the application-level equivalent with the same predicate)
-enforces it. Existing rows that have an opening event migrate to `opening_source = 'pack'`; rows with
-no opening remain `legacy_review_opening_missing` and are never reclassified as fallback. A populated
-pre-migration fixture proves the backfill and the CHECK, and a failed event insertion rolls the
-opening and state back atomically.
+enforces the source tagging and the pack/fallback null partition. The non-null `evidence_digest` rule
+for a **new** pack opening is application-level: a pre-existing pack opening whose digest was
+genuinely absent is migrated to `pack` with `legacy_digest_absent=true` rather than being
+reclassified as fallback or backfilled with invented bytes. Existing rows that have an opening event
+migrate to `opening_source = 'pack'`; rows with no opening remain `legacy_review_opening_missing` and
+are never reclassified as fallback. A populated pre-migration fixture proves the backfill and the
+CHECK, and a failed event insertion rolls the opening and state back atomically.
 
 - `PolicyContributed = composedAction != legacyAction`. A fallback candidate overridden by a legacy
   Reject/Defer/Quarantine has `FallbackAttempted = true` but `PolicyContributed = false`.
