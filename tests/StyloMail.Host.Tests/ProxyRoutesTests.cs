@@ -659,6 +659,11 @@ public sealed class ProxyRoutesTests
         Assert.True(draining.Draining);
         Assert.False(draining.Enabled);
 
+        // A second disable while draining is idempotent; it must not start a competing drain.
+        var secondDisable = await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/disable", null);
+        Assert.Equal(HttpStatusCode.Accepted, secondDisable.StatusCode);
+        Assert.Equal(1, factory.Last!.StopCount);
+
         // The drain is still running: the readback must say so rather than pretending the listener
         // is already stopped, and the existing session is deliberately not killed.
         var during = await ReadAsync<ProxyListenersResponse>(
@@ -672,6 +677,9 @@ public sealed class ProxyRoutesTests
         Assert.Equal("stopped", stopped.State);
         Assert.False(stopped.Draining);
         Assert.False(stopped.Enabled);
+        // The completed drain disposed its handle exactly once and left no resources held.
+        Assert.Equal(1, factory.Last!.StopCount);
+        Assert.Equal(1, factory.Last!.DisposeCount);
     }
 
     [Fact]
@@ -1123,6 +1131,126 @@ public sealed class ProxyRoutesTests
     }
 
     [Fact]
+    public async Task Element_batch_is_atomic_and_replaces_superseded_points()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        const string thread = "thread-batchPointsA";
+
+        var outcome = BatchOutcome("m-batch", thread, at);
+        var credential = BatchPoint("m-batch", thread, "credential_request", 0.31,
+            "seed-1:credential_request:0007", at, ElementScorers.PrototypeKnn);
+        var threat = BatchPoint("m-batch", thread, "threat", 0.8,
+            null, at, ElementScorers.LinearProbe);
+
+        await sink.RecordBatchAsync(outcome, [credential, threat], CancellationToken.None);
+        Assert.Equal(2L, Scalar(host, "SELECT COUNT(*) FROM proxy_element_point WHERE message_token='m-batch';"));
+
+        // A replacement batch for the same message supersedes the previous point set atomically.
+        await sink.RecordBatchAsync(outcome, [credential], CancellationToken.None);
+        Assert.Equal(1L, Scalar(host, "SELECT COUNT(*) FROM proxy_element_point WHERE message_token='m-batch';"));
+        Assert.Equal(1L, Scalar(host, "SELECT COUNT(*) FROM proxy_segment_outcome WHERE message_token='m-batch';"));
+
+        // A contract break anywhere in the batch writes nothing and leaves the prior set intact.
+        var broken = new ProxyElementPoint
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = "m-batch",
+            ThreadToken = thread,
+            Ordinal = 1,
+            Element = "threat",
+            Scorer = ElementScorers.PrototypeKnn,
+            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Score = null,
+            NearestExemplarId = "seed-1:threat:0001",
+            Availability = ProxyWarningAvailability.Available,
+            AvailabilityReason = "none",
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = ElementVocabulary.Version,
+            ObservedAt = at,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => sink.RecordBatchAsync(outcome, [credential, broken], CancellationToken.None).AsTask());
+
+        Assert.Equal(1L, Scalar(host, "SELECT COUNT(*) FROM proxy_element_point WHERE message_token='m-batch';"));
+        Assert.Equal(1L, Scalar(host, "SELECT COUNT(*) FROM proxy_segment_outcome WHERE message_token='m-batch';"));
+
+        var series = await ReadAsync<ProxyElementSeriesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
+        var point = Assert.Single(series.Points);
+        var element = Assert.Single(point.Elements);
+        Assert.Equal("credential_request", element.Element);
+    }
+
+    private static ProxySegmentationOutcome BatchOutcome(
+        string message,
+        string thread,
+        DateTimeOffset at)
+        => new()
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = message,
+            ThreadToken = thread,
+            ObservedAt = at,
+            Availability = ProxyWarningAvailability.Available,
+            AvailabilityReason = ProxySegmentationAvailabilityReason.None,
+            SegmentCount = 2,
+            Truncated = false,
+            AppliedMaxSegments = 32,
+            AppliedMaxSegmentBytes = 6000,
+            AnalysedOrdinals = [0, 1],
+            AnySegmentDropped = false,
+        };
+
+    private static ProxyElementPoint BatchPoint(
+        string message,
+        string thread,
+        string element,
+        double? score,
+        string? exemplar,
+        DateTimeOffset at,
+        string scorer)
+        => new()
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = message,
+            ThreadToken = thread,
+            Ordinal = 0,
+            Element = element,
+            Scorer = scorer,
+            ScorerVersion = ElementScorers.VersionOf(scorer)!,
+            Score = score,
+            NearestExemplarId = exemplar,
+            Availability = ProxyWarningAvailability.Available,
+            AvailabilityReason = "none",
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = ElementVocabulary.Version,
+            ObservedAt = at,
+        };
+
+    private static long Scalar(TestHost host, string sql)
+    {
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (long)command.ExecuteScalar()!;
+    }
+
+    [Fact]
     public async Task An_element_point_with_a_contract_break_is_refused_not_stored()
     {
         using var host = ProxyHost();
@@ -1443,17 +1571,25 @@ public sealed class ProxyRoutesTests
     {
         private readonly TaskCompletionSource _drain = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public int StopCount { get; private set; }
+
+        public int DisposeCount { get; private set; }
+
         public int? BoundPort => 54123;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public async Task StopAsync(CancellationToken cancellationToken)
-            => await _drain.Task.WaitAsync(cancellationToken);
+        {
+            StopCount++;
+            await _drain.Task.WaitAsync(cancellationToken);
+        }
 
         public void AllowDrain() => _drain.TrySetResult();
 
         public ValueTask DisposeAsync()
         {
+            DisposeCount++;
             _drain.TrySetResult();
             return ValueTask.CompletedTask;
         }

@@ -186,6 +186,58 @@ public sealed class ProxyAdaptersTests : IDisposable
         });
     }
 
+    [Fact]
+    public async Task Re_enrolment_updates_provider_and_discriminator_with_the_new_binding()
+    {
+        await EnrolAsync("acct-1", "alice@example.com", "backend-1");
+        var now = DateTimeOffset.UtcNow;
+
+        using var secret = SecretValue.FromUtf8("oauth-refresh-value");
+        var protectedSecret = _protector.Protect(
+            secret, new SecretBinding("acme", "backend-1", "oauth-refresh-token"));
+
+        await _persistence.ReenrolAsync(
+            new ProxyEnrollment
+            {
+                Account = new ProxyAccountEnrollment
+                {
+                    TenantId = "acme",
+                    AccountId = "acct-1",
+                    LoginKey = "not-updated-by-reenrolment",
+                    PasswordHash = _hasher.Hash("new-client-password"u8),
+                    BackendAccountId = "backend-1",
+                    Enabled = true,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                Credential = new ProxyBackendCredentialEnrollment
+                {
+                    TenantId = "acme",
+                    BackendAccountId = "backend-1",
+                    ProviderId = "outlook",
+                    Discriminator = "oauth-refresh-token",
+                    ProtectedSecret = protectedSecret.Ciphertext,
+                    ProtectionKeyId = protectedSecret.KeyId,
+                    BackendUsername = "backend-user",
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+            },
+            CancellationToken.None);
+
+        var stored = await _credentials.FindAsync("acme", "backend-1", CancellationToken.None);
+        Assert.NotNull(stored);
+        // The row's declared kind must match the binding of the ciphertext it now holds.
+        Assert.Equal("outlook", stored!.ProviderId);
+        Assert.Equal("oauth-refresh-token", stored.Discriminator);
+
+        using var unprotected = _protector.Unprotect(
+            stored.ProtectedSecret,
+            stored.ProtectionKeyId,
+            new SecretBinding("acme", "backend-1", "oauth-refresh-token"));
+        Assert.Equal("oauth-refresh-value", Encoding.UTF8.GetString(unprotected.Utf8));
+    }
+
     private Task EnrolAsync(
         string accountId,
         string login,

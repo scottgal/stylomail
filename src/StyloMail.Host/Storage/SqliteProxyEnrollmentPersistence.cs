@@ -103,7 +103,9 @@ public sealed class SqliteProxyEnrollmentPersistence : IProxyEnrollmentPersisten
         // Re-enrolment replaces the credential material and deliberately clears revoked_at: the
         // operator has supplied a live credential, so the revocation marker no longer describes it.
         // This is the one path that may clear the marker; rewrap never does.
-        credentialUpdate.CommandText = "UPDATE proxy_backend_credential SET protected_secret=$secret,protection_key_id=$key,backend_username=$user,granted_scopes=$scopes,updated_at=$at,revoked_at=NULL WHERE tenant_id=$tenant AND backend_account_id=$id;";
+        credentialUpdate.CommandText = "UPDATE proxy_backend_credential SET provider_id=$provider,discriminator=$kind,protected_secret=$secret,protection_key_id=$key,backend_username=$user,granted_scopes=$scopes,updated_at=$at,revoked_at=NULL WHERE tenant_id=$tenant AND backend_account_id=$id;";
+        credentialUpdate.Parameters.AddWithValue("$provider", credential.ProviderId);
+        credentialUpdate.Parameters.AddWithValue("$kind", credential.Discriminator);
         credentialUpdate.Parameters.Add("$secret", SqliteType.Blob).Value = credential.ProtectedSecret;
         credentialUpdate.Parameters.AddWithValue("$key", credential.ProtectionKeyId);
         credentialUpdate.Parameters.AddWithValue("$user", credential.BackendUsername);

@@ -119,6 +119,7 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
     private readonly ILogger<ProxyListenerSupervisor> _logger;
     private readonly SemaphoreSlim _mutate = new(1, 1);
     private readonly Dictionary<string, Entry> _listeners = new(StringComparer.Ordinal);
+    private long _generation;
 
     public ProxyListenerSupervisor(
         IOptions<HostProxyOptions> options,
@@ -158,16 +159,36 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
         foreach (var entry in _listeners.Values)
         {
             entry.Drain?.Cancel();
-            if (entry.Handle is not null)
+
+            if (entry.DrainTask is { } drainTask)
             {
                 try
                 {
-                    await entry.Handle.StopAsync(cancellationToken).ConfigureAwait(false);
+                    await drainTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // Shutdown is bounded; the listener's own session bound remains the protection.
+                }
+                catch (Exception)
+                {
+                    // The drain logs its own failure; shutdown continues to disposal.
+                }
+            }
+
+            if (entry.Handle is { } handle)
+            {
+                try
+                {
+                    await handle.StopAsync(cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception)
                 {
                     // Shutdown is best effort; the listener's own bound is what protects clients.
                 }
+
+                await handle.DisposeAsync().ConfigureAwait(false);
+                entry.Handle = null;
             }
         }
     }
@@ -252,6 +273,7 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
 
             entry.Handle = handle;
             entry.Drain = null;
+            entry.Generation = Interlocked.Increment(ref _generation);
             entry.Set(ProxyListenerRuntimeState.Started, observedAt: _clock.GetUtcNow());
             await PublishAsync(entry, ProxyListenerEventKind.Started, ProxyListenerFaultReason.None, null,
                 cancellationToken).ConfigureAwait(false);
@@ -279,6 +301,13 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
                 return null;
             }
 
+            if (entry.State == ProxyListenerRuntimeState.Stopping)
+            {
+                // A disable is already draining this listener. Starting a second drain would race
+                // two StopAsync calls and let a stale completion clear a newly enabled handle.
+                return entry.Snapshot();
+            }
+
             if (entry.Handle is null)
             {
                 entry.Set(ProxyListenerRuntimeState.Stopped, observedAt: _clock.GetUtcNow());
@@ -286,14 +315,17 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
             }
 
             var handle = entry.Handle;
+            var generation = entry.Generation;
             entry.Set(ProxyListenerRuntimeState.Stopping, observedAt: _clock.GetUtcNow());
-            entry.Drain = new CancellationTokenSource(_options.Value.DrainTimeout);
-            var drainToken = entry.Drain.Token;
+            var drain = new CancellationTokenSource(_options.Value.DrainTimeout);
+            entry.Drain = drain;
+            var drainToken = drain.Token;
 
             // The drain is deliberately detached from the request: disable means "refuse new
             // sessions", not "hold this HTTP response until every client goes away".
             entry.DrainTask = Task.Run(async () =>
             {
+                var completed = false;
                 try
                 {
                     await handle.StopAsync(drainToken).ConfigureAwait(false);
@@ -301,8 +333,8 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
                 catch (OperationCanceledException)
                 {
                     // The drain exceeded its ceiling. The listener's own session bound is the
-                    // primary protection; this is the backstop, and it disposes rather than leaks.
-                    await handle.DisposeAsync().ConfigureAwait(false);
+                    // primary protection; this is the backstop.
+                    _logger.LogWarning("Proxy listener {ListenerId} drain exceeded its bound.", listenerId);
                 }
                 catch (Exception)
                 {
@@ -310,12 +342,34 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
                 }
                 finally
                 {
-                    entry.Handle = null;
-                    entry.Drain = null;
-                    entry.DrainTask = null;
-                    entry.Set(ProxyListenerRuntimeState.Stopped, observedAt: _clock.GetUtcNow());
-                    await PublishAsync(entry, ProxyListenerEventKind.Stopped,
-                        ProxyListenerFaultReason.None, null, CancellationToken.None).ConfigureAwait(false);
+                    await handle.DisposeAsync().ConfigureAwait(false);
+
+                    await _mutate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                    try
+                    {
+                        // Identity plus generation: only the drain that owns this handle may clear
+                        // it. A stale completion must not touch a handle that was enabled after it.
+                        if (ReferenceEquals(entry.Handle, handle) && entry.Generation == generation)
+                        {
+                            entry.Handle = null;
+                            entry.Drain = null;
+                            entry.DrainTask = null;
+                            entry.Set(ProxyListenerRuntimeState.Stopped, observedAt: _clock.GetUtcNow());
+                            completed = true;
+                        }
+                    }
+                    finally
+                    {
+                        _mutate.Release();
+                    }
+
+                    drain.Dispose();
+
+                    if (completed)
+                    {
+                        await PublishAsync(entry, ProxyListenerEventKind.Stopped,
+                            ProxyListenerFaultReason.None, null, CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
             }, CancellationToken.None);
 
@@ -373,9 +427,23 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
         foreach (var entry in _listeners.Values)
         {
             entry.Drain?.Cancel();
-            if (entry.Handle is not null)
+
+            if (entry.DrainTask is { } drainTask)
             {
-                await entry.Handle.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await drainTask.ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // A failed drain is already logged; disposal still releases the handle.
+                }
+            }
+
+            if (entry.Handle is { } handle)
+            {
+                await handle.DisposeAsync().ConfigureAwait(false);
+                entry.Handle = null;
             }
         }
 
@@ -406,6 +474,9 @@ public sealed class ProxyListenerSupervisor : IProxyListenerControl, IHostedServ
         public DateTimeOffset? ObservedAt { get; private set; }
 
         public IProxyListenerHandle? Handle { get; set; }
+
+        /// <summary>Changes each time a new handle starts; a stale drain must not clear a newer one.</summary>
+        public long Generation { get; set; }
 
         public CancellationTokenSource? Drain { get; set; }
 

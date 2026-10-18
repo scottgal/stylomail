@@ -515,7 +515,17 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         cancellationToken.ThrowIfCancellationRequested();
 
         using var connection = _database.Open();
+        WriteSegmentationOutcome(connection, transaction: null, outcome);
+        return ValueTask.CompletedTask;
+    }
+
+    private static void WriteSegmentationOutcome(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        ProxySegmentationOutcome outcome)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             "INSERT INTO proxy_segment_outcome "
             + "(tenant_id,message_token,direction,thread_token,account_id,observed_at,availability,"
@@ -530,6 +540,14 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "truncated=excluded.truncated,applied_max_segments=excluded.applied_max_segments,"
             + "applied_max_segment_bytes=excluded.applied_max_segment_bytes,"
             + "analysed_ordinals=excluded.analysed_ordinals,any_segment_dropped=excluded.any_segment_dropped;";
+        BindSegmentationOutcome(command, outcome);
+        command.ExecuteNonQuery();
+    }
+
+    private static void BindSegmentationOutcome(
+        SqliteCommand command,
+        ProxySegmentationOutcome outcome)
+    {
         command.Parameters.AddWithValue("$tenant", outcome.TenantId);
         command.Parameters.AddWithValue("$message", outcome.MessageToken);
         command.Parameters.AddWithValue("$direction", outcome.TrafficKind.ToString());
@@ -544,8 +562,6 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         command.Parameters.AddWithValue("$maxBytes", outcome.AppliedMaxSegmentBytes);
         command.Parameters.AddWithValue("$ordinals", string.Join(',', outcome.AnalysedOrdinals));
         command.Parameters.AddWithValue("$dropped", outcome.AnySegmentDropped ? 1 : 0);
-        command.ExecuteNonQuery();
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask RecordOutcomeAsync(
@@ -566,7 +582,78 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         Validate(point);
 
         using var connection = _database.Open();
-        using var command = connection.CreateCommand();
+        using var command = CreatePointCommand(connection, transaction: null);
+        BindPoint(command, point);
+        command.ExecuteNonQuery();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Writes one message's outcome and all of its element points in one transaction.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Validate first, write second.</b> A contract break in any point throws before a
+    /// connection is opened, so a malformed batch stores nothing: no Available outcome with
+    /// partial rows, and no superseded rows deleted on a path that then fails.
+    /// </para>
+    /// <para>
+    /// <b>One connection and one transaction.</b> The previous per-point path opened a connection
+    /// and committed for every point (1 + N per message). A superseded point set for the same
+    /// (tenant, message, direction) is replaced inside the same transaction, so a retry cannot
+    /// leave rows from two attempts.
+    /// </para>
+    /// </remarks>
+    public ValueTask RecordBatchAsync(
+        ProxySegmentationOutcome outcome,
+        IReadOnlyList<ProxyElementPoint> points,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        ArgumentNullException.ThrowIfNull(points);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var point in points)
+        {
+            Validate(point);
+        }
+
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        WriteSegmentationOutcome(connection, transaction, outcome);
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText =
+                "DELETE FROM proxy_element_point "
+                + "WHERE tenant_id=$tenant AND message_token=$message AND direction=$direction;";
+            delete.Parameters.AddWithValue("$tenant", outcome.TenantId);
+            delete.Parameters.AddWithValue("$message", outcome.MessageToken);
+            delete.Parameters.AddWithValue("$direction", outcome.TrafficKind.ToString());
+            delete.ExecuteNonQuery();
+        }
+
+        using (var insert = CreatePointCommand(connection, transaction))
+        {
+            foreach (var point in points)
+            {
+                BindPoint(insert, point);
+                insert.ExecuteNonQuery();
+            }
+        }
+
+        transaction.Commit();
+        return ValueTask.CompletedTask;
+    }
+
+    private static SqliteCommand CreatePointCommand(
+        SqliteConnection connection,
+        SqliteTransaction? transaction)
+    {
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             "INSERT INTO proxy_element_point "
             + "(tenant_id,message_token,direction,ordinal,element,scorer,thread_token,account_id,"
@@ -581,6 +668,12 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "availability_reason=excluded.availability_reason,model_tag=excluded.model_tag,"
             + "prefix_version=excluded.prefix_version,dimension=excluded.dimension,"
             + "vocabulary_version=excluded.vocabulary_version,scorer_version=excluded.scorer_version;";
+        return command;
+    }
+
+    private static void BindPoint(SqliteCommand command, ProxyElementPoint point)
+    {
+        command.Parameters.Clear();
         command.Parameters.AddWithValue("$tenant", point.TenantId);
         command.Parameters.AddWithValue("$message", point.MessageToken);
         command.Parameters.AddWithValue("$direction", point.TrafficKind.ToString());
@@ -601,8 +694,6 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         command.Parameters.AddWithValue("$dimension", point.Dimension);
         command.Parameters.AddWithValue("$vocabulary", point.VocabularyVersion);
         command.Parameters.AddWithValue("$scorerVersion", point.ScorerVersion);
-        command.ExecuteNonQuery();
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask<IReadOnlyList<ProxyElementRow>> ListElementPointsAsync(
