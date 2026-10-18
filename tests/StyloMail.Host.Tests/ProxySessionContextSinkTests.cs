@@ -11,6 +11,19 @@ namespace StyloMail.Host.Tests;
 /// </summary>
 public sealed class ProxySessionContextSinkTests
 {
+    [Theory]
+    [InlineData(true, "SmtpDataAbsoluteTimeout")]
+    [InlineData(false, "SmtpDataIdleTimeout")]
+    public void DATA_timeout_logs_distinct_content_free_causes(bool absolute, string cause)
+    {
+        var logger = new RecordingLogger();
+        var sink = new ProxySessionContextSink(new RecordingAuthenticator(), logger);
+        ((IProxySubmissionReceiptSink)sink).OnDataReceiptTimeout(absolute);
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Equal($"SMTP DATA receipt timeout: {cause}.", line.Text);
+    }
+
     [Fact]
     public void A_settled_relay_fault_logs_only_its_type_at_debug_level()
     {

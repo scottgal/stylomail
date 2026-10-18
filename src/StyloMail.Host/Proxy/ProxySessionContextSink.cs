@@ -18,7 +18,7 @@ namespace StyloMail.Host.Proxy;
 /// but the Host's own persistence must not be the reason a client's relay stops.
 /// </para>
 /// </remarks>
-internal sealed class ProxySessionContextSink : IProxySessionContextSink, IProxySessionBoundSink, IProxyRelayBufferSink
+internal sealed class ProxySessionContextSink : IProxySessionContextSink, IProxySessionBoundSink, IProxyRelayBufferSink, IProxySubmissionReceiptSink
 {
     private readonly IProxySessionAuthenticator _authenticator;
     private readonly ILogger _logger;
@@ -73,4 +73,7 @@ internal sealed class ProxySessionContextSink : IProxySessionContextSink, IProxy
 
     public void OnRelayIoSettled(string exceptionType) => _logger.LogDebug(
         "Closed relay I/O settled with {ExceptionType}.", exceptionType);
+
+    public void OnDataReceiptTimeout(bool absolute) => _logger.LogWarning(
+        "SMTP DATA receipt timeout: {Cause}.", absolute ? "SmtpDataAbsoluteTimeout" : "SmtpDataIdleTimeout");
 }

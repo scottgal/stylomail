@@ -88,6 +88,12 @@ public interface IProxyRelayBufferSink
     void OnRelayIoSettled(string exceptionType) { }
 }
 
+/// <summary>Content-free distinction between absolute DATA receipt and per-line idle timeout.</summary>
+public interface IProxySubmissionReceiptSink
+{
+    void OnDataReceiptTimeout(bool absolute);
+}
+
 /// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>
 public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }

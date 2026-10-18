@@ -383,27 +383,61 @@ public sealed class SmtpAccessProxySession
         StyloMailAccount account,
         CancellationToken cancellationToken)
     {
-        await clientWriter.WriteLineAsync("354 End data with <CR><LF>.<CR><LF>", cancellationToken).ConfigureAwait(false);
-        await using var staged = await _stager.CreateAsync(_bounds.MaxSubmissionBytes, cancellationToken)
-            .ConfigureAwait(false);
+        IStagedProxySubmission reservation;
+        try { reservation = await _stager.CreateAsync(_bounds.MaxSubmissionBytes, cancellationToken).ConfigureAwait(false); }
+        catch (ProxySubmissionCapacityException)
+        {
+            await clientWriter.WriteLineAsync("452 4.3.1 Submission staging capacity unavailable", cancellationToken).ConfigureAwait(false);
+            return SessionOutcome.SubmissionCapacityReached;
+        }
+        await using var staged = reservation;
         try
         {
-            while (true)
+            bool? timedOut = null;
+            // This clock covers receipt only. Mandatory assessment and upstream delivery begin
+            // after the terminating dot and must not be canceled by a receipt deadline.
+            using (var receipt = new TimeoutScope(_bounds.MaxDataReceiptDuration, _timeProvider, cancellationToken))
             {
-                var line = await clientReader.ReadLineAsync(_bounds.IdleTimeout, cancellationToken).ConfigureAwait(false);
-                if (line is null) return SessionOutcome.ClientDisconnected;
-                if (line == ".") break;
-                var bytes = Encoding.UTF8.GetBytes(line + "\r\n");
                 try
                 {
-                    if (staged.Length + bytes.Length > _bounds.MaxSubmissionBytes)
+                    await clientWriter.WriteLineAsync("354 End data with <CR><LF>.<CR><LF>", receipt.Token).ConfigureAwait(false);
+                    while (true)
                     {
-                        await clientWriter.WriteLineAsync("552 Message exceeds proxy staging limit", cancellationToken).ConfigureAwait(false);
-                        return SessionOutcome.ProtocolError;
+                        receipt.Token.ThrowIfCancellationRequested();
+                        var line = await clientReader.ReadLineAsync(_bounds.IdleTimeout, receipt.Token).ConfigureAwait(false);
+                        receipt.Token.ThrowIfCancellationRequested();
+                        if (line is null) return SessionOutcome.ClientDisconnected;
+                        if (line == ".") break;
+                        var bytes = Encoding.UTF8.GetBytes(line + "\r\n");
+                        try
+                        {
+                            if (staged.Length + bytes.Length > _bounds.MaxSubmissionBytes)
+                            {
+                                await clientWriter.WriteLineAsync("552 Message exceeds proxy staging limit", cancellationToken).ConfigureAwait(false);
+                                return SessionOutcome.ProtocolError;
+                            }
+                            await staged.Content.WriteAsync(bytes, receipt.Token).ConfigureAwait(false);
+                        }
+                        finally { Array.Clear(bytes); }
                     }
-                    await staged.Content.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
                 }
-                finally { Array.Clear(bytes); }
+                catch (OperationCanceledException) when (receipt.DeadlineElapsed && !cancellationToken.IsCancellationRequested) { timedOut = true; }
+                catch (AccessProxyTimeoutException) { timedOut = false; }
+            }
+            if (timedOut is { } absolute)
+            {
+                await staged.DisposeAsync().ConfigureAwait(false);
+                try { (_contextSink as IProxySubmissionReceiptSink)?.OnDataReceiptTimeout(absolute); }
+                catch (Exception) { /* Diagnostic failures do not retain staging capacity. */ }
+                if (!absolute)
+                {
+                    try { (_contextSink as IProxySessionBoundSink)?.OnBound(ProxyBoundReason.IdleTimeout); }
+                    catch (Exception) { }
+                }
+                using var reply = new TimeoutScope(TimeSpan.FromSeconds(1), _timeProvider, cancellationToken);
+                try { await clientWriter.WriteLineAsync("421 4.4.2 DATA receipt timed out", reply.Token).ConfigureAwait(false); }
+                catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException) { }
+                return SessionOutcome.Timeout;
             }
 
             staged.Content.Position = 0;

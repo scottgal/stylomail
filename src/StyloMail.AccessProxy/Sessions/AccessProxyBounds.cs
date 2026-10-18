@@ -108,6 +108,9 @@ public sealed record AccessProxyBounds
     /// <summary>Maximum bytes held by the ephemeral SMTP DATA stager for one submission.</summary>
     public long MaxSubmissionBytes { get; init; } = 25L * 1024 * 1024;
 
+    /// <summary>Absolute client DATA receipt deadline, before 354 through the terminating dot.</summary>
+    public TimeSpan MaxDataReceiptDuration { get; init; } = TimeSpan.FromMinutes(2);
+
     /// <summary>Maximum concurrent client sessions this instance will hold.</summary>
     public int MaxConcurrentSessions { get; init; } = 512;
 
@@ -130,14 +133,17 @@ public sealed record AccessProxyBounds
         Positive(MaxSessionDuration, nameof(MaxSessionDuration));
         Positive(BackendConnectTimeout, nameof(BackendConnectTimeout));
         Positive(BackendAuthenticationTimeout, nameof(BackendAuthenticationTimeout));
+        Positive(MaxDataReceiptDuration, nameof(MaxDataReceiptDuration));
+        if (MaxDataReceiptDuration > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(MaxDataReceiptDuration), "Cannot exceed two minutes.");
 
         AtLeastOne(MaxCommandLineBytes, nameof(MaxCommandLineBytes));
         AtLeastOne(MaxAuthenticationCommands, nameof(MaxAuthenticationCommands));
         AtLeastOne(MaxBackendAuthRounds, nameof(MaxBackendAuthRounds));
         AtLeastOne(RelayBufferBytes, nameof(RelayBufferBytes));
-        if (MaxSubmissionBytes < 1)
+        if (MaxSubmissionBytes is < 1 or > 25L * 1024 * 1024)
         {
-            throw new ArgumentOutOfRangeException(nameof(MaxSubmissionBytes), MaxSubmissionBytes, "Must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(MaxSubmissionBytes), MaxSubmissionBytes, "Must be between one byte and 25MiB.");
         }
         AtLeastOne(MaxConcurrentSessions, nameof(MaxConcurrentSessions));
         AtLeastOne(MaxSessionsPerAccount, nameof(MaxSessionsPerAccount));

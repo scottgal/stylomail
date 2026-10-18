@@ -52,6 +52,9 @@ public enum SessionOutcome
 
     /// <summary>The configured global connection capacity was exhausted before protocol admission.</summary>
     AdmissionRejected = 7,
+
+    /// <summary>SMTP could not reserve staging capacity before accepting DATA.</summary>
+    SubmissionCapacityReached = 8,
 }
 
 /// <summary>
