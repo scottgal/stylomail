@@ -194,6 +194,13 @@ public interface IProxyElementSink
 {
     ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken);
     ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken);
+
+    async ValueTask RecordBatchAsync(ProxySegmentationOutcome outcome, IReadOnlyList<ProxyElementPoint> points, CancellationToken cancellationToken)
+    {
+        await RecordOutcomeAsync(outcome, cancellationToken).ConfigureAwait(false);
+        foreach (var point in points)
+            await RecordPointAsync(point, cancellationToken).ConfigureAwait(false);
+    }
 }
 
 public sealed record ProxyWarningAnalysisResult
