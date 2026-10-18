@@ -22,12 +22,16 @@ public sealed record QueueOptions
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     /// <summary>
-    /// How long a worker may hold a claimed item before recovery may reclaim it.
+    /// How long a worker may hold a claimed item without renewing it before recovery may reclaim it.
     /// </summary>
     /// <remarks>
-    /// This is the crash window. Too short and a slow-but-alive worker has its work reclaimed
-    /// underneath it (producing a duplicate delivery); too long and a crashed worker strands a
-    /// message. It must comfortably exceed the upstream delivery timeout.
+    /// This is the crash window. A worker that is still working renews the lease while it does
+    /// (see <see cref="QueueDeliveryWorkerOptions.LeaseRenewalInterval"/>), so this value bounds how
+    /// quickly a <em>dead</em> worker's item is recovered rather than how long one delivery may
+    /// take: DATA alone can take minutes per recipient and a port may iterate many. Too short and
+    /// two missed renewals reclaim work from a live worker; too long and a crashed worker strands a
+    /// message. The message's own lifetime (<see cref="RetryExpiry"/>, stored per item as
+    /// <c>expires_at</c>) is the bound on how long delivery itself may take.
     /// </remarks>
     public TimeSpan LeaseDuration { get; init; } = TimeSpan.FromMinutes(5);
 

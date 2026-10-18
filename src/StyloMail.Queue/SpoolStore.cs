@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using StyloMail.Core;
 
 namespace StyloMail.Queue;
 
@@ -77,13 +78,18 @@ public sealed class SpoolStore
         ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
         ArgumentNullException.ThrowIfNull(tenantId);
 
-        // Tenant is a directory level so a per-tenant sweep and per-tenant byte accounting are
-        // both straightforward.
-        var directory = Path.Combine(_root, Sanitize(tenantId));
-        var finalPath = Path.Combine(directory, $"{Sanitize(queueId)}.eml");
+        // The destination is resolved through the same containment guard the reader uses, before
+        // anything is created. Sanitising alone was not enough: '.' and '..' are made of legal
+        // characters, so a tenant of '..' survived encoding and Path.Combine walked out of the
+        // spool root. Refusing here means the queue can never accept a payload reference its own
+        // reader would then reject, and it never leaves bytes outside the root behind.
+        var finalPath = PayloadPath(tenantId, queueId);
+        var directory = Path.GetDirectoryName(finalPath)
+            ?? throw new ArgumentException(
+                $"Spool path for queue item {queueId} has no directory component.", nameof(tenantId));
 
-        // A unique temporary name: two writers racing on the same queue id would otherwise share
-        // one temporary path and interleave their bytes into it.
+        // A unique temporary name in the validated tenant directory: two writers racing on the same
+        // queue id would otherwise share one temporary path and interleave their bytes into it.
         var tempPath = Path.Combine(directory, $"{Sanitize(queueId)}.{Guid.NewGuid():N}{TemporarySuffix}");
 
         try
@@ -241,7 +247,50 @@ public sealed class SpoolStore
     }
 
     private static string ReferenceFor(string tenantId, string queueId)
-        => $"spool://{Sanitize(tenantId)}/{Sanitize(queueId)}.eml";
+        => $"{PayloadReferences.SpoolScheme}{EncodedTenant(tenantId)}/{Sanitize(queueId)}.eml";
+
+    /// <summary>
+    /// Resolves the on-disk path for one payload, refusing any tenant that is not a directory name.
+    /// </summary>
+    /// <remarks>
+    /// The writer and the reader must agree on what a legal reference is. Before this, the writer
+    /// built its path with <c>Path.Combine</c> and <see cref="Sanitize"/> alone, while the reader
+    /// had a containment guard, so a tenant of <c>..</c> produced a payload outside the root that
+    /// the queue's own read path then refused: accepted mail that could never be delivered.
+    /// </remarks>
+    private string PayloadPath(string tenantId, string queueId)
+    {
+        var relative = Path.Combine(EncodedTenant(tenantId), $"{Sanitize(queueId)}.eml");
+
+        return ResolveWithinRoot(relative)
+            ?? throw new ArgumentException(
+                $"Tenant '{tenantId}' does not resolve to a path inside the spool root.", nameof(tenantId));
+    }
+
+    /// <summary>
+    /// Encodes a tenant into exactly one directory-segment name, or refuses it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Sanitising is an encoding, not a containment check.</b> It maps separators to <c>_</c>,
+    /// which is what keeps a tenant from introducing a directory level, but the result can still be
+    /// <c>.</c> or <c>..</c> because dots are legal. Those are the two names a path walker treats as
+    /// "here" and "up", so they are rejected rather than quietly mapped: a tenant of <c>.</c> would
+    /// otherwise share the spool root with every other such tenant, and <c>..</c> would escape it.
+    /// </remarks>
+    private static string EncodedTenant(string tenantId)
+    {
+        var encoded = Sanitize(tenantId);
+
+        if (encoded.Length == 0 || encoded is "." or "..")
+        {
+            throw new ArgumentException(
+                $"Tenant identifier '{tenantId}' encodes to '{encoded}', which is not a usable spool " +
+                "directory name. It is accepted as an identity but cannot be used as a path segment.",
+                nameof(tenantId));
+        }
+
+        return encoded;
+    }
 
     private string PathFor(string payloadReference)
     {
@@ -262,11 +311,24 @@ public sealed class SpoolStore
         relative = payloadReference[prefix.Length..].Replace('/', Path.DirectorySeparatorChar);
     }
 
-    /// <summary>Resolves a relative path inside the spool, or null if it escapes the root.</summary>
+    /// <summary>
+    /// Resolves a relative path inside the spool, or null if it is malformed or escapes the root.
+    /// </summary>
+    /// <remarks>
+    /// Two checks, because they catch different things: a <c>.</c> or <c>..</c> segment is refused
+    /// outright rather than left to normalisation (it is a traversal attempt, whether or not the
+    /// normalised result happens to stay inside), and the normalised path is then required to sit
+    /// under the root. The writer calls this too, so write and read refuse the same inputs.
+    /// </remarks>
     private string? ResolveWithinRoot(string relative)
     {
         try
         {
+            if (HasRelativeSegment(relative))
+            {
+                return null;
+            }
+
             // Defence in depth: a reference must not be able to escape the spool root.
             var full = Path.GetFullPath(Path.Combine(_root, relative));
             var rootFull = Path.GetFullPath(_root) + Path.DirectorySeparatorChar;
@@ -277,6 +339,11 @@ public sealed class SpoolStore
             return null;
         }
     }
+
+    private static bool HasRelativeSegment(string relative)
+        => relative
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.None)
+            .Any(segment => segment is "" or "." or "..");
 
     private static string Sanitize(string value)
         => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));

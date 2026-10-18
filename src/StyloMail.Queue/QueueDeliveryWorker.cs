@@ -70,6 +70,31 @@ public sealed record QueueDeliveryWorkerOptions
     /// expire, so recovery reclaims it with the ambiguity recorded.
     /// </remarks>
     public TimeSpan DrainTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How often an in-flight attempt renews its lease.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Renewal, not a hard deadline, is what keeps a slow live delivery safe.</b> One attempt can
+    /// legitimately outlast <see cref="QueueOptions.LeaseDuration"/>: DATA alone may take minutes per
+    /// recipient and a port iterates many of them. Renewing while the worker is demonstrably alive
+    /// preserves the lease for as long as the work actually takes, while a dead worker simply stops
+    /// renewing, so the existing expiry heuristic still reclaims its item.
+    /// </para>
+    /// <para>
+    /// A total attempt deadline safely below the lease was rejected as the primary fix: it would cut
+    /// short legitimate deliveries and convert them into exactly the in-doubt duplicates the queue
+    /// exists to minimise. The message's own lifetime still bounds the attempt, because the store
+    /// refuses to renew past <c>expires_at</c>.
+    /// </para>
+    /// <para>
+    /// <c>null</c> (the default) renews every third of the lease, so two consecutive renewals must be
+    /// missed before the item becomes reclaimable. Must be positive and strictly shorter than the
+    /// lease.
+    /// </para>
+    /// </remarks>
+    public TimeSpan? LeaseRenewalInterval { get; init; }
 }
 
 /// <summary>
@@ -99,6 +124,7 @@ public sealed class QueueDeliveryWorker
     private readonly IDeliveryPort _port;
     private readonly QueueOptions _queueOptions;
     private readonly QueueDeliveryWorkerOptions _workerOptions;
+    private readonly TimeSpan _leaseRenewalInterval;
 
     public QueueDeliveryWorker(
         QueueStore store,
@@ -122,6 +148,29 @@ public sealed class QueueDeliveryWorker
             throw new ArgumentOutOfRangeException(
                 nameof(workerOptions), _workerOptions.DrainTimeout, "DrainTimeout must be positive.");
         }
+
+        if (_workerOptions.LeaseRenewalInterval is { } renewal)
+        {
+            if (renewal <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(workerOptions), renewal, "LeaseRenewalInterval must be positive when set.");
+            }
+
+            if (renewal >= _queueOptions.LeaseDuration)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(workerOptions), renewal,
+                    "LeaseRenewalInterval must be strictly shorter than LeaseDuration: a renewal " +
+                    "scheduled at or after expiry can only extend an item that is already reclaimable.");
+            }
+        }
+
+        // Default to a third of the lease: two renewals must be missed before recovery may take the
+        // item. Kept here rather than in the options record so a deployment that changes only the
+        // lease still gets a proportionate heartbeat.
+        _leaseRenewalInterval = _workerOptions.LeaseRenewalInterval
+            ?? TimeSpan.FromTicks(Math.Max(1, _queueOptions.LeaseDuration.Ticks / 3));
     }
 
     public string WorkerId => _workerOptions.WorkerId;
@@ -164,56 +213,82 @@ public sealed class QueueDeliveryWorker
             };
         }
 
-        ReadOnlyMemory<byte> payload;
+        // The lease is renewed for as long as this worker is actually doing work under it. A
+        // delivery can legitimately outlast LeaseDuration, and a live worker whose lease lapsed
+        // would have its item reclaimed and delivered a second time while the first send is still
+        // running. The renewal is fenced on ownership in the store, so a worker that has been
+        // superseded stops here rather than renewing an item someone else now owns.
+        using var renewalStop = new CancellationTokenSource();
+        var renewal = RenewLeaseUntilAttemptEndsAsync(lease, renewalStop.Token);
+
         try
         {
-            payload = await ReadPayloadAsync(lease, cancellationToken).ConfigureAwait(false);
-        }
-        catch (QueueIntegrityException integrity)
-        {
-            // Payload-before-metadata ordering makes this unreachable by design, so it is not a
-            // delivery failure to retry, it is mail we accepted and cannot produce. The lease is
-            // deliberately NOT completed: settling the item would erase the only signal, and the
-            // recipient state would claim an outcome nobody observed. Recovery reports it.
+            ReadOnlyMemory<byte> payload;
+            try
+            {
+                payload = await ReadPayloadAsync(lease, cancellationToken).ConfigureAwait(false);
+            }
+            catch (QueueIntegrityException integrity)
+            {
+                // Payload-before-metadata ordering makes this unreachable by design, so it is not a
+                // delivery failure to retry, it is mail we accepted and cannot produce. The lease is
+                // deliberately NOT completed: settling the item would erase the only signal, and the
+                // recipient state would claim an outcome nobody observed. Recovery reports it.
+                return new DeliveryCycleResult
+                {
+                    Outcome = DeliveryCycleOutcome.PayloadMissing,
+                    QueueId = lease.QueueId,
+                    Detail = integrity.Message,
+                };
+            }
+
+            var request = BuildRequest(lease, payload);
+
+            DeliveryPortResult portResult;
+            try
+            {
+                portResult = await _port.DeliverAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Our own drain window closed, or the host is shutting down. What the transport managed
+                // to do is unknown, so nothing is recorded and the lease is left to expire, recovery
+                // reclaims it with the ambiguity visible rather than inventing an outcome.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return await RecordPortFaultAsync(lease, ex).ConfigureAwait(false);
+            }
+
+            // None: recording what happened matters more than a prompt shutdown, and this is a local
+            // write. A cancelled completion would lose the only record of an attempt that did happen.
+            await _store.CompleteAsync(lease, portResult.AsReport(_workerOptions.WorkerId), CancellationToken.None)
+                .ConfigureAwait(false);
+
             return new DeliveryCycleResult
             {
-                Outcome = DeliveryCycleOutcome.PayloadMissing,
+                Outcome = DeliveryCycleOutcome.Dispatched,
                 QueueId = lease.QueueId,
-                Detail = integrity.Message,
+                RecipientsAttempted = lease.PendingRecipients.Count,
+                Detail = portResult.Detail,
             };
         }
-
-        var request = BuildRequest(lease, payload);
-
-        DeliveryPortResult portResult;
-        try
+        finally
         {
-            portResult = await _port.DeliverAsync(request, cancellationToken).ConfigureAwait(false);
+            // The attempt is over, one way or another: while the renewal loop were left running it
+            // would extend a lease this worker has already stopped working under, delaying recovery
+            // after a drain or a payload fault.
+            await renewalStop.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await renewal.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: the loop observes the cancellation it was just given.
+            }
         }
-        catch (OperationCanceledException)
-        {
-            // Our own drain window closed, or the host is shutting down. What the transport managed
-            // to do is unknown, so nothing is recorded and the lease is left to expire, recovery
-            // reclaims it with the ambiguity visible rather than inventing an outcome.
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return await RecordPortFaultAsync(lease, ex).ConfigureAwait(false);
-        }
-
-        // None: recording what happened matters more than a prompt shutdown, and this is a local
-        // write. A cancelled completion would lose the only record of an attempt that did happen.
-        await _store.CompleteAsync(lease, portResult.AsReport(_workerOptions.WorkerId), CancellationToken.None)
-            .ConfigureAwait(false);
-
-        return new DeliveryCycleResult
-        {
-            Outcome = DeliveryCycleOutcome.Dispatched,
-            QueueId = lease.QueueId,
-            RecipientsAttempted = lease.PendingRecipients.Count,
-            Detail = portResult.Detail,
-        };
     }
 
     /// <summary>
@@ -333,6 +408,58 @@ public sealed class QueueDeliveryWorker
         {
             // The worker has returned and disposed the source; the drain window closed after the
             // delivery it was guarding was already finished.
+        }
+    }
+
+    /// <summary>
+    /// Keeps the current attempt's lease ahead of expiry until the attempt ends.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a liveness hint, not a delivery fact, so a failed renewal must never fail the
+    /// delivery: a transient SQLite busy that cancelled a send already in flight would turn a
+    /// store hiccup into an in-doubt duplicate. Failures are therefore retried on the next tick,
+    /// and the store's own ownership fence is what stops a superseded worker.
+    /// </para>
+    /// <para>
+    /// It ends on cancellation (the attempt is over), on a renewal the store refused (ownership
+    /// moved or the message lifetime passed), or when the message could no longer be renewed, and
+    /// never throws into the caller's finally block.
+    /// </para>
+    /// </remarks>
+    private async Task RenewLeaseUntilAttemptEndsAsync(QueueLease lease, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            try
+            {
+                await Task.Delay(_leaseRenewalInterval, _queueOptions.TimeProvider, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                if (!await _store.RenewLeaseAsync(lease.QueueId, lease.WorkerId, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    // Either recovery reclaimed the item or its lifetime has passed. In both cases
+                    // extending it is wrong; the attempt may still finish and report as history.
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // See the remarks: retrying is the whole policy for a renewal that could not be
+                // written. The item is reclaimed only if this keeps failing until expiry.
+            }
         }
     }
 

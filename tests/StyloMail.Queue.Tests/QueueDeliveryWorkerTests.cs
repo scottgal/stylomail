@@ -443,6 +443,93 @@ public class QueueDeliveryWorkerTests
     }
 
     [Fact]
+    public async Task A_slow_live_delivery_keeps_its_lease_and_is_never_reclaimed()
+    {
+        using var h = new QueueHarness(c => new QueueOptions
+        {
+            TimeProvider = c,
+            LeaseDuration = TimeSpan.FromMinutes(1),
+        });
+
+        var queueId = await h.AcceptAsync(QueueHarness.Submission());
+
+        var entered = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+
+        // A delivery that legitimately outlasts the lease: it is alive and progressing, it is just
+        // slower than the crash window. That is the case the reclaim sweep used to get wrong.
+        var port = new FakeDeliveryPort(async (_, ct) =>
+        {
+            entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return FakeDeliveryPort.Delivered("rcpt@example.test");
+        });
+
+        var worker = Worker(h, port, new QueueDeliveryWorkerOptions
+        {
+            WorkerId = "slow-live",
+            PollInterval = TimeSpan.FromMilliseconds(10),
+            LeaseRenewalInterval = TimeSpan.FromMilliseconds(20),
+        });
+
+        var running = Task.Run(() => worker.RunOnceAsync());
+
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var claimed = await h.Store.GetItemAsync(queueId);
+        Assert.Equal("slow-live", claimed!.LeaseOwner);
+
+        // Move the injected clock past the claimed lease. The deadline the worker was given has now
+        // passed while its delivery is still running, which is exactly the review's scenario.
+        h.Clock.AdvanceMinutes(2);
+        Assert.True(claimed.LeaseExpiresAt <= h.Clock.GetUtcNow());
+
+        // The synchronisation point is the store's own value, not a sleep: wait until a renewal has
+        // moved the expiry past the advanced clock. If renewal is absent this times out, which is
+        // the red half of the control.
+        await WaitUntilAsync(
+            async () => (await h.Store.GetItemAsync(queueId))!.LeaseExpiresAt > h.Clock.GetUtcNow(),
+            TimeSpan.FromSeconds(5));
+
+        // A live delivery must not be reclaimed, and no second worker may claim the item: that is
+        // the concurrent duplicate delivery the lease exists to prevent.
+        var recovery = await h.Store.RecoverAsync();
+        Assert.DoesNotContain(queueId, recovery.ReclaimedLeases);
+        Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
+        Assert.Equal("slow-live", (await h.Store.GetItemAsync(queueId))!.LeaseOwner);
+
+        release.SetResult();
+        var result = await running.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // And it settles as the delivery it actually was, with no ambiguity manufactured by our own
+        // lease expiring underneath it.
+        Assert.Equal(DeliveryCycleOutcome.Dispatched, result.Outcome);
+        var item = await h.Store.GetItemAsync(queueId);
+        Assert.Equal(DeliveryState.Delivered, QueueHarness.By(item!, "rcpt@example.test").State);
+        Assert.DoesNotContain(
+            await h.Store.GetAttemptsAsync(queueId),
+            a => a.Outcome == DeliveryAttemptOutcome.LeaseExpired);
+        Assert.Equal(1, port.CallCount);
+    }
+
+    /// <summary>Polls a condition until it holds, or fails the test naming what never happened.</summary>
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail($"Condition did not hold within {timeout}.");
+    }
+
+    [Fact]
     public async Task The_worker_never_touches_a_table_itself()
     {
         using var h = new QueueHarness();

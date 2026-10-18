@@ -373,6 +373,60 @@ public sealed partial class QueueStore
         };
     }
 
+    /// <summary>
+    /// Extends a lease this worker still owns, or reports that ownership has moved.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Ownership, not elapsed time, decides.</b> This is the same fence
+    /// <see cref="CompleteAsync"/> applies: the row must still be <c>Delivering</c> and must still
+    /// name this worker. A renewal that arrives after the window closed but before recovery
+    /// reclaimed the item is therefore accepted, because expiry is a liveness heuristic rather than
+    /// a rule about who owns the work. The moment recovery reclaims it the owner no longer matches,
+    /// so a superseded worker cannot take the item back by renewing.
+    /// </para>
+    /// <para>
+    /// A renewal also stops once the message's own lifetime has passed. Without that bound a wedged
+    /// transport could renew forever and the item would never reach expiry; the message lifetime,
+    /// not the lease, is what bounds how long delivery may take.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// True when the lease was extended. False when this worker no longer owns the item, or the
+    /// item's lifetime has passed, and the caller must stop renewing.
+    /// </returns>
+    public async Task<bool> RenewLeaseAsync(
+        string queueId,
+        string workerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = _options.TimeProvider.GetUtcNow();
+
+        await using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            """
+            UPDATE queue_item
+               SET lease_expires_at = $leaseExpiresAt,
+                   updated_at = $now
+             WHERE queue_id = $queueId
+               AND state = $delivering
+               AND lease_owner = $worker
+               AND (expires_at IS NULL OR expires_at > $now);
+            """;
+        cmd.Parameters.AddWithValue("$delivering", (int)DeliveryState.Delivering);
+        cmd.Parameters.AddWithValue("$queueId", queueId);
+        cmd.Parameters.AddWithValue("$worker", workerId);
+        cmd.Parameters.AddWithValue("$leaseExpiresAt", ToDb(now + _options.LeaseDuration));
+        cmd.Parameters.AddWithValue("$now", ToDb(now));
+
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
     /// <summary>Opens a leased item's payload. Throws if the payload is missing (an integrity fault).</summary>
     public Stream OpenPayload(QueueItem item)
     {

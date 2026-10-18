@@ -269,6 +269,57 @@ public class QueueLeaseAndRecoveryTests
     }
 
     [Fact]
+    public async Task A_renewal_from_a_worker_that_lost_the_lease_is_refused()
+    {
+        using var h = new QueueHarness(c => new QueueOptions
+        {
+            TimeProvider = c,
+            LeaseDuration = TimeSpan.FromMinutes(5),
+        });
+
+        var queueId = await h.AcceptAsync(QueueHarness.Submission());
+
+        Assert.NotNull(await h.Store.ClaimNextAsync("worker-a"));
+        h.Clock.AdvanceMinutes(6);
+        await h.Store.RecoverAsync();
+
+        Assert.NotNull(await h.Store.ClaimNextAsync("worker-b"));
+        var freshExpiry = (await h.Store.GetItemAsync(queueId))!.LeaseExpiresAt;
+
+        // The superseded worker tries to take its item back by renewing. Ownership has moved, so
+        // this must be refused and must not move the expiry even a tick.
+        Assert.False(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+        Assert.Equal(freshExpiry, (await h.Store.GetItemAsync(queueId))!.LeaseExpiresAt);
+
+        // The holder can renew, and that is what a live slow delivery relies on.
+        h.Clock.AdvanceMinutes(1);
+        Assert.True(await h.Store.RenewLeaseAsync(queueId, "worker-b"));
+        Assert.Equal(
+            h.Clock.GetUtcNow() + TimeSpan.FromMinutes(5),
+            (await h.Store.GetItemAsync(queueId))!.LeaseExpiresAt);
+    }
+
+    [Fact]
+    public async Task A_renewal_past_the_message_lifetime_is_refused()
+    {
+        using var h = new QueueHarness(c => new QueueOptions
+        {
+            TimeProvider = c,
+            LeaseDuration = TimeSpan.FromMinutes(5),
+            RetryExpiry = TimeSpan.FromMinutes(10),
+        });
+
+        var queueId = await h.AcceptAsync(QueueHarness.Submission());
+        Assert.NotNull(await h.Store.ClaimNextAsync("worker-a"));
+
+        // The lease is still ours, but the message's own lifetime has passed. Renewing here would
+        // let a wedged transport hold the item forever, past the bound that exists to give up on it.
+        h.Clock.AdvanceMinutes(11);
+
+        Assert.False(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+    }
+
+    [Fact]
     public async Task Recovery_is_idempotent_when_there_is_nothing_to_do()
     {
         using var h = new QueueHarness();
