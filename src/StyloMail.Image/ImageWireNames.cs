@@ -43,6 +43,8 @@ public static class ImageWireNames
         ImageNotProducedReason.HeaderBudgetExceeded => "header_budget_exceeded",
         ImageNotProducedReason.InvalidDimensions => "invalid_dimensions",
         ImageNotProducedReason.InvalidStructure => "invalid_structure",
+        ImageNotProducedReason.InsufficientDecodedLength => "insufficient_decoded_length",
+        ImageNotProducedReason.InspectionBudgetExhausted => "inspection_budget_exhausted",
         _ => "invalid_structure",
     };
 

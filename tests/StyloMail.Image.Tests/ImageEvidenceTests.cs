@@ -10,6 +10,7 @@ public sealed class ImageEvidenceTests
     {
         Content = content,
         DeclaredContentType = declaredType,
+        Extent = totalLength is null ? ImageContentExtent.Complete : ImageContentExtent.PrefixTotalKnown,
         TotalLength = totalLength,
     };
 
