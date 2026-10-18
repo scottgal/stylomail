@@ -27,6 +27,8 @@ public sealed class ProxyConversationSignalsViewModel : ObservableObject
     private bool _isLoading;
     private bool _hasLoaded;
     private bool _failed;
+    private long _selectionGeneration;
+    private CancellationTokenSource? _selectionCancellation;
     private string _threadToken = string.Empty;
     private string _provenanceLine = "No window has been read yet.";
     private string _statusLabel = "Signals are not loaded.";
@@ -129,7 +131,9 @@ public sealed class ProxyConversationSignalsViewModel : ObservableObject
     /// </summary>
     public async Task LoadAsync(string? threadToken, CancellationToken cancellationToken = default)
     {
-        if (_isLoading) return;
+        var generation = Interlocked.Increment(ref _selectionGeneration);
+        _selectionCancellation?.Cancel();
+        _selectionCancellation = null;
 
         if (string.IsNullOrWhiteSpace(threadToken))
         {
@@ -160,21 +164,43 @@ public sealed class ProxyConversationSignalsViewModel : ObservableObject
         StatusLabel = "Reading signals for thread " + ProxyConversationText.ShortToken(threadToken)
             + " in " + ProxyConversationClient.Last24Hours + "...";
 
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _selectionCancellation = requestCancellation;
+
         try
         {
-            var response = await _client.GetSignalsAsync(threadToken, cancellationToken);
+            var response = await _client.GetSignalsAsync(threadToken, requestCancellation.Token);
+            if (!IsCurrentSelection(generation)) return;
             Apply(threadToken, response);
+        }
+        catch (OperationCanceledException) when (!IsCurrentSelection(generation))
+        {
+            // A newer selection owns the pane. Its request has already supplied the visible state.
+        }
+        catch (OperationCanceledException)
+        {
+            Fail("The signals read was cancelled before the Host responded.");
         }
         catch (StyloMailApiException error)
         {
-            Fail("The signals read for thread " + ProxyConversationText.ShortToken(threadToken)
-                + " failed: " + ProxyConversationText.Describe(error) + ".");
+            if (IsCurrentSelection(generation))
+            {
+                Fail("The signals read for thread " + ProxyConversationText.ShortToken(threadToken)
+                    + " failed: " + ProxyConversationText.Describe(error) + ".");
+            }
         }
         finally
         {
-            IsLoading = false;
+            if (IsCurrentSelection(generation))
+            {
+                IsLoading = false;
+                _selectionCancellation = null;
+            }
         }
     }
+
+    private bool IsCurrentSelection(long generation)
+        => generation == Volatile.Read(ref _selectionGeneration);
 
     private void Apply(string requestedToken, ProxyConversationSignalsResponse response)
     {

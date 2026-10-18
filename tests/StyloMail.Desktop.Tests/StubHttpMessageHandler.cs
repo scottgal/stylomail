@@ -45,11 +45,18 @@ internal sealed record CapturedRequest(
 /// </remarks>
 internal sealed class StubHttpMessageHandler : HttpMessageHandler
 {
-    private readonly Func<CapturedRequest, HttpResponseMessage> _respond;
+    private readonly Func<CapturedRequest, CancellationToken, Task<HttpResponseMessage>> _respond;
     private readonly List<CapturedRequest> _requests = [];
 
     public StubHttpMessageHandler(Func<CapturedRequest, HttpResponseMessage> respond)
+        => _respond = (request, _) => Task.FromResult(respond(request));
+
+    private StubHttpMessageHandler(Func<CapturedRequest, CancellationToken, Task<HttpResponseMessage>> respond)
         => _respond = respond;
+
+    /// <summary>Answers asynchronously, for tests that need to control the order in which reads complete.</summary>
+    public static StubHttpMessageHandler ReturningAsync(Func<CapturedRequest, Task<HttpResponseMessage>> respond)
+        => new((request, _) => respond(request));
 
     /// <summary>Answers every request with this JSON body and status.</summary>
     public static StubHttpMessageHandler ReturningJson(string json, HttpStatusCode status = HttpStatusCode.OK)
@@ -108,7 +115,7 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
         _requests.Add(captured);
 
-        return _respond(captured);
+        return await _respond(captured, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

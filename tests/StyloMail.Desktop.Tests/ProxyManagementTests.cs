@@ -1,5 +1,6 @@
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
+using StyloMail.Desktop.ViewModels;
 using StyloMail.Desktop.Views;
 
 namespace StyloMail.Desktop.Tests;
@@ -38,6 +39,22 @@ public sealed class ProxyManagementTests
         // rendered, rather than going green because its strings never occur.
         Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertNoLeaks("raw.login@example.test", forbidden));
         AssertNoLeaks(rendered, forbidden);
+    }
+
+    [Fact]
+    public async Task A_forbidden_account_mutation_renders_its_refusal_and_returns_to_an_enabled_state()
+    {
+        var model = new ProxyAccountMutationViewModel();
+
+        var completed = await model.ExecuteAsync(
+            () => Client(StubHttpMessageHandler.ReturningJson(
+                "{\"error\":\"forbidden\",\"detail\":\"Review-only access cannot change accounts.\"}",
+                System.Net.HttpStatusCode.Forbidden)).SetProxyAccountEnabledAsync("acc_safe", true),
+            "unreachable success text");
+
+        Assert.False(completed);
+        Assert.False(model.IsPending);
+        Assert.Contains("Review-only access", model.StatusLabel, StringComparison.Ordinal);
     }
 
     private static ProxyOperationsResponse Operations(string availability, IReadOnlyList<ProxyListenerResponse> listeners) => new()

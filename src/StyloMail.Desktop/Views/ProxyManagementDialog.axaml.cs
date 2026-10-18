@@ -2,12 +2,14 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
+using StyloMail.Desktop.ViewModels;
 
 namespace StyloMail.Desktop.Views;
 
 public partial class ProxyManagementDialog : Window
 {
     private readonly StyloMailApiClient? _client;
+    private readonly ProxyAccountMutationViewModel _accountMutation = new();
     private IReadOnlyList<ProxyAccountRow> _accounts = [];
     /// <summary>Required by compiled AXAML; production opens the injected constructor below.</summary>
     public ProxyManagementDialog() { InitializeComponent(); }
@@ -42,8 +44,42 @@ public partial class ProxyManagementDialog : Window
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
     private async void OnEnableClick(object? sender, RoutedEventArgs e) => await SetEnabled(sender, true);
     private async void OnDisableClick(object? sender, RoutedEventArgs e) => await SetEnabled(sender, false);
-    private async Task SetEnabled(object? sender, bool enabled) { if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return; await _client.SetProxyAccountEnabledAsync(row.AccountId, enabled); await RefreshAsync(); }
-    private async void OnRevokeClick(object? sender, RoutedEventArgs e) { if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return; await _client.RevokeProxyCredentialAsync(row.AccountId); await RefreshAsync(); }
+    private async Task SetEnabled(object? sender, bool enabled)
+    {
+        if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return;
+        await RunAccountMutationAsync(
+            () => _client.SetProxyAccountEnabledAsync(row.AccountId, enabled),
+            enabled ? "Account enablement was requested; refreshing its observed state." : "Account disablement was requested; refreshing its observed state.");
+    }
+    private async void OnRevokeClick(object? sender, RoutedEventArgs e)
+    {
+        if (_client is null || (sender as Control)?.DataContext is not ProxyAccountRow row) return;
+        await RunAccountMutationAsync(
+            () => _client.RevokeProxyCredentialAsync(row.AccountId),
+            "Credential revocation was requested; refreshing its observed state.");
+    }
+    private async Task RunAccountMutationAsync(Func<Task> mutation, string successStatus)
+    {
+        if (_accountMutation.IsPending) return;
+
+        AccountMutationsPanel.IsEnabled = false;
+        try
+        {
+            if (await _accountMutation.ExecuteAsync(mutation, successStatus))
+            {
+                StatusText.Text = _accountMutation.StatusLabel;
+                await RefreshAsync();
+            }
+            else
+            {
+                StatusText.Text = _accountMutation.StatusLabel;
+            }
+        }
+        finally
+        {
+            AccountMutationsPanel.IsEnabled = true;
+        }
+    }
     private async void OnCreateAccountClick(object? sender, RoutedEventArgs e) { if (_client is null) return; await new ProxyAccountCreateDialog(_client).ShowDialog(this); await RefreshAsync(); }
     private async void OnEnableListenerClick(object? sender, RoutedEventArgs e) => await SetListenerEnabled(sender, true);
     private async void OnDisableListenerClick(object? sender, RoutedEventArgs e) => await SetListenerEnabled(sender, false);

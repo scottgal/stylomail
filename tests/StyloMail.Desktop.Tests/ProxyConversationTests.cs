@@ -417,6 +417,41 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
+    public async Task A_superseded_signal_response_never_applies_to_the_new_selection()
+    {
+        var firstRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var oldResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = StubHttpMessageHandler.ReturningAsync(request =>
+        {
+            if (request.Path.EndsWith("thread-old/signals", StringComparison.Ordinal))
+            {
+                firstRequestStarted.TrySetResult();
+                return oldResponse.Task;
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(SignalsJson("thread-new", PointJson("turn_new", "2026-10-17T20:00:00+00:00", "0.2", 0)), Encoding.UTF8, "application/json"),
+            });
+        });
+        var model = new ProxyConversationSignalsViewModel(Client(handler));
+
+        var oldRead = model.LoadAsync("thread-old");
+        await firstRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await model.LoadAsync("thread-new");
+        oldResponse.SetResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(SignalsJson("thread-old", PointJson("turn_old", "2026-10-17T20:00:00+00:00", "0.1", 0)), Encoding.UTF8, "application/json"),
+        });
+        await oldRead;
+
+        Assert.Equal("thread-new", model.ThreadToken);
+        Assert.Single(model.Points);
+        Assert.Contains("turn_new", model.Points.Single().Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("turn_old", model.Points.Single().Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_signals_read_for_a_different_thread_is_refused_without_showing_points()
     {
         var handler = StubHttpMessageHandler.ReturningJson(SignalsJson(
