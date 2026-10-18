@@ -471,6 +471,10 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_proxy_session_event_session
             ON proxy_session_event (tenant_id, session_id, id);
 
+        -- Windowed lifecycle counters should read only the requested kind and time range.
+        CREATE INDEX IF NOT EXISTS ix_proxy_session_event_kind_time
+            ON proxy_session_event (tenant_id, kind, occurred_at);
+
         -- Structural threading facts only: non-reversible tokens for Message-ID/In-Reply-To/References,
         -- depth and time. No header value, subject, body or participant address is stored here.
         CREATE TABLE IF NOT EXISTS proxy_threading_event (
