@@ -307,6 +307,18 @@ public sealed class PolicyPackTests
         Assert.Contains(validation.Violations, violation => violation.Code == PolicyPackValidator.ReviewDeadlineOutOfBounds);
     }
 
+    [Theory]
+    [InlineData(0, 30)]
+    [InlineData(8, 0)]
+    public void A_hold_window_outside_the_bounds_is_refused(int days, int minutes)
+    {
+        var validation = PolicyPackValidator.Validate(
+            PolicyFixtures.Pack() with { HoldWindow = TimeSpan.FromDays(days) + TimeSpan.FromMinutes(minutes) });
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Violations, violation => violation.Code == PolicyPackValidator.HoldWindowOutOfBounds);
+    }
+
     [Fact]
     public void A_pack_without_an_effective_date_is_refused()
     {

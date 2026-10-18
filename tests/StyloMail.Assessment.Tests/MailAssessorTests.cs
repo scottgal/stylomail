@@ -39,7 +39,8 @@ public sealed class MailAssessorTests
         bool classifierUnavailable = false,
         int outboundRecipientBudget = 500,
         bool neverAsks = false,
-        IPolicyShadowEvaluator? policyShadow = null)
+        IPolicyShadowEvaluator? policyShadow = null,
+        IPolicyAuthoritativeEvaluator? policyAuthoritative = null)
     {
         var clock = new FixedClock();
         var recorder = new StepRecorder();
@@ -67,7 +68,8 @@ public sealed class MailAssessorTests
             options ?? Builders.Options(),
             payloads,
             quotaLedger: ledger,
-            policyShadow: policyShadow);
+            policyShadow: policyShadow,
+            policyAuthoritative: policyAuthoritative);
 
         return new Harness(assessor, clock, classifier, mime, profiles, queue, recorder, payloads, ledger);
     }
@@ -88,6 +90,8 @@ public sealed class MailAssessorTests
     {
         var record = new PolicyDecisionRecord
         {
+            Source = PolicySource.Shadow,
+            Admission = AdmissionOutcome.NotApplicableForAssessmentOnly,
             PackId = "pack-commerce",
             PackVersion = "1.0.0",
             RuleSetId = "rules-commerce",
@@ -105,6 +109,7 @@ public sealed class MailAssessorTests
             Coverage = 1,
             BindingIds = [],
             PropertyFacts = [],
+            MissingPropertyKeys = [],
             EvidenceSnapshotDigest = new string('a', 64),
             EvaluatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
             Shadow = true,
@@ -130,12 +135,352 @@ public sealed class MailAssessorTests
 
         // The pack record is recorded, and the action is byte-identical to the run without it.
         Assert.Null(baseline.Policy);
-        Assert.Same(record, shadowed.Policy);
+        Assert.NotNull(shadowed.Policy);
+        Assert.Equal(record.PackId, shadowed.Policy!.PackId);
+        Assert.Equal(PolicySource.Shadow, shadowed.Policy.Source);
+        Assert.Equal(MailAction.Allow, shadowed.Policy.FinalAction);
+        Assert.False(shadowed.Policy.Applied);
         Assert.Equal(baseline.Action, shadowed.Action);
         Assert.Equal(1, shadow.Calls);
 
         // ProposedActionInShadow keeps its existing meaning and is not repurposed for the pack.
         Assert.Equal(baseline.ProposedActionInShadow, shadowed.ProposedActionInShadow);
+    }
+
+    [Fact]
+    public async Task Authoritative_off_is_identical_to_the_legacy_assessment()
+    {
+        var legacy = Build();
+        var disabled = Build(policyAuthoritative: new FixedAuthoritative
+        {
+            Enabled = false,
+            ThrowIfCalled = true,
+        });
+        var message = Submittable();
+
+        legacy.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+        disabled.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var first = await legacy.Assessor.AssessAsync(
+            message,
+            Builders.Context(legacy.Clock, assessmentOnly: true),
+            CancellationToken.None);
+        var second = await disabled.Assessor.AssessAsync(
+            message,
+            Builders.Context(disabled.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.Null(first.Policy);
+        Assert.Null(second.Policy);
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(first),
+            System.Text.Json.JsonSerializer.Serialize(second));
+    }
+
+    [Fact]
+    public async Task Authoritative_off_does_not_suppress_the_separate_shadow_path()
+    {
+        var record = Record(PolicySource.Shadow, PolicyVerdict.Quarantine, fallback: false);
+        var authoritative = new FixedAuthoritative { Enabled = false, ThrowIfCalled = true };
+        var harness = Build(
+            policyShadow: new FixedShadow(record),
+            policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.Equal(0, authoritative.Calls);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.Shadow, assessment.Policy!.Source);
+        Assert.Equal(MailAction.Allow, assessment.Action);
+    }
+
+    [Fact]
+    public async Task A_disabled_authoritative_tenant_never_calls_the_path()
+    {
+        var authoritative = new FixedAuthoritative { Enabled = false, ThrowIfCalled = true };
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.Equal(0, authoritative.Calls);
+        Assert.Null(assessment.Policy);
+        Assert.Equal(MailAction.Allow, assessment.Action);
+    }
+
+    [Fact]
+    public async Task A_pack_verdict_that_changes_the_action_is_recorded_as_applied()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(PolicyVerdict.Quarantine),
+                Record = Record(PolicySource.Pack, PolicyVerdict.Quarantine, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Quarantine, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.Pack, assessment.Policy!.Source);
+        Assert.True(assessment.Policy.PolicyContributed);
+        Assert.True(assessment.Policy.Applied);
+        Assert.True(assessment.Policy.Durable);
+        Assert.Equal(AdmissionOutcome.Admitted, assessment.Policy.Admission);
+        Assert.Equal(MailAction.Allow, assessment.Policy.LegacyAction);
+        Assert.Equal(MailAction.Quarantine, assessment.Policy.ComposedAction);
+        Assert.Equal(MailAction.Quarantine, assessment.Policy.FinalAction);
+    }
+
+    [Fact]
+    public async Task A_pack_review_maps_to_the_durable_review_action_and_an_opening()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(PolicyVerdict.Review),
+                Record = Record(PolicySource.Pack, PolicyVerdict.Review, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Review, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.Pack, assessment.Policy!.Source);
+        Assert.True(assessment.Policy.Applied);
+        Assert.True(assessment.Policy.Durable);
+        Assert.Equal(AdmissionOutcome.Admitted, assessment.Policy.Admission);
+    }
+
+    [Fact]
+    public async Task Global_shadow_keeps_the_action_while_recording_the_pack_candidate()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(PolicyVerdict.Quarantine),
+                Record = Record(PolicySource.Pack, PolicyVerdict.Quarantine, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, shadowMode: true),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Allow, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.GlobalShadow, assessment.Policy!.Source);
+        Assert.True(assessment.Policy.Shadow);
+        Assert.True(assessment.Policy.Authoritative);
+        Assert.True(assessment.Policy.PolicyContributed);
+        Assert.True(assessment.Policy.Durable);
+        Assert.False(assessment.Policy.Applied);
+        Assert.Equal(AdmissionOutcome.Admitted, assessment.Policy.Admission);
+    }
+
+    [Fact]
+    public async Task An_unavailable_pack_falls_back_to_review_without_credentials()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Unavailable,
+                UnavailableReason = "policy.pack_store_unavailable",
+                FallbackReviewDeadline = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
+                    .AddHours(24),
+                Record = Record(PolicySource.Fallback, PolicyVerdict.Review, fallback: true),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Review, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.Fallback, assessment.Policy!.Source);
+        Assert.True(assessment.Policy.FallbackAttempted);
+        Assert.True(assessment.Policy.PackUnavailable);
+        Assert.Null(assessment.Policy.PackId);
+        Assert.False(assessment.Policy.Applied);
+        Assert.Equal(AdmissionOutcome.NotApplicableForAssessmentOnly, assessment.Policy.Admission);
+    }
+
+    [Fact]
+    public async Task An_unsupported_review_state_composes_quarantine_before_admission()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                ReviewStateAvailable = false,
+                Evaluation = Evaluation(PolicyVerdict.Review),
+                Record = Record(PolicySource.Pack, PolicyVerdict.Review, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Quarantine, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.True(assessment.Policy!.ReviewStateUnavailable);
+        Assert.True(assessment.Policy.Applied);
+    }
+
+    [Fact]
+    public async Task The_fallback_record_does_not_invent_pack_provenance()
+    {
+        var record = Record(PolicySource.Fallback, PolicyVerdict.Review, fallback: true);
+
+        Assert.Null(record.PackId);
+        Assert.Null(record.PackVersion);
+        Assert.Null(record.RuleSetId);
+        Assert.Null(record.RuleSetVersion);
+        Assert.Null(record.EvidenceSnapshotDigest);
+        Assert.True(record.FallbackAttempted);
+        Assert.True(record.PackUnavailable);
+    }
+
+    private static PolicyEvaluation Evaluation(PolicyVerdict verdict) => new()
+    {
+        TenantId = "tenant-1",
+        PackId = "pack-commerce",
+        PackVersion = "1.0.0",
+        RuleSetId = "rules-commerce",
+        RuleSetVersion = "rules/1",
+        ScorerVersion = "scorer/1",
+        Verdict = verdict,
+        RequiresHumanReview = verdict == PolicyVerdict.Review,
+        DecidingRuleId = "rule-payment",
+        DecidingRuleVersion = 1,
+        DecidingThreshold = 0.35,
+        DecidingReasonCode = "policy.test",
+        DecidingReason = "test",
+        MissingDimensions = [],
+        Coverage = 1,
+        Rules = [],
+        EvidenceSnapshot = [],
+        EvidenceSnapshotDigest = new string('a', 64),
+        EvaluatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        DecidedBy = DeterministicPolicyEvaluator.DecidedBy,
+    };
+
+    private static PolicyDecisionRecord Record(
+        PolicySource source,
+        PolicyVerdict verdict,
+        bool fallback) => new()
+        {
+            Source = source,
+            Admission = AdmissionOutcome.NotAttempted,
+            PackId = fallback ? null : "pack-commerce",
+            PackVersion = fallback ? null : "1.0.0",
+            RuleSetId = fallback ? null : "rules-commerce",
+            RuleSetVersion = fallback ? null : "rules/1",
+            ScorerVersion = fallback ? null : "scorer/1",
+            EvaluatorVersion = DeterministicPolicyEvaluator.Version,
+            Verdict = verdict,
+            RequiresHumanReview = verdict == PolicyVerdict.Review,
+            DecidingRuleId = fallback ? null : "rule-payment",
+            DecidingRuleVersion = fallback ? null : 1,
+            DecidingThreshold = fallback ? null : 0.35,
+            DecidingReasonCode = fallback ? "policy.pack_store_unavailable" : "policy.test",
+            DecidingReason = fallback ? "pack unavailable" : "test",
+            MissingDimensions = [],
+            Coverage = 0,
+            BindingIds = [],
+            PropertyFacts = [],
+            MissingPropertyKeys = [],
+            EvidenceSnapshotDigest = fallback ? null : new string('a', 64),
+            EvaluatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            Shadow = false,
+            Authoritative = false,
+            FallbackAttempted = fallback,
+            PackUnavailable = fallback,
+            FallbackReason = fallback ? "policy.pack_store_unavailable" : null,
+        };
+
+    private sealed class FixedAuthoritative : IPolicyAuthoritativeEvaluator
+    {
+        public bool Enabled { get; init; }
+
+        public bool ThrowIfCalled { get; init; }
+
+        public PolicyAuthoritativeResult? Result { get; init; }
+
+        public int Calls { get; private set; }
+
+        public bool IsEnabled(string tenantId) => Enabled;
+
+        public Task<PolicyAuthoritativeResult> EvaluateAsync(
+            string tenantId,
+            IReadOnlyList<Evidence> evidence,
+            PolicyPropertyScope scope,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (ThrowIfCalled)
+            {
+                throw new InvalidOperationException("authoritative evaluator must not be called");
+            }
+
+            return Task.FromResult(Result!);
+        }
     }
 
     private sealed class FixedShadow : IPolicyShadowEvaluator

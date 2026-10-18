@@ -475,6 +475,38 @@ public sealed class PolicySurfaceTests
     }
 
     [Fact]
+    public async Task The_status_route_reports_tenant_enablement_from_the_map()
+    {
+        using var host = new TestHost()
+            .WithClock()
+            .Configure("StyloMail:Policy:Authoritative:Tenants:acme", "GB");
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var status = await ReadAsync<PolicyStatusResponse>(
+            await reviewer.GetAsync("/v1/policy/status"));
+
+        Assert.Equal(TestPrincipals.AcmeTenant, status.TenantId);
+        Assert.True(status.AuthoritativeEnabled);
+        Assert.Equal("GB", status.Jurisdiction);
+        Assert.False(status.ShadowEnabled);
+        Assert.True(status.ReviewStateAvailable);
+        Assert.Null(status.EffectivePackId);
+    }
+
+    [Fact]
+    public async Task The_status_route_is_off_by_default_and_tenant_scoped()
+    {
+        using var host = new TestHost().WithClock();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var status = await ReadAsync<PolicyStatusResponse>(
+            await reviewer.GetAsync("/v1/policy/status"));
+
+        Assert.False(status.AuthoritativeEnabled);
+        Assert.Null(status.Jurisdiction);
+    }
+
+    [Fact]
     public async Task The_capability_catalogue_is_not_a_tenant_or_pack_read()
     {
         // A host with no assessor at all still answers: the policy routes in Phase 1 do not call the

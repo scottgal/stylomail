@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.Extensions.Configuration;
 using StyloMail.Host.Auth;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Policy;
@@ -108,6 +109,7 @@ internal static class PolicyEndpoints
         PolicyPackDraftRequest? request,
         ClaimsPrincipal user,
         SqlitePolicyPackStore packs,
+        PolicyAuthoritativeEvaluator policy,
         CancellationToken cancellationToken)
     {
         if (request is null)
@@ -150,6 +152,7 @@ internal static class PolicyEndpoints
         try
         {
             var summary = await packs.SaveDraftAsync(tenant, pack, actor, cancellationToken).ConfigureAwait(false);
+            policy.Invalidate(tenant);
             return Results.Ok(PolicyPackResponse.From(pack, summary));
         }
         catch (PolicyValidationException ex)
@@ -174,6 +177,7 @@ internal static class PolicyEndpoints
         ClaimsPrincipal user,
         SqlitePolicyPackStore packs,
         PrincipalDirectory principals,
+        PolicyAuthoritativeEvaluator policy,
         CancellationToken cancellationToken)
     {
         var tenant = user.TenantId();
@@ -197,6 +201,7 @@ internal static class PolicyEndpoints
             var summary = await packs
                 .ApproveAsync(tenant, id, version, approver, request?.SecondApprover, cancellationToken)
                 .ConfigureAwait(false);
+            policy.Invalidate(tenant);
 
             var pack = await packs.GetVersionAsync(tenant, id, version, cancellationToken).ConfigureAwait(false);
             return pack is null
@@ -223,6 +228,7 @@ internal static class PolicyEndpoints
         string version,
         ClaimsPrincipal user,
         SqlitePolicyPackStore packs,
+        PolicyAuthoritativeEvaluator policy,
         CancellationToken cancellationToken)
     {
         var tenant = user.TenantId();
@@ -237,6 +243,7 @@ internal static class PolicyEndpoints
             var summary = await packs
                 .ActivateAsync(tenant, id, version, actor, cancellationToken)
                 .ConfigureAwait(false);
+            policy.Invalidate(tenant);
 
             var pack = await packs.GetVersionAsync(tenant, id, version, cancellationToken).ConfigureAwait(false);
             return pack is null
@@ -264,6 +271,7 @@ internal static class PolicyEndpoints
         PolicyPackTransitionRequest? request,
         ClaimsPrincipal user,
         SqlitePolicyPackStore packs,
+        PolicyAuthoritativeEvaluator policy,
         CancellationToken cancellationToken)
     {
         var tenant = user.TenantId();
@@ -278,6 +286,7 @@ internal static class PolicyEndpoints
             var summary = await packs
                 .WithdrawAsync(tenant, id, version, actor, request?.Reason, cancellationToken)
                 .ConfigureAwait(false);
+            policy.Invalidate(tenant);
             var pack = await packs.GetVersionAsync(tenant, id, version, cancellationToken).ConfigureAwait(false);
 
             return pack is null
@@ -301,6 +310,7 @@ internal static class PolicyEndpoints
         PolicyPackTransitionRequest? request,
         ClaimsPrincipal user,
         SqlitePolicyPackStore packs,
+        PolicyAuthoritativeEvaluator policy,
         CancellationToken cancellationToken)
     {
         var tenant = user.TenantId();
@@ -315,6 +325,7 @@ internal static class PolicyEndpoints
             var summary = await packs
                 .DeactivateAsync(tenant, id, version, actor, request?.Reason, cancellationToken)
                 .ConfigureAwait(false);
+            policy.Invalidate(tenant);
             var pack = await packs.GetVersionAsync(tenant, id, version, cancellationToken).ConfigureAwait(false);
 
             return pack is null
@@ -473,6 +484,52 @@ internal static class PolicyEndpoints
     // ---------------------------------------------------------------------------------------------
     // Capabilities
     // ---------------------------------------------------------------------------------------------
+
+    /// <summary><c>GET /v1/policy/status</c>, the tenant's authoritative and shadow state.</summary>
+    internal static async Task<IResult> StatusAsync(
+        ClaimsPrincipal user,
+        PolicyAuthoritativeEvaluator policy,
+        IPolicyPackReader packs,
+        IConfiguration configuration,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var tenant = user.TenantId();
+        if (string.IsNullOrWhiteSpace(tenant))
+        {
+            return EndpointResults.Forbidden("tenant_required", "The principal is not bound to a tenant.");
+        }
+
+        var enabled = policy.IsEnabled(tenant);
+        var jurisdiction = policy.JurisdictionFor(tenant);
+        PolicyPack? pack = null;
+
+        if (enabled && !string.IsNullOrWhiteSpace(jurisdiction))
+        {
+            try
+            {
+                pack = await packs
+                    .GetEffectiveAsync(tenant, jurisdiction, clock.GetUtcNow(), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (StorageUnavailableException)
+            {
+                // Status reports the outage rather than failing the read; the fields say no pack.
+            }
+        }
+
+        return Results.Ok(new PolicyStatusResponse
+        {
+            TenantId = tenant,
+            AuthoritativeEnabled = enabled,
+            Jurisdiction = jurisdiction,
+            EffectivePackId = pack?.Id,
+            EffectivePackVersion = pack?.Version,
+            ShadowEnabled = configuration.GetValue<bool>("StyloMail:Policy:Shadow:Enabled"),
+            ReviewStateAvailable = policy.ReviewStateAvailable,
+            CacheAge = policy.CacheAgeFor(tenant, clock.GetUtcNow()),
+        });
+    }
 
     /// <summary>
     /// <c>GET /v1/policy/capabilities</c>, the static catalogue. No tenant, pack or decision is read.

@@ -168,6 +168,7 @@ public sealed class MailAssessor : IMailAssessor
     private readonly SendingQuotaLedger _quotaLedger;
     private readonly TrustedLearningGate _learningGate;
     private readonly IPolicyShadowEvaluator? _policyShadow;
+    private readonly IPolicyAuthoritativeEvaluator? _policyAuthoritative;
     private readonly MailAssessorOptions _options;
     private readonly IReadOnlyList<string> _dimensionIds;
 
@@ -182,7 +183,8 @@ public sealed class MailAssessor : IMailAssessor
         RecentCampaignWindow? campaignWindow = null,
         SendingQuotaLedger? quotaLedger = null,
         TrustedLearningGate? learningGate = null,
-        IPolicyShadowEvaluator? policyShadow = null)
+        IPolicyShadowEvaluator? policyShadow = null,
+        IPolicyAuthoritativeEvaluator? policyAuthoritative = null)
     {
         ArgumentNullException.ThrowIfNull(mimeAnalyzer);
         ArgumentNullException.ThrowIfNull(semanticClassifier);
@@ -207,6 +209,7 @@ public sealed class MailAssessor : IMailAssessor
             options.OutboundRecipientBudgetWindow);
         _learningGate = learningGate ?? new TrustedLearningGate();
         _policyShadow = policyShadow;
+        _policyAuthoritative = policyAuthoritative;
         _dimensionIds = [.. options.Dimensions.Select(dimension => dimension.Id)];
     }
 
@@ -490,14 +493,88 @@ public sealed class MailAssessor : IMailAssessor
             UpdateObservedState(analysis, context, profiles, dimensionVector, action != MailAction.Allow, now);
         }
 
-        // A second opinion, recorded and never applied. The legacy action above is the action this
-        // message gets; the pack's candidate is explanation only until Phase 3. It runs before
-        // acceptance because a Review admission must name the decision that opened it.
-        var policyRecord = _policyShadow is null
-            ? null
-            : await _policyShadow
+        // The legacy action is the action the engine chose before composition. The pack candidate
+        // is composed beside it; a pack never relaxes a legacy protective outcome.
+        var legacyAction = decision.Action;
+        PolicyDecisionRecord? policyRecord = null;
+        MailAction? packCandidate = null;
+        var policyContributed = false;
+
+        if (_policyAuthoritative is not null && _policyAuthoritative.IsEnabled(context.TenantId))
+        {
+            var scope = PropertyScope(envelope);
+            var authoritative = await _policyAuthoritative
+                .EvaluateAsync(context.TenantId, evidence, scope, now, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (authoritative.Kind is PolicyAuthoritativeKind.Pack or PolicyAuthoritativeKind.Unavailable)
+            {
+                policyRecord = authoritative.Record;
+                var packVerdict = authoritative.Kind == PolicyAuthoritativeKind.Pack
+                    ? authoritative.Evaluation!.Verdict
+                    : PolicyVerdict.Review;
+
+                packCandidate = PackPolicyComposer.Compose(legacyAction, packVerdict);
+
+                if (packCandidate == MailAction.Review && !authoritative.ReviewStateAvailable)
+                {
+                    // The durable Review state is a capability, not an acceptance outcome. Decide
+                    // it before admission and compose Quarantine instead.
+                    packCandidate = MailAction.Quarantine;
+                    policyRecord = policyRecord! with { ReviewStateUnavailable = true };
+                }
+
+                policyContributed = packCandidate != legacyAction;
+
+                if (context.ShadowMode)
+                {
+                    // The global shadow contract wins: record the candidate, change no action.
+                    policyRecord = policyRecord! with
+                    {
+                        Source = PolicySource.GlobalShadow,
+                        Shadow = true,
+                        Authoritative = true,
+                        Applied = false,
+                    };
+                }
+                else
+                {
+                    action = packCandidate.Value;
+
+                    if (action == MailAction.Review)
+                    {
+                        var deadline = authoritative.Kind == PolicyAuthoritativeKind.Pack
+                            ? now + (authoritative.Effective?.Pack.ReviewDeadline ?? TimeSpan.FromHours(24))
+                            : authoritative.FallbackReviewDeadline
+                                ?? now + TimeSpan.FromHours(24);
+
+                        decision = decision with { ReviewDeadline = deadline };
+                    }
+                    else if (action == MailAction.Hold)
+                    {
+                        var packDeadline = authoritative.Kind == PolicyAuthoritativeKind.Pack
+                            ? now + (authoritative.Effective?.Pack.HoldWindow ?? TimeSpan.FromHours(24))
+                            : (DateTimeOffset?)null;
+
+                        decision = decision with
+                        {
+                            ReEvaluateBy = decision.ReEvaluateBy is { } legacyDeadline
+                                ? (packDeadline is { } candidate && candidate < legacyDeadline
+                                    ? candidate
+                                    : legacyDeadline)
+                                : packDeadline,
+                        };
+                    }
+                }
+            }
+        }
+        else if (_policyShadow is not null)
+        {
+            // Phase 2 shadow: a second opinion, recorded and never applied.
+            policyRecord = await _policyShadow
                 .EvaluateAsync(context.TenantId, evidence, now, cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         // ---- Step 7: for submissions, durably accept, or decline responsibility before acceptance.
         // The assessor is the only component that accepts, a second acceptor would double-deliver,
@@ -549,7 +626,13 @@ public sealed class MailAssessor : IMailAssessor
             CoveredWeightFraction = risk.CoveredWeightFraction,
             Action = action,
             ProposedActionInShadow = proposedInShadow,
-            Policy = policyRecord,
+            Policy = FinalisePolicyRecord(
+                policyRecord,
+                legacyAction,
+                packCandidate,
+                action,
+                context.AssessmentOnly,
+                acceptance),
             DeliveryTiming = DeliveryTiming.PreAcceptance,
             Reasons = [.. outageReasons, .. decision.Reasons, .. acceptance.Reasons],
             Versions = BuildVersions(profiles, resolvedModelVersion),
@@ -1038,7 +1121,8 @@ public sealed class MailAssessor : IMailAssessor
     private static ReviewOpening BuildReviewOpening(
         string assessmentId,
         PolicyDecisionRecord? policy,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        DateTimeOffset? reviewDeadline)
     {
         if (policy is null)
         {
@@ -1047,19 +1131,82 @@ public sealed class MailAssessor : IMailAssessor
                 "requires the opening decision, and inventing one would fabricate the audit trail.");
         }
 
+        var fallback = policy.Source == PolicySource.Fallback || policy.PackUnavailable;
+
         return new ReviewOpening
         {
             AssessmentId = assessmentId,
-            PackId = policy.PackId,
-            PackVersion = policy.PackVersion,
-            RuleSetId = policy.RuleSetId,
-            RuleSetVersion = policy.RuleSetVersion,
-            RuleId = policy.DecidingRuleId,
-            RuleVersion = policy.DecidingRuleVersion,
+            Source = fallback ? ReviewOpeningSource.Fallback : ReviewOpeningSource.Pack,
+            PackId = fallback ? null : policy.PackId,
+            PackVersion = fallback ? null : policy.PackVersion,
+            RuleSetId = fallback ? null : policy.RuleSetId,
+            RuleSetVersion = fallback ? null : policy.RuleSetVersion,
+            RuleId = fallback ? null : policy.DecidingRuleId,
+            RuleVersion = fallback ? null : policy.DecidingRuleVersion,
             ReasonCode = policy.DecidingReasonCode,
             Reason = policy.DecidingReason,
-            EvidenceSnapshotDigest = policy.EvidenceSnapshotDigest,
+            EvidenceSnapshotDigest = fallback ? null : policy.EvidenceSnapshotDigest,
+            UnavailableReason = fallback ? policy.FallbackReason ?? policy.DecidingReasonCode : null,
+            FallbackDeadline = fallback
+                ? reviewDeadline ?? now + TimeSpan.FromHours(24)
+                : null,
             DecidedAt = policy.EvaluatedAt == default ? now : policy.EvaluatedAt,
+        };
+    }
+
+    private static PolicyPropertyScope PropertyScope(MailEnvelope envelope)
+    {
+        var entity = !string.IsNullOrWhiteSpace(envelope.TrustedPrincipalId)
+            ? envelope.TrustedPrincipalId
+            : envelope.MailFrom;
+
+        var domain = envelope.MailFrom.LastIndexOf('@') is var at && at >= 0
+            ? envelope.MailFrom[(at + 1)..]
+            : null;
+
+        return new PolicyPropertyScope(entity, domain);
+    }
+
+    private static PolicyDecisionRecord? FinalisePolicyRecord(
+        PolicyDecisionRecord? record,
+        MailAction legacyAction,
+        MailAction? composedAction,
+        MailAction finalAction,
+        bool assessmentOnly,
+        AcceptanceOutcome acceptance)
+    {
+        if (record is null)
+        {
+            return null;
+        }
+
+        var admission = assessmentOnly
+            ? AdmissionOutcome.NotApplicableForAssessmentOnly
+            : acceptance.IsAccepted
+                ? AdmissionOutcome.Admitted
+                : acceptance.Reasons.Count == 0
+                    ? AdmissionOutcome.NotAttempted
+                    : AdmissionOutcome.Refused;
+
+        var durable = admission == AdmissionOutcome.Admitted;
+        var contributed = composedAction is { } composed && composed != legacyAction;
+        var applied = contributed
+            && durable
+            && !record.Shadow
+            && record.Source != PolicySource.GlobalShadow
+            && finalAction != legacyAction;
+
+        return record with
+        {
+            LegacyAction = legacyAction,
+            ComposedAction = composedAction,
+            FinalAction = finalAction,
+            PolicyContributed = contributed,
+            Applied = applied,
+            Durable = durable,
+            Admission = admission,
+            ReviewAdmissionRefused = composedAction == MailAction.Review
+                && admission == AdmissionOutcome.Refused,
         };
     }
 
@@ -1189,7 +1336,7 @@ public sealed class MailAssessor : IMailAssessor
                         // A review names the decision that opened it. The queue requires this and
                         // refuses the admission without it; it is never fabricated here.
                         ReviewOpening = action == MailAction.Review
-                            ? BuildReviewOpening(assessmentId, policyRecord, now)
+                            ? BuildReviewOpening(assessmentId, policyRecord, now, decision.ReviewDeadline)
                             : null,
                     },
                     cancellationToken)

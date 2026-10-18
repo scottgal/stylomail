@@ -65,6 +65,64 @@ public class QueueSchemaTests
     }
 
     [Fact]
+    public async Task A_v6_opening_table_migrates_to_tagged_pack_and_preserves_rows()
+    {
+        using var h = new QueueHarness();
+        await h.Store.InitializeAsync();
+
+        await using (var connection = h.Connections.Open())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                DROP TABLE queue_review_opening;
+                CREATE TABLE queue_review_opening (
+                    tenant_id TEXT NOT NULL,
+                    queue_id TEXT NOT NULL,
+                    opening_event_id TEXT NOT NULL,
+                    assessment_id TEXT NOT NULL,
+                    pack_id TEXT NOT NULL,
+                    pack_version TEXT NOT NULL,
+                    rule_set_id TEXT NOT NULL,
+                    rule_set_version TEXT NOT NULL,
+                    rule_id TEXT NULL,
+                    rule_version INTEGER NULL,
+                    reason_code TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    evidence_digest TEXT NULL,
+                    decided_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, queue_id)
+                );
+                INSERT INTO queue_review_opening
+                    (tenant_id, queue_id, opening_event_id, assessment_id, pack_id, pack_version,
+                     rule_set_id, rule_set_version, rule_id, rule_version, reason_code, reason,
+                     evidence_digest, decided_at)
+                VALUES ('acme', 'q-old', 'evt-old', 'asm-old', 'pack-commerce', '1.0.0',
+                        'rules-commerce', 'rules/1', 'rule-payment', 1, 'policy.review',
+                        'legacy opening', 'digest-old', '2026-01-01T00:00:00.0000000+00:00');
+                INSERT INTO queue_schema_version (version, applied_at)
+                    VALUES (6, '2026-01-01T00:00:00.0000000+00:00');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var reopened = h.Reopen(clock => new QueueOptions { TimeProvider = clock });
+        await reopened.InitializeAsync();
+
+        await using (var connection = h.Connections.Open())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT opening_source, pack_id, pack_version FROM queue_review_opening WHERE queue_id = 'q-old';";
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("pack", reader.GetString(0));
+            Assert.Equal("pack-commerce", reader.GetString(1));
+            Assert.Equal("1.0.0", reader.GetString(2));
+        }
+    }
+
+    [Fact]
     public async Task Deleting_an_item_takes_its_recipients_and_history_with_it()
     {
         using var h = new QueueHarness();

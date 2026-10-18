@@ -48,7 +48,8 @@ public static class AssessmentPipeline
         AdaptiveOptions? adaptiveOptions = null,
         IAssessmentPolicyContextSource? policyContext = null,
         Action<string>? semanticCacheDiagnostic = null,
-        IPolicyShadowEvaluator? policyShadow = null)
+        IPolicyShadowEvaluator? policyShadow = null,
+        IPolicyAuthoritativeEvaluator? policyAuthoritative = null)
     {
         ArgumentNullException.ThrowIfNull(mimeAnalyzer);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -81,6 +82,7 @@ public static class AssessmentPipeline
             campaignWindow: null,
             quotaLedger: null,
             learningGate: null,
-            policyShadow: policyShadow);
+            policyShadow: policyShadow,
+            policyAuthoritative: policyAuthoritative);
     }
 }

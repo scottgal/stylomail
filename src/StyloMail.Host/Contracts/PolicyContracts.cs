@@ -279,3 +279,24 @@ public sealed record PolicyCapabilitiesResponse
 {
     public required IReadOnlyList<PolicyActionCapability> Capabilities { get; init; }
 }
+
+
+/// <summary>The tenant's authoritative policy status.</summary>
+public sealed record PolicyStatusResponse
+{
+    public required string TenantId { get; init; }
+
+    public required bool AuthoritativeEnabled { get; init; }
+
+    public string? Jurisdiction { get; init; }
+
+    public string? EffectivePackId { get; init; }
+
+    public string? EffectivePackVersion { get; init; }
+
+    public required bool ShadowEnabled { get; init; }
+
+    public required bool ReviewStateAvailable { get; init; }
+
+    public TimeSpan? CacheAge { get; init; }
+}

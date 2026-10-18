@@ -89,6 +89,16 @@ public static class HostServices
         services.AddSingleton<IPolicyPackReader>(
             provider => provider.GetRequiredService<SqlitePolicyPackStore>());
         services.AddSingleton<SqlitePolicyBindingStore>();
+        services.AddSingleton<IPolicyPropertyReader, HostPolicyPropertyReader>();
+        services.AddSingleton<IPolicyBindingReader, HostPolicyBindingReader>();
+        services.AddSingleton<PolicyAuthoritativeEvaluator>(provider => new PolicyAuthoritativeEvaluator(
+            provider.GetRequiredService<IPolicyPackReader>(),
+            provider.GetRequiredService<IPolicyRuleSetReader>(),
+            provider.GetRequiredService<IPolicyPropertyReader>(),
+            provider.GetRequiredService<IPolicyBindingReader>(),
+            BuildPolicyAuthoritativeOptions(provider.GetRequiredService<IConfiguration>())));
+        services.AddSingleton<IPolicyAuthoritativeEvaluator>(
+            provider => provider.GetRequiredService<PolicyAuthoritativeEvaluator>());
 
         // The access proxy backend. Registered unconditionally, with the key-dependent pieces
         // refusing at use rather than at composition: this composition root runs before a test host
@@ -589,6 +599,28 @@ public static class HostServices
             });
     }
 
+    /// <summary>Builds the per-tenant authoritative config from the tenant map.</summary>
+    private static PolicyAuthoritativeOptions BuildPolicyAuthoritativeOptions(IConfiguration configuration)
+    {
+        var section = configuration.GetSection("StyloMail:Policy:Authoritative");
+        var tenants = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var entry in section.GetSection("Tenants").GetChildren())
+        {
+            tenants[entry.Key] = entry.Value ?? string.Empty;
+        }
+
+        var fallback = section.GetValue<TimeSpan?>("FallbackReviewDeadline")
+            ?? TimeSpan.FromHours(24);
+
+        return new PolicyAuthoritativeOptions
+        {
+            Tenants = tenants,
+            FallbackReviewDeadline = fallback,
+            ReviewStateAvailable = true,
+        };
+    }
+
     /// <summary>
     /// Builds the assessor for the provider this deployment selected, or the refusing one when it
     /// has no usable credentials for that provider.
@@ -819,7 +851,8 @@ public static class HostServices
             policyContext: new HostPolicyContextSource(
                 services.GetRequiredService<IEmergencyKillSwitch>()),
             semanticCacheDiagnostic: kind => logger.LogWarning("Semantic cache shared flight event {FlightEvent}.", kind),
-            policyShadow: BuildPolicyShadow(services));
+            policyShadow: BuildPolicyShadow(services),
+            policyAuthoritative: services.GetRequiredService<IPolicyAuthoritativeEvaluator>());
     }
 
     /// <summary>
