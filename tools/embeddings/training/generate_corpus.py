@@ -157,33 +157,33 @@ def redact(text: str) -> str:
     return text
 
 
-def parse_document(raw: str, element: str | None) -> dict | None:
+def parse_document(raw: str, element: str | None) -> tuple[dict | None, str | None]:
+    """Parse and mechanically check the document. Returns (document, failure_reason)."""
     try:
         document = json.loads(raw)
     except json.JSONDecodeError:
-        return None
+        return None, "parse"
     turns = document.get("turns")
     if not isinstance(turns, list) or not (2 <= len(turns) <= 5):
-        return None
+        return None, "structure"
     cleaned = []
     for turn in turns:
         text = str(turn.get("text", "")).strip()
         if len(text.split()) < 10:
-            return None
+            return None, "structure"
         cleaned.append({"role": str(turn.get("role", "sender")), "text": redact(text)})
     index = document.get("element_turn")
     cue = document.get("cue")
     if element:
         if not isinstance(index, int) or not (0 <= index < len(cleaned)):
-            return None
+            return None, "structure"
         if not isinstance(cue, str) or len(cue.strip()) < 4:
-            return None
-        # Mechanical placement check before any model is asked: the claimed cue must be in the turn.
+            return None, "cue_missing"
         if cue.strip().lower() not in cleaned[index]["text"].lower():
-            return None
+            return None, "cue_missing"
     else:
         index, cue = None, None
-    return {"turns": cleaned, "element_turn": index, "cue": cue, "plan": document.get("plan")}
+    return {"turns": cleaned, "element_turn": index, "cue": cue, "plan": document.get("plan")}, None
 
 
 def verify_element(model: str, element: str, cue: str, turn_text: str, seed: int) -> bool:
@@ -232,7 +232,7 @@ def benchmark(output: pathlib.Path, generations: int, seed: int) -> int:
             attempt_seed = rng.randrange(1, 2**31)
             raw, latency = call(model, build_prompt(kind, controls), attempt_seed)
             latencies.append(latency)
-            parsed = parse_document(raw, kind)
+            parsed, _reason = parse_document(raw, kind)
             if parsed is None:
                 continue
             valid += 1
@@ -247,43 +247,97 @@ def benchmark(output: pathlib.Path, generations: int, seed: int) -> int:
     return 0
 
 
+def conversation_id_for(kind: str, seed: int) -> str:
+    return f"gen:{kind}:{hashlib.sha256(str(seed).encode()).hexdigest()[:10]}"
+
+
+def write_manifest(manifest_path: pathlib.Path, model: str, kinds: tuple[str, ...], attempts: dict,
+                   verified: dict, failures: dict, rows_written: int, seed: int, resumed: int) -> None:
+    yields = {kind: round(verified[kind] / attempts[kind], 3) if attempts[kind] else None for kind in kinds}
+    manifest = {
+        "generator_model": model,
+        "verifier": "second prompt (same model); 26b excluded for empty responses",
+        "prompt_hash": prompt_hash(PLAN_TEMPLATE),
+        "attempts": attempts,
+        "verified": verified,
+        "verified_yield": yields,
+        "verification_state": {
+            "checked_clean": verified,
+            "not_checked": {kind: 0 for kind in kinds},
+            "note": "a row is written only after its check passes, so not_checked is zero by construction",
+        },
+        "failures_by_reason": failures,
+        "resumed_conversations": resumed,
+        "rows": rows_written,
+        "seed": seed,
+        "licence": "project-owned",
+        "split_by": "conversation id",
+        "benign_verification": "second prompt asks whether any turn contains any element; yes discards",
+        "element_verification": "mechanical cue-in-turn check, then a second prompt asking presence",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
 def generate(output: pathlib.Path, manifest_path: pathlib.Path, kinds: tuple[str, ...], per_type: int,
              seed: int, model: str) -> int:
-    rng = random.Random(seed)
-    rows, discarded = [], 0
-    attempts: dict[str, int] = {}
-    verified: dict[str, int] = {}
-    verifier_note = "second prompt (same model); 26b excluded for empty responses"
+    rows: list[dict] = []
+    existing_ids: set[str] = set()
+    if output.exists():
+        for line in output.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                rows.append(row)
+                existing_ids.add(row["conversation_id"])
+
+    attempts = {kind: 0 for kind in kinds}
+    verified = {kind: 0 for kind in kinds}
+    failures: dict[str, dict[str, int]] = {kind: {} for kind in kinds}
+    resumed = 0
+
+    def record_failure(kind: str, reason: str) -> None:
+        failures[kind][reason] = failures[kind].get(reason, 0) + 1
 
     for kind in kinds:
-        attempts[kind] = 0
-        verified[kind] = 0
         for index in range(per_type):
+            # Seed derived from (global seed, kind, index), not from a running RNG, so a resume picks
+            # up the same conversation the crashed run would have attempted next.
+            conversation_seed = int(hashlib.sha256(f"{seed}:{kind}:{index}".encode()).hexdigest()[:8], 16)
+            conversation_id = conversation_id_for(kind, conversation_seed)
             attempts[kind] += 1
-            conversation_seed = rng.randrange(1, 2**31)
+            if conversation_id in existing_ids:
+                verified[kind] += 1
+                resumed += 1
+                continue
+
+            rng = random.Random(conversation_seed)
             controls = {"topic": rng.choice(TOPICS), "persona": rng.choice(PERSONAS),
                         "formality": rng.choice(FORMALITY), "channel": rng.choice(CHANNELS),
                         "obfuscation": rng.choice(OBFUSCATION)}
-            raw, _ = call(model, build_prompt(kind, controls), conversation_seed)
-            element = kind if kind in ELEMENTS else None
-            parsed = parse_document(raw, element)
-            if parsed is None:
-                discarded += 1
+            try:
+                raw, _ = call(model, build_prompt(kind, controls), conversation_seed)
+            except urllib.error.HTTPError:
+                record_failure(kind, "http_error")
+                write_manifest(manifest_path, model, kinds, attempts, verified, failures, len(rows), seed, resumed)
                 continue
+
+            element = kind if kind in ELEMENTS else None
+            parsed, reason = parse_document(raw, element)
+            if parsed is None:
+                record_failure(kind, reason or "parse")
+                write_manifest(manifest_path, model, kinds, attempts, verified, failures, len(rows), seed, resumed)
+                continue
+
             if element:
                 ok = verify_element(model, element, parsed["cue"],
                                     parsed["turns"][parsed["element_turn"]]["text"], conversation_seed)
             else:
                 ok = verify_benign(model, parsed["turns"], conversation_seed)
             if not ok:
-                discarded += 1
+                record_failure(kind, "verification_no")
+                write_manifest(manifest_path, model, kinds, attempts, verified, failures, len(rows), seed, resumed)
                 continue
+
             verified[kind] += 1
-            # Flush every verified conversation. The first benign run lost all progress to a single
-            # HTTP 500 because rows were only written at the end.
-            checkpoint = [json.dumps(row) for row in rows]
-            output.write_text("\n".join(checkpoint) + "\n", encoding="utf-8")
-            conversation_id = f"gen:{kind}:{hashlib.sha256(str(conversation_seed).encode()).hexdigest()[:10]}"
             split = "heldout" if index % 5 == 4 else "train"
             for number, turn in enumerate(parsed["turns"]):
                 rows.append({
@@ -297,7 +351,7 @@ def generate(output: pathlib.Path, manifest_path: pathlib.Path, kinds: tuple[str
                     "cue": parsed["cue"] if element and number == parsed["element_turn"] else None,
                     "split": split,
                     "generator_model": model,
-                    "verifier": verifier_note,
+                    "verifier": "second prompt (same model)",
                     "prompt_hash": prompt_hash(PLAN_TEMPLATE),
                     "element_prompt_hash": prompt_hash(ELEMENT_VERIFY_TEMPLATE),
                     "benign_prompt_hash": prompt_hash(BENIGN_VERIFY_TEMPLATE),
@@ -306,31 +360,11 @@ def generate(output: pathlib.Path, manifest_path: pathlib.Path, kinds: tuple[str
                     "plan": parsed["plan"],
                     "licence": "project-owned",
                 })
+            output.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            write_manifest(manifest_path, model, kinds, attempts, verified, failures, len(rows), seed, resumed)
 
-    output.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-    yields = {kind: round(verified[kind] / attempts[kind], 3) if attempts[kind] else None for kind in kinds}
-    manifest = {
-        "generator_model": model,
-        "verifier": verifier_note,
-        "prompt_hash": prompt_hash(PLAN_TEMPLATE),
-        "attempts": attempts,
-        "verified": verified,
-        "verified_yield": yields,
-        "verification_state": {
-            "checked_clean": verified,
-            "not_checked": {kind: 0 for kind in kinds},
-            "note": "a row is written only after its check passes, so not_checked is zero by construction",
-        },
-        "rows": len(rows),
-        "discarded": discarded,
-        "seed": seed,
-        "licence": "project-owned",
-        "split_by": "conversation id",
-        "benign_verification": "second prompt asks whether any turn contains any element; yes discards",
-        "element_verification": "mechanical cue-in-turn check, then a second prompt asking presence",
-    }
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(manifest, indent=2))
+    write_manifest(manifest_path, model, kinds, attempts, verified, failures, len(rows), seed, resumed)
+    print(manifest_path.read_text(encoding="utf-8"))
     return 0
 
 
