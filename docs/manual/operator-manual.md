@@ -796,6 +796,53 @@ usable.
 > **Figure M25 (pending capture).** The result bar after a release, with the row gone. Requested as
 > M25. Run directory: pending.
 
+### 4.8 Entity profiles and KPI tiles
+
+The profile view answers one question about a relationship over a stated window. It is not a mail
+reader and it is not a person score. Every tile states what was observed, over which window, with
+how many messages analysed, and what was not produced.
+
+![Figure M27: an entity profile with a produced KPI and visible evidence](images/m27-entity-profile-produced.png)
+
+> **Figure M27.** A governed harness profile for **Harness Billing**, now removed from the shared
+> tree that hosted it. The label comes from `sender_profile`; the relationship has been observed since
+> 18/09 and last contact was 22/09. Coverage is **9 attributable of 11** tenant messages. The
+> effective binding line reads **NoPack, authoritative_disabled**: the tenant is not opted into
+> authoritative policy, so the header says so rather than implying a pack acted.
+>
+> **Responded from the same address within 7 days** is **Observed: 80%**, with **trend up (+60
+> percentage points)** and **coverage 5 analysed of 9, 0 incomplete candidate exclusions**. The
+> expanded evidence names the population: inbound messages with a fully observed 7-day window, **5
+> answered, 4 confirming, 0 unavailable, 0 not applicable, 0 missing**, and **Sources 9 shown of 9**.
+> The definition is pinned at **v1.1.0**. This is an address-reciprocity proxy, not thread linkage;
+> the definition says so.
+>
+> Captured at 1180x720 from `ux-results/console-profile-history`, scenario
+> `console-profile-history`, host build `c9feabf7b48a`, sha256
+> `b987b029f0bad59b79a2613188ce6ce5a5018e8ae7a3a4cfb3273396e12edab7`. The frame is governed
+> harness data: a temporary database was seeded before Host start, then read through the real Host
+> routes and the real console. It is not production traffic.
+
+![Figure M28: a KPI with a named not-enough-history state](images/m28-entity-profile-not-enough-history.png)
+
+> **Figure M28.** The same governed profile with **Message volume against its own prior window**
+> expanded. The tile reads **Not enough history (0 seen; needs 3)** and the trend line says
+> **Trend not produced: current_window_not_enough_history**. Nothing is rendered as zero and no
+> movement is invented. The Produced responsiveness tile above keeps its real value and evidence.
+>
+> Captured at 1180x720 from the same run and host build, sha256
+> `c0a195b594975787da867f93f8c5a66af23978f1da9f94228d33c1c54463fc14`.
+
+Three states need separate names in this view. **Not enough history** means the window is real but
+too thin for the definition's minimum. **Not produced** carries a named reason such as an unavailable
+provider or an excluded measurement. **Reduced coverage** means a value exists but part of the
+candidate set could not be observed; it is never shown as a clean number. Tone and friendliness are
+listed under **Not measured** until they have exemplars and a false-positive budget.
+
+The **Why?** control now opens the definition and the evidence, not the definition alone. A
+reference that cannot be resolved returns a named outcome, and the drawer never renders an opaque id
+as if it were content.
+
 ## 5. Operations
 
 ### 5.1 Live sessions
@@ -959,9 +1006,13 @@ signals, not message content, and its caption says that.
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
 | M26 | Element signals | ux-results/console-external-host/20261018T125450Z-68237 | captured; build 09bed8235ebd; sha256 b9d1acf5…; one urgency_pressure card, +0.001 weak evidence |
+| M27 | Entity profile, produced KPI and evidence | ux-results/console-profile-history | captured; governed harness; build c9feabf7b48a; sha256 b987b029…; Produced 80%, up +60 points, coverage 5/9 |
+| M28 | Entity profile, not enough history | ux-results/console-profile-history | captured; governed harness; build c9feabf7b48a; sha256 c0a195b5…; momentum 0 seen, needs 3 |
 
-Twelve frames in this table are captured, in six batches. M08 and M21a come from the first batch,
-whose host build id was not reported. M09, M10 and M21 come from the second batch, build
+Fourteen frames in this table are captured, in seven batches. M27 and M28 come from the seventh, the
+`console-profile-history` governed harness run against host build `c9feabf7b48a`; they are real
+Host and route output over a temporary seeded database, not production traffic. M08 and M21a come
+from the first batch, whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
 not stamp it, and that gap is recorded rather than filled. M12 comes from the fourth, the
