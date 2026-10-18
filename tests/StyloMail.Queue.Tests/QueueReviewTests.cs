@@ -318,6 +318,33 @@ public sealed class QueueReviewTests
         Assert.Equal(1, recipient.Attempts);
     }
 
+    [Fact]
+    public async Task Actual_recovery_reclaims_an_orphaned_lease_and_delivery_proceeds()
+    {
+        using var h = new QueueHarness();
+        var queueId = await h.AcceptAsync(Mixed(QueueHarness.Start.AddHours(1)));
+
+        var first = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(first);
+
+        // The lease has lapsed and no one has renewed it: recovery is the path that may take it.
+        h.Clock.Advance(TimeSpan.FromMinutes(6));
+        var recovered = await h.Store.RecoverAsync();
+
+        Assert.Contains(queueId, recovered.ReclaimedLeases);
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        Assert.Null(item.LeaseOwner);
+
+        var second = await h.Store.ClaimNextAsync("worker-b");
+        Assert.NotNull(second);
+        Assert.Equal(queueId, second!.QueueId);
+
+        var completion = await h.Store.CompleteAsync(
+            second, QueueHarness.Delivered("worker-b", "queued@example.test"));
+        Assert.Equal(QueueCompletionStatus.Applied, completion.Status);
+    }
+
     private static QueueSubmission Mixed(DateTimeOffset reviewDeadline) => new()
     {
         TenantId = "acme",
