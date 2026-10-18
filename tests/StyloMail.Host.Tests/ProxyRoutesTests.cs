@@ -1005,7 +1005,7 @@ public sealed class ProxyRoutesTests
         var available = Assert.Single(point.Elements, element => element.Element == "credential_request");
         Assert.Equal("prototype_knn", available.Scorer);
         Assert.Equal(ElementScorers.PrototypeKnnVersion, available.ScorerVersion);
-        Assert.Equal("elements/1", available.VocabularyVersion);
+        Assert.Equal(ElementVocabulary.Version, available.VocabularyVersion);
         Assert.Equal("google/embeddinggemma-2", available.ModelTag);
         Assert.Equal("classification/1", available.PrefixVersion);
         Assert.Equal(256, available.Dimension);
@@ -1187,6 +1187,83 @@ public sealed class ProxyRoutesTests
         var point = Assert.Single(series.Points);
         var element = Assert.Single(point.Elements);
         Assert.Equal("credential_request", element.Element);
+    }
+
+    [Fact]
+    public async Task Historical_elements1_points_stay_readable_with_their_own_version()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        const string thread = "thread-historicalA";
+
+        await sink.RecordOutcomeAsync(BatchOutcome("m-historical", thread, at), CancellationToken.None);
+
+        // A stored elements/1 row, including an element that elements/2 removes. It stays readable
+        // as historical data and carries the version it was produced under.
+        await sink.RecordPointAsync(
+            new ProxyElementPoint
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-historical",
+                ThreadToken = thread,
+                Ordinal = 0,
+                Element = "attachment_lure",
+                Scorer = ElementScorers.PrototypeKnn,
+                ScorerVersion = ElementScorers.PrototypeKnnVersion,
+                Score = 0.4,
+                NearestExemplarId = "seed-1:attachment_lure:0003",
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = "none",
+                ModelTag = "google/embeddinggemma-2",
+                PrefixVersion = "classification/1",
+                Dimension = 256,
+                VocabularyVersion = "elements/1",
+                ObservedAt = at,
+            },
+            CancellationToken.None);
+
+        // A current-version point on a different ordinal uses the kept vocabulary.
+        await sink.RecordPointAsync(
+            new ProxyElementPoint
+            {
+                TenantId = TestPrincipals.AcmeTenant,
+                AccountId = "pa_account",
+                TrafficKind = MessageTrafficKind.Retrieval,
+                MessageToken = "m-historical",
+                ThreadToken = thread,
+                Ordinal = 1,
+                Element = ElementVocabulary.CredentialRequest,
+                Scorer = ElementScorers.LinearProbe,
+                ScorerVersion = ElementScorers.LinearProbeVersion,
+                Score = 0.7,
+                NearestExemplarId = null,
+                Availability = ProxyWarningAvailability.Available,
+                AvailabilityReason = "none",
+                ModelTag = "google/embeddinggemma-2",
+                PrefixVersion = "classification/1",
+                Dimension = 256,
+                VocabularyVersion = ElementVocabulary.Version,
+                ObservedAt = at,
+            },
+            CancellationToken.None);
+
+        var series = await ReadAsync<ProxyElementSeriesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
+
+        Assert.Equal(2, series.Points.Count);
+        var historical = Assert.Single(series.Points, point => point.Ordinal == 0);
+        var oldElement = Assert.Single(historical.Elements);
+        Assert.Equal("attachment_lure", oldElement.Element);
+        Assert.Equal("elements/1", oldElement.VocabularyVersion);
+
+        var current = Assert.Single(series.Points, point => point.Ordinal == 1);
+        var currentElement = Assert.Single(current.Elements);
+        Assert.Equal(ElementVocabulary.Version, currentElement.VocabularyVersion);
+        Assert.Equal(ElementVocabulary.CredentialRequest, currentElement.Element);
     }
 
     private static ProxySegmentationOutcome BatchOutcome(
