@@ -46,8 +46,15 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
                 async (tenant, channel, token) =>
                 {
                     if (tls is null) return await _sessions(tenant, channel, token).ConfigureAwait(false);
-                    await using var startTls = new StartTlsServerDuplexChannel(channel.Input, tls, channel.Description);
-                    return await _sessions(tenant, startTls, token).ConfigureAwait(false);
+                    if (_options.Protocol == ProxyListenerProtocol.Smtp)
+                    {
+                        await using var startTls = new StartTlsServerDuplexChannel(channel.Input, tls, channel.Description);
+                        return await _sessions(tenant, startTls, token).ConfigureAwait(false);
+                    }
+
+                    await using var secure = await TlsServerDuplexChannel
+                        .AuthenticateAsync(channel.Input, tls, channel.Description, token).ConfigureAwait(false);
+                    return await _sessions(tenant, secure, token).ConfigureAwait(false);
                 });
             await _listener.StartAsync(cancellationToken).ConfigureAwait(false);
             await _events.PublishAsync(new ProxyListenerEvent
