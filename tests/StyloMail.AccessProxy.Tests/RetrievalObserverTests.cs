@@ -359,7 +359,8 @@ public sealed class RetrievalObserverTests
         await client.ReadLineAsync();
         await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
         await client.ReadLineAsync();
-        var literal = Encoding.ASCII.GetBytes("* 1 FETCH (BODY[] {4}\r\ntest\r\n)\r\n");
+        const string message = "Subject: sink failure control\r\n\r\ntest";
+        var literal = Encoding.ASCII.GetBytes($"* 1 FETCH (BODY[] {{{Encoding.ASCII.GetByteCount(message)}}}\r\n{message}\r\n)\r\n");
         await harness.Transport.Channel!.SendRawAsync(literal);
         var received = new byte[literal.Length];
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

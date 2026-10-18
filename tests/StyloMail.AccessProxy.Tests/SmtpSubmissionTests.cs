@@ -148,7 +148,7 @@ public sealed class SmtpSubmissionTests
         await AuthenticateAsync(client);
         await client.Pipe.SendAsync("MAIL FROM:<a@example.com>\r\n"); await client.Pipe.ReadLineAsync();
         await client.Pipe.SendAsync("RCPT TO:<b@example.com>\r\n"); await client.Pipe.ReadLineAsync();
-        await client.Pipe.SendAsync("DATA\r\nbody\r\n.\r\n");
+        await client.Pipe.SendAsync("DATA\r\nSubject: sink failure control\r\n\r\nbody\r\n.\r\n");
         Assert.StartsWith("354", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
         Assert.StartsWith("250", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
         Assert.Equal(1, sink.PointAttempts);

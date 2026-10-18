@@ -1,24 +1,80 @@
+using System.Buffers;
 using System.Text;
 using StyloMail.AccessProxy.Hosting;
+using StyloMail.Core;
 using StyloMail.Embeddings;
+using StyloMail.Mime;
 
 namespace StyloMail.AccessProxy.Submission;
 
 /// <summary>Bounded, local-only segment/classify emission. Callers keep this optional.</summary>
 public sealed class ProxyElementOrchestrator
 {
+    private const int MaxSegments = 32;
+    private const int MaxSegmentBytes = 6000;
     private readonly IElementClassifier _classifier;
     private readonly IProxyElementSink _sink;
+    private readonly BoundedMimeMessageAnalyzer _mime = new();
 
     public ProxyElementOrchestrator(IElementClassifier classifier, IProxyElementSink sink)
         => (_classifier, _sink) = (classifier ?? throw new ArgumentNullException(nameof(classifier)), sink ?? throw new ArgumentNullException(nameof(sink)));
 
     public async ValueTask EmitAsync(ProxyWarningAnalysisInput identity, ReadOnlyMemory<byte> message, string messageToken, string threadToken, MessageTrafficKind kind, CancellationToken ct)
     {
-        var segments = Segment(message, 32, 6000, out var truncated);
+        ct.ThrowIfCancellationRequested();
+        var baseOutcome = new ProxySegmentationOutcome
+        {
+            TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind,
+            MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt,
+            Availability = ProxyWarningAvailability.NotProduced,
+            AvailabilityReason = ProxySegmentationAvailabilityReason.UnsupportedContent,
+            SegmentCount = 0, Truncated = false, AppliedMaxSegments = MaxSegments,
+            AppliedMaxSegmentBytes = MaxSegmentBytes, AnalysedOrdinals = [], AnySegmentDropped = false,
+        };
+        var parsed = _mime.Analyze(new MimeAnalysisRequest
+        {
+            RawMessage = message,
+            // Addresses are unavailable at this seam. Do not infer trusted identity from headers;
+            // only the parser's new-body view is consumed, not its envelope evidence.
+            Envelope = new MailEnvelope
+            {
+                InternalMessageId = messageToken, TenantId = identity.TenantId,
+                TrustedPrincipalId = identity.AccountId,
+                Direction = kind == MessageTrafficKind.Submission ? MailDirection.Outbound : MailDirection.Inbound,
+                MailFrom = string.Empty, RcptTo = [], ReceivedAt = identity.ObservedAt,
+                MimeDigest = string.Empty, PayloadReference = string.Empty,
+            },
+        });
+        if (!parsed.IsAnalysable)
+        {
+            await _sink.RecordOutcomeAsync(baseOutcome with
+            {
+                AvailabilityReason = parsed.Disposition == MimeParseDisposition.Malformed
+                    ? ProxySegmentationAvailabilityReason.UnreadableMessage
+                    : ProxySegmentationAvailabilityReason.UnsupportedContent,
+            }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var segments = Segment(parsed.Message!.BodyText, out var truncated, out var dropped);
+        if (segments is null || segments.Count == 0)
+        {
+            await _sink.RecordOutcomeAsync(baseOutcome with
+            {
+                AvailabilityReason = segments is null ? ProxySegmentationAvailabilityReason.UnreadableMessage
+                    : ProxySegmentationAvailabilityReason.UnsupportedContent,
+                Truncated = parsed.Coverage.Truncated, AnySegmentDropped = parsed.Coverage.Truncated,
+            }, ct).ConfigureAwait(false);
+            return;
+        }
+        baseOutcome = baseOutcome with
+        {
+            Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxySegmentationAvailabilityReason.None,
+            SegmentCount = segments.Count, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(),
+            Truncated = truncated || parsed.Coverage.Truncated, AnySegmentDropped = dropped || parsed.Coverage.Truncated,
+        };
         try
         {
-            var baseOutcome = new ProxySegmentationOutcome { TenantId = identity.TenantId, AccountId = identity.AccountId, TrafficKind = kind, MessageToken = messageToken, ThreadToken = threadToken, ObservedAt = identity.ObservedAt, Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxySegmentationAvailabilityReason.None, SegmentCount = segments.Count, Truncated = truncated, AppliedMaxSegments = 32, AppliedMaxSegmentBytes = 6000, AnalysedOrdinals = Enumerable.Range(0, segments.Count).ToArray(), AnySegmentDropped = truncated };
             var classified = await _classifier.ClassifyAsync(segments, cancellationToken: ct).ConfigureAwait(false);
             if (classified is ClassificationOutcome.Unavailable unavailable)
             {
@@ -52,10 +108,67 @@ public sealed class ProxyElementOrchestrator
         _ => ProxySegmentationAvailabilityReason.ContractViolation,
     };
 
-    private static List<string> Segment(ReadOnlyMemory<byte> message, int maxSegments, int maxBytes, out bool truncated)
+    private static List<string>? Segment(string body, out bool truncated, out bool dropped)
     {
-        var text = Encoding.UTF8.GetString(message.Span); var result = new List<string>(); truncated = false;
-        foreach (var paragraph in text.Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { if (result.Count == maxSegments) { truncated=true; break; } var bytes=Encoding.UTF8.GetBytes(paragraph); if(bytes.Length>maxBytes) { result.Add(Encoding.UTF8.GetString(bytes,0,maxBytes)); truncated=true; } else result.Add(paragraph); Array.Clear(bytes); }
+        // The parser bounds decoded text. Scan spans instead of a Split array or paragraph byte
+        // buffer; only emitted chunks allocate strings, at most 32 chunks of 6000 UTF-8 bytes.
+        var text = body.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var result = new List<string>();
+        truncated = dropped = false;
+        var position = 0;
+        while (position < text.Length)
+        {
+            var paragraph = NextParagraph(text, ref position);
+            if (paragraph.IsEmpty) continue;
+            if (result.Count == MaxSegments)
+            {
+                truncated = dropped = true;
+                break;
+            }
+            var chunkStart = 0;
+            var bytes = 0;
+            for (var offset = 0; offset < paragraph.Length;)
+            {
+                // A parser character cap can leave an unpaired surrogate. Refuse it instead of
+                // manufacturing a replacement character in a classifier segment.
+                if (Rune.DecodeFromUtf16(paragraph[offset..], out var rune, out var consumed) != OperationStatus.Done)
+                    return null;
+                if (bytes + rune.Utf8SequenceLength > MaxSegmentBytes)
+                {
+                    result.Add(paragraph[chunkStart..offset].ToString());
+                    truncated = true;
+                    if (result.Count == MaxSegments)
+                    {
+                        dropped = true;
+                        return result;
+                    }
+                    chunkStart = offset;
+                    bytes = 0;
+                }
+                bytes += rune.Utf8SequenceLength;
+                offset += consumed;
+            }
+            result.Add(paragraph[chunkStart..].ToString());
+        }
         return result;
+    }
+
+    private static ReadOnlySpan<char> NextParagraph(ReadOnlySpan<char> text, ref int position)
+    {
+        var start = position;
+        while (position < text.Length)
+        {
+            var lineStart = position;
+            var newline = text[position..].IndexOf('\n');
+            var end = newline < 0 ? text.Length : position + newline;
+            position = end < text.Length ? end + 1 : end;
+            if (text[lineStart..end].Trim().IsEmpty)
+            {
+                var paragraph = text[start..lineStart].Trim();
+                if (!paragraph.IsEmpty) return paragraph;
+                start = position;
+            }
+        }
+        return text[start..position].Trim();
     }
 }

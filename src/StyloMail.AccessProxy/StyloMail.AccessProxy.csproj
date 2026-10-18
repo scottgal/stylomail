@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
     <ProjectReference Include="..\StyloMail.Embeddings\StyloMail.Embeddings.csproj" />
+    <ProjectReference Include="..\StyloMail.Mime\StyloMail.Mime.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,6 +38,10 @@
     receiving end and breaks the one promise a mail proxy must keep. "We did not rewrite your
     mail" is a claim we can only make about a byte pump we control. The same reasoning as
     StyloMail.Transport, for the same reason - see its csproj note.
+
+    The first-party StyloMail.Mime reference supplies bounded parsing for the optional analysis
+    copy only: element segmentation consumes decoded new body text, never raw MIME headers or
+    transfer encodings. It does not parse/re-serialise the original bytes on the relay path.
 
     Encryption at rest uses System.Security.Cryptography (AES-GCM, PBKDF2) from the framework
     rather than a key-derivation package, so the credential store has no dependency that could
