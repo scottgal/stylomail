@@ -628,13 +628,13 @@ public static class HostServices
         // 2026-10-02, so a string naming models alone would serve an entry taken under a replaced
         // host. Two readers and one writer is deliberate; a deployment cannot set one and forget
         // the other.
-        var nimbleArmOptions = provider == AssessmentProvider.Cascade
+        var nimbleArmOptions = provider is AssessmentProvider.Cascade or AssessmentProvider.Nimble
             ? BuildNimbleOptions(
                 configuration,
                 services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Nimble"))
             : null;
 
-        var secondArmOptions = provider == AssessmentProvider.Cascade
+        var secondArmOptions = provider is AssessmentProvider.Cascade or AssessmentProvider.Jev
             ? BuildJevOptions(
                 configuration,
                 secrets.JevApiKey!,
@@ -668,6 +668,19 @@ public static class HostServices
 
         var clock = services.GetRequiredService<TimeProvider>();
         var http = services.GetRequiredService<HttpClient>();
+        var providerDeadline = provider switch
+        {
+            AssessmentProvider.Jev => secondArmOptions!.Timeout,
+            AssessmentProvider.Nimble => nimbleArmOptions!.Timeout,
+            AssessmentProvider.Cascade => nimbleArmOptions!.Timeout > secondArmOptions!.Timeout
+                ? nimbleArmOptions.Timeout : secondArmOptions.Timeout,
+            _ => TimeSpan.FromMinutes(5) - TimeSpan.FromSeconds(1),
+        };
+        options = options with
+        {
+            SemanticCache = options.SemanticCache with { FlightMaximumDuration = providerDeadline + TimeSpan.FromSeconds(1) },
+        };
+        logger.LogInformation("Semantic cache flight deadline {FlightDeadlineMs} ms.", options.SemanticCache.FlightMaximumDuration.TotalMilliseconds);
 
         // One arm per provider, and a refusal for anything else rather than a fallback arm. An
         // operator cannot reach the refusal: Select validates the value before this point, so the
@@ -678,9 +691,7 @@ public static class HostServices
         {
             AssessmentProvider.Nimble => new NimbleSemanticMailClassifier(
                 http,
-                BuildNimbleOptions(
-                    configuration,
-                    services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Nimble")),
+                nimbleArmOptions!,
                 clock),
 
             // Wrapped so a rejected credential reaches readiness, which is the thing an operator
@@ -691,10 +702,7 @@ public static class HostServices
             AssessmentProvider.Jev => new CredentialAwareSemanticClassifier(
                 new JevSemanticMailClassifier(
                     http,
-                    BuildJevOptions(
-                        configuration,
-                        secrets.JevApiKey!,
-                        services.GetRequiredService<ILoggerFactory>().CreateLogger("StyloMail.Host.Jev")),
+                    secondArmOptions!,
                     clock),
                 services.GetRequiredService<ProviderCredentialHealth>(),
                 clock),
@@ -747,7 +755,8 @@ public static class HostServices
             // Named rather than positional: it sits behind two optional parameters, and a later
             // insertion would silently repoint it at the wrong one.
             policyContext: new HostPolicyContextSource(
-                services.GetRequiredService<IEmergencyKillSwitch>()));
+                services.GetRequiredService<IEmergencyKillSwitch>()),
+            semanticCacheDiagnostic: kind => logger.LogWarning("Semantic cache shared flight event {FlightEvent}.", kind));
     }
 
     /// <summary>

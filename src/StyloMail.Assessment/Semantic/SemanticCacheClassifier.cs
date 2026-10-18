@@ -101,13 +101,16 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
     private readonly ISemanticCacheStore _store;
     private readonly SemanticCacheOptions _options;
     private readonly TimeProvider _defaultClock;
-    private readonly SingleFlight<string, SemanticAssessment> _flights = new();
+    private readonly SingleFlight<string, SemanticAssessment> _flights;
+    public long ExpiredFlights => _flights.ExpiredFlights;
+    public long DetachedCompletions => _flights.DetachedCompletions;
+    public long TombstoneRefusals => _flights.TombstoneRefusals;
 
     public SemanticCacheClassifier(
         ISemanticMailClassifier inner,
         ISemanticCacheStore store,
         SemanticCacheOptions options,
-        TimeProvider? defaultClock = null)
+        TimeProvider? defaultClock = null, Action<string>? diagnostic = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(store);
@@ -119,6 +122,7 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
         _store = store;
         _options = options;
         _defaultClock = defaultClock ?? TimeProvider.System;
+        _flights = new SingleFlight<string, SemanticAssessment>(options.FlightMaximumDuration, _defaultClock, diagnostic);
     }
 
     public SemanticCacheStatistics Statistics { get; } = new();
@@ -137,6 +141,7 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(clock);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var now = clock.GetUtcNow();
         var keyDigest = SemanticCacheKey.Digest(input, _options);
@@ -155,15 +160,19 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
         // Every path below calls the provider, so they all join the same flight key: two concurrent
         // misses on one key, or a miss and a concurrent sampled refresh, cost one provider call.
         var fresh = await _flights
-            .RunAsync(keyDigest, () => CallProviderAsync(input, keyDigest, cancellationToken))
+            .RunAsync(keyDigest, token => CallProviderAsync(input, keyDigest, token),
+                () => FlightUnavailable(input, keyDigest, clock.GetUtcNow()), cancellationToken,
+                fresh => StoreFresh(fresh, input, keyDigest, fingerprint, now))
             .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (IsEmptyAnswer(fresh))
         {
             // Nothing was answered, so there is nothing worth remembering. With stale reuse opted
             // into this is the one case that reads the expired entry; otherwise the outage stays an
             // outage all the way through, which is what the invariant requires.
-            if (expired is not null && _options.ServeStaleOnProviderUnavailable)
+            if (expired is not null && _options.ServeStaleOnProviderUnavailable
+                && !fresh.Evidence.Any(row => row.SourceVersion == "semantic-cache/flight"))
             {
                 Statistics.RecordStaleServed();
                 return ToHit(expired, keyDigest, stale: true);
@@ -173,6 +182,13 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
             return fresh;
         }
 
+        return fresh;
+    }
+
+    private void StoreFresh(SemanticAssessment fresh, SemanticMailInput input, string keyDigest,
+        SecurityBearingFingerprint fingerprint, DateTimeOffset now)
+    {
+        if (IsEmptyAnswer(fresh)) return;
         _store.Store(
             new CachedSemanticAssessment
             {
@@ -192,7 +208,6 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
             _options,
             now);
 
-        return fresh;
     }
 
     /// <summary>
@@ -236,6 +251,18 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
 
         return lookup;
     }
+
+    private static SemanticAssessment FlightUnavailable(SemanticMailInput input, string keyDigest, DateTimeOffset now) => new()
+    {
+        ResolvedModelVersion = null,
+        Cache = new CacheProvenance { Hit = false, KeyDigest = keyDigest, Stale = false },
+        Evidence = input.Dimensions.Select(dimension => new Evidence
+        {
+            SignalId = dimension.Id, Origin = EvidenceOrigin.Semantic, Availability = EvidenceAvailability.Unavailable,
+            Value = null, Confidence = null, SourceVersion = "semantic-cache/flight", ObservedAt = now,
+            ObservedScope = "message", Attributes = [new EvidenceAttribute { Name = "reason", Value = "TimedOut" }],
+        }).ToArray(),
+    };
 
     private async Task<SemanticAssessment> CallProviderAsync(
         SemanticMailInput input,

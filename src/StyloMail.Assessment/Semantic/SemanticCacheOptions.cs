@@ -56,6 +56,10 @@ public sealed record SemanticCacheOptions
     /// <summary>How long an entry may be served. Must be positive.</summary>
     public TimeSpan EntryLifetime { get; init; } = TimeSpan.FromHours(6);
 
+    /// <summary>Caller-independent hard flight deadline. Host supplies its provider timeout plus
+    /// margin; library callers without provider metadata get a finite, overridable five minutes.</summary>
+    public TimeSpan FlightMaximumDuration { get; init; } = TimeSpan.FromMinutes(5);
+
     /// <summary>Maximum retained entries. A bound is a feature here, not tuning, memory is finite.</summary>
     public int MaxEntries { get; init; } = 10_000;
 
@@ -116,6 +120,8 @@ public sealed record SemanticCacheOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(ClassifierModelVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(QuestionSchemaVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(PreprocessingVersion);
+        if (FlightMaximumDuration <= TimeSpan.Zero || FlightMaximumDuration.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(FlightMaximumDuration), "Flight lifetime must be positive, finite and supported by a timer.");
 
         if (EntryLifetime <= TimeSpan.Zero)
         {

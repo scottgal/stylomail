@@ -45,7 +45,8 @@ public static class AssessmentPipeline
         MailAssessorOptions options,
         QueueOptions? queueOptions = null,
         AdaptiveOptions? adaptiveOptions = null,
-        IAssessmentPolicyContextSource? policyContext = null)
+        IAssessmentPolicyContextSource? policyContext = null,
+        Action<string>? semanticCacheDiagnostic = null)
     {
         ArgumentNullException.ThrowIfNull(mimeAnalyzer);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -65,7 +66,7 @@ public static class AssessmentPipeline
         var cached = new SemanticCacheClassifier(
             classifier,
             new InMemorySemanticCacheStore(),
-            options.SemanticCache);
+            options.SemanticCache, diagnostic: semanticCacheDiagnostic);
 
         return new MailAssessor(
             mimeAnalyzer,
