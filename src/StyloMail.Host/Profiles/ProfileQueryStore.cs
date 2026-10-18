@@ -74,6 +74,31 @@ public sealed class ProfileQueryStore
         {
             using var connection = _database.Open();
 
+            var current = ReadRange(connection, tenantId, scope, windowStart, windowEnd);
+            var prior = ReadRange(
+                connection,
+                tenantId,
+                scope,
+                windowStart.AddDays(-days),
+                windowStart);
+
+            return Task.FromResult(AttachTrends(current, prior));
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The profile could not be read.", ex);
+        }
+    }
+
+    /// <summary>Reads one window. The trend is a second call over the equal-length window before it.</summary>
+    private ProfileSnapshot ReadRange(
+        SqliteConnection connection,
+        string tenantId,
+        PropertyScope scope,
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd)
+    {
+        {
             var scopeCount = CountScope(connection, tenantId, scope, windowStart, windowEnd);
             var rows = ReadMessages(connection, tenantId, scope, windowStart, windowEnd);
             var truncated = scopeCount > MaxMessages;
@@ -113,7 +138,7 @@ public sealed class ProfileQueryStore
                     onlyOutbound: true)
                 : [];
 
-            var snapshot = Build(
+            return Build(
                 tenantId,
                 scope,
                 windowStart,
@@ -123,13 +148,8 @@ public sealed class ProfileQueryStore
                 truncated,
                 tenantMessages,
                 hasher,
-                replyCandidates);
-
-            return Task.FromResult(snapshot);
-        }
-        catch (SqliteException ex)
-        {
-            throw new StorageUnavailableException("The profile could not be read.", ex);
+                replyCandidates,
+                ReadDisplayLabel(connection, tenantId, scope));
         }
     }
 
@@ -147,7 +167,8 @@ public sealed class ProfileQueryStore
         bool truncated,
         int tenantMessages,
         ProfileKeyHasher? hasher,
-        List<MessageRow> replyCandidates)
+        List<MessageRow> replyCandidates,
+        (string? Label, string? Source, string? Reason) displayLabel)
     {
         var total = parsed.Count;
         var coverage = new ProfileCoverage
@@ -217,6 +238,10 @@ public sealed class ProfileQueryStore
         return new ProfileSnapshot
         {
             Scope = scope,
+            DisplayLabel = displayLabel.Label,
+            DisplayLabelAvailable = displayLabel.Label is not null,
+            DisplayLabelSource = displayLabel.Source,
+            DisplayLabelReason = displayLabel.Reason,
             WindowStart = windowStart,
             WindowEnd = windowEnd,
             Coverage = coverage,
@@ -349,6 +374,169 @@ public sealed class ProfileQueryStore
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// A display-safe label that was already stored for this scope.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing is derived here.</b> An entity label comes from the operator's sender profile, a
+    /// company label from the company record, and a domain label is the domain the caller named.
+    /// Message content and hashed identifiers are never read to invent a name. A scope with no
+    /// stored label returns null plus <c>no_stored_label</c>, and the UI renders "Entity &lt;opaque&gt;".
+    /// The lookup is tenant-scoped like every other read in this store.
+    /// </remarks>
+    private static (string? Label, string? Source, string? Reason) ReadDisplayLabel(
+        SqliteConnection connection,
+        string tenantId,
+        PropertyScope scope)
+    {
+        if (scope.Kind == PropertyScopeKind.Domain)
+        {
+            return (scope.Id, "domain", null);
+        }
+
+        if (scope.Kind == PropertyScopeKind.Conversation)
+        {
+            return (null, null, KpiReasons.NoStoredLabel);
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = scope.Kind == PropertyScopeKind.Entity
+            ? "SELECT label FROM sender_profile WHERE tenant_id = $tenant AND principal_id = $id;"
+            : "SELECT name FROM company WHERE tenant_id = $tenant AND company_id = $id;";
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$id", scope.Id);
+
+        var stored = command.ExecuteScalar() as string;
+
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return (null, null, KpiReasons.NoStoredLabel);
+        }
+
+        return (
+            stored.Trim(),
+            scope.Kind == PropertyScopeKind.Entity ? "sender_profile" : "company",
+            null);
+    }
+
+    private static ProfileSnapshot AttachTrends(ProfileSnapshot current, ProfileSnapshot prior)
+    {
+        var previous = prior.Kpis.ToDictionary(kpi => kpi.Definition.Id, StringComparer.Ordinal);
+
+        return current with
+        {
+            Kpis =
+            [
+                .. current.Kpis.Select(kpi => kpi with
+                {
+                    Trend = BuildTrend(
+                        kpi,
+                        previous[kpi.Definition.Id],
+                        prior.WindowStart,
+                        prior.WindowEnd,
+                        prior.Coverage.Truncated),
+                }),
+            ],
+        };
+    }
+
+    /// <summary>
+    /// Compares a value with the same definition over the equal-length prior window.
+    /// </summary>
+    /// <remarks>
+    /// <b>A movement is never inferred from the current value alone.</b> Both windows must be
+    /// Produced under the same definition version; an empty or thin prior window is
+    /// NotEnoughHistory, and a prior value that was not produced is NotProduced. Flat means exactly
+    /// equal because a tolerance band would be an invented threshold.
+    /// </remarks>
+    private static KpiTrend BuildTrend(
+        KpiValue current,
+        KpiValue prior,
+        DateTimeOffset priorWindowStart,
+        DateTimeOffset priorWindowEnd,
+        bool priorTruncated)
+    {
+        KpiTrend Refused(KpiTrendState state, string reason, string detail) => new()
+        {
+            State = state,
+            PriorValue = prior.Value,
+            PriorWindowStart = priorWindowStart,
+            PriorWindowEnd = priorWindowEnd,
+            PriorTruncated = priorTruncated,
+            Reason = reason,
+            Detail = detail,
+        };
+
+        if (current.State == KpiState.NotEnoughHistory)
+        {
+            return Refused(
+                KpiTrendState.NotEnoughHistory,
+                KpiReasons.CurrentWindowNotEnoughHistory,
+                $"The current window needs at least {current.Definition.MinimumSample} observations.");
+        }
+
+        if (current.State != KpiState.Produced || current.Value is null)
+        {
+            return Refused(
+                KpiTrendState.NotProduced,
+                KpiReasons.CurrentWindowNotProduced,
+                current.Detail ?? "The current window did not produce a value.");
+        }
+
+        if (!string.Equals(current.Definition.Version, prior.Definition.Version, StringComparison.Ordinal))
+        {
+            return Refused(
+                KpiTrendState.NotProduced,
+                KpiReasons.DefinitionVersionChanged,
+                "The definition version changed between the two windows, so the values are not "
+                + "comparable.");
+        }
+
+        if (prior.Coverage.Total == 0)
+        {
+            return Refused(
+                KpiTrendState.NotEnoughHistory,
+                KpiReasons.PriorWindowEmpty,
+                "The prior window had no attributable messages.");
+        }
+
+        if (prior.State == KpiState.NotEnoughHistory)
+        {
+            return Refused(
+                KpiTrendState.NotEnoughHistory,
+                KpiReasons.PriorWindowNotEnoughHistory,
+                $"The prior window analysed {prior.Coverage.Analysed}; the definition needs at least "
+                + $"{prior.Definition.MinimumSample}.");
+        }
+
+        if (prior.State != KpiState.Produced || prior.Value is null)
+        {
+            return Refused(
+                KpiTrendState.NotProduced,
+                KpiReasons.PriorWindowNotProduced,
+                prior.Detail ?? "The prior window did not produce a value.");
+        }
+
+        var priorValue = prior.Value.Value;
+        var delta = current.Value.Value - priorValue;
+
+        return new KpiTrend
+        {
+            State = KpiTrendState.Produced,
+            PriorValue = priorValue,
+            Delta = delta,
+            RelativeDelta = priorValue == 0 ? null : delta / Math.Abs(priorValue),
+            Movement = delta > 0
+                ? KpiTrendMovement.Up
+                : delta < 0
+                    ? KpiTrendMovement.Down
+                    : KpiTrendMovement.Flat,
+            PriorWindowStart = priorWindowStart,
+            PriorWindowEnd = priorWindowEnd,
+            PriorTruncated = priorTruncated,
+        };
     }
 
     // ---------------------------------------------------------------------------------------------

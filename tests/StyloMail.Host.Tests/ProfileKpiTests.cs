@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using StyloMail.Core;
 using StyloMail.Host.Contracts;
+using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Serialization;
 using StyloMail.Host.Storage;
@@ -544,6 +545,213 @@ public sealed class ProfileKpiTests
         Assert.Equal(0, profile.Coverage.Messages);
         Assert.Equal(1, profile.Coverage.Unparsable);
         Assert.All(profile.Kpis, kpi => Assert.Equal(KpiState.NotProduced, kpi.State));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Display label
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_profile_without_a_stored_label_says_so_and_names_no_identity()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-3);
+
+        await SeedAsync(host, Assessment(Acme, "a1", at, MailAction.Allow), PrincipalA);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA);
+
+        Assert.False(profile.DisplayLabelAvailable);
+        Assert.Null(profile.DisplayLabel);
+        Assert.Null(profile.DisplayLabelSource);
+        Assert.Equal(KpiReasons.NoStoredLabel, profile.DisplayLabelReason);
+    }
+
+    [Fact]
+    public async Task An_entity_label_comes_from_the_operator_sender_profile()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-3);
+
+        await host.Services.GetRequiredService<ISenderProfileStore>().PutAsync(
+            Acme,
+            new SenderProfile
+            {
+                PrincipalId = PrincipalA,
+                Label = "Acme Billing",
+                UpdatedBy = "test",
+                UpdatedAt = at,
+            },
+            CancellationToken.None);
+
+        await SeedAsync(host, Assessment(Acme, "a1", at, MailAction.Allow), PrincipalA);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA);
+
+        Assert.True(profile.DisplayLabelAvailable);
+        Assert.Equal("Acme Billing", profile.DisplayLabel);
+        Assert.Equal("sender_profile", profile.DisplayLabelSource);
+        Assert.Null(profile.DisplayLabelReason);
+    }
+
+    [Fact]
+    public async Task A_company_label_comes_from_the_company_record()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-3);
+
+        await host.Services.GetRequiredService<ICompanyStore>().PutAsync(
+            Acme,
+            new Company
+            {
+                CompanyId = "co_acme",
+                Name = "Acme Corporation",
+                UpdatedBy = "test",
+                UpdatedAt = at,
+            },
+            CancellationToken.None);
+
+        await host.Services.GetRequiredService<ISenderProfileStore>().PutAsync(
+            Acme,
+            new SenderProfile
+            {
+                PrincipalId = PrincipalA,
+                CompanyId = "co_acme",
+                UpdatedBy = "test",
+                UpdatedAt = at,
+            },
+            CancellationToken.None);
+
+        await SeedAsync(host, Assessment(Acme, "a1", at, MailAction.Allow), PrincipalA);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "company", "co_acme");
+
+        Assert.True(profile.DisplayLabelAvailable);
+        Assert.Equal("Acme Corporation", profile.DisplayLabel);
+        Assert.Equal("company", profile.DisplayLabelSource);
+    }
+
+    [Fact]
+    public async Task A_domain_label_is_the_domain_the_caller_named()
+    {
+        using var host = new TestHost().WithClock();
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "domain", "Example.Test");
+
+        Assert.True(profile.DisplayLabelAvailable);
+        Assert.Equal("example.test", profile.DisplayLabel);
+        Assert.Equal("domain", profile.DisplayLabelSource);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Prior-window trend
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_trend_compares_the_equal_length_prior_window()
+    {
+        using var host = new TestHost().WithClock();
+        var now = host.Clock.GetUtcNow();
+
+        // Prior window: 4 interventions in 5 messages. Current: 1 in 5.
+        for (var index = 0; index < 5; index++)
+        {
+            await SeedAsync(host, Assessment(
+                Acme,
+                $"prior{index}",
+                now.AddDays(-120),
+                index < 4 ? MailAction.Hold : MailAction.Allow));
+            await SeedAsync(host, Assessment(
+                Acme,
+                $"current{index}",
+                now.AddDays(-30),
+                index == 0 ? MailAction.Hold : MailAction.Allow));
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA, windowDays: 90);
+        var trend = Kpi(profile, KpiDefinitions.Handling).Trend;
+
+        Assert.NotNull(trend);
+        Assert.Equal(KpiTrendState.Produced, trend!.State);
+        Assert.Equal(0.8, trend.PriorValue!.Value, 3);
+        Assert.Equal(-0.6, trend.Delta!.Value, 3);
+        Assert.Equal(KpiTrendMovement.Down, trend.Movement);
+        Assert.Equal(profile.WindowStart, trend.PriorWindowEnd);
+        Assert.Equal(profile.WindowStart.AddDays(-90), trend.PriorWindowStart);
+        Assert.False(trend.PriorTruncated);
+    }
+
+    [Fact]
+    public async Task An_empty_prior_window_is_not_enough_history_not_a_rise()
+    {
+        using var host = new TestHost().WithClock();
+        var now = host.Clock.GetUtcNow();
+
+        for (var index = 0; index < 5; index++)
+        {
+            await SeedAsync(host, Assessment(Acme, $"current{index}", now.AddDays(-30), MailAction.Hold));
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA, windowDays: 90);
+        var trend = Kpi(profile, KpiDefinitions.Handling).Trend;
+
+        Assert.NotNull(trend);
+        Assert.Equal(KpiTrendState.NotEnoughHistory, trend!.State);
+        Assert.Equal(KpiReasons.PriorWindowEmpty, trend.Reason);
+        Assert.Null(trend.Movement);
+        Assert.Null(trend.Delta);
+    }
+
+    [Fact]
+    public async Task A_thin_prior_window_is_not_enough_history()
+    {
+        using var host = new TestHost().WithClock();
+        var now = host.Clock.GetUtcNow();
+
+        for (var index = 0; index < 2; index++)
+        {
+            await SeedAsync(host, WithSignals(
+                Assessment(Acme, $"prior{index}", now.AddDays(-120), MailAction.Allow),
+                Signal("semantic.urgency_pressure", 0.9)));
+        }
+
+        for (var index = 0; index < 5; index++)
+        {
+            await SeedAsync(host, WithSignals(
+                Assessment(Acme, $"current{index}", now.AddDays(-30), MailAction.Allow),
+                Signal("semantic.urgency_pressure", 0.9)));
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA, windowDays: 90);
+        var trend = Kpi(profile, KpiDefinitions.Pressure).Trend;
+
+        Assert.NotNull(trend);
+        Assert.Equal(KpiTrendState.NotEnoughHistory, trend!.State);
+        Assert.Equal(KpiReasons.PriorWindowNotEnoughHistory, trend.Reason);
+        Assert.Null(trend.PriorValue);
+        Assert.Null(trend.Movement);
+    }
+
+    [Fact]
+    public async Task A_current_window_without_a_value_has_no_trend()
+    {
+        using var host = new TestHost().WithClock();
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA);
+        var trend = Kpi(profile, KpiDefinitions.Handling).Trend;
+
+        Assert.NotNull(trend);
+        Assert.Equal(KpiTrendState.NotProduced, trend!.State);
+        Assert.Equal(KpiReasons.CurrentWindowNotProduced, trend.Reason);
+        Assert.Null(trend.Movement);
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -45,6 +45,72 @@ public enum KpiState
     NotProduced = 2,
 }
 
+/// <summary>Whether a prior-window comparison produced a movement, and if not why.</summary>
+/// <remarks>
+/// <b>This is not <see cref="KpiDefinition.Direction"/>, which is a preference, not an
+/// observation.</b> A definition saying "higher is better" says nothing about whether the number
+/// moved. The trend is a second measurement over an equal-length window immediately before this
+/// one, and it is absent unless both windows produced a value under the same definition version.
+/// </remarks>
+public enum KpiTrendState
+{
+    Produced = 0,
+
+    /// <summary>The prior window was empty or below the definition's minimum sample.</summary>
+    NotEnoughHistory = 1,
+
+    /// <summary>One of the windows did not produce a value, or the definition version moved.</summary>
+    NotProduced = 2,
+
+    /// <summary>The KPI cannot be compared across windows for this scope (reserved; none today).</summary>
+    NotApplicable = 3,
+}
+
+/// <summary>Which way an observed value moved. Never a judgement, and never inferred from absence.</summary>
+public enum KpiTrendMovement
+{
+    Up = 0,
+    Down = 1,
+
+    /// <summary>Exactly equal. Deliberately not a tolerance band: a threshold would be invented.</summary>
+    Flat = 2,
+}
+
+/// <summary>A prior-window comparison served beside a KPI value.</summary>
+/// <remarks>
+/// The prior window is the same length and immediately precedes the current one. A movement is
+/// only reported when both windows are Produced, the definition version is unchanged, and neither
+/// value is absent. <see cref="PriorTruncated"/> says the prior window hit the row cap, so a reader
+/// can see that its value rests on the most recent messages of that window.
+/// </remarks>
+public sealed record KpiTrend
+{
+    public required KpiTrendState State { get; init; }
+
+    public double? PriorValue { get; init; }
+
+    /// <summary>Current minus prior. Null unless <see cref="State"/> is Produced.</summary>
+    public double? Delta { get; init; }
+
+    /// <summary>
+    /// Delta relative to the prior value's magnitude. Null when the prior value is zero, where a
+    /// relative change has no denominator; the absolute <see cref="Delta"/> is still reported.
+    /// </summary>
+    public double? RelativeDelta { get; init; }
+
+    public KpiTrendMovement? Movement { get; init; }
+
+    public required DateTimeOffset PriorWindowStart { get; init; }
+
+    public required DateTimeOffset PriorWindowEnd { get; init; }
+
+    public required bool PriorTruncated { get; init; }
+
+    public string? Reason { get; init; }
+
+    public string? Detail { get; init; }
+}
+
 /// <summary>
 /// One versioned KPI definition, served beside every value so the console and the manual cannot
 /// drift from the computation.
@@ -161,6 +227,12 @@ public sealed record KpiValue
     public string? Detail { get; init; }
 
     public IReadOnlyList<KpiMeasurement> Measurements { get; init; } = [];
+
+    /// <summary>
+    /// The prior-window comparison, when a profile read supplied one. Null on the bare catalogue,
+    /// where there is no window to compare.
+    /// </summary>
+    public KpiTrend? Trend { get; init; }
 }
 
 /// <summary>The stable names a KPI may use in <see cref="KpiValue.Reason"/>.</summary>
@@ -187,6 +259,27 @@ public static class KpiReasons
 
     /// <summary>The responsiveness proxy saw replies but none matched, so no median exists.</summary>
     public const string NoMatchedPairs = "no_matched_pairs";
+
+    /// <summary>No stored human label exists for this scope; the UI shows "Entity &lt;opaque&gt;".</summary>
+    public const string NoStoredLabel = "no_stored_label";
+
+    /// <summary>The prior window had no attributable messages at all.</summary>
+    public const string PriorWindowEmpty = "prior_window_empty";
+
+    /// <summary>The prior window had messages but below the definition's minimum sample.</summary>
+    public const string PriorWindowNotEnoughHistory = "prior_window_not_enough_history";
+
+    /// <summary>The prior window produced no value (e.g. the signal was not produced there).</summary>
+    public const string PriorWindowNotProduced = "prior_window_not_produced";
+
+    /// <summary>The current window produced no value, so there is nothing to compare.</summary>
+    public const string CurrentWindowNotProduced = "current_window_not_produced";
+
+    /// <summary>The current window is below the definition's minimum sample.</summary>
+    public const string CurrentWindowNotEnoughHistory = "current_window_not_enough_history";
+
+    /// <summary>The definition version changed between the two windows; the values are not comparable.</summary>
+    public const string DefinitionVersionChanged = "definition_version_changed";
 
     public const string NoIdentityCaptured = "no_identity_captured";
 }
