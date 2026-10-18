@@ -110,7 +110,7 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
         ISemanticMailClassifier inner,
         ISemanticCacheStore store,
         SemanticCacheOptions options,
-        TimeProvider? defaultClock = null, Action<string>? diagnostic = null)
+        TimeProvider? defaultClock = null, Action<string>? diagnostic = null, TimeProvider? flightClock = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(store);
@@ -122,7 +122,9 @@ public sealed class SemanticCacheClassifier : IContextualSemanticClassifier
         _store = store;
         _options = options;
         _defaultClock = defaultClock ?? TimeProvider.System;
-        _flights = new SingleFlight<string, SemanticAssessment>(options.FlightMaximumDuration, _defaultClock, diagnostic);
+        // Evidence clocks can be replay-only and intentionally reject timer creation. Lifetime
+        // enforcement uses a separate real clock unless explicitly injected by a deadline test.
+        _flights = new SingleFlight<string, SemanticAssessment>(options.FlightMaximumDuration, flightClock, diagnostic);
     }
 
     public SemanticCacheStatistics Statistics { get; } = new();

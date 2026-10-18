@@ -15,7 +15,7 @@ public sealed class SingleFlightCancellationTests
         var store = new InMemorySemanticCacheStore();
         var options = new SemanticCacheOptions { ClassifierModelVersion = "jev-1.13.0", FlightMaximumDuration = TimeSpan.FromSeconds(2) };
         var diagnostics = new ConcurrentQueue<string>();
-        var classifier = new SemanticCacheClassifier(inner, store, options, clock, diagnostics.Enqueue);
+        var classifier = new SemanticCacheClassifier(inner, store, options, clock, diagnostics.Enqueue, flightClock: clock);
         var input = Input("stalled original key");
         var a = classifier.ClassifyAsync(input, CancellationToken.None).AsTask();
         var first = await inner.Next();
@@ -73,6 +73,36 @@ public sealed class SingleFlightCancellationTests
             Assert.Single(diagnostics, kind => kind == "tombstone_refused");
         }
         finally { inner.ReleaseAll(); await Drain(a, b, other, replacement, joined); }
+    }
+
+    [Fact]
+    public async Task Timer_setup_failure_does_not_leave_a_poisoned_key()
+    {
+        var inner = new GatedClassifier();
+        var classifier = new SemanticCacheClassifier(inner, new InMemorySemanticCacheStore(),
+            new SemanticCacheOptions { ClassifierModelVersion = "jev-1.13.0" }, flightClock: new ThrowOnceTimerClock());
+        var input = Input("timer setup failure");
+        await Assert.ThrowsAsync<NotSupportedException>(() => classifier.ClassifyAsync(input, CancellationToken.None).AsTask());
+        Assert.Equal(0, inner.Calls);
+        var next = classifier.ClassifyAsync(input, CancellationToken.None).AsTask();
+        try
+        {
+            var operation = await inner.Next();
+            operation.Release.TrySetResult();
+            Assert.All((await next).Evidence, row => Assert.Equal(EvidenceAvailability.Available, row.Availability));
+            Assert.Equal(1, inner.Calls);
+        }
+        finally { inner.ReleaseAll(); await Drain(next); }
+    }
+
+    private sealed class ThrowOnceTimerClock : TimeProvider
+    {
+        private int _attempts;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (Interlocked.Increment(ref _attempts) == 1) throw new NotSupportedException("Timer fixture first attempt.");
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
     }
 
     [Fact]

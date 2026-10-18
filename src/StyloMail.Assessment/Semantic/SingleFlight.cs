@@ -35,6 +35,7 @@ public sealed class SingleFlight<TKey, TResult> where TKey : notnull
         public readonly Func<TResult> Unavailable = unavailable;
         public readonly Action<TResult>? Publish = publish;
         public ITimer? Timer;
+        public long Started;
         public bool Expired, Settled, CancellationCompleted;
     }
 
@@ -82,11 +83,19 @@ public sealed class SingleFlight<TKey, TResult> where TKey : notnull
                 else
                 {
                     flight = new Flight(factory, unavailable, publish);
-                    state.Current = flight;
-                    state.Running.Add(flight);
+                    flight.Started = _clock.GetTimestamp();
                     var ownedState = state;
                     var ownedFlight = flight;
-                    flight.Timer = _clock.CreateTimer(_ => Expire(ownedState, ownedFlight), null, _maximum, Timeout.InfiniteTimeSpan);
+                    try { flight.Timer = _clock.CreateTimer(_ => Expire(ownedState, ownedFlight), null, _maximum, Timeout.InfiniteTimeSpan); }
+                    catch
+                    {
+                        flight.Lifetime.Dispose();
+                        if (state.Running.Count == 0)
+                            ((ICollection<KeyValuePair<TKey, State>>)_states).Remove(new(key, state));
+                        throw;
+                    }
+                    state.Current = flight;
+                    state.Running.Add(flight);
                     _ = flight.Result.Task.ContinueWith(static task => { _ = task.Exception; },
                         CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                     start = true;
@@ -141,10 +150,17 @@ public sealed class SingleFlight<TKey, TResult> where TKey : notnull
         Exception? error = null;
         try
         {
+            if (_clock.GetElapsedTime(flight.Started) >= _maximum) Expire(state, flight);
+            lock (state.Gate)
+            {
+                if (flight.Expired) throw new OperationCanceledException();
+            }
             flight.Lifetime.Token.ThrowIfCancellationRequested();
             value = await flight.Factory(flight.Lifetime.Token).ConfigureAwait(false);
         }
         catch (Exception exception) { error = exception; }
+        // A delayed timer callback cannot permit publication after the monotonic deadline.
+        if (_clock.GetElapsedTime(flight.Started) >= _maximum) Expire(state, flight);
         bool detached;
         lock (state.Gate)
         {
