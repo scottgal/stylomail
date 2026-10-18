@@ -1283,13 +1283,8 @@ public sealed partial class QueueStore
             return null;
         }
 
-        return new ReviewOpeningRecord
+        var opening = new ReviewOpening
         {
-            TenantId = tenantId,
-            QueueId = queueId,
-            OpeningEventId = reader.GetString(0),
-            Opening = new ReviewOpening
-            {
                 AssessmentId = reader.GetString(1),
                 Source = string.Equals(reader.GetString(2), "fallback", StringComparison.OrdinalIgnoreCase)
                     ? ReviewOpeningSource.Fallback
@@ -1307,8 +1302,51 @@ public sealed partial class QueueStore
                 UnavailableReason = reader.IsDBNull(13) ? null : reader.GetString(13),
                 FallbackDeadline = reader.IsDBNull(14) ? null : FromDb(reader.GetString(14)),
                 DecidedAt = FromDb(reader.GetString(15)) ?? _options.TimeProvider.GetUtcNow(),
-            },
         };
+
+        ValidateStoredOpening(opening);
+
+        return new ReviewOpeningRecord
+        {
+            TenantId = tenantId,
+            QueueId = queueId,
+            OpeningEventId = reader.GetString(0),
+            Opening = opening,
+        };
+    }
+
+    private static void ValidateStoredOpening(ReviewOpening opening)
+    {
+        if (opening.Source == ReviewOpeningSource.Pack)
+        {
+            if (string.IsNullOrWhiteSpace(opening.PackId)
+                || string.IsNullOrWhiteSpace(opening.PackVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleSetId)
+                || string.IsNullOrWhiteSpace(opening.RuleSetVersion)
+                || opening.UnavailableReason is not null
+                || opening.FallbackDeadline is not null
+                || (opening.EvidenceSnapshotDigest is null) != opening.LegacyDigestAbsent)
+            {
+                throw new InvalidOperationException(
+                    "The stored review opening is a mixed pack row: it must carry pack, rule-set, "
+                    + "digest-or-legacy-absence provenance and no fallback-only fields.");
+            }
+        }
+        else if (opening.PackId is not null
+            || opening.PackVersion is not null
+            || opening.RuleSetId is not null
+            || opening.RuleSetVersion is not null
+            || opening.RuleId is not null
+            || opening.RuleVersion is not null
+            || opening.EvidenceSnapshotDigest is not null
+            || opening.LegacyDigestAbsent
+            || string.IsNullOrWhiteSpace(opening.UnavailableReason)
+            || opening.FallbackDeadline is null)
+        {
+            throw new InvalidOperationException(
+                "The stored review opening is a mixed fallback row: it must carry no pack "
+                + "provenance and must name an unavailable reason and bounded deadline.");
+        }
     }
 
     private static void InsertReviewOpening(
@@ -1325,19 +1363,45 @@ public sealed partial class QueueStore
                 || string.IsNullOrWhiteSpace(opening.PackVersion)
                 || string.IsNullOrWhiteSpace(opening.RuleSetId)
                 || string.IsNullOrWhiteSpace(opening.RuleSetVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleId)
+                || opening.RuleVersion is null
                 || string.IsNullOrWhiteSpace(opening.EvidenceSnapshotDigest))
             {
                 throw new ArgumentException(
-                    "A pack review opening requires pack, rule-set and evidence-digest provenance.",
+                    "A pack review opening requires pack, rule-set, deciding-rule and evidence-digest provenance.",
+                    nameof(opening));
+            }
+
+            if (opening.UnavailableReason is not null || opening.FallbackDeadline is not null)
+            {
+                throw new ArgumentException(
+                    "A pack review opening must not carry fallback-only fields.",
                     nameof(opening));
             }
         }
-        else if (string.IsNullOrWhiteSpace(opening.UnavailableReason)
-            || opening.FallbackDeadline is null)
+        else
         {
-            throw new ArgumentException(
-                "A fallback review opening requires an unavailable reason and a bounded deadline.",
-                nameof(opening));
+            if (opening.PackId is not null
+                || opening.PackVersion is not null
+                || opening.RuleSetId is not null
+                || opening.RuleSetVersion is not null
+                || opening.RuleId is not null
+                || opening.RuleVersion is not null
+                || opening.EvidenceSnapshotDigest is not null
+                || opening.LegacyDigestAbsent)
+            {
+                throw new ArgumentException(
+                    "A fallback review opening must not carry pack provenance or a legacy-digest flag.",
+                    nameof(opening));
+            }
+
+            if (string.IsNullOrWhiteSpace(opening.UnavailableReason)
+                || opening.FallbackDeadline is null)
+            {
+                throw new ArgumentException(
+                    "A fallback review opening requires an unavailable reason and a bounded deadline.",
+                    nameof(opening));
+            }
         }
 
         using var cmd = connection.CreateCommand();

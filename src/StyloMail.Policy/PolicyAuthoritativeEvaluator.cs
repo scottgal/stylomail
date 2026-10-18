@@ -99,7 +99,8 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     private readonly IPolicyBindingReader _bindings;
     private readonly PolicyAuthoritativeOptions _options;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, long> _generation = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _sequence = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _installed = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastObserved = new(StringComparer.Ordinal);
 
     public PolicyAuthoritativeEvaluator(
@@ -131,13 +132,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     /// <summary>Invalidates the tenant's cache after a pack or binding update.</summary>
     public void Invalidate(string tenantId)
     {
-        _generation.AddOrUpdate(tenantId, 1, (_, current) => current + 1);
-        foreach (var key in _cache.Keys.Where(key => key.StartsWith(tenantId + "|", StringComparison.Ordinal)))
-        {
-            _cache.TryRemove(key, out _);
-        }
-
-        _lastObserved.TryRemove(tenantId, out _);
+        // Fence every read already in flight, then clear what was installed before the update.
+        TryAdvanceInstalled(tenantId, NextGeneration(tenantId));
+        ClearCache(tenantId);
     }
 
     public async Task<PolicyAuthoritativeResult> EvaluateAsync(
@@ -155,7 +152,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
             return new PolicyAuthoritativeResult { Kind = PolicyAuthoritativeKind.Disabled };
         }
 
-        var generation = _generation.GetOrAdd(tenantId, 0);
+        // A generation is issued in start order, not install order. The newest-starting read wins
+        // even when an older read completes first, and a delayed older read cannot overwrite it.
+        var generation = NextGeneration(tenantId);
         var cacheKey = $"{tenantId}|{jurisdiction}";
 
         PolicyPack? pack = null;
@@ -180,8 +179,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
 
         if (!packReadFailed && pack is null)
         {
-            // A healthy no-pack answer clears the tenant's cache and is legacy, not a fallback.
-            Invalidate(tenantId);
+            // A healthy no-pack answer clears the tenant's cache and is legacy, not a fallback, but
+            // only if this read is not older than a pack another read already installed.
+            InvalidateIfCurrent(tenantId, generation);
             return new PolicyAuthoritativeResult { Kind = PolicyAuthoritativeKind.Absent };
         }
 
@@ -284,14 +284,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
             Effective = effective,
         });
 
-        if (packFromCache && generation == _generation.GetOrAdd(tenantId, 0))
-        {
-            // A cached pair is already installed; touching it with the same generation is harmless.
-        }
-
         if (!packFromCache)
         {
-            Install(cacheKey, generation, pack, ruleSet, now);
+            Install(tenantId, cacheKey, generation, pack, ruleSet, now);
         }
 
         var snapshot = effective.ToSnapshot();
@@ -396,15 +391,16 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         };
 
     private void Install(
+        string tenantId,
         string cacheKey,
         long generation,
         PolicyPack pack,
         PolicyRuleSet ruleSet,
         DateTimeOffset now)
     {
-        // Claim the next generation atomically. A slow older read that started before a newer
-        // install cannot advance the generation it captured, and therefore cannot overwrite it.
-        if (!_generation.TryUpdate(pack.TenantId, generation + 1, generation))
+        // The newest-starting successful read wins. An older read that completes later does not
+        // install, and a newer read that completes after an older one still does.
+        if (!TryAdvanceInstalled(tenantId, generation))
         {
             return;
         }
@@ -419,7 +415,45 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         }
 
         _cache[cacheKey] = new CacheEntry(pack, ruleSet, now);
-        _lastObserved[pack.TenantId] = now;
+        _lastObserved[tenantId] = now;
+    }
+
+    private long NextGeneration(string tenantId) =>
+        _sequence.AddOrUpdate(tenantId, 1, (_, current) => current + 1);
+
+    private bool TryAdvanceInstalled(string tenantId, long generation)
+    {
+        while (true)
+        {
+            var current = _installed.GetOrAdd(tenantId, 0);
+            if (generation <= current)
+            {
+                return false;
+            }
+
+            if (_installed.TryUpdate(tenantId, generation, current))
+            {
+                return true;
+            }
+        }
+    }
+
+    private void InvalidateIfCurrent(string tenantId, long generation)
+    {
+        if (TryAdvanceInstalled(tenantId, generation))
+        {
+            ClearCache(tenantId);
+        }
+    }
+
+    private void ClearCache(string tenantId)
+    {
+        foreach (var key in _cache.Keys.Where(key => key.StartsWith(tenantId + "|", StringComparison.Ordinal)))
+        {
+            _cache.TryRemove(key, out _);
+        }
+
+        _lastObserved.TryRemove(tenantId, out _);
     }
 
     private static string[] Chain(PolicyPropertyScope scope)

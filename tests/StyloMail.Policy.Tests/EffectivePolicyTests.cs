@@ -163,6 +163,74 @@ public sealed class EffectivePolicyTests
     }
 
     [Fact]
+    public void An_entity_scope_id_is_opaque_and_matches_ordinal_exact()
+    {
+        var levels = PolicyFixtures.DefaultLevels();
+        levels[PolicyCategories.PaymentRedirection] = ToleranceLevel.ZeroTolerance;
+
+        var binding = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b") with
+        {
+            ScopeValue = "ENTITY-1",
+        };
+
+        var effective = Resolve(PolicyFixtures.Pack(levels: levels), bindings: [binding]);
+
+        Assert.Equal(ToleranceLevel.ZeroTolerance, effective.Levels[PolicyCategories.PaymentRedirection]);
+        Assert.Empty(effective.Bindings);
+    }
+
+    [Fact]
+    public void A_tenant_scope_binding_must_name_the_authenticated_tenant()
+    {
+        var levels = PolicyFixtures.DefaultLevels();
+        levels[PolicyCategories.PaymentRedirection] = ToleranceLevel.ZeroTolerance;
+        var pack = PolicyFixtures.Pack(levels: levels);
+        var unrelated = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b") with
+        {
+            ScopeKind = BindingScope.Tenant,
+            ScopeValue = "other-tenant",
+        };
+
+        var rejected = Resolve(pack, bindings: [unrelated]);
+        Assert.Equal(ToleranceLevel.ZeroTolerance, rejected.Levels[PolicyCategories.PaymentRedirection]);
+
+        var matching = unrelated with { ScopeValue = PolicyFixtures.Tenant };
+        var applied = Resolve(pack, bindings: [matching]);
+        Assert.Equal(ToleranceLevel.Observe, applied.Levels[PolicyCategories.PaymentRedirection]);
+    }
+
+    [Fact]
+    public void The_canonical_digest_distinguishes_a_missing_reason_from_a_literal_dash()
+    {
+        var fact = new PolicyPropertyFact
+        {
+            Key = PolicyPropertyKeys.Language,
+            Value = null,
+            State = "Unknown",
+            Availability = "NotProduced",
+            AvailabilityReason = null,
+        };
+
+        var absent = Resolve(PolicyFixtures.Pack(), facts: [fact]).ToSnapshot();
+        var literal = Resolve(
+            PolicyFixtures.Pack(),
+            facts: [fact with { AvailabilityReason = "-" }]).ToSnapshot();
+
+        Assert.NotEqual(
+            System.Text.Json.JsonSerializer.Serialize(absent),
+            System.Text.Json.JsonSerializer.Serialize(literal));
+        Assert.NotEqual(absent.Digest, literal.Digest);
+    }
+
+    [Fact]
     public void An_expired_HoldForReview_binding_still_withholds()
     {
         var binding = PolicyFixtures.Binding(

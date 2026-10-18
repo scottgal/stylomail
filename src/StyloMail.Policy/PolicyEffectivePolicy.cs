@@ -130,55 +130,87 @@ public sealed record EffectivePolicy
         string resolverVersion)
     {
         var builder = new StringBuilder();
-        builder.Append("resolver=").Append(resolverVersion).Append('\n');
-        builder.Append("ceiling=").Append(ceiling).Append('\n');
+        builder.Append("resolver|");
+        AppendField(builder, resolverVersion);
+        builder.Append("ceiling|");
+        AppendField(builder, ceiling.ToString());
         foreach (var (category, level) in levels)
         {
-            builder.Append("level=").Append(category).Append('=').Append(level).Append('\n');
+            builder.Append("level|");
+            AppendField(builder, category);
+            AppendField(builder, level);
         }
 
         foreach (var category in forced)
         {
-            builder.Append("forced=").Append(category).Append('\n');
+            builder.Append("forced|");
+            AppendField(builder, category);
         }
 
         foreach (var category in withheld)
         {
-            builder.Append("withheld=").Append(category).Append('\n');
+            builder.Append("withheld|");
+            AppendField(builder, category);
         }
 
         foreach (var fact in facts)
         {
-            builder.Append("fact=").Append(fact.Key).Append('|').Append(fact.Value ?? "-")
-                .Append('|').Append(fact.State).Append('|').Append(fact.Source ?? "-")
-                .Append('|').Append(fact.Scope ?? "-").Append('|')
-                .Append(fact.Availability ?? "-").Append('|')
-                .Append(fact.AvailabilityReason ?? "-").Append('\n');
+            builder.Append("fact|");
+            AppendField(builder, fact.Key);
+            AppendField(builder, fact.Value);
+            AppendField(builder, fact.State);
+            AppendField(builder, fact.Source);
+            AppendField(builder, fact.Scope);
+            AppendField(builder, fact.Availability);
+            AppendField(builder, fact.AvailabilityReason);
         }
 
         foreach (var key in missing)
         {
-            builder.Append("missing=").Append(key).Append('\n');
+            builder.Append("missing|");
+            AppendField(builder, key);
         }
 
         foreach (var scope in chain)
         {
-            builder.Append("chain=").Append(scope).Append('\n');
+            builder.Append("chain|");
+            AppendField(builder, scope);
         }
 
         foreach (var binding in bindings)
         {
-            builder.Append("binding=").Append(binding.BindingId).Append('|')
-                .Append(binding.Action).Append('|').Append(binding.CategoryId ?? "-")
-                .Append('|').Append(binding.TargetLevel ?? "-").Append('|')
-                .Append(binding.ScopeKind).Append('|').Append(binding.ScopeValue).Append('|')
-                .Append(binding.StartsAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
-                .Append('|').Append(binding.ExpiresAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
-                .Append('|').Append(binding.OnExpiry)
-                .Append('|').Append(binding.Selected ? "1" : "0").Append('\n');
+            builder.Append("binding|");
+            AppendField(builder, binding.BindingId);
+            AppendField(builder, binding.Action);
+            AppendField(builder, binding.CategoryId);
+            AppendField(builder, binding.TargetLevel);
+            AppendField(builder, binding.ScopeKind);
+            AppendField(builder, binding.ScopeValue);
+            AppendField(builder, binding.StartsAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            AppendField(builder, binding.ExpiresAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            AppendField(builder, binding.OnExpiry);
+            AppendField(builder, binding.Selected ? "1" : "0");
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+    }
+
+    /// <summary>
+    /// Length-prefixed canonical field. A null is a distinct tag, so a missing value and a literal
+    /// "-" (or any other delimiter-bearing value) can never produce the same bytes.
+    /// </summary>
+    private static void AppendField(StringBuilder builder, string? value)
+    {
+        if (value is null)
+        {
+            builder.Append('N');
+        }
+        else
+        {
+            builder.Append(value.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(value);
+        }
+
+        builder.Append('|');
     }
 }
 
@@ -244,7 +276,7 @@ public static class EffectivePolicyResolver
                 continue;
             }
 
-            if (!IsInScope(binding, addressedChain))
+            if (!IsInScope(binding, addressedChain, pack.TenantId))
             {
                 continue;
             }
@@ -350,15 +382,23 @@ public static class EffectivePolicyResolver
         };
     }
 
-    private static bool IsInScope(PolicyBinding binding, IReadOnlyList<string> addressedChain)
+    private static bool IsInScope(
+        PolicyBinding binding,
+        IReadOnlyList<string> addressedChain,
+        string tenantId)
     {
         if (binding.ScopeKind == BindingScope.Tenant)
         {
-            return true;
+            // A tenant binding names the tenant explicitly. The chain has no tenant member, and an
+            // unconditional true would apply another tenant's scope value inside this tenant.
+            return string.Equals(binding.ScopeValue, tenantId, StringComparison.Ordinal);
         }
 
+        // Opaque scope ids are exact. Case-folding an entity or conversation id would make the
+        // unrelated binding "ENTITY-1" match "entity-1"; domain canonicalisation belongs at write
+        // time, where a real canonical id can be established, not at match time.
         var key = $"{binding.ScopeKind.ToString().ToLowerInvariant()}:{binding.ScopeValue}";
-        return addressedChain.Any(scope => string.Equals(scope, key, StringComparison.OrdinalIgnoreCase));
+        return addressedChain.Any(scope => string.Equals(scope, key, StringComparison.Ordinal));
     }
 
     private static Dictionary<string, ToleranceLevel> PropertyFloors(

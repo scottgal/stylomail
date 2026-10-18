@@ -285,6 +285,66 @@ public sealed class QueueReviewTests
     }
 
     [Fact]
+    public async Task A_pack_opening_carrying_an_unavailable_reason_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            UnavailableReason = "policy.pack_store_unavailable",
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_pack_opening_carrying_a_fallback_deadline_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            FallbackDeadline = QueueHarness.Start.AddHours(24),
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_fallback_opening_carrying_pack_provenance_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = new ReviewOpening
+        {
+            AssessmentId = "asm-fallback",
+            Source = ReviewOpeningSource.Fallback,
+            PackId = "pack-commerce",
+            PackVersion = "1.0.0",
+            RuleSetId = "rules-commerce",
+            RuleSetVersion = "rules/1",
+            RuleId = "rule-payment",
+            RuleVersion = 1,
+            ReasonCode = "policy.pack_store_unavailable",
+            Reason = "no pack",
+            UnavailableReason = "policy.pack_store_unavailable",
+            FallbackDeadline = QueueHarness.Start.AddHours(24),
+            DecidedAt = QueueHarness.Start,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(24),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
     public async Task A_fallback_opening_without_a_reason_or_deadline_is_refused()
     {
         using var h = new QueueHarness();

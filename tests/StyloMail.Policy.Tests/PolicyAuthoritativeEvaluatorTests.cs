@@ -164,6 +164,129 @@ public sealed class PolicyAuthoritativeEvaluatorTests
         Assert.True(fromCache.Record.PackFromCache);
     }
 
+    [Fact]
+    public async Task A_newer_read_still_installs_when_an_older_read_completed_first()
+    {
+        var reader = new BothControlledPacks();
+        var evaluator = NewControlledEvaluator(reader);
+
+        var older = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+        await reader.OlderStarted.Task;
+        var newer = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+        await reader.NewerStarted.Task;
+
+        reader.Older.SetResult(PolicyFixtures.Pack() with { Version = "1.0.0" });
+        Assert.Equal("1.0.0", (await older).Record!.PackVersion);
+
+        reader.Newer.SetResult(PolicyFixtures.Pack() with { Version = "2.0.0" });
+        Assert.Equal("2.0.0", (await newer).Record!.PackVersion);
+
+        reader.FailAll = true;
+        var cached = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+        Assert.True(cached.Record!.PackFromCache);
+        Assert.Equal("2.0.0", cached.Record.PackVersion);
+    }
+
+    [Fact]
+    public async Task A_delayed_older_absent_does_not_clear_a_newer_installed_pack()
+    {
+        var reader = new BothControlledPacks();
+        var evaluator = NewControlledEvaluator(reader);
+
+        var older = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+        await reader.OlderStarted.Task;
+        var newer = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+        await reader.NewerStarted.Task;
+
+        reader.Newer.SetResult(PolicyFixtures.Pack() with { Version = "2.0.0" });
+        Assert.Equal("2.0.0", (await newer).Record!.PackVersion);
+
+        reader.Older.SetResult(null);
+        Assert.Equal(PolicyAuthoritativeKind.Absent, (await older).Kind);
+
+        reader.FailAll = true;
+        var cached = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+        Assert.True(cached.Record!.PackFromCache);
+        Assert.Equal("2.0.0", cached.Record.PackVersion);
+    }
+
+    private static PolicyAuthoritativeEvaluator NewControlledEvaluator(IPolicyPackReader packs) => new(
+        packs,
+        new RuleReader(PolicyFixtures.RuleSet()),
+        new PropertyReader([], []),
+        new BindingReader(),
+        new PolicyAuthoritativeOptions
+        {
+            Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [PolicyFixtures.Tenant] = "GB",
+            },
+        });
+
+    private sealed class BothControlledPacks : IPolicyPackReader
+    {
+        private int _calls;
+
+        public bool FailAll { get; set; }
+
+        public TaskCompletionSource OlderStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource NewerStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<PolicyPack?> Older { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<PolicyPack?> Newer { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            if (FailAll)
+            {
+                return Task.FromException<PolicyPack?>(new InvalidOperationException("controlled outage"));
+            }
+
+            var call = Interlocked.Increment(ref _calls);
+            if (call == 1)
+            {
+                OlderStarted.SetResult();
+                return Older.Task;
+            }
+
+            if (call == 2)
+            {
+                NewerStarted.SetResult();
+                return Newer.Task;
+            }
+
+            return Task.FromException<PolicyPack?>(new InvalidOperationException("controlled outage"));
+        }
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
     private sealed class RacingPackReader : IPolicyPackReader
     {
         public TaskCompletionSource<PolicyPack?> First { get; } =

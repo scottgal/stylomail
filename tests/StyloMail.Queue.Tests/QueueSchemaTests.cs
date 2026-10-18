@@ -199,6 +199,32 @@ public class QueueSchemaTests
     }
 
     [Fact]
+    public async Task The_opening_table_rejects_a_pack_row_with_fallback_fields()
+    {
+        using var h = new QueueHarness();
+        await h.Store.InitializeAsync();
+
+        await using var connection = h.Connections.Open();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO queue_review_opening
+                (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
+                 pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+                 reason_code, reason, evidence_digest, legacy_digest_absent,
+                 unavailable_reason, fallback_deadline, decided_at)
+            VALUES ('acme', 'q-mixed', 'evt-mixed', 'asm-mixed', 'pack',
+                    'pack-commerce', '1.0.0', 'rules-commerce', 'rules/1',
+                    'rule-payment', 1, 'policy.review', 'mixed', 'digest', 0,
+                    'policy.pack_store_unavailable', '2026-01-02T00:00:00.0000000+00:00',
+                    '2026-01-01T00:00:00.0000000+00:00');
+            """;
+
+        var error = await Assert.ThrowsAsync<SqliteException>(() => command.ExecuteNonQueryAsync());
+        Assert.Contains("CHECK", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Deleting_an_item_takes_its_recipients_and_history_with_it()
     {
         using var h = new QueueHarness();

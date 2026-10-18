@@ -521,13 +521,20 @@ public static class QueueSchema
             CHECK (
                 (opening_source = 'pack'
                     AND pack_id IS NOT NULL AND pack_version IS NOT NULL
-                    AND rule_set_id IS NOT NULL AND rule_set_version IS NOT NULL)
+                    AND rule_set_id IS NOT NULL AND rule_set_version IS NOT NULL
+                    AND unavailable_reason IS NULL AND fallback_deadline IS NULL
+                    AND (
+                        (evidence_digest IS NOT NULL AND legacy_digest_absent = 0)
+                        OR
+                        (evidence_digest IS NULL AND legacy_digest_absent = 1)
+                    ))
                 OR
                 (opening_source = 'fallback'
                     AND pack_id IS NULL AND pack_version IS NULL
                     AND rule_set_id IS NULL AND rule_set_version IS NULL
                     AND rule_id IS NULL AND rule_version IS NULL
                     AND evidence_digest IS NULL
+                    AND legacy_digest_absent = 0
                     AND unavailable_reason IS NOT NULL AND fallback_deadline IS NOT NULL)
             )
         );
