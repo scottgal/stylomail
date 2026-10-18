@@ -229,6 +229,193 @@ public sealed class PolicyAuthoritativeEvaluatorTests
             },
         });
 
+    [Fact]
+    public async Task Two_hundred_fifty_seven_healthy_Absent_tenants_keep_one_fence_each_and_no_live_pack()
+    {
+        var tenants = Enumerable.Range(0, 257)
+            .Select(index => $"tenant-{index}")
+            .ToDictionary(tenant => tenant, _ => "GB", StringComparer.Ordinal);
+        var evaluator = new PolicyAuthoritativeEvaluator(
+            new AbsentPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions { Tenants = tenants });
+
+        foreach (var tenant in tenants.Keys)
+        {
+            var result = await evaluator.EvaluateAsync(
+                tenant, [], new PolicyPropertyScope("entity-1"), Now);
+            Assert.Equal(PolicyAuthoritativeKind.Absent, result.Kind);
+        }
+
+        Assert.Equal(257, CountPrivateDictionary(evaluator, "_fences"));
+        Assert.Equal(0, CountPrivateDictionary(evaluator, "_cache"));
+    }
+
+    [Fact]
+    public async Task Live_pack_values_stay_at_the_256_bound_while_every_fence_survives()
+    {
+        var tenants = Enumerable.Range(0, 257)
+            .Select(index => $"live-tenant-{index}")
+            .ToDictionary(tenant => tenant, _ => "GB", StringComparer.Ordinal);
+        var evaluator = new PolicyAuthoritativeEvaluator(
+            new PerTenantPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions { Tenants = tenants });
+
+        foreach (var tenant in tenants.Keys)
+        {
+            var result = await evaluator.EvaluateAsync(
+                tenant, [], new PolicyPropertyScope("entity-1"), Now);
+            Assert.Equal(PolicyAuthoritativeKind.Pack, result.Kind);
+        }
+
+        Assert.Equal(257, CountPrivateDictionary(evaluator, "_fences"));
+        Assert.Equal(256, CountPrivateDictionary(evaluator, "_cache"));
+    }
+
+    [Fact]
+    public async Task Repeated_assessment_of_one_tenant_does_not_grow_the_live_cache_or_fences()
+    {
+        var evaluator = new PolicyAuthoritativeEvaluator(
+            new PerTenantPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions
+            {
+                Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [PolicyFixtures.Tenant] = "GB",
+                },
+            });
+
+        for (var index = 0; index < 10; index++)
+        {
+            var result = await evaluator.EvaluateAsync(
+                PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(index));
+            Assert.Equal(PolicyAuthoritativeKind.Pack, result.Kind);
+        }
+
+        Assert.Equal(1, CountPrivateDictionary(evaluator, "_fences"));
+        Assert.Equal(1, CountPrivateDictionary(evaluator, "_cache"));
+    }
+
+    [Fact]
+    public void A_restart_with_a_removed_tenant_drops_its_fence()
+    {
+        var first = new PolicyAuthoritativeEvaluator(
+            new AbsentPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions
+            {
+                Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["tenant-old"] = "GB",
+                },
+            });
+        Assert.Equal(1, CountPrivateDictionary(first, "_fences"));
+
+        var restarted = new PolicyAuthoritativeEvaluator(
+            new AbsentPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions
+            {
+                Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["tenant-new"] = "GB",
+                },
+            });
+
+        Assert.Equal(1, CountPrivateDictionary(restarted, "_fences"));
+        Assert.DoesNotContain("tenant-old|GB", FenceKeys(restarted));
+    }
+
+    [Fact]
+    public void Exceeding_the_configured_tenant_cap_refuses_enablement_with_a_named_reason()
+    {
+        var tenants = Enumerable.Range(0, PolicyAuthoritativeOptions.MaxConfiguredTenants + 1)
+            .ToDictionary(index => $"cap-tenant-{index}", _ => "GB", StringComparer.Ordinal);
+
+        var error = Assert.Throws<ArgumentException>(() => new PolicyAuthoritativeEvaluator(
+            new AbsentPackReader(),
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions { Tenants = tenants }));
+
+        Assert.Contains(PolicyAuthoritativeOptions.TenantCapExceeded, error.Message);
+    }
+
+    private static int CountPrivateDictionary(object evaluator, string fieldName)
+    {
+        var field = typeof(PolicyAuthoritativeEvaluator).GetField(
+            fieldName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var dictionary = field.GetValue(evaluator)!;
+        return (int)dictionary.GetType().GetProperty("Count")!.GetValue(dictionary)!;
+    }
+
+    private static IEnumerable<string> FenceKeys(object evaluator)
+    {
+        var field = typeof(PolicyAuthoritativeEvaluator).GetField(
+            "_fences",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var dictionary = field.GetValue(evaluator)!;
+        return (IEnumerable<string>)dictionary.GetType().GetProperty("Keys")!.GetValue(dictionary)!;
+    }
+
+    private sealed class AbsentPackReader : IPolicyPackReader
+    {
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) => Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
+    private sealed class PerTenantPackReader : IPolicyPackReader
+    {
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(
+                PolicyFixtures.Pack(tenant: tenantId, levels: PolicyFixtures.DefaultLevels()));
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
     private sealed class BothControlledPacks : IPolicyPackReader
     {
         private int _calls;
@@ -303,28 +490,40 @@ public sealed class PolicyAuthoritativeEvaluatorTests
 
         var old = Task.Run(() => evaluator.EvaluateAsync(
             PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now));
+        Task<PolicyAuthoritativeResult>? newer = null;
+        Task? invalidate = null;
         try
         {
             await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
             if (explicitInvalidation)
             {
-                evaluator.Invalidate(PolicyFixtures.Tenant);
+                invalidate = Task.Run(() => evaluator.Invalidate(PolicyFixtures.Tenant));
             }
             else
             {
-                var newer = await evaluator.EvaluateAsync(
-                    PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
-                Assert.Equal("2.0.0", newer.Record!.PackVersion);
+                newer = Task.Run(() => evaluator.EvaluateAsync(
+                    PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1)));
             }
 
-            reader.Fail = true;
         }
         finally
         {
+            // The contender is allowed to block on the publication gate until this read finishes,
+            // so release before awaiting it.
             comparer.Release.Set();
         }
 
         await old.WaitAsync(TimeSpan.FromSeconds(15));
+        if (invalidate is not null)
+        {
+            await invalidate.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        else
+        {
+            Assert.Equal("2.0.0", (await newer!.WaitAsync(TimeSpan.FromSeconds(15))).Record!.PackVersion);
+        }
+
+        reader.Fail = true;
         var cached = await evaluator.EvaluateAsync(
             PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
 
@@ -349,15 +548,13 @@ public sealed class PolicyAuthoritativeEvaluatorTests
 
         var old = Task.Run(() => evaluator.EvaluateAsync(
             PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now));
+        Task<PolicyAuthoritativeResult>? absentTask = null;
         try
         {
             await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
             reader.ReturnAbsent = true;
-            var absent = await evaluator.EvaluateAsync(
-                PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
-            Assert.Equal(PolicyAuthoritativeKind.Absent, absent.Kind);
-            reader.ReturnAbsent = false;
-            reader.Fail = true;
+            absentTask = Task.Run(() => evaluator.EvaluateAsync(
+                PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1)));
         }
         finally
         {
@@ -365,6 +562,11 @@ public sealed class PolicyAuthoritativeEvaluatorTests
         }
 
         await old.WaitAsync(TimeSpan.FromSeconds(15));
+        var absent = await absentTask!.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(PolicyAuthoritativeKind.Absent, absent.Kind);
+        reader.ReturnAbsent = false;
+        reader.Fail = true;
+
         var cached = await evaluator.EvaluateAsync(
             PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
 

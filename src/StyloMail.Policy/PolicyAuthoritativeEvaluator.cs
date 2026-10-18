@@ -6,6 +6,11 @@ namespace StyloMail.Policy;
 /// <summary>Per-tenant authoritative configuration. Presence of a tenant opts it in.</summary>
 public sealed record PolicyAuthoritativeOptions
 {
+    /// <summary>The hard startup cap on configured authoritative tenants (and therefore fences).</summary>
+    public const int MaxConfiguredTenants = 4096;
+
+    public const string TenantCapExceeded = "policy.authoritative_tenant_cap_exceeded";
+
     public IReadOnlyDictionary<string, string> Tenants { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -24,6 +29,14 @@ public sealed record PolicyAuthoritativeOptions
                 throw new ArgumentException(
                     "An authoritative tenant must have a non-blank id and jurisdiction.", nameof(Tenants));
             }
+        }
+
+        if (Tenants.Count > MaxConfiguredTenants)
+        {
+            throw new ArgumentException(
+                $"{TenantCapExceeded}: {Tenants.Count} configured authoritative tenants exceed the "
+                + $"hard cap of {MaxConfiguredTenants}. Refusing enablement rather than evicting a fence.",
+                nameof(Tenants));
         }
 
         if (FallbackReviewDeadline < TimeSpan.FromHours(1)
@@ -98,8 +111,19 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     private readonly IPolicyPropertyReader _properties;
     private readonly IPolicyBindingReader _bindings;
     private readonly PolicyAuthoritativeOptions _options;
+
+    /// <summary>Live effective pack/rule pairs. Bounded by <see cref="CacheCapacity"/>.</summary>
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// One generation fence per configured tenant/jurisdiction. Not part of the live cache bound:
+    /// a fence must outlive any in-flight read, and is bounded by the configured tenant count.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, Fence> _fences = new(StringComparer.Ordinal);
+
+    /// <summary>Read-start ordinals, separate from the fence epoch. Completion order is not order.</summary>
     private readonly ConcurrentDictionary<string, long> _sequence = new(StringComparer.Ordinal);
+
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastObserved = new(StringComparer.Ordinal);
 
     public PolicyAuthoritativeEvaluator(
@@ -114,7 +138,13 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         _properties = properties;
         _bindings = bindings;
         _options = options;
-        _options.Validated();
+        var tenants = _options.Validated();
+        foreach (var (tenant, jurisdiction) in tenants)
+        {
+            // Startup constructs exactly one fence per configured tenant/jurisdiction. A tenant
+            // removed from config is absent on the next start; no assessment-path removal.
+            _fences[CacheKey(tenant, jurisdiction)] = new Fence(0, Absent: false);
+        }
     }
 
     public bool IsEnabled(string tenantId) => _options.Tenants.ContainsKey(tenantId);
@@ -131,9 +161,18 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     /// <summary>Invalidates the tenant's cache after a pack or binding update.</summary>
     public void Invalidate(string tenantId)
     {
-        // Fence every read already in flight by publishing a tombstone at a newer generation. The
-        // tombstone is the whole clear: an older read's later AddOrUpdate cannot replace it.
-        PublishAbsence(tenantId, NextGeneration(tenantId));
+        if (!_options.Tenants.TryGetValue(tenantId, out var jurisdiction))
+        {
+            return;
+        }
+
+        var cacheKey = CacheKey(tenantId, jurisdiction);
+        _fences.AddOrUpdate(
+            cacheKey,
+            _ => new Fence(1, Absent: true),
+            (_, fence) => new Fence(fence.Generation + 1, Absent: true));
+        _cache.TryRemove(cacheKey, out _);
+        _lastObserved.TryRemove(tenantId, out _);
     }
 
     public async Task<PolicyAuthoritativeResult> EvaluateAsync(
@@ -151,10 +190,13 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
             return new PolicyAuthoritativeResult { Kind = PolicyAuthoritativeKind.Disabled };
         }
 
-        // A generation is issued in start order, not install order. The newest-starting read wins
-        // even when an older read completes first, and a delayed older read cannot overwrite it.
-        var generation = NextGeneration(tenantId);
-        var cacheKey = $"{tenantId}|{jurisdiction}";
+        var cacheKey = CacheKey(tenantId, jurisdiction);
+
+        // A read ordinal is issued in start order, not install order. The fence epoch changes only
+        // on invalidation or healthy absence. The newest-starting read wins even when an older one
+        // completes first, and a delayed older read cannot overwrite it.
+        var epoch = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false)).Generation;
+        var generation = NextReadGeneration(cacheKey);
 
         PolicyPack? pack = null;
         PolicyRuleSet? ruleSet = null;
@@ -180,13 +222,13 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         {
             // A healthy no-pack answer publishes an absence at this read's generation. It clears a
             // cache an older read installed, but cannot clear a newer pack another read published.
-            PublishAbsence(tenantId, generation);
+            PublishAbsence(tenantId, cacheKey, epoch, generation);
             return new PolicyAuthoritativeResult { Kind = PolicyAuthoritativeKind.Absent };
         }
 
         if (pack is null
             && _cache.TryGetValue(cacheKey, out var cached)
-            && !cached.IsTombstone)
+            && IsLive(cacheKey, cached))
         {
             var age = now - cached.ObservedAt;
             if (age <= TimeSpan.FromMinutes(5))
@@ -195,6 +237,7 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
                 ruleSet = cached.RuleSet;
                 packFromCache = true;
                 cacheAge = age;
+                _cache.TryUpdate(cacheKey, cached with { LastAccess = now }, cached);
             }
         }
 
@@ -295,7 +338,7 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
 
         if (!packFromCache)
         {
-            Install(tenantId, cacheKey, generation, pack, ruleSet, now);
+            Install(tenantId, cacheKey, epoch, generation, pack, ruleSet, now);
         }
 
         var snapshot = effective.ToSnapshot();
@@ -402,35 +445,43 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     private void Install(
         string tenantId,
         string cacheKey,
+        long epoch,
         long generation,
         PolicyPack pack,
         PolicyRuleSet ruleSet,
         DateTimeOffset now)
     {
-        // The candidate carries its generation, and AddOrUpdate publishes decision and value in one
-        // atomic dictionary operation. An older read that resumes after a newer install therefore
-        // sees the newer entry and keeps it rather than overwriting it.
-        var candidate = new CacheEntry(pack, ruleSet, now, generation);
-        var published = _cache.AddOrUpdate(
+        var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
+        if (fence.Generation != epoch || fence.Absent)
+        {
+            return;
+        }
+
+        // Publish the immutable entry atomically. The update factory keeps the higher read ordinal
+        // if another read already published, and the post-publication epoch check removes this
+        // entry if an Invalidate or healthy Absence advanced the fence while it was being written.
+        var candidate = new CacheEntry(pack, ruleSet, now, now, epoch, generation);
+        _cache.AddOrUpdate(
             cacheKey,
             candidate,
-            (_, existing) => generation > existing.Generation ? candidate : existing);
+            (_, existing) => generation > existing.ReadGeneration ? candidate : existing);
 
-        if (!ReferenceEquals(published, candidate))
+        var publishedFence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
+        if (publishedFence.Generation != epoch || publishedFence.Absent)
         {
+            ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(
+                new KeyValuePair<string, CacheEntry>(cacheKey, candidate));
             return;
         }
 
         while (_cache.Count > CacheCapacity)
         {
             var oldest = _cache
-                .Where(entry => !entry.Value.IsTombstone)
-                .OrderBy(entry => entry.Value.ObservedAt)
+                .OrderBy(entry => entry.Value.LastAccess)
                 .FirstOrDefault();
 
             if (string.IsNullOrEmpty(oldest.Key)
-                || !_cache.TryRemove(oldest.Key, out var removed)
-                || ReferenceEquals(removed, candidate))
+                || !_cache.TryRemove(oldest.Key, out _))
             {
                 break;
             }
@@ -439,28 +490,46 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         _lastObserved[tenantId] = now;
     }
 
-    private void PublishAbsence(string tenantId, long generation)
+    private void PublishAbsence(
+        string tenantId,
+        string cacheKey,
+        long epoch,
+        long generation)
     {
-        var tombstone = new CacheEntry(null, null, DateTimeOffset.MinValue, generation);
-        foreach (var key in _cache.Keys
-                     .Where(key => key.StartsWith(tenantId + "|", StringComparison.Ordinal))
-                     .Append($"{tenantId}|{(_options.Tenants.TryGetValue(tenantId, out var jurisdiction) ? jurisdiction : string.Empty)}")
-                     .Distinct(StringComparer.Ordinal))
+        if (_sequence.GetOrAdd(cacheKey, 0) != generation)
         {
-            var published = _cache.AddOrUpdate(
-                key,
-                tombstone,
-                (_, existing) => generation > existing.Generation ? tombstone : existing);
+            // A newer read has started; an older absence may not clear what it may publish.
+            return;
+        }
 
-            if (ReferenceEquals(published, tombstone))
+        while (true)
+        {
+            var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
+            if (fence.Generation != epoch)
             {
-                _lastObserved.TryRemove(tenantId, out _);
+                return;
+            }
+
+            if (_fences.TryUpdate(cacheKey, new Fence(epoch + 1, Absent: true), fence))
+            {
+                break;
             }
         }
+
+        _cache.TryRemove(cacheKey, out _);
+        _lastObserved.TryRemove(tenantId, out _);
     }
 
-    private long NextGeneration(string tenantId) =>
-        _sequence.AddOrUpdate(tenantId, 1, (_, current) => current + 1);
+    private long NextReadGeneration(string cacheKey) =>
+        _sequence.AddOrUpdate(cacheKey, 1, (_, current) => current + 1);
+
+    private bool IsLive(string cacheKey, CacheEntry entry)
+    {
+        var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
+        return !fence.Absent && fence.Generation == entry.Epoch;
+    }
+
+    private static string CacheKey(string tenantId, string jurisdiction) => $"{tenantId}|{jurisdiction}";
 
     private static string[] Chain(PolicyPropertyScope scope)
     {
@@ -473,11 +542,12 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     }
 
     private sealed record CacheEntry(
-        PolicyPack? Pack,
-        PolicyRuleSet? RuleSet,
+        PolicyPack Pack,
+        PolicyRuleSet RuleSet,
         DateTimeOffset ObservedAt,
-        long Generation)
-    {
-        public bool IsTombstone => Pack is null || RuleSet is null;
-    }
+        DateTimeOffset LastAccess,
+        long Epoch,
+        long ReadGeneration);
+
+    private sealed record Fence(long Generation, bool Absent);
 }
