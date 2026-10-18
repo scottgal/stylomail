@@ -587,9 +587,9 @@ says so rather than offering a guessed conversation.
 
 ### 4.6 Element signals
 
-The element layer is a second, content-free view of a proxied submission. It splits the message into
-bounded segments and scores five named elements per segment at a loopback embedding service. The
-console does not render this series yet. The Host route is
+The element layer is a second, content-free view of a proxied submission. It is designed to split
+the message into bounded segments and score five named elements per segment at a loopback embedding
+service. The console does not render this series yet. The Host route is
 `GET /v1/proxy/conversations/{threadToken}/elements?window=last_24_hours`, with provenance
 `proxy_element_classification`. It is a sibling of the tone and warning series, not a replacement
 for either.
@@ -640,11 +640,12 @@ the segment sits equidistant from the two exemplar sets, which is not the same a
 
 #### Segments and ordinals
 
-A submission is split into zero-based contiguous ordinals, at most 32 segments and at most 6000
-bytes each. The layer records the applied bounds, the ordinals actually analysed, and whether any
-segment was dropped. The element series groups scores by turn token and ordinal, so available and
-not-produced entries for one segment sit in one list; it does not invent an entry the Host did not
-record.
+The intended design splits a submission into zero-based contiguous ordinals, at most 32 segments
+and at most 6000 bytes each. The layer records the applied bounds, the ordinals actually analysed,
+and whether any segment was dropped. The element series groups scores by turn token and ordinal, so
+available and not-produced entries for one segment sit in one list; it does not invent an entry the
+Host did not record. The independent review found that the current implementation does not meet this
+design; see the provisional evidence note below.
 
 #### Both directions in one harness run
 
@@ -656,6 +657,15 @@ and `elementPointCount: 5`, with one point for each of the five elements under
 one 168-byte body, the SMTP client completing STARTTLS, authenticating and submitting one message,
 and `IMAP+SMTP PASS`. `sessions-smtp-live.json` records authenticated Imap and Smtp sessions on the
 same opaque account `pa_f1cd145597b34ed4bec9c2a37866a978`. Host build `cf6faa6d7f69`.
+
+> **Provisional evidence.** The independent review found a segmentation defect in the current
+> implementation. The orchestrator decodes the entire raw wire message as UTF-8, headers and
+> transfer encoding included, and splits only on LF LF, so a normal CRLF message becomes one
+> 6000-byte fragment and later body text is never analysed while segment coverage is still
+> reported. The five points in the run above were produced, but they describe the analysed
+> segments, not yet the whole message; the analysed fragment may be header-laden rather than the
+> body. Treat this evidence as provisional until the segmenter is repaired and a new harness run
+> exists.
 
 #### Calibration and the false-positive budget
 
