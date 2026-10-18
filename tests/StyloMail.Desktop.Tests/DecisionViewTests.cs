@@ -29,6 +29,23 @@ public sealed class DecisionViewTests
         Assert.Equal(["credential_request_high", "link_display_mismatch"], view.Reasons.Select(r => r.Code));
     }
 
+    [Fact]
+    public void The_first_screen_summary_uses_the_first_ranked_reason_and_plain_outcome()
+    {
+        var view = DecisionView.From(Decision());
+
+        Assert.Equal(view.Reasons[0].Message, view.PlainLanguageReason);
+        Assert.Equal("This email was stopped before delivery for review.", view.OutcomeLabel);
+    }
+
+    [Fact]
+    public void A_decision_without_reasons_admits_that_the_explanation_was_not_recorded()
+    {
+        var view = DecisionView.From(Decision() with { Reasons = [] });
+
+        Assert.Contains("did not record a reason", view.PlainLanguageReason, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// The fraction has three readings and the pane says which one it is: zero
     /// and one are measurements at the two ends of the range, and null is a

@@ -34,6 +34,12 @@ public sealed class DecisionView
     /// <summary>What policy did.</summary>
     public required string ActionLabel { get; init; }
 
+    /// <summary>The outcome in language suitable for the first line of a review.</summary>
+    public required string OutcomeLabel { get; init; }
+
+    /// <summary>The first-ranked reason, presented before diagnostic detail.</summary>
+    public required string PlainLanguageReason { get; init; }
+
     /// <summary>Which channel the message came from.</summary>
     public required string ChannelLabel { get; init; }
 
@@ -172,6 +178,8 @@ public sealed class DecisionView
             EvidenceView.From,
             StringComparer.Ordinal);
 
+        var reasons = decision.Reasons.Select(reason => ReasonView.From(reason, bySignal)).ToArray();
+
         return new DecisionView
         {
             DecisionCount = decisionCount,
@@ -180,6 +188,10 @@ public sealed class DecisionView
                 "yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
             IsFixture = isFixture,
             ActionLabel = decision.Action.ToString(),
+            OutcomeLabel = DescribeOutcome(decision.Action),
+            PlainLanguageReason = reasons.Length > 0
+                ? reasons[0].Message
+                : "StyloMail did not record a reason with this decision.",
             ChannelLabel = decision.Channel.Kind.ToString(),
 
             // Only said when it is true. A banner that appears on every decision
@@ -227,7 +239,7 @@ public sealed class DecisionView
                     : "None of the weight this decision asked about was counted, so the risk index "
                         + "beside this is NOT a measurement: a fully masked message and a "
                         + "measured-benign one read the same here.",
-            Reasons = [.. decision.Reasons.Select(reason => ReasonView.From(reason, bySignal))],
+            Reasons = reasons,
             Dimensions = [.. decision.RiskDimensions.Select(DimensionView.From)],
             Evidence = [.. decision.Evidence.Select(EvidenceView.From)],
             TrendObservations = [.. decision.Evidence
@@ -239,6 +251,16 @@ public sealed class DecisionView
             Cache = decision.Cache is null ? null : CacheEntry.From(decision.Cache),
         };
     }
+
+    private static string DescribeOutcome(MailAction action) => action switch
+    {
+        MailAction.Allow => "This email was allowed to continue.",
+        MailAction.Hold => "This email is being held while StyloMail checks it again.",
+        MailAction.Quarantine => "This email was stopped before delivery for review.",
+        MailAction.Defer => "This email was not accepted yet; the sender can try again later.",
+        MailAction.Reject => "This email was not accepted for delivery.",
+        _ => "StyloMail recorded a decision for this email.",
+    };
 }
 
 /// <summary>

@@ -233,6 +233,8 @@ public sealed class ShellModel : ObservableObject
 
             Raise(nameof(SelectedPaneTitle));
             Raise(nameof(SelectedPaneDetail));
+            Raise(nameof(SelectedPaneTechnicalDetail));
+            Raise(nameof(HasSelectedPaneTechnicalDetail));
             Raise(nameof(EmptyListDetail));
 
             // The detail pane's empty text is written for the destination that
@@ -246,6 +248,8 @@ public sealed class ShellModel : ObservableObject
     {
         Raise(nameof(SelectedPaneTitle));
         Raise(nameof(SelectedPaneDetail));
+        Raise(nameof(SelectedPaneTechnicalDetail));
+        Raise(nameof(HasSelectedPaneTechnicalDetail));
         Raise(nameof(EmptyListDetail));
     }
 
@@ -458,6 +462,20 @@ public sealed class ShellModel : ObservableObject
     public string SelectedPaneDetail => SelectedItem?.Detail ?? string.Empty;
 
     /// <summary>
+    /// Exact queue terminology, kept available without making the primary
+    /// navigation read like an API client.
+    /// </summary>
+    public string? SelectedPaneTechnicalDetail => SelectedItem?.Queue switch
+    {
+        MessageListState.AwaitingDecision => "Internal queue state: awaiting_decision.",
+        MessageListState.Held => "Internal queue state: held (scheduled re-check).",
+        MessageListState.Quarantined => "Internal queue state: quarantined (review before delivery).",
+        _ => null,
+    };
+
+    public bool HasSelectedPaneTechnicalDetail => SelectedPaneTechnicalDetail is not null;
+
+    /// <summary>
     /// The middle pane's explanation when it is empty.
     /// </summary>
     /// <remarks>
@@ -583,26 +601,24 @@ public sealed class ShellModel : ObservableObject
         model.Sections.Add(new SidebarSection("Queues",
         [
             new SidebarItem(
-                "Awaiting decision",
+                "Needs your decision",
                 SidebarItemState.Available,
-                "GET /v1/messages?state=awaiting_decision",
-                "Nothing is awaiting a decision. This lists what has been accepted and not yet "
-                    + "decided on; mail already in normal delivery is not enumerable here.",
+                "Email waiting for a decision before it can move on.",
+                "No email needs your decision right now.",
                 MessageListState.AwaitingDecision),
 
             new SidebarItem(
-                "Held",
+                "Being re-checked",
                 SidebarItemState.Available,
-                "GET /v1/messages?state=held",
-                "Nothing is held. A held message is retained to a bounded re-evaluation deadline, "
-                    + "which is an observation window rather than a soft reject.",
+                "Email waiting for its scheduled re-check.",
+                "No email is waiting for a scheduled re-check.",
                 MessageListState.Held),
 
             new SidebarItem(
-                "Quarantined",
+                "Review before delivery",
                 SidebarItemState.Available,
-                "GET /v1/messages?state=quarantined",
-                "Nothing is quarantined. Releasing one is audited and requires the review privilege.",
+                "Email stopped before delivery until someone reviews it.",
+                "No email is waiting for review before delivery.",
                 MessageListState.Quarantined),
         ]));
 
@@ -951,10 +967,11 @@ public sealed class ShellModel : ObservableObject
         PendingAction = new ActionRequest
         {
             Kind = ActionKind.PauseSender,
-            Title = $"Pause {sender.Title}",
+            Title = $"Block outgoing mail from {sender.Title}",
             Consequence =
-                "Outbound mail from this account will stop being delivered until it is resumed. "
-                + "The pause is recorded against your principal.",
+                "Email sent from this account will stop being delivered until you allow it again. "
+                + "This affects outgoing email only and is recorded in the audit trail.",
+            ConfirmLabel = "Block outgoing mail",
             Reason = string.Empty,
 
             // The principal, not the title. The title is the operator's label,
@@ -973,10 +990,11 @@ public sealed class ShellModel : ObservableObject
         PendingAction = new ActionRequest
         {
             Kind = ActionKind.ResumeSender,
-            Title = $"Resume {sender.Title}",
+            Title = $"Allow outgoing mail from {sender.Title}",
             Consequence =
-                "Outbound mail from this account will be delivered again. "
-                + "The resume is recorded against your principal.",
+                "Email sent from this account can be delivered again. "
+                + "This affects outgoing email only and is recorded in the audit trail.",
+            ConfirmLabel = "Allow outgoing mail",
             Reason = string.Empty,
             PrincipalId = sender.PrincipalId ?? sender.Title,
         };
@@ -990,10 +1008,11 @@ public sealed class ShellModel : ObservableObject
         PendingAction = new ActionRequest
         {
             Kind = ActionKind.ReleaseQuarantine,
-            Title = $"Release {message.QueueId}",
+            Title = $"Release email {message.QueueId} to delivery",
             Consequence =
-                "The message will be delivered to its recipients. Releasing is recorded against "
-                + "your principal, and delivering it cannot be undone.",
+                "This email will be sent to its listed recipients. Delivery cannot be undone, and "
+                + "the release is recorded in the audit trail.",
+            ConfirmLabel = "Release to delivery",
             Reason = string.Empty,
             QueueId = message.QueueId,
         };
@@ -1280,7 +1299,37 @@ public sealed class MessageRow
             .Min(),
     };
 
-    public string StateLabel => State.ToString();
+    /// <summary>The queue state in language an email administrator can act on.</summary>
+    public string StateLabel => State switch
+    {
+        DeliveryState.Queued => "Ready to send",
+        DeliveryState.Held => "Being re-checked",
+        DeliveryState.Quarantined => "Waiting for review",
+        DeliveryState.Delivering => "Sending now",
+        DeliveryState.Delivered => "Delivered",
+        DeliveryState.RetryScheduled => "Will try again",
+        DeliveryState.TerminalFailure => "Could not be delivered",
+        _ => State.ToString(),
+    };
+
+    /// <summary>
+    /// The safe, state-level explanation the listing contract supports.
+    /// </summary>
+    /// <remarks>
+    /// This intentionally does not claim the specific assessment reason: the
+    /// listing has no decision summary. A future Host read must supply that
+    /// rather than letting the console guess from the state.
+    /// </remarks>
+    public string StateExplanation => State switch
+    {
+        DeliveryState.Held => "Waiting for its scheduled re-check before it can move on. The specific reason is not available in this view.",
+        DeliveryState.Quarantined => "Stopped before delivery and waiting for a review decision. The specific reason is not available in this view.",
+        DeliveryState.RetryScheduled => "A delivery attempt did not finish; StyloMail will try again.",
+        DeliveryState.TerminalFailure => "Delivery could not be completed. Check the delivery record before acting.",
+        _ => string.Empty,
+    };
+
+    public bool HasStateExplanation => StateExplanation.Length > 0;
 
     public string RecipientsLabel => Recipients.Count switch
     {

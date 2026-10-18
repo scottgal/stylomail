@@ -41,6 +41,9 @@ public sealed record ActionRequest
     /// <summary>What will actually happen, in plain words.</summary>
     public required string Consequence { get; init; }
 
+    /// <summary>The final button text, naming the actual consequence.</summary>
+    public required string ConfirmLabel { get; init; }
+
     /// <summary>
     /// The audit reason. Required for every action here.
     /// </summary>

@@ -152,10 +152,10 @@
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
                         <TextBlock Classes="actionLabel"
                                    VerticalAlignment="Center"
-                                   Text="Reason (recorded in the audit trail)" />
+                                   Text="Tell the audit trail why" />
                         <TextBox x:Name="PendingReasonBox"
                                  Width="380"
-                                 Watermark="Why this is being done"
+                                 Watermark="Explain this decision"
                                  Text="{Binding PendingReason, Mode=TwoWay}" />
                     </StackPanel>
                 </StackPanel>
@@ -163,7 +163,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
                     <Button x:Name="CancelActionButton" Content="Cancel" Click="OnCancelActionClick" />
                     <Button x:Name="ConfirmActionButton"
-                            Content="Confirm"
+                            Content="{Binding PendingAction.ConfirmLabel}"
                             Classes="primaryButton"
                             IsEnabled="{Binding CanConfirmAction}"
                             Click="OnConfirmActionClick" />
@@ -220,12 +220,12 @@
                                                                     VerticalAlignment="Center"
                                                                     Margin="0,0,8,0">
                                                             <Button Classes="rowButton"
-                                                                    Content="Pause"
+                                                                    Content="Block outgoing"
                                                                     AutomationProperties.AutomationId="{Binding PauseAutomationId}"
                                                                     IsVisible="{Binding CanPause}"
                                                                     Click="OnPauseSenderClick" />
                                                             <Button Classes="rowButton"
-                                                                    Content="Resume"
+                                                                    Content="Allow outgoing"
                                                                     AutomationProperties.AutomationId="{Binding ResumeAutomationId}"
                                                                     IsVisible="{Binding CanResume}"
                                                                     Click="OnResumeSenderClick" />
@@ -269,6 +269,14 @@
                                 <TextBlock x:Name="PaneDetailText"
                                            Classes="paneDetail"
                                            Text="{Binding SelectedPaneDetail}" />
+                                <Expander x:Name="QueueTechnicalDetailExpander"
+                                          Margin="0,6,0,0"
+                                          Header="Why? View queue details"
+                                          IsVisible="{Binding HasSelectedPaneTechnicalDetail}">
+                                    <TextBlock Classes="paneDetail"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding SelectedPaneTechnicalDetail}" />
+                                </Expander>
                             </StackPanel>
 
                             <!--
@@ -280,7 +288,7 @@
                                     Grid.Column="1"
                                     Classes="rowButton"
                                     VerticalAlignment="Center"
-                                    Content="Release"
+                                    Content="Release to delivery"
                                     IsVisible="{Binding CanReleaseSelected}"
                                     Click="OnReleaseClick" />
                         </Grid>
@@ -384,6 +392,10 @@
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Classes="rowTitle" Text="{Binding QueueId}" />
                                         <TextBlock Classes="rowSubtitle" Text="{Binding RecipientsLabel}" />
+                                        <TextBlock Classes="rowSubtitle"
+                                                   TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasStateExplanation}"
+                                                   Text="{Binding StateExplanation}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right">
@@ -404,7 +416,7 @@
                                         <Button Classes="rowButton"
                                                 HorizontalAlignment="Right"
                                                 Margin="0,4,0,0"
-                                                Content="Open message"
+                                                Content="View email status"
                                                 AutomationProperties.AutomationId="{Binding OpenAutomationId}"
                                                 Click="OnOpenMessageClick" />
                                     </StackPanel>
@@ -588,7 +600,7 @@
                         <TextBlock Classes="paneTitle" Text="Decision" />
                         <TextBlock Classes="paneDetail"
                                    Margin="0,2,0,14"
-                                   Text="Why this message was held, or allowed." />
+                                   Text="What happened, in plain language." />
 
                         <!-- ===== what happened ===== -->
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -602,6 +614,23 @@
                                    Margin="0,2,0,6"
                                    Text="{Binding AssessedAtLabel}" />
 
+                        <Border x:Name="PlainLanguageDecisionSummary"
+                                Classes="card"
+                                Margin="0,0,0,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="cardTitle" Text="What happened" />
+                                <TextBlock x:Name="DecisionOutcomeText"
+                                           Classes="cardBody"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding OutcomeLabel}" />
+                                <TextBlock Classes="cardTitle" Margin="0,4,0,0" Text="Why it needs attention" />
+                                <TextBlock x:Name="DecisionPlainLanguageReasonText"
+                                           Classes="cardBody"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding PlainLanguageReason}" />
+                            </StackPanel>
+                        </Border>
+
                         <Border x:Name="DecisionFixtureBanner"
                                 Classes="cardWarning"
                                 Margin="0,0,0,8"
@@ -610,6 +639,10 @@
                                        TextWrapping="Wrap"
                                        Text="Illustrative UI fixture. These values were not returned by the Host." />
                         </Border>
+
+                        <Expander x:Name="DecisionTechnicalDetailsExpander"
+                                  Header="Why? View detailed checks and evidence">
+                            <StackPanel Spacing="0">
 
                         <!-- The full response can include trend-window rows that no reason cites.
                              Keep each Host observation visible with its own time, scope/window,
@@ -959,6 +992,8 @@
 
                         <TextBlock Classes="sectionLabel" Text="Semantic cache" Margin="0,16,0,4" />
                         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Cache.Display}" />
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
                 </ScrollViewer>
 

@@ -38,7 +38,9 @@ public sealed class ShellModelTests
             .ToList();
 
         Assert.Contains("Host", titles);
-        Assert.Contains("Awaiting decision", titles);
+        Assert.Contains("Needs your decision", titles);
+        Assert.Contains("Being re-checked", titles);
+        Assert.Contains("Review before delivery", titles);
         Assert.Contains("Decisions", titles);
 
         Assert.Contains(model.Sections, section => section.Title == "Senders");
@@ -970,10 +972,10 @@ public sealed class ShellModelTests
 
         model.SelectedItem = model.Sections
             .SelectMany(section => section.Items)
-            .Single(item => item.Title == "Awaiting decision");
+            .Single(item => item.Title == "Needs your decision");
 
         // The entry's own sentence, which says what an empty listing means.
-        Assert.Contains("Nothing is awaiting a decision", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("No email needs your decision", model.EmptyListDetail, StringComparison.Ordinal);
 
         // The second cause, which the entry cannot know on its own: nothing could
         // be queued rather than nothing was. Both ways of being unable to assess
@@ -985,6 +987,41 @@ public sealed class ShellModelTests
         // Nothing has reported a failure yet, so the text must not point at a
         // list that is not on screen.
         Assert.DoesNotContain("failed checks below", model.EmptyListDetail, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(Api.Contracts.DeliveryState.Held, "Being re-checked", "scheduled re-check")]
+    [InlineData(Api.Contracts.DeliveryState.Quarantined, "Waiting for review", "Stopped before delivery")]
+    public void A_message_row_uses_plain_state_language_without_inventing_a_specific_reason(
+        Api.Contracts.DeliveryState state,
+        string expectedLabel,
+        string expectedExplanation)
+    {
+        var row = new MessageRow
+        {
+            QueueId = "q-moderator",
+            State = state,
+            Attempts = 1,
+            Recipients = ["customer@example.test"],
+        };
+
+        Assert.Equal(expectedLabel, row.StateLabel);
+        Assert.True(row.HasStateExplanation);
+        Assert.Contains(expectedExplanation, row.StateExplanation, StringComparison.Ordinal);
+        Assert.Contains("not available in this view", row.StateExplanation, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("policy", row.StateExplanation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_queue_keeps_the_exact_state_behind_its_why_expander()
+    {
+        var model = ShellModel.CreateDefault();
+        model.SelectedItem = model.Sections
+            .Single(section => section.Title == "Queues")
+            .Items.Single(item => item.Queue == MessageListState.Held);
+
+        Assert.True(model.HasSelectedPaneTechnicalDetail);
+        Assert.Equal("Internal queue state: held (scheduled re-check).", model.SelectedPaneTechnicalDetail);
     }
 
     /// <summary>

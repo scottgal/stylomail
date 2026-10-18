@@ -159,7 +159,22 @@ public sealed class ActionTests
         model.RequestRelease(quarantined);
 
         Assert.True(model.HasPendingAction);
-        Assert.Contains("delivered", model.PendingAction!.Consequence, StringComparison.OrdinalIgnoreCase);
+        var pending = model.PendingAction!;
+        Assert.Contains("sent to its listed recipients", pending.Consequence, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Release to delivery", pending.ConfirmLabel);
+        Assert.Contains("cannot be undone", pending.Consequence, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Blocking_a_sender_names_the_outgoing_scope_before_confirmation()
+    {
+        var model = WithSenders();
+
+        model.RequestPause(Sender(model, "untouched@example.test"));
+
+        Assert.Equal("Block outgoing mail", model.PendingAction!.ConfirmLabel);
+        Assert.Contains("outgoing", model.PendingAction.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("outgoing email only", model.PendingAction.Consequence, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -249,7 +264,7 @@ public sealed class ActionTests
 
         model.RequestResume(paused);
 
-        Assert.Contains("resume", model.PendingAction!.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow outgoing", model.PendingAction!.Title, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
