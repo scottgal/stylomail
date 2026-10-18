@@ -53,7 +53,7 @@ internal sealed class ProxyFixture : IAsyncDisposable
     public string[] BackendErrors => _imapBackend.Errors.Concat(_smtpBackend.Errors).ToArray();
     public void ClientResult(string result) => _clients.AddOrUpdate(result, 1, (_, count) => count + 1);
 
-    private ProxyFixture(BackendMode mode, int concurrency)
+    private ProxyFixture(BackendMode mode, int concurrency, long submissionMaximumBytes)
     {
         Directory.CreateDirectory(_directory);
         using var rootKey = RSA.Create(2048);
@@ -81,7 +81,7 @@ internal sealed class ProxyFixture : IAsyncDisposable
             MaxConcurrentSessions = concurrency, MaxSessionsPerAccount = concurrency,
             AuthenticationTimeout = TimeSpan.FromSeconds(3), BackendAuthenticationTimeout = TimeSpan.FromMilliseconds(BackendDeadlineMilliseconds),
             BackendConnectTimeout = TimeSpan.FromMilliseconds(BackendDeadlineMilliseconds), IdleTimeout = TimeSpan.FromSeconds(3),
-            MaxSessionDuration = TimeSpan.FromSeconds(15), MaxSubmissionBytes = 64 * 1024,
+            MaxSessionDuration = TimeSpan.FromSeconds(15), MaxSubmissionBytes = submissionMaximumBytes,
         };
         Limiter = new SessionLimiter(bounds);
         var hasher = new Pbkdf2StyloMailPasswordHasher(iterations: 1000);
@@ -132,9 +132,9 @@ internal sealed class ProxyFixture : IAsyncDisposable
                     new AllowAssessment(), Stager, warningSink: new WarningSink(), warningAnalyzer: new WarningAnalyzer()).RunAsync(tls, token);
             }));
     }
-    public static async Task<ProxyFixture> Create(BackendMode mode, int concurrency)
+    public static async Task<ProxyFixture> Create(BackendMode mode, int concurrency, long submissionMaximumBytes = 64 * 1024)
     {
-        var fixture = new ProxyFixture(mode, concurrency);
+        var fixture = new ProxyFixture(mode, concurrency, submissionMaximumBytes);
         try { await fixture._imap.StartAsync(CancellationToken.None); await fixture._smtp.StartAsync(CancellationToken.None); return fixture; }
         catch { await fixture.DisposeAsync(); throw; }
     }

@@ -6,6 +6,26 @@ On macOS with .NET 10, from the repository root:
 bash tools/proxy-harness/reliability/run.sh /private/tmp/proxy-reliability-run-1
 ```
 
+An optional second argument selects an external thresholds JSON file. The one-argument default
+still uses the unchanged three 10-second rounds. The runner records and checks the selected file's
+SHA256 before and after the run; the executable writes its exact bytes once to
+`thresholds.selected.json` in the artifact directory and reports their SHA256. Use a fresh directory.
+Traffic is limited to 300 configured seconds and concurrency to 512; each session and settle also
+has a finite bound. Longer configured rounds do not change the interpretation of the resource
+tolerances or turn fixture-plus-client allocation counts into product-only measurements.
+
+`SubmissionMaximumBytes` in an external configuration selects the fixed SMTP staging backing
+capacity (up to production's 25MiB). Omitting it retains this fixture's original 64KiB staging
+limit; the default thresholds file is unchanged. A run at 64KiB does not measure 25MiB staging cost.
+
+The native held-TCP-pair control also checks that `netstat` can see that exact pair. Exit zero and
+UNIX-only output are marked **UNUSABLE**, never an empty listener comparison. A missing TCP table
+fails closed. Only with overview's explicit brokered authorization may a third argument,
+`--exclusive-bind-probe`, substitute fresh simultaneous exclusive binds of `127.0.0.1:5271` and
+`:5290`, closed in a finally block. Failure aborts. The result reports that availability instant,
+the unusable table, native socket control and process census separately; ports do not prove CPU
+exclusivity or process teardown. Raw stdout, stderr and exit statuses are retained.
+
 Use a fresh artifact directory for each run. Coordinate an exclusive build/loopback window with the
 fleet overview before running. This command builds the driver and uses only IPv4 loopback endpoints
 assigned by the OS. Docker, provider accounts and a model service are unnecessary. Certificates and
@@ -48,8 +68,9 @@ Exit 0 means all implemented gates passed, 1 means measured product findings, an
 instrument could not finish. `report.json` separates `findings` from `instrumentErrors`; raw process
 and socket censuses and the build log are adjacent. A named outcome is not inferred from an exception.
 The initial bound-endpoint test was labelled too broadly as refusal; the final instrument separates
-verified ConnectionRefused from connect stall. Six unnamed-outcome cases remain on the build with
-the connect-deadline repair, while the IMAP connect stall now returns Timeout inside its budget.
+verified ConnectionRefused from connect stall. The qualified longer rehearsal at `7edbcfb` retained
+six unnamed-outcome findings; session-boundary repair `e86859c` adds their known transport mappings
+without weakening these assertions. Keep the earlier red artifacts alongside a subsequent run.
 A red run for those assertions is evidence of the defect, not an instrument error. This bounded instrument is
 the first group of spec 9.11, and does not claim indefinite stability or completion of the remaining
 fault matrix, bounds, backpressure or performance work.

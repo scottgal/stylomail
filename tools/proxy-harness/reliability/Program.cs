@@ -5,29 +5,51 @@ using System.Text.Json;
 using StyloMail.ProxyHarness.Reliability;
 
 var json = new JsonSerializerOptions { WriteIndented = true };
-var thresholdsPath = Path.Combine(AppContext.BaseDirectory, "thresholds.json");
-var thresholds = JsonSerializer.Deserialize<Thresholds>(File.ReadAllText(thresholdsPath))
+if (args.Length is < 1 or > 3 || args.Length == 3 && args[2] != "--exclusive-bind-probe")
+    throw new ArgumentException("Pass artifact-directory, optional thresholds path, and optional brokered --exclusive-bind-probe");
+var bindAlternative = args.Length == 3;
+var artifactDirectory = Path.GetFullPath(args[0]);
+var thresholdsPath = args.Length >= 2 ? Path.GetFullPath(args[1]) : Path.Combine(AppContext.BaseDirectory, "thresholds.json");
+if (new FileInfo(thresholdsPath).Length > 64 * 1024) throw new ArgumentException("Thresholds file exceeds 64KiB");
+var thresholdsBytes = File.ReadAllBytes(thresholdsPath);
+var thresholds = JsonSerializer.Deserialize<Thresholds>(thresholdsBytes, new JsonSerializerOptions
+    { UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow })
     ?? throw new InvalidOperationException("Missing thresholds");
-if (thresholds.Concurrency < 2 || thresholds.Concurrency % 2 != 0 || thresholds.Rounds < 3
-    || thresholds.RoundSeconds < 1 || thresholds.WarmupSessions < 2 || thresholds.SettleMilliseconds < 0
-    || thresholds.SessionDeadlineSeconds < 1 || thresholds.MinSessionsPerRound < 1)
-    throw new ArgumentException("Thresholds must provide even concurrency, both protocols, and at least three bounded rounds");
-var artifactDirectory = args.Length == 1 ? Path.GetFullPath(args[0]) : throw new ArgumentException("Pass one artifact-directory path");
+if (thresholds.Concurrency is < 2 or > 512 || thresholds.Concurrency % 2 != 0
+    || thresholds.Rounds is < 3 or > 300 || thresholds.RoundSeconds is < 1 or > 300
+    || (long)thresholds.Rounds * thresholds.RoundSeconds > 300
+    || thresholds.WarmupSessions is < 2 or > 512 || thresholds.SettleMilliseconds is < 0 or > 10000
+    || thresholds.SessionDeadlineSeconds is < 1 or > 30 || thresholds.MinSessionsPerRound < 1
+    || thresholds.MaxHandleDelta < 0 || thresholds.MaxSocketDelta < 0
+    || thresholds.MaxManagedDeltaBytes < 0 || thresholds.MaxManagedTrendBytesPerRound < 0
+    || thresholds.MaxWorkingSetDeltaBytes < 0 || thresholds.MaxWorkingSetTrendBytesPerRound < 0
+    || thresholds.BackendDeadlineToleranceMilliseconds is < 0 or > 10000
+    || thresholds.SubmissionMaximumBytes is < 1 or > 25L * 1024 * 1024)
+    throw new ArgumentException("Thresholds require both protocols, at most 512 sessions and 300 traffic seconds, and finite nonnegative resource tolerances");
 Directory.CreateDirectory(artifactDirectory);
+var selectedThresholds = Path.Combine(artifactDirectory, "thresholds.selected.json");
+using (var snapshot = new FileStream(selectedThresholds, FileMode.CreateNew, FileAccess.Write)) snapshot.Write(thresholdsBytes);
 var failures = new List<string>();
 var instrumentErrors = new List<string>();
 var rounds = new List<object>();
 var faults = new List<object>();
 var report = new Dictionary<string, object?>
 {
-    ["thresholds"] = thresholds, ["thresholdsSha256"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(thresholdsPath))),
+    ["thresholds"] = thresholds, ["thresholdsSha256"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(thresholdsBytes)),
+    ["thresholdsSourcePath"] = thresholdsPath, ["thresholdsSnapshotPath"] = selectedThresholds,
     ["runtime"] = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
     ["rounds"] = rounds, ["faults"] = faults, ["findings"] = failures, ["instrumentErrors"] = instrumentErrors,
     ["scope"] = "Production TCP listener, IMAP/SMTP sessions, limiter, backend connectors/Host transport, client/backend TLS and in-memory stager. Ephemeral fixture accounts with PBKDF2 1000; allow/no-analyser stand-ins. No live providers, model, persistence or management lifecycle. Darwin FD/socket census; process census uses ps comm only. Memory and resource gates have versioned tolerances; GC counts are observations. Allocations include both clients and fixtures, not just product code.",
 };
 try
 {
-    var fixture = await ProxyFixture.Create(BackendMode.Healthy, thresholds.Concurrency);
+    if (bindAlternative)
+    {
+        ProbeReleasedPorts([5271, 5290]);
+        report["exclusiveBindAlternative"] = new { address = "127.0.0.1", ports = new[] { 5271, 5290 },
+            available = true, at = DateTimeOffset.UtcNow, scope = "Availability at this instant only; not CPU exclusivity or process teardown." };
+    }
+    var fixture = await ProxyFixture.Create(BackendMode.Healthy, thresholds.Concurrency, thresholds.SubmissionMaximumBytes);
     var ports = fixture.Ports;
     report["ports"] = ports;
     try
@@ -46,6 +68,12 @@ try
             await Task.Delay(50);
             var held = ResourceCensus.Capture(fixture);
             if (held.Sockets < baseline.Sockets + 2) throw new IOException("Socket census failed its positive control");
+            report["nativeSocketPositiveControlDelta"] = held.Sockets - baseline.Sockets;
+            var table = await SocketTableControl.Capture(artifactDirectory,
+                (IPEndPoint)control.Client.LocalEndPoint!, (IPEndPoint)control.Client.RemoteEndPoint!);
+            report["socketTableControl"] = table;
+            if (table.Status != "AVAILABLE" && !bindAlternative)
+                throw new IOException("UNUSABLE TCP table: native positive-control pair is absent; no brokered bind alternative");
         }
         await fixture.Settle(TimeSpan.FromSeconds(5));
         // The probe intentionally aborts a pre-TLS connection; exclude its named/unnamed result
@@ -142,7 +170,7 @@ try
                  (Name: "abort-data", Mode: BackendMode.Healthy, Smtp: true),
              })
     {
-        await using var faultFixture = await ProxyFixture.Create(scenario.Mode, thresholds.Concurrency);
+        await using var faultFixture = await ProxyFixture.Create(scenario.Mode, thresholds.Concurrency, thresholds.SubmissionMaximumBytes);
         if (scenario.Mode == BackendMode.Refused)
         {
             using var refusalControl = new TcpClient(AddressFamily.InterNetwork);
@@ -224,4 +252,8 @@ static void ProbeReleasedPorts(IEnumerable<int> ports)
 internal sealed record Thresholds(int Concurrency, int Rounds, int RoundSeconds, int WarmupSessions,
     int SettleMilliseconds, int SessionDeadlineSeconds, int MaxHandleDelta, int MaxSocketDelta,
     long MaxManagedDeltaBytes, long MaxManagedTrendBytesPerRound, long MaxWorkingSetDeltaBytes,
-    long MaxWorkingSetTrendBytesPerRound, int BackendDeadlineToleranceMilliseconds, int MinSessionsPerRound);
+    long MaxWorkingSetTrendBytesPerRound, int BackendDeadlineToleranceMilliseconds, int MinSessionsPerRound)
+{
+    // Keep the original small-fixture default; selected runs explicitly price production's 25MiB.
+    public long SubmissionMaximumBytes { get; init; } = 64 * 1024;
+}
