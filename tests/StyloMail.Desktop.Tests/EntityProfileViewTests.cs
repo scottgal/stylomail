@@ -46,6 +46,24 @@ public sealed class EntityProfileViewTests
         Assert.Equal("Trend: up (+60 percentage points).", new EntityProfileView(profile).Tiles.Single().Trend);
     }
 
+    [Fact]
+    public void Initial_expansion_is_mutable_view_model_state()
+    {
+        var tile = new EntityProfileView(Profile() with { Kpis = [new KpiValueResponse
+        {
+            Definition = new() { Id = "responsiveness.address_reciprocity", Label = "R", Question = "Q", MinimumSample = 5, Unit = KpiUnit.Ratio, Version = "1.1.0" },
+            State = KpiState.Produced, Value = .8, Coverage = new() { Analysed = 5, Total = 5, Truncated = false },
+            Trend = new() { State = KpiTrendState.NotProduced, PriorTruncated = false }
+        }] }).Tiles.Single();
+
+        Assert.True(tile.IsExpanded);
+        Assert.True(tile.IsEvidenceExpanded);
+        tile.IsExpanded = false;
+        tile.IsEvidenceExpanded = false;
+        Assert.False(tile.IsExpanded);
+        Assert.False(tile.IsEvidenceExpanded);
+    }
+
     private static ProfileResponse Profile() => new()
     {
         TenantId = "tenant", Scope = new() { Kind = "entity", Id = "entity-identifier-long" },

@@ -50,8 +50,11 @@ public sealed class EntityProfileView
     }
 }
 
-public sealed class KpiTileView
+public sealed class KpiTileView : ObservableObject
 {
+    private bool _isExpanded;
+    private bool _isEvidenceExpanded;
+
     public KpiTileView(KpiValueResponse value)
     {
         Label = value.Definition.Label;
@@ -74,6 +77,11 @@ public sealed class KpiTileView
         };
         Evidence = $"Definition v{value.Definition.Version}. {value.Definition.Question}";
         AutomationStem = "profile-kpi-" + value.Definition.Id.Replace('.', '-').Replace('_', '-');
+        // These are the same mutable properties used by the Expander headers.
+        // The opening state makes the first useful observation and the first
+        // named absence visible without an automation-only path.
+        _isExpanded = value.Definition.Id is "responsiveness.address_reciprocity" or "momentum.volume_change";
+        _isEvidenceExpanded = value.Definition.Id == "responsiveness.address_reciprocity";
     }
     public string Label { get; }
     public string Question { get; }
@@ -82,9 +90,10 @@ public sealed class KpiTileView
     public string Coverage { get; }
     public string Evidence { get; }
     public string AutomationStem { get; }
-    /// <summary>Open the most decision-useful measures rather than leaving a dialog of closed headers.</summary>
-    public bool IsInitiallyExpanded => Label is "Responded from the same address within 7 days" or "Sensitive request prevalence (model evidence)";
-    public bool IsEvidenceInitiallyExpanded => Label is "Responded from the same address within 7 days";
+    /// <summary>Shared state for the visible Expander and user interaction.</summary>
+    public bool IsExpanded { get => _isExpanded; set => Set(ref _isExpanded, value); }
+    /// <summary>Shared state for the evidence drawer and user interaction.</summary>
+    public bool IsEvidenceExpanded { get => _isEvidenceExpanded; set => Set(ref _isEvidenceExpanded, value); }
     public string TileAutomationId => AutomationStem + "-tile";
     public string ObservationAutomationId => AutomationStem + "-observation";
     public string TrendAutomationId => AutomationStem + "-trend";
