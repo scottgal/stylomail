@@ -300,3 +300,101 @@ public sealed record PolicyStatusResponse
 
     public TimeSpan? CacheAge { get; init; }
 }
+
+/// <summary>
+/// The effective bindings for one profile scope. Read-only: this is a view of the resolver, not a
+/// policy decision and not an acknowledgement that a binding was applied to a message.
+/// </summary>
+public sealed record PolicyEffectiveBindingResponse
+{
+    public required string TenantId { get; init; }
+
+    public required EffectiveBindingState State { get; init; }
+
+    /// <summary>Stable reason when the state is NoBinding, NoPack or Unavailable.</summary>
+    public string? Reason { get; init; }
+
+    public string? PackId { get; init; }
+
+    public string? PackVersion { get; init; }
+
+    public required IReadOnlyList<string> AddressedChain { get; init; }
+
+    public required IReadOnlyList<PolicyEffectiveBindingItem> Bindings { get; init; }
+
+    public static PolicyEffectiveBindingResponse From(EffectiveBindingDescriptor descriptor) => new()
+    {
+        TenantId = descriptor.TenantId,
+        State = descriptor.State,
+        Reason = descriptor.Reason,
+        PackId = descriptor.PackId,
+        PackVersion = descriptor.PackVersion,
+        AddressedChain = descriptor.AddressedChain,
+        Bindings = [.. descriptor.Bindings.Select(PolicyEffectiveBindingItem.From)],
+    };
+}
+
+/// <summary>One selected binding in the effective-binding view.</summary>
+public sealed record PolicyEffectiveBindingItem
+{
+    public required string BindingId { get; init; }
+
+    public string? CategoryId { get; init; }
+
+    public required BindingAction Action { get; init; }
+
+    public ToleranceLevel? TargetLevel { get; init; }
+
+    public required BindingScope ScopeKind { get; init; }
+
+    public required string ScopeValue { get; init; }
+
+    public required int Precedence { get; init; }
+
+    public required string Source { get; init; }
+
+    public required DateTimeOffset StartsAt { get; init; }
+
+    public required DateTimeOffset ExpiresAt { get; init; }
+
+    public required DateTimeOffset ReviewBy { get; init; }
+
+    public required BindingOnExpiry OnExpiry { get; init; }
+
+    public required bool Selected { get; init; }
+
+    public required bool Expired { get; init; }
+
+    public required bool Withheld { get; init; }
+
+    public string? PackId { get; init; }
+
+    public string? PackVersion { get; init; }
+
+    public required string Author { get; init; }
+
+    public string? ApprovedBy { get; init; }
+
+    public static PolicyEffectiveBindingItem From(EffectiveBindingView view) => new()
+    {
+        BindingId = view.BindingId,
+        CategoryId = view.CategoryId,
+        Action = view.Action,
+        TargetLevel = view.TargetLevel,
+        ScopeKind = view.ScopeKind,
+        ScopeValue = view.ScopeValue,
+        Precedence = view.Precedence,
+        Source = view.Source,
+        StartsAt = view.StartsAt,
+        ExpiresAt = view.ExpiresAt,
+        ReviewBy = view.ReviewBy,
+        OnExpiry = view.OnExpiry,
+        Selected = view.Selected,
+        Expired = view.Expired,
+        Withheld = view.Withheld,
+        PackId = view.PackId,
+        PackVersion = view.PackVersion,
+        Author = view.Author,
+        ApprovedBy = view.ApprovedBy,
+    };
+}

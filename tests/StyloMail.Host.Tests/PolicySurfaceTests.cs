@@ -475,6 +475,56 @@ public sealed class PolicySurfaceTests
     }
 
     [Fact]
+    public async Task The_effective_binding_route_reports_the_selected_scope_binding()
+    {
+        using var host = new TestHost()
+            .WithClock()
+            .Configure("StyloMail:Policy:Authoritative:Tenants:acme", "GB");
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        await SeedRuleSetAsync(host);
+        await DraftAsync(client, "1.0.0");
+        await ApproveAsync(client, "1.0.0");
+        await ActivateAsync(client, "1.0.0");
+        var created = await CreateBindingAsync(client, BindingAction.Permit);
+
+        var response = await ReadAsync<PolicyEffectiveBindingResponse>(
+            await client.GetAsync("/v1/policy/effective-binding?entity=entity-1&domain=example.com&company=company-1"));
+
+        Assert.Equal(TestPrincipals.AcmeTenant, response.TenantId);
+        Assert.Equal(EffectiveBindingState.Bound, response.State);
+        Assert.Equal(PackId, response.PackId);
+        Assert.Equal("1.0.0", response.PackVersion);
+        var binding = Assert.Single(response.Bindings);
+        Assert.Equal(created.Id, binding.BindingId);
+        Assert.Equal(BindingAction.Permit, binding.Action);
+        Assert.Equal(BindingScope.Entity, binding.ScopeKind);
+        Assert.Equal("entity-1", binding.ScopeValue);
+        Assert.Equal("direct", binding.Source);
+        Assert.False(binding.Selected);
+        Assert.Equal(TestPrincipals.AcmeOperatorPrincipal, binding.Author);
+        Assert.Equal(Now.AddDays(20), binding.ReviewBy);
+    }
+
+    [Fact]
+    public async Task The_effective_binding_route_requires_a_scope_and_reports_no_pack()
+    {
+        using var host = new TestHost()
+            .WithClock()
+            .Configure("StyloMail:Policy:Authoritative:Tenants:acme", "GB");
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var missing = await client.GetAsync("/v1/policy/effective-binding");
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Contains("scope_required", await missing.Content.ReadAsStringAsync());
+
+        var noPack = await ReadAsync<PolicyEffectiveBindingResponse>(
+            await client.GetAsync("/v1/policy/effective-binding?entity=entity-1"));
+        Assert.Equal(EffectiveBindingState.NoPack, noPack.State);
+        Assert.Equal("no_effective_pack", noPack.Reason);
+        Assert.Empty(noPack.Bindings);
+    }
+
+    [Fact]
     public async Task The_status_route_reports_tenant_enablement_from_the_map()
     {
         using var host = new TestHost()
