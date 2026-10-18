@@ -90,7 +90,7 @@ public sealed class ProfileQueryStore
                 windowStart,
                 cancellationToken);
 
-            return Task.FromResult(AttachTrends(current, prior));
+            return Task.FromResult(AttachTrends(current.Snapshot, prior.Snapshot));
         }
         catch (SqliteException ex)
         {
@@ -99,7 +99,7 @@ public sealed class ProfileQueryStore
     }
 
     /// <summary>Reads one window. The trend is a second call over the equal-length window before it.</summary>
-    private ProfileSnapshot ReadRange(
+    private WindowRead ReadRange(
         SqliteConnection connection,
         string tenantId,
         PropertyScope scope,
@@ -163,22 +163,33 @@ public sealed class ProfileQueryStore
                     onlyOutbound: true);
             }
 
-            return Build(
-                tenantId,
-                scope,
-                windowStart,
-                windowEnd,
+            return new WindowRead(
+                Build(
+                    tenantId,
+                    scope,
+                    windowStart,
+                    windowEnd,
+                    parsed,
+                    unparsable,
+                    truncated,
+                    tenantMessages,
+                    hasher,
+                    replyCandidates,
+                    replyTruncated,
+                    ReadDisplayLabel(connection, tenantId, scope),
+                    cancellationToken),
                 parsed,
-                unparsable,
-                truncated,
-                tenantMessages,
-                hasher,
                 replyCandidates,
-                replyTruncated,
-                ReadDisplayLabel(connection, tenantId, scope),
-                cancellationToken);
+                replyTruncated);
         }
     }
+
+    /// <summary>One window's snapshot plus the parsed rows the evidence read needs.</summary>
+    private sealed record WindowRead(
+        ProfileSnapshot Snapshot,
+        List<ParsedMessage> Parsed,
+        List<MessageRow> ReplyCandidates,
+        bool ReplyCandidatesTruncated);
 
     // ---------------------------------------------------------------------------------------------
     // Building the snapshot
@@ -1248,6 +1259,394 @@ public sealed class ProfileQueryStore
         return at >= 0 && at < address.Length - 1
             ? address[(at + 1)..].Trim().ToLowerInvariant()
             : null;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Evidence dereference
+    // ---------------------------------------------------------------------------------------------
+
+    private const int MaxEvidenceSources = 100;
+    private const int MaxReferenceCitations = 50;
+
+    /// <summary>
+    /// The evidence behind one KPI at one scope, bounded and free of content.
+    /// </summary>
+    /// <remarks>
+    /// This re-reads the current and prior windows and reports the same value the profile read
+    /// serves, plus the per-signal counts and the opaque source assessment ids. It never returns a
+    /// body, an address, a filename or a subject: the drawer explains the measurement, it does not
+    /// open the message.
+    /// </remarks>
+    public Task<KpiEvidenceRead> ReadKpiEvidenceAsync(
+        string tenantId,
+        PropertyScope scope,
+        string definitionId,
+        int windowDays,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(scope.Id);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var definition = KpiDefinitions.Require(definitionId);
+        var days = Math.Clamp(windowDays, MinimumWindowDays, MaximumWindowDays);
+
+        try
+        {
+            using var connection = _database.Open();
+
+            var current = ReadRange(
+                connection, tenantId, scope, now.AddDays(-days), now, cancellationToken);
+            var prior = ReadRange(
+                connection,
+                tenantId,
+                scope,
+                now.AddDays(-2 * days),
+                now.AddDays(-days),
+                cancellationToken);
+
+            var currentSnapshot = AttachTrends(current.Snapshot, prior.Snapshot);
+
+            var currentKpi = currentSnapshot.Kpis.Single(kpi => kpi.Definition.Id == definition.Id);
+            var priorKpi = prior.Snapshot.Kpis.Single(kpi => kpi.Definition.Id == definition.Id);
+
+            var sources = current.Parsed
+                .Skip(Math.Max(0, current.Parsed.Count - MaxEvidenceSources))
+                .Reverse()
+                .Select(message => new EvidenceSourceRow(
+                    message.Assessment.AssessmentId,
+                    message.Row.RecordedAt,
+                    message.Row.Direction,
+                    message.Assessment.Action,
+                    [.. message.Assessment.Evidence
+                        .Where(IsAnswered)
+                        .Select(evidence => evidence.SignalId)
+                        .Distinct(StringComparer.Ordinal)
+                        .Take(8)]))
+                .ToList();
+
+            return Task.FromResult(new KpiEvidenceRead(
+                currentKpi,
+                priorKpi,
+                BuildSignals(definition.Id, currentKpi, current.Parsed),
+                sources,
+                current.Parsed.Count,
+                current.Parsed.Count > MaxEvidenceSources));
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The KPI evidence could not be read.", ex);
+        }
+    }
+
+    private static IReadOnlyList<KpiSignalEvidence> BuildSignals(
+        string definitionId,
+        KpiValue value,
+        List<ParsedMessage> parsed) => definitionId switch
+        {
+            KpiDefinitions.Responsiveness =>
+            [
+                new KpiSignalEvidence(
+                    "address_reciprocity",
+                    "Inbound messages with a fully observed 7-day window",
+                    value.Coverage.Analysed,
+                    value.Numerator ?? 0,
+                    (int)(value.Measurements
+                        .FirstOrDefault(measurement =>
+                            measurement.Id == "inbound_excluded_incomplete_candidates")
+                        ?.Value ?? 0),
+                    value.Coverage.Censored ?? 0,
+                    0,
+                    value.Reason),
+            ],
+            KpiDefinitions.Momentum =>
+            [
+                new KpiSignalEvidence(
+                    "message.volume",
+                    "Attributable messages (numerator is the recent half)",
+                    value.Coverage.Analysed,
+                    value.Numerator ?? 0,
+                    0,
+                    0,
+                    0,
+                    value.Reason),
+            ],
+            KpiDefinitions.Pressure =>
+            [
+                CountSignal(parsed, "semantic.urgency_pressure", "Pressure language", deterministic: false),
+            ],
+            KpiDefinitions.SensitiveRequests =>
+            [
+                CountSignal(parsed, "semantic.credential_request", "Credential request", deterministic: false),
+                CountSignal(parsed, "semantic.payment_redirection", "Payment redirection", deterministic: false),
+            ],
+            KpiDefinitions.Consistency =>
+            [
+                .. IdentitySignals.Select(signal =>
+                    CountSignal(parsed, signal, signal, deterministic: true)),
+            ],
+            KpiDefinitions.Handling =>
+            [
+                new KpiSignalEvidence(
+                    "decision.intervention",
+                    "Messages policy intervened on",
+                    value.Coverage.Analysed,
+                    value.Numerator ?? 0,
+                    0,
+                    0,
+                    0,
+                    value.Reason),
+            ],
+            _ => [],
+        };
+
+    private static KpiSignalEvidence CountSignal(
+        List<ParsedMessage> parsed,
+        string signalId,
+        string label,
+        bool deterministic)
+    {
+        var answered = 0;
+        var confirming = 0;
+        var unavailable = 0;
+        var notApplicable = 0;
+        var missing = 0;
+
+        foreach (var message in parsed)
+        {
+            var evidence = Find(message.Assessment, signalId);
+
+            if (evidence is null)
+            {
+                missing++;
+                continue;
+            }
+
+            if (IsAnswered(evidence))
+            {
+                answered++;
+                if (deterministic
+                    ? Establishes(signalId, evidence)
+                    : evidence.Value >= ConfirmingThreshold)
+                {
+                    confirming++;
+                }
+
+                continue;
+            }
+
+            if (evidence.Availability == EvidenceAvailability.NotApplicable)
+            {
+                notApplicable++;
+            }
+            else
+            {
+                // Unavailable, or "answered" with no number: both are a failed answer, never a no.
+                unavailable++;
+            }
+        }
+
+        return new KpiSignalEvidence(
+            signalId,
+            label,
+            answered,
+            confirming,
+            unavailable,
+            notApplicable,
+            missing,
+            answered == 0 ? KpiReasons.SignalNotProduced : null);
+    }
+
+    /// <summary>
+    /// Resolves a stored property evidence reference to its metadata, citing property rows and
+    /// whether the source ledger row still exists. No content is returned.
+    /// </summary>
+    public Task<ReferenceEvidenceRead?> ReadReferenceAsync(
+        string tenantId,
+        EvidenceKind requestedKind,
+        string referenceId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(referenceId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            using var connection = _database.Open();
+
+            var citationCount = CountCitations(connection, tenantId, referenceId);
+            var citations = ReadCitations(connection, tenantId, referenceId);
+            var source = ReadReferenceSource(connection, tenantId, referenceId);
+
+            if (citations.Count == 0 && source is null)
+            {
+                return Task.FromResult<ReferenceEvidenceRead?>(null);
+            }
+
+            var reference = citations
+                .Select(citation => citation.Reference)
+                .FirstOrDefault(candidate => candidate is not null)
+                ?? new EvidenceReference { Id = referenceId, Kind = requestedKind };
+
+            var outcome = reference.RetentionUntil is { } until && until < now
+                ? ReferenceOutcome.Expired
+                : reference.AccessOutcome switch
+                {
+                    EvidenceAccessOutcome.Withheld => ReferenceOutcome.Withheld,
+                    EvidenceAccessOutcome.NotEvaluated => ReferenceOutcome.NotEvaluated,
+                    _ => ReferenceOutcome.Resolved,
+                };
+
+            return Task.FromResult<ReferenceEvidenceRead?>(new ReferenceEvidenceRead(
+                reference,
+                outcome,
+                [.. citations.Select(citation => citation.Citation)],
+                citationCount,
+                citationCount > MaxReferenceCitations,
+                source));
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The evidence reference could not be read.", ex);
+        }
+    }
+
+    private static int CountCitations(
+        SqliteConnection connection,
+        string tenantId,
+        string referenceId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM host_entity_property p, json_each(p.evidence_refs) AS ref
+            WHERE p.tenant_id = $tenant
+              AND COALESCE(json_extract(ref.value, '$.id'),
+                           CASE WHEN json_type(ref.value) = 'text' THEN ref.value END) = $id;
+            """;
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$id", referenceId);
+
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    private static List<(ReferenceCitation Citation, EvidenceReference? Reference)> ReadCitations(
+        SqliteConnection connection,
+        string tenantId,
+        string referenceId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT p.scope_kind, p.scope_id, p.property_key, p.value, p.source, p.set_by, p.set_at,
+                   p.confirmed_by, p.confirmed_at, p.evidence_refs
+            FROM host_entity_property p, json_each(p.evidence_refs) AS ref
+            WHERE p.tenant_id = $tenant
+              AND COALESCE(json_extract(ref.value, '$.id'),
+                           CASE WHEN json_type(ref.value) = 'text' THEN ref.value END) = $id
+            ORDER BY p.set_at DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$id", referenceId);
+        command.Parameters.AddWithValue("$limit", MaxReferenceCitations);
+
+        var citations = new List<(ReferenceCitation, EvidenceReference?)>();
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (!Enum.TryParse<PropertyScopeKind>(reader.GetString(0), out var kind)
+                || !Enum.TryParse<PropertySource>(reader.GetString(4), out var source))
+            {
+                continue;
+            }
+
+            var confirmedBy = reader.IsDBNull(7) ? null : reader.GetString(7);
+
+            citations.Add((
+                new ReferenceCitation(
+                    new PropertyScope(kind, reader.GetString(1)),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    source,
+                    PropertySurfaceStates.For(source, confirmedBy),
+                    reader.GetString(5),
+                    ParseStamp(reader.GetString(6)),
+                    confirmedBy,
+                    reader.IsDBNull(8) ? null : ParseStamp(reader.GetString(8))),
+                FindReference(reader.GetString(9), referenceId)));
+        }
+
+        return citations;
+    }
+
+    private static EvidenceReference? FindReference(string json, string referenceId)
+    {
+        try
+        {
+            var references = JsonSerializer.Deserialize<List<EvidenceReference>>(json, HostJson.Options);
+            if (references is not null)
+            {
+                return references.FirstOrDefault(reference =>
+                    string.Equals(reference.Id, referenceId, StringComparison.Ordinal));
+            }
+        }
+        catch (JsonException)
+        {
+            // Legacy rows hold bare strings; fall through.
+        }
+
+        try
+        {
+            var legacy = JsonSerializer.Deserialize<List<string>>(json);
+            return legacy is not null
+                && legacy.Contains(referenceId, StringComparer.Ordinal)
+                    ? new EvidenceReference { Id = referenceId }
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static ReferenceSource? ReadReferenceSource(
+        SqliteConnection connection,
+        string tenantId,
+        string referenceId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT assessment_id, recorded_at, action
+            FROM host_decision_ledger
+            WHERE tenant_id = $tenant
+              AND (assessment_id = $id OR internal_message_id = $id)
+            ORDER BY recorded_at DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$id", referenceId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        MailAction? action = Enum.TryParse<MailAction>(reader.GetString(2), out var parsed)
+            ? parsed
+            : null;
+
+        return new ReferenceSource(
+            reader.GetString(0),
+            ParseStamp(reader.GetString(1)),
+            action);
     }
 
     // ---------------------------------------------------------------------------------------------
