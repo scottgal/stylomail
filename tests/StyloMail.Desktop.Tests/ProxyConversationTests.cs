@@ -504,9 +504,9 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
-    public async Task An_elements2_response_with_a_retired_label_is_refused_without_showing_points()
+    public async Task An_elements3_response_with_a_retired_credential_request_label_is_refused_without_showing_points()
     {
-        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "attachment_lure", vocabularyVersion: "elements/2")));
+        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "credential_request", vocabularyVersion: "elements/3")));
         var model = new ProxyConversationElementsViewModel(Client(handler));
 
         await model.LoadAsync("thread-token");
@@ -515,19 +515,34 @@ public sealed class ProxyConversationTests
         Assert.Contains("cannot safely compare", model.StatusLabel, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void An_elements1_point_is_rendered_as_historical_read_only_data()
+    [Theory]
+    [InlineData("elements/1")]
+    [InlineData("elements/2")]
+    public async Task A_historical_element_point_is_readable_but_non_comparable(string vocabularyVersion)
     {
-        var point = ProxyElementPointView.From(new ProxyElementPointResponse
-        {
-            ObservedAt = DateTimeOffset.Parse(WindowStart), TurnToken = "turn_safe", TrafficKind = "Retrieval", Ordinal = 0,
-            Elements = [Element("attachment_lure", "prototype_knn", -0.2, null, vocabularyVersion: "elements/1")],
-            Tone = new ProxyToneResponse { VocabularyVersion = "goemotions/1", ModelTag = null, Availability = "not_produced", AvailabilityReason = "tone_model_unavailable", Top = [] },
-        });
+        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "credential_request", vocabularyVersion: vocabularyVersion)));
+        var model = new ProxyConversationElementsViewModel(Client(handler));
 
-        Assert.Contains("elements/1", point.VocabularyLabel, StringComparison.Ordinal);
+        await model.LoadAsync("thread-token");
+
+        var point = Assert.Single(model.Points);
+        Assert.Contains(vocabularyVersion, point.VocabularyLabel, StringComparison.Ordinal);
         Assert.Contains("historical read-only", point.VocabularyLabel, StringComparison.Ordinal);
         Assert.Contains("not comparable", point.VocabularyLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_single_current_elements3_urgency_pressure_card_renders_without_missing_element_placeholders()
+    {
+        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "urgency_pressure", vocabularyVersion: "elements/3")));
+        var model = new ProxyConversationElementsViewModel(Client(handler));
+
+        await model.LoadAsync("thread-token");
+
+        var point = Assert.Single(model.Points);
+        var card = Assert.Single(point.Elements);
+        Assert.Contains("urgency_pressure · elements/3", card.ElementLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("missing", model.StatusLabel, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -11,9 +11,7 @@ public sealed class ProxyConversationElementsViewModel : ObservableObject
 {
     private static readonly HashSet<string> CurrentElements = new(StringComparer.Ordinal)
     {
-        "credential_request",
         "urgency_pressure",
-        "threat",
     };
     private readonly ProxyConversationClient? _client;
     private long _generation;
@@ -82,8 +80,8 @@ public sealed class ProxyConversationElementsViewModel : ObservableObject
     private static bool ValidateVocabulary(ProxyElementPointResponse point)
         => point.Elements.All(score => score.VocabularyVersion switch
         {
-            "elements/2" => CurrentElements.Contains(score.Element),
-            "elements/1" => true,
+            "elements/3" => CurrentElements.Contains(score.Element),
+            "elements/1" or "elements/2" => true,
             _ => false,
         });
 }
@@ -109,8 +107,8 @@ public sealed class ProxyElementPointView
         var versions = elements.Select(score => score.VocabularyVersion).Distinct(StringComparer.Ordinal).ToArray();
         if (versions.Length == 0) return "Vocabulary: no element scores were recorded.";
         var version = string.Join(", ", versions);
-        return versions.All(value => string.Equals(value, "elements/1", StringComparison.Ordinal))
-            ? "Vocabulary: " + version + " · historical read-only data; not comparable with elements/2."
+        return versions.All(value => string.Equals(value, "elements/1", StringComparison.Ordinal) || string.Equals(value, "elements/2", StringComparison.Ordinal))
+            ? "Vocabulary: " + version + " · historical read-only data; not comparable with elements/3."
             : "Vocabulary: " + version + ".";
     }
 }
