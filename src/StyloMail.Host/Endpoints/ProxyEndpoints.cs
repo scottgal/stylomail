@@ -66,6 +66,9 @@ internal static class ProxyEndpoints
         proxy.MapGet("/sessions", ListSessionsAsync)
             .RequireAuthorization(HostPolicies.Review);
 
+        proxy.MapGet("/connection-outcomes", ConnectionOutcomes)
+            .RequireAuthorization(HostPolicies.Review);
+
         proxy.MapGet("/listeners", ListListenersAsync)
             .RequireAuthorization(HostPolicies.Review);
 
@@ -93,6 +96,21 @@ internal static class ProxyEndpoints
     // ---------------------------------------------------------------------------------------------
     // Accounts
     // ---------------------------------------------------------------------------------------------
+
+    internal static IResult ConnectionOutcomes(DateTimeOffset? from, DateTimeOffset? through,
+        ClaimsPrincipal user, IProxyConnectionOutcomeReader reader, TimeProvider clock)
+    {
+        if (Tenant(user) is not { } tenantId)
+            return EndpointResults.Forbidden("tenant_required", "The principal has no tenant.");
+        var current = DateTimeOffset.FromUnixTimeSeconds(ProxyConnectionOutcomes.Bucket(clock.GetUtcNow()));
+        var first = from ?? current.AddDays(-1);
+        var last = through ?? current;
+        if (!ProxyConnectionOutcomes.ValidRange(first, last, clock.GetUtcNow()))
+            return EndpointResults.Invalid("invalid_bucket_range", "Use aligned UTC five-minute buckets within the retained seven-day window.");
+        try { return Results.Ok(new ProxyConnectionOutcomesResponse(tenantId, first, last, reader.Read(tenantId, first, last))); }
+        catch (ArgumentOutOfRangeException)
+        { return EndpointResults.Invalid("invalid_bucket_range", "The requested buckets have expired."); }
+    }
 
     internal static async Task<IResult> CreateAccountAsync(
         ProxyAccountCreateRequest? request,

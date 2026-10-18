@@ -434,6 +434,22 @@ public sealed class HostDatabase
         -- `kind` and `protocol` are stored as names rather than ordinals: a reordered enum must never
         -- silently change the meaning of a recorded fact, and an operator reading the database should
         -- be able to tell what happened without a mapping table.
+        CREATE TABLE IF NOT EXISTS proxy_connection_outcome (
+            tenant_id TEXT NOT NULL,
+            protocol TEXT NOT NULL CHECK(protocol IN ('Imap','Pop3','Smtp')),
+            outcome TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            bucket INTEGER NOT NULL CHECK(bucket % 300 = 0),
+            count INTEGER NOT NULL CHECK(count > 0),
+            CHECK((outcome='Timeout' AND reason='TlsHandshakeTimeout') OR
+                  (outcome='AdmissionRejected' AND reason='GlobalSessionLimitReached')),
+            PRIMARY KEY(tenant_id,protocol,outcome,reason,bucket)
+        );
+        CREATE TABLE IF NOT EXISTS proxy_connection_dropped (
+            singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+            count INTEGER NOT NULL CHECK(count >= 0)
+        );
+
         CREATE TABLE IF NOT EXISTS proxy_listener_event (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id    TEXT NOT NULL,

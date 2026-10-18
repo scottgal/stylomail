@@ -90,6 +90,10 @@ public static class HostServices
         services.AddSingleton<IBackendCredentialStore>(
             sp => sp.GetRequiredService<SqliteBackendCredentialStore>());
         services.AddSingleton<SqliteProxyEventStore>();
+        services.AddSingleton<ProxyConnectionOutcomes>();
+        services.AddSingleton<IProxyConnectionOutcomeReader>(sp => sp.GetRequiredService<ProxyConnectionOutcomes>());
+        services.AddSingleton<IProxyConnectionOutcomeSink>(sp => sp.GetRequiredService<ProxyConnectionOutcomes>());
+        services.AddHostedService(sp => sp.GetRequiredService<ProxyConnectionOutcomes>());
         services.AddSingleton<IProxyListenerEventSink>(
             sp => sp.GetRequiredService<SqliteProxyEventStore>());
         services.AddSingleton<IProxyThreadingEventSink>(

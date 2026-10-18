@@ -49,6 +49,9 @@ public enum SessionOutcome
 
     /// <summary>The client went away before authenticating.</summary>
     ClientDisconnected = 6,
+
+    /// <summary>The configured global connection capacity was exhausted before protocol admission.</summary>
+    AdmissionRejected = 7,
 }
 
 /// <summary>
