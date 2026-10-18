@@ -216,10 +216,10 @@ internal static class ByteRelay
         TimeProvider timeProvider,
         IRetrievalObserver? observer,
         CancellationToken cancellationToken,
-        Action? onBufferAbandoned = null, ArrayPool<byte>? buffers = null)
+        Action? onBufferAbandoned = null, ArrayPool<byte>? buffers = null, Action<string>? onSettledFault = null)
     {
         using var session = new TimeoutScope(bounds.MaxSessionDuration, timeProvider, cancellationToken);
-        var close = new RelayClose(client, backend, session, onBufferAbandoned);
+        var close = new RelayClose(client, backend, session, onBufferAbandoned, onSettledFault);
         buffers ??= ArrayPool<byte>.Shared;
 
         var upstream = PumpAsync(
@@ -327,7 +327,7 @@ internal static class ByteRelay
                     _ = ObserveDetachedAsync(pending);
                 }
             }
-            catch (Exception) { /* Closed I/O may fault in a transport-specific way; it has settled. */ }
+            catch (Exception exception) { close.ReportSettledFault(exception); }
             if (expired) throw new AccessProxyTimeoutException("Relay made no I/O progress within its idle bound.");
             throw;
         }
@@ -341,11 +341,19 @@ internal static class ByteRelay
         catch (Exception) { /* The ended session no longer owns this operation or its array. */ }
     }
 
-    private sealed class RelayClose(IDuplexChannel client, IDuplexChannel backend, TimeoutScope session, Action? onBufferAbandoned)
+    private sealed class RelayClose(IDuplexChannel client, IDuplexChannel backend, TimeoutScope session, Action? onBufferAbandoned, Action<string>? onSettledFault)
     {
         private readonly object _gate = new();
         private Task? _closing;
         private int _abandonmentReported;
+        private int _faultReported;
+        public void ReportSettledFault(Exception exception)
+        {
+            if (Interlocked.Exchange(ref _faultReported, 1) != 0) return;
+            var name = exception.GetType().Name;
+            try { onSettledFault?.Invoke(name[..Math.Min(name.Length, 64)]); }
+            catch (Exception) { /* Content-free diagnostics cannot alter teardown. */ }
+        }
         public void ReportAbandonment()
         {
             if (Interlocked.Exchange(ref _abandonmentReported, 1) != 0) return;

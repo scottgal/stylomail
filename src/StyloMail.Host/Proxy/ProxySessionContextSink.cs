@@ -70,4 +70,7 @@ internal sealed class ProxySessionContextSink : IProxySessionContextSink, IProxy
 
     public void OnRelayBufferAbandoned() => _logger.LogWarning(
         "Closed relay I/O did not settle within one second; its buffer was abandoned without clearing or pooling.");
+
+    public void OnRelayIoSettled(string exceptionType) => _logger.LogDebug(
+        "Closed relay I/O settled with {ExceptionType}.", exceptionType);
 }

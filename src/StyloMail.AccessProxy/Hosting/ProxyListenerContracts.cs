@@ -85,6 +85,7 @@ public interface IProxySessionBoundSink
 public interface IProxyRelayBufferSink
 {
     void OnRelayBufferAbandoned();
+    void OnRelayIoSettled(string exceptionType) { }
 }
 
 /// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>

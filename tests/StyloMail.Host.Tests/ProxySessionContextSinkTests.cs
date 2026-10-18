@@ -12,6 +12,17 @@ namespace StyloMail.Host.Tests;
 public sealed class ProxySessionContextSinkTests
 {
     [Fact]
+    public void A_settled_relay_fault_logs_only_its_type_at_debug_level()
+    {
+        var logger = new RecordingLogger();
+        var sink = new ProxySessionContextSink(new RecordingAuthenticator(), logger);
+        ((IProxyRelayBufferSink)sink).OnRelayIoSettled(nameof(InvalidOperationException));
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal(LogLevel.Debug, line.Level);
+        Assert.Equal("Closed relay I/O settled with InvalidOperationException.", line.Text);
+    }
+
+    [Fact]
     public void An_abandoned_relay_buffer_emits_one_content_free_warning()
     {
         var logger = new RecordingLogger();

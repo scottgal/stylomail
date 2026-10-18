@@ -284,7 +284,8 @@ public abstract class AccessProxySessionBase
 
             var bounded = await ByteRelay
                 .RunAsync(Client, backend, Bounds, TimeProvider, assembler ?? _observer, cancellationToken,
-                    _contextSink is IProxyRelayBufferSink bufferSink ? bufferSink.OnRelayBufferAbandoned : null)
+                    _contextSink is IProxyRelayBufferSink bufferSink ? bufferSink.OnRelayBufferAbandoned : null,
+                    onSettledFault: _contextSink is IProxyRelayBufferSink faultSink ? faultSink.OnRelayIoSettled : null)
                 .ConfigureAwait(false);
 
             if (bounded == ProxyBoundReason.None) return SessionOutcome.Relayed;

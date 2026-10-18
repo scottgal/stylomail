@@ -92,9 +92,13 @@ public sealed class RelayOutputIdleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Stalled_flush_is_closed_and_settled_before_relay_ownership_is_released(bool faultOnClose)
+    [InlineData(null)]
+    [InlineData(nameof(OperationCanceledException))]
+    [InlineData(nameof(IOException))]
+    [InlineData(nameof(ObjectDisposedException))]
+    [InlineData(nameof(InvalidOperationException))]
+    [InlineData(nameof(ApplicationException))]
+    public async Task Stalled_flush_is_closed_and_settled_before_relay_ownership_is_released(string? faultOnClose)
     {
         await using var fixture = await Fixture.Create(TimeSpan.FromMilliseconds(700), stallFlush: true, faultOnClose: faultOnClose);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -109,6 +113,11 @@ public sealed class RelayOutputIdleTests
             Assert.True(fixture.Output.FlushSettled);
             Assert.Equal(0, fixture.Output.Pending);
             await fixture.AssertReleased();
+            Assert.Equal(2, fixture.Buffers!.Returned.Count);
+            Assert.All(fixture.Buffers.Returned, buffer => Assert.True(buffer.AsSpan().IndexOfAnyExcept((byte)0) < 0));
+            Assert.InRange(fixture.SettledFaultLogs.Count, 0, 1);
+            if (faultOnClose is not null)
+                Assert.Contains(Assert.Single(fixture.SettledFaultLogs), new[] { faultOnClose, nameof(TaskCanceledException), nameof(OperationCanceledException) });
         }
         finally { stop.Cancel(); await Drain(heartbeat); }
     }
@@ -155,13 +164,14 @@ public sealed class RelayOutputIdleTests
         public TrackedOutput Output { get; private set; } = null!;
         public RecordingPool? Buffers { get; private set; }
         public int AbandonmentLogs;
+        public ConcurrentQueue<string> SettledFaultLogs { get; } = new();
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TcpAccessProxyListener _listener = null!;
         private SessionLimiter _limiter = null!;
-        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false, bool faultOnClose = false)
+        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false, string? faultOnClose = null)
         {
             var fixture = new Fixture();
-            if (nonsettlingWrite) fixture.Buffers = new RecordingPool();
+            fixture.Buffers = new RecordingPool();
             var bounds = new AccessProxyBounds { IdleTimeout = idle, MaxSessionDuration = TimeSpan.FromSeconds(20), MaxConcurrentSessions = 1, MaxSessionsPerAccount = 1, RelayBufferBytes = 4096 };
             fixture._limiter = new SessionLimiter(bounds);
             var backendListener = new TcpListener(IPAddress.Loopback, 0);
@@ -184,7 +194,7 @@ public sealed class RelayOutputIdleTests
                 try
                 {
                     var reason = await ByteRelay.RunAsync(clientChannel, backendChannel, bounds, TimeProvider.System, null, token,
-                        () => Interlocked.Increment(ref fixture.AbandonmentLogs), fixture.Buffers);
+                        () => Interlocked.Increment(ref fixture.AbandonmentLogs), fixture.Buffers, fixture.SettledFaultLogs.Enqueue);
                     fixture.Finished.TrySetResult(reason);
                     return reason == ProxyBoundReason.None ? SessionOutcome.Relayed : SessionOutcome.Timeout;
                 }
@@ -229,7 +239,7 @@ public sealed class RelayOutputIdleTests
         public override void Return(byte[] array, bool clearArray = false) { if (clearArray) Array.Clear(array); Returned.Enqueue(array); }
     }
 
-    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite, bool faultOnClose) : Stream
+    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite, string? faultOnClose) : Stream
     {
         public TaskCompletionSource WriteEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -274,7 +284,14 @@ public sealed class RelayOutputIdleTests
             try
             {
                 await _closed.Task;
-                if (faultOnClose) throw new InvalidOperationException("Closed transport has completed its reader.");
+                if (faultOnClose is not null) throw faultOnClose switch
+                {
+                    nameof(OperationCanceledException) => new OperationCanceledException("Closed I/O."),
+                    nameof(IOException) => new IOException("Closed I/O."),
+                    nameof(ObjectDisposedException) => new ObjectDisposedException("Closed I/O."),
+                    nameof(InvalidOperationException) => new InvalidOperationException("Closed transport has completed its reader."),
+                    _ => new ApplicationException("An arbitrary closed-transport fault."),
+                };
             }
             finally { FlushSettled = true; }
         }
