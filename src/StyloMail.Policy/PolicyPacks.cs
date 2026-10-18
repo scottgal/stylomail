@@ -1,3 +1,5 @@
+using StyloMail.Core;
+
 namespace StyloMail.Policy;
 
 /// <summary>
@@ -352,7 +354,15 @@ public static class PolicyPackValidator
     /// checkable fact rather than a claim: without it, every pack is a first pack and no level can
     /// be said to have moved.
     /// </param>
-    public static PolicyPackValidation Validate(PolicyPack pack, PolicyPack? previous = null)
+    /// <param name="validateApprover">
+    /// False for a draft, which is authored before an approver exists. The approval step validates
+    /// the same pack with the approver supplied, so a pack cannot reach the effective state without
+    /// passing the full check. Defaults true so every existing call keeps its meaning.
+    /// </param>
+    public static PolicyPackValidation Validate(
+        PolicyPack pack,
+        PolicyPack? previous = null,
+        bool validateApprover = true)
     {
         ArgumentNullException.ThrowIfNull(pack);
 
@@ -365,7 +375,23 @@ public static class PolicyPackValidator
         Require(pack.RuleSetVersion, RuleSetVersionMissing, nameof(PolicyPack.RuleSetVersion), "A pack must reference the rule-set version it was written against.", violations);
         Require(pack.ScorerVersion, ScorerVersionMissing, nameof(PolicyPack.ScorerVersion), "A pack must reference the scorer version its thresholds were calibrated against.", violations);
         Require(pack.Author, AuthorMissing, nameof(PolicyPack.Author), "A pack must name its author.", violations);
-        Require(pack.Approver, ApproverMissing, nameof(PolicyPack.Approver), "A pack must name the human who approved it.", violations);
+
+        if (validateApprover)
+        {
+            Require(pack.Approver, ApproverMissing, nameof(PolicyPack.Approver), "A pack must name the human who approved it.", violations);
+        }
+
+        // A second approval is a second person, not the same person typing twice. The check is
+        // outside the capture rule because it applies to every lowering, whether or not content is
+        // captured, and it applies even when capture is disabled.
+        if (!string.IsNullOrWhiteSpace(pack.SecondApprover)
+            && string.Equals(pack.SecondApprover, pack.Approver, StringComparison.Ordinal))
+        {
+            violations.Add(Violation(
+                SecondApproverMustDiffer,
+                nameof(PolicyPack.SecondApprover),
+                "The second approver must be a different human from the approver."));
+        }
 
         if (pack.EffectiveFrom == default)
         {
@@ -529,15 +555,6 @@ public static class PolicyPackValidator
                 CaptureFullRequiresSecondApprover,
                 nameof(PolicyPack.SecondApprover),
                 "Full-body capture is the widest PII surface and requires a second approver."));
-        }
-
-        if (!string.IsNullOrWhiteSpace(pack.SecondApprover)
-            && string.Equals(pack.SecondApprover, pack.Approver, StringComparison.Ordinal))
-        {
-            violations.Add(Violation(
-                SecondApproverMustDiffer,
-                nameof(PolicyPack.SecondApprover),
-                "The second approver must be a different human from the approver."));
         }
     }
 

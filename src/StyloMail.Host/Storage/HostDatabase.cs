@@ -511,6 +511,121 @@ public sealed class HostDatabase
             ON host_entity_property_event
                (tenant_id, scope_kind, scope_id, property_key, recorded_at DESC, event_id DESC);
 
+        -- Policy packs: the declared context, tolerance, ceiling and provenance that a decision is
+        -- explained by. A pack is immutable once approved, and the content hash names the bytes the
+        -- approval applied to rather than a version label.
+        --
+        -- `jurisdiction` is part of the effective key. At most one effective pack exists per tenant
+        -- and jurisdiction; the partial unique index is the second line of defence behind the
+        -- activation transaction, so a bug in the service cannot produce two live packs.
+        CREATE TABLE IF NOT EXISTS host_policy_pack (
+            tenant_id        TEXT NOT NULL,
+            pack_id          TEXT NOT NULL,
+            version          TEXT NOT NULL,
+            state            TEXT NOT NULL CHECK(state IN ('draft','approved','effective','superseded','withdrawn')),
+            jurisdiction     TEXT NOT NULL,
+            content_sha256   TEXT NOT NULL,
+            payload          TEXT NOT NULL,
+            author           TEXT NOT NULL,
+            approver         TEXT NULL,
+            second_approver  TEXT NULL,
+            effective_from   TEXT NOT NULL,
+            review_due       TEXT NULL,
+            created_at       TEXT NOT NULL,
+            approved_at      TEXT NULL,
+            superseded_by    TEXT NULL,
+            PRIMARY KEY (tenant_id, pack_id, version)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_pack_tenant_state
+            ON host_policy_pack (tenant_id, state, effective_from);
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_pack_due
+            ON host_policy_pack (tenant_id, jurisdiction, state, effective_from);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_host_policy_pack_effective
+            ON host_policy_pack (tenant_id, jurisdiction)
+            WHERE state = 'effective';
+
+        CREATE TABLE IF NOT EXISTS host_policy_pack_event (
+            event_id   TEXT NOT NULL PRIMARY KEY,
+            tenant_id  TEXT NOT NULL,
+            pack_id    TEXT NOT NULL,
+            version    TEXT NOT NULL,
+            event      TEXT NOT NULL,
+            actor      TEXT NOT NULL,
+            reason     TEXT NOT NULL,
+            at         TEXT NOT NULL,
+            payload    TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_pack_event_history
+            ON host_policy_pack_event (tenant_id, pack_id, version, at DESC);
+
+        -- Rule sets are versioned and immutable once live. A pack references a version; a tenant
+        -- has one rule-set lineage, so a version must resolve to exactly one live row.
+        CREATE TABLE IF NOT EXISTS host_policy_rule_set (
+            tenant_id      TEXT NOT NULL,
+            rule_set_id    TEXT NOT NULL,
+            version        TEXT NOT NULL,
+            state          TEXT NOT NULL CHECK(state IN ('candidate','live','retired')),
+            content_sha256 TEXT NOT NULL,
+            payload        TEXT NOT NULL,
+            created_at     TEXT NOT NULL,
+            promoted_at    TEXT NULL,
+            approver       TEXT NULL,
+            PRIMARY KEY (tenant_id, rule_set_id, version)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_rule_set_live
+            ON host_policy_rule_set (tenant_id, version, state, promoted_at DESC);
+
+        CREATE TABLE IF NOT EXISTS host_policy_rule_event (
+            event_id    TEXT NOT NULL PRIMARY KEY,
+            tenant_id   TEXT NOT NULL,
+            rule_set_id TEXT NOT NULL,
+            version     TEXT NOT NULL,
+            event       TEXT NOT NULL,
+            actor       TEXT NOT NULL,
+            reason      TEXT NOT NULL,
+            at          TEXT NOT NULL,
+            payload     TEXT NULL
+        );
+
+        -- Scoped manual exceptions. Every row is bounded: there is no unbounded binding, and
+        -- revocation is a state change plus an event rather than a delete, so history survives.
+        CREATE TABLE IF NOT EXISTS host_policy_binding (
+            tenant_id    TEXT NOT NULL,
+            binding_id   TEXT NOT NULL,
+            state        TEXT NOT NULL CHECK(state IN ('active','revoked')),
+            scope_kind   TEXT NOT NULL,
+            scope_id     TEXT NOT NULL,
+            action       TEXT NOT NULL,
+            category_id  TEXT NULL,
+            target_level TEXT NULL,
+            starts_at    TEXT NOT NULL,
+            expires_at   TEXT NOT NULL,
+            review_by    TEXT NOT NULL,
+            payload      TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, binding_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_binding_scope
+            ON host_policy_binding (tenant_id, scope_kind, scope_id, state, expires_at);
+
+        CREATE TABLE IF NOT EXISTS host_policy_binding_event (
+            event_id   TEXT NOT NULL PRIMARY KEY,
+            tenant_id  TEXT NOT NULL,
+            binding_id TEXT NOT NULL,
+            event      TEXT NOT NULL,
+            actor      TEXT NOT NULL,
+            reason     TEXT NOT NULL,
+            at         TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_policy_binding_event_history
+            ON host_policy_binding_event (tenant_id, binding_id, at DESC);
+
         -- Access-proxy credentials are deliberately separate from Host API principals. The account
         -- holds a verifier only; the backend record holds ciphertext only. Login lookup is scoped
         -- to its tenant because equal client logins in different tenants must not correlate.

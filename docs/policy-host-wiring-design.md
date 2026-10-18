@@ -3,8 +3,12 @@
 Decision record for the slice bounded by `overview-` on 18 Oct 2026, after the first policy slice
 was accepted at merged main `264b177`.
 
-Status: **design only, not built.** No table was created, no route was mapped, no evaluator call was
-added to the live path. The first slice (`5093d77`) is a pure library and is not wired to anything.
+Status: **design accepted in shape; Phase 1 implemented and awaiting the migration review.** Rulings A-E were issued on 18 Oct 2026:
+the six tables are approved in shape (no DDL executed), `PolicyVerdict` moves to Core, the review
+mapping is option C (a distinct bounded Review state), a store outage caches the last effective pack
+and reviews on a miss, and v1 has one pack per tenant and jurisdiction. No table was created, no
+route was mapped, no evaluator call was added to the live path. The first slice (`5093d77`) is a
+pure library and is not wired to anything.
 
 ## The decision
 
@@ -16,8 +20,9 @@ a pack exists, a binding path exists and the review state can be represented hon
    do here changes how a message is decided.
 2. **Shadow evaluation.** The Host calls the evaluator beside the existing engine for tenants with
    an active pack, records the candidate verdict, and leaves the delivered action untouched.
-3. **Authoritative evaluation.** Only after Phase 1 is green and the review mapping below is ruled:
-   the pack verdict composes with the legacy tiers, and the legacy engine remains the rollback.
+3. **Authoritative evaluation.** Only after Phase 1 is green and `MailAction.Review` exists with its
+   bounded state: the pack verdict composes with the legacy tiers, and the legacy engine remains the
+   rollback.
 4. **Feedback writes.** Promotion and retirement become able to change a rule only after the
    decision record is stored and joined to labels. Until then the feedback capture stays read-only.
 
@@ -31,7 +36,7 @@ authoritative review verdict before the review state exists is a review that las
 | Area | Owner | This design's boundary |
 |---|---|---|
 | `src/StyloMail.Policy` | `policy-` | Pack schema, evaluator, binding rules, feedback gates. No storage, no Host types. |
-| Host DDL, routes, contracts, DI | `ingress-` per the architecture | This design proposes the tables and routes; `ingress-` owns their Host shape. |
+| Host DDL, routes, contracts, DI | `ingress-` by default; `policy-` for Phase 1 | `ingress-` has exited. Phase 1 is implemented by `policy-` in its own worktree, with the migration commit sent to `overview-` for review before it is run. |
 | `src/StyloMail.Profiles` | `profiles-` | Policy reads the effective-property contract; it never writes properties and never duplicates them. |
 | Console | `desktop-` | Consumes capability descriptors and consequence inputs; owns the sentence templates. |
 | Proxy and runtime reliability | `review-` | Not touched. |
@@ -55,7 +60,8 @@ CREATE TABLE host_policy_pack (
     author           TEXT NOT NULL,        -- principal id, not a display name
     approver         TEXT NULL,
     second_approver  TEXT NULL,
-    effective_from   TEXT NULL,
+    effective_from   TEXT NOT NULL,
+    review_due       TEXT NULL,
     superseded_by    TEXT NULL,            -- "<pack_id>@<version>"
     created_at       TEXT NOT NULL,
     approved_at      TEXT NULL,
@@ -76,7 +82,7 @@ CREATE TABLE host_policy_pack_event (
     tenant_id   TEXT NOT NULL,
     pack_id     TEXT NOT NULL,
     version     TEXT NOT NULL,
-    event       TEXT NOT NULL,             -- drafted | edited | approved | activated | superseded | withdrawn
+    event       TEXT NOT NULL,             -- drafted | edited | approved | scheduled | activated | superseded | withdrawn | deactivated
     actor       TEXT NOT NULL,             -- principal id
     reason      TEXT NOT NULL,
     at          TEXT NOT NULL,
@@ -97,11 +103,13 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
   +----withdraw--------+----withdraw----> withdrawn
 ```
 
-- **Draft is editable.** Every save revalidates with `PolicyPackValidator`; an invalid draft is
-  refused and the refusal codes are returned to the console. `PolicyPackValidator` already refuses
-  an Off or Observe hard floor, an unknown category, an undeclared floor and a lowering without a
-  second approver (`PolicyPacks.cs`).
-- **Approved is immutable.** A change is a new version. `content_sha256` is over the canonical
+- **Draft is editable.** Every save revalidates the content with `PolicyPackValidator`; an invalid
+  draft is refused and the refusal codes are returned to the console. Draft validation does not
+  require the approver or compare against the previous pack, because the approver and the second
+  approver do not exist until approval. The full check, including the lowering comparison, runs at
+  approval, so a lowering cannot become effective without both signatures.
+- **Approved is immutable.** Only a draft may be approved, and a second approval attempt is
+  refused with `pack.version_immutable`. A change is a new version. `content_sha256` is over the canonical
   payload bytes (sorted keys, invariant culture) and is computed at approval, so an approval names
   bytes rather than a version label. A stored payload whose hash no longer matches its row is a
   corruption, and the row is refused at read.
@@ -110,13 +118,16 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
   the supersession event, set the prior row to `superseded` with `superseded_by`, set this row to
   `effective`. The partial unique index is the second line of defence: a bug in the service cannot
   produce two effective packs.
-- **No backdating.** `effective_from` must be at or after `approved_at`. A pack is not retroactive
+- **No backdating.** `effective_from` must be at or after `approved_at`, and the store refuses a
+  backdated activation with `pack.effective_before_approval`, tested. A pack is not retroactive
   evidence; a decision already made is explained by the version that was effective when it was made.
 - **Approval is by authenticated principals.** The request carries a principal id, not a free-text
   name. A lowering or a capture widening needs a second principal with `Administer`, and the two
-  must be distinct. The pack payload keeps human-readable author and approver fields for
-  portability, and the store keeps the principal ids that authorised it. This is how spec 9.15's
-  "recorded operator decision" becomes checkable rather than declared.
+  must be distinct. A same-principal second approval is refused with
+  `pack.second_approver_not_distinct`, tested, not merely documented. The pack payload keeps
+  human-readable author and approver fields for portability, and the store keeps the principal ids
+  that authorised it. This is how spec 9.15's "recorded operator decision" becomes checkable rather
+  than declared.
 - **Withdrawal before effect** is allowed. Withdrawing an effective pack is not: the rollback is
   to activate the previous version, which is an auditable event, or to deactivate the pack path
   entirely, which reverts the tenant to the legacy engine.
@@ -131,15 +142,21 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
 3. If neither exists, return null. **Null means "no pack", not "all categories Off".** The
    evaluator is not called and the legacy decision stands.
 
-Jurisdiction selection is a security decision, not a convenience:
+An approved pack whose `effective_from` is in the future is a schedule. Several schedules may
+coexist; the lookup promotes the earliest due one in a transaction when it is observed, superseding
+the current effective pack. Promotion is a state change on a Review read, so it happens inside the
+same transaction as the supersession and writes an `activated` event naming the system actor
+`policy-scheduler`; a read that mutates without an audit row would be unacceptable. The partial
+unique index still permits exactly one effective pack per tenant and jurisdiction. A rule set is resolved by version through one tenant lineage, so a version
+must map to exactly one live row (`rule_set.ambiguous` otherwise).
 
-- The effective country comes from `profiles-`' property read and must be `verified` or `declared`.
-  An inferred or imported country is ineligible (`profiles-`' contract already enforces this).
-- If the effective country is known and differs from the pack's jurisdiction, an effective pack for
-  that jurisdiction is required. If none exists, the decision is `Review` with
-  `policy.no_pack_for_jurisdiction`. It is never silently decided by the wrong legal constraints.
-- If the country is unknown, the tenant's declared default jurisdiction governs. This is the same
-  conservative default spec 9.15 gives an undeclared audience.
+**v1 selects one pack per tenant and jurisdiction, from the deployment's declared jurisdiction.**
+Ruling E: an entity's country may raise protection but may not select a different pack. A known,
+verified or declared country that differs from the pack's jurisdiction does not switch packs; it
+adds the jurisdiction-sensitive categories to `EffectivePolicy.ForcedReviewCategories`, so a fired
+rule in them escalates to `Review` with `policy.jurisdiction_differs_from_pack`. An inferred or
+imported country is ineligible (`profiles-`' contract already enforces this). Per-entity vertical
+and multi-pack selection are deferred.
 
 ### Store ports
 
@@ -152,6 +169,9 @@ public interface IPolicyPackReader
         string tenantId, string jurisdiction, DateTimeOffset now, CancellationToken cancellationToken);
 
     Task<PolicyPack?> GetVersionAsync(
+        string tenantId, string packId, string version, CancellationToken cancellationToken);
+
+    Task<PolicyPackSummary?> GetSummaryAsync(
         string tenantId, string packId, string version, CancellationToken cancellationToken);
 }
 
@@ -236,9 +256,10 @@ CREATE TABLE host_policy_binding_event (
 );
 ```
 
-- A binding is validated against the effective pack **at creation**: no hard-floor lowering below
-  `Strict`, no capture wider than the pack's declared mode. `PolicyBindingValidator` already
-  enforces both.
+- A binding is validated against the effective pack **at creation**: the pack must be `effective`,
+  the binding may not lower a hard floor below `Strict`, and capture may not be wider than the
+  pack's declared mode. `PolicyBindingValidator` enforces the last two; the store enforces the
+  first with `binding.pack_not_effective`.
 - Expiry is resolved at read with `IsActiveAt(now)`; there is no reliance on a sweeper. The
   `OnExpiry` resolution is part of the binding: `RevertToPack` or `HoldForReview`, with no "keep"
   member.
@@ -262,26 +283,37 @@ CREATE TABLE host_policy_binding_event (
 `profiles-` has declared the read contract stable: `src/StyloMail.Profiles`,
 `IPropertyStore.GetEffectiveAsync(tenantId, PropertyScopeChain, keys, now, ct)`, returning one
 `EffectiveProperty` per requested key with `Value`, `State`, `Source`, `Scope`, model block,
-evidence refs, confirmation and candidates. Policy adds a ProjectReference **after** that library
-is merged, and reads only. It never calls the write or confirm routes.
+evidence refs, confirmation, candidates and an explicit `Availability`. Policy adds a ProjectReference
+**after** that library is merged, and reads only. It never calls the write or confirm routes.
 
-The keys policy consumes:
+**v1 consumes exactly four keys.** The library defines `age_band`, `country`, `role` and
+`language`, and `GetEffectiveAsync` throws `ArgumentException` for any other key. Do not pass
+`audience` or `contact_policy`: they are not implemented, and an unknown key must not be sent
+hoping it comes back `Unknown`. `audience` is a pack-context field, not an entity property, and
+`contact_policy` is a later slice.
 
 | Key | Use | Rule |
 |---|---|---|
 | `age_band` | audience protection | Most protective band governs. A minor raises `adult_content` to at least `Strict`, `coercion_and_extortion` to at least `Strict`, `harassment` to at least `Standard`. An inferred adult never lowers anything. |
-| `country` | jurisdiction selection | Verified or declared only. Known and different from the pack's jurisdiction requires a pack for that jurisdiction; otherwise `Review`. |
-| `audience` | context | A mixed or unknown audience keeps grooming at `Strict` or above. |
+| `country` | protective facts | Verified or declared only. A known country different from the pack's jurisdiction does not select a pack in v1: it adds the jurisdiction-sensitive categories to `ForcedReviewCategories`. An inferred or imported country is ineligible. |
 | `role`, `language` | evidence context | Passed to rules as facts. They never lower a protection. |
-| `contact_policy` | binding scope context | Read for the console's effective-binding display. Not a tolerance input. |
 
 An age band of `unknown` does not lower a level and does not pick a default. It adds the affected
 categories to `EffectivePolicy.ForcedReviewCategories`, so any rule that fires in one of them
 escalates to `Review`. This is the "uncertain band may raise sensitivity and escalate" rule
-expressed as an outcome rather than a guessed level.
+expressed as an outcome rather than a guessed level. `State = Suggested` is not unusable: it means
+no human has confirmed it, and a binding that requires human authority must check `State` or
+`ConfirmedAt`, never the value alone.
 
-**The dependency direction is Policy to Profiles, never the reverse.** Profiles must not reference
-Policy. The shared vocabulary (`age_band` ids, scope chain) stays in Profiles; Policy imports it.
+The scope chain is built with `PropertyScopeChain.Create(addressed, ancestors...)`. A conversation
+chain is used only when the addressed scope is the conversation; an entity-only assessment addresses
+the entity, with domain and company ancestors when known. A wider read can never include a
+conversation row, by construction. `Unknown`, `NotProduced` and `NotApplicable` are distinct: a
+missing value is never read as a value, a default or a zero.
+
+**The dependency direction is Policy to Profiles, never the reverse.** `StyloMail.Profiles`
+references only the BCL. The shared vocabulary (`age_band` ids, scope chain) stays in Profiles;
+Policy imports it. If Profiles ever needs a Policy type, the type goes in Core instead.
 
 ## The evaluator call site
 
@@ -306,32 +338,40 @@ mapping table. It takes the legacy `PolicyDecision`, the pack `PolicyEvaluation`
 policy, and returns the composed action plus reason codes. The assessment keeps one action, not two
 competing ones.
 
-### The review mapping gap
+### The review state
 
-`PolicyVerdict.Review` has no honest representation in today's `MailAction` enum, and this design
-does not pretend otherwise. The options:
+Ruling C: `PolicyVerdict.Review` maps to a new `MailAction.Review`, not to a short Hold and not to
+Quarantine. The semantics are pinned:
 
-| Option | Change | Consequence |
-|---|---|---|
-| A. `Review` maps to `Hold` with today's 5-30s window | none | Dishonest: 30 seconds is a re-check, not human review (`PolicyOptions.MaxHoldDeadline`). |
-| B. `Review` maps to `Quarantine` | none | Removes the message from the inbox, which is stronger than review and reversible, but conflates "a human should look" with "this is contained". |
-| C. Add `MailAction.Review` and a review-queue state | Core enum, Host contracts, desktop, queue | Honest: the message is retained for a human, with a stated deadline and a reversal path. Touches four lanes. |
-| D. Keep the action as `Allow` and record a review item after delivery | Core/Host | Unacceptable for inbound pre-acceptance: the review arrives after the harm. |
+- Delivery is withheld. The message appears in a review queue with the evidence and the rule that
+  produced it, and a human decides.
+- The state has a deadline, proposed at 24 hours and configurable per pack (`PolicyPack.ReviewDeadline`;
+  a new pack field, not a table change). At the deadline it escalates to Quarantine or follows the
+  pack's explicit rule. It never auto-releases and never silently delivers.
+- `MailAction.Review` is appended to the enum after `Reject` so existing numeric values do not move.
+  It touches Core, the Host contracts, the console and the queue worker, and it needs its own review
+  store and schema approval. That schema is not part of the six tables in this design.
+- Phase 2 may shadow a Review outcome but must not act on it. C must land before Phase 3 becomes
+  authoritative.
 
-**Recommendation: C, before Phase 3.** Until C is ruled, Phase 2 can shadow the verdict without
-mapping it to an action, and Phase 3 stays blocked. The alternative, B, is acceptable only if the
-product rules that a gray-zone message is contained while it waits; that is a product decision, not
-a policy one.
+Copy is part of the contract, not an afterthought: Review says "Awaiting human review; no final
+delivery decision has been made." Quarantine says "Stopped before delivery while awaiting review."
+Never "under review" for containment, and never containment language for Review.
+
+### Store outage
+
+If the pack store is unreadable, the Host uses the last effective pack cached in memory after a
+successful read. On a cache miss it returns `Review` with `policy.pack_store_unavailable`, never
+`Defer` and never a permissive default. Until `MailAction.Review` exists, the authoritative
+composition falls back to the most protective legacy outcome, or Quarantine when the legacy outcome
+is `Allow`. The cache-miss path is a test, not a comment. A deferral returns the mail to the sender
+and looks like a policy decision, which is why it is refused as a fallback.
 
 ## The decision record
 
-`MailAssessment` is in `StyloMail.Core` and cannot reference `StyloMail.Policy`. To carry the
-explanation in the ledger payload, the shared verdict vocabulary moves to Core before wiring:
-
-- `PolicyVerdict` moves from `StyloMail.Policy` to `StyloMail.Core` (or a `StyloMail.Core.Policy`
-  namespace). This is safe now because the enum has no consumer outside the first slice. After
-  wiring it becomes a breaking change.
-- `MailAssessment` gains an optional `PolicyDecisionRecord`:
+`MailAssessment` is in `StyloMail.Core` and cannot reference `StyloMail.Policy`. Ruling B approved
+the move, and `PolicyVerdict` now lives in `StyloMail.Core/PolicyVerdict.cs`; `StyloMail.Policy`
+imports it. `MailAssessment` gains an optional `PolicyDecisionRecord`:
 
 ```csharp
 public sealed record PolicyDecisionRecord
@@ -359,8 +399,10 @@ public sealed record PolicyDecisionRecord
 ```
 
 - **Null is "not evaluated", never `Permit`.** A row written before this field existed, or a tenant
-  with no active pack, has no policy record. The console must say "no pack was active" rather than
-  rendering a clean verdict.
+  with no active pack, has no policy record. The console says "No policy pack was active", not a
+  clean verdict.
+- **Shadow is visibly not applied.** A shadow record carries `Shadow = true` and the console says
+  "no action was applied". It may show the candidate verdict, but never as the outcome.
 - The evidence rows are already on `MailAssessment.Evidence`; the record carries the digest, not a
   second copy. That keeps one evidence list and one arithmetic.
 - The ledger stores the whole assessment as JSON at `HostDatabase.cs:299-321`, so this needs **no
@@ -399,33 +441,53 @@ stale prose behind.
 
 ### Shape
 
+Desktop's additions are accepted: `MonitorAllMail` is an explicit kind, capability availability and
+a denial reason are served, the target and effective scope are named with a display-safe reference,
+affected counts use the same availability rule, the resulting delivery or containment state is
+explicit, Review carries its owner, deadline, escalation and reversal, and notification and audit
+effects are stated.
+
 ```csharp
 public enum PolicyActionKind
 {
     Hold, Quarantine, Review, ReleaseQuarantine,
-    PauseSender, ResumeSender, BlockSender, CaptureText,
+    PauseSender, ResumeSender, BlockSender, MonitorAllMail, CaptureText,
 }
 
 public enum ConsequenceAvailability
 {
-    Measured,        // a number from a stated window
-    NotMeasured,     // the window exists but the query failed or was not run
-    NotApplicable,   // the question does not apply to this action or this tenant
+    Measured,       // a number from a stated window
+    NotProduced,    // the query ran or exists but produced no usable value
+    NotApplicable,  // the question does not apply to this action or this tenant
+}
+
+public enum PolicyCapabilityAvailability
+{
+    Available, NotAvailable,
+}
+
+public enum PolicyResultingState
+{
+    Delivered, Delayed, WithheldForReview, Contained, Rejected, Deferred, NotApplicable,
 }
 
 public sealed record PolicyActionCapability
 {
     public required PolicyActionKind Kind { get; init; }
+    public required PolicyCapabilityAvailability Availability { get; init; }
+    public required string? DenialReason { get; init; }          // code, e.g. "pack_level_off"
     public required int AuthorityTier { get; init; }              // 0..4; PII has its own tier
     public required bool Automatic { get; init; }
     public required bool RequiresHumanApproval { get; init; }
     public required string RequiredPrivilege { get; init; }       // "Review" | "Administer"
     public required IReadOnlyList<BindingScope> Scopes { get; init; }
+    public required PolicyResultingState ResultingState { get; init; }
     public required bool Reversible { get; init; }
     public PolicyActionKind? ReversalAction { get; init; }
     public TimeSpan? MaximumDuration { get; init; }
     public required bool ReasonRequired { get; init; }
     public required string AuditEventKind { get; init; }
+    public required string NotificationEffect { get; init; }      // "none" | "review_queue" | "sender_owner" | ...
     public required string ConsequenceTemplateId { get; init; }
     public required int ConsequenceTemplateVersion { get; init; }
     public required IReadOnlyList<ConsequenceInputDescriptor> Inputs { get; init; }
@@ -433,21 +495,37 @@ public sealed record PolicyActionCapability
 
 public sealed record ConsequenceInputDescriptor
 {
-    public required string Name { get; init; }                    // e.g. "would_have_been_held"
-    public required string Unit { get; init; }                    // "messages" | "days" | "level"
+    public required string Name { get; init; }
+    public required string Unit { get; init; }
     public required ConsequenceAvailability DefaultAvailability { get; init; }
-    public required string Source { get; init; }                  // "decision_ledger" | "pack" | "binding"
+    public required string Source { get; init; }                  // "decision_ledger" | "pack" | "binding" | "property"
 }
 
 public sealed record ConsequenceInput
 {
     public required string Name { get; init; }
-    public string? Value { get; init; }                           // null exactly when not measurable
+    public string? Value { get; init; }                           // null exactly when not produced
     public required ConsequenceAvailability Availability { get; init; }
     public int? SampleSupport { get; init; }
     public double? Coverage { get; init; }
-    public required string Window { get; init; }                  // e.g. "last 30 days"
+    public required string Window { get; init; }
     public DateTimeOffset? MeasuredAt { get; init; }
+}
+
+public sealed record PolicyTarget
+{
+    public required BindingScope ScopeKind { get; init; }
+    public required string DisplayReference { get; init; }        // display-safe, never a raw address
+    public required string ScopeId { get; init; }                 // opaque, for the Host call
+}
+
+public sealed record PolicyReviewTerms
+{
+    public required string Queue { get; init; }                   // disclose-safe queue name or "unknown"
+    public string? Owner { get; init; }
+    public required DateTimeOffset Deadline { get; init; }
+    public required string EscalationAction { get; init; }        // "quarantine" | "pack_rule"
+    public required string NextAction { get; init; }              // reversal or decision path
 }
 
 public sealed record PolicyConsequence
@@ -455,6 +533,9 @@ public sealed record PolicyConsequence
     public required string TemplateId { get; init; }
     public required int TemplateVersion { get; init; }
     public required IReadOnlyList<ConsequenceInput> Inputs { get; init; }
+    public required PolicyTarget Target { get; init; }
+    public required PolicyResultingState ResultingState { get; init; }
+    public PolicyReviewTerms? Review { get; init; }
     public required string PackId { get; init; }
     public required string PackVersion { get; init; }
     public string? RuleSetVersion { get; init; }
@@ -464,21 +545,44 @@ public sealed record PolicyConsequence
 
 ### Inputs the console needs
 
-Every input carries its own availability. The rule is the one the evidence layer already holds: a
-missing count is `not measured`, never `0`.
+Every input carries its own availability. A missing count is `NotProduced` or `NotApplicable`,
+never `0`.
 
 - `effective_level`: the resolved tolerance for the category, and `hard_floor` with a reason.
+- `target_scope_kind`, `target_display_reference`: `PolicyTarget`, display-safe. `binding_scope`
+  alone cannot say what or who is affected.
+- `affected_messages`, `affected_relationships`: counts when measurable, with the same availability
+  semantics and the window they were measured over.
 - `would_have_been_held_last_window`, `confirmed_last_window`, `overridden_last_window`,
   `reversed_last_window`: counts over a stated window, with sample support and coverage, from the
   decision ledger. Spec 9.15's operator surface ("12 messages would have been held last month, 3
   were confirmed") is exactly this row.
+- `resulting_state`: one of `PolicyResultingState`, so the copy cannot turn a review into a
+  containment claim.
+- `review_queue`, `review_owner`, `review_deadline`, `review_escalation`, `review_next_action`:
+  present for Review, `NotApplicable` otherwise. The queue and owner are `unknown` when they cannot
+  be disclosed, never omitted.
 - `binding_scope`, `binding_expires_at`, `binding_review_by`, `binding_reversible`: from the active
-  binding, or `not_applicable` when the action is not bound.
+  binding, or `NotApplicable` when the action is not bound.
 - `capture_retention_days`, `capture_max_characters`, `capture_statement`: from the pack and the
-  capture binding. `not_applicable` when capture is not the action.
+  capture binding. `NotApplicable` when capture is not the action.
 - `reversal_action`, `reversal_deadline`, `expiry`: from the static descriptor.
+- `notification_effect`, `audit_event_kind`: stated, not implied.
 - `pack_version`, `rule_set_version`, `evidence_digest`: provenance, so the copy can link to the
   explanation.
+
+### Copy rules
+
+These sentences are pinned so a template change is visible:
+
+| State | Copy |
+|---|---|
+| Review | "Awaiting human review; no final delivery decision has been made." |
+| Quarantine | "Stopped before delivery while awaiting review." |
+| No policy record | "No policy pack was active." |
+| Shadow record | "Shadow only; no action was applied." |
+
+"Under review" is never used for containment, and containment language is never used for Review.
 
 ### Who owns the sentence
 
@@ -497,15 +601,21 @@ sends prose that a policy change can make false without a version bump.
 | `/v1/policy/packs/{id}/{version}/approve` | POST | Administer | 1 |
 | `/v1/policy/packs/{id}/{version}/activate` | POST | Administer | 1 |
 | `/v1/policy/packs/{id}/{version}/withdraw` | POST | Administer | 1 |
+| `/v1/policy/packs/{id}/{version}/deactivate` | POST | Administer | 1 (return to the legacy engine) |
 | `/v1/policy/bindings` | GET | Review | 1 |
 | `/v1/policy/bindings` | POST | Administer | 1 |
 | `/v1/policy/bindings/{id}/revoke` | POST | Administer | 1 |
-| `/v1/policy/capabilities` | GET | Review | descriptor, after desktop agrees |
-| `/v1/decisions/{id}` | GET | Review | adds `PolicyDecisionRecord` in Phase 2 |
+| `/v1/policy/capabilities` | GET | Review | 1 (static descriptors; counts report `NotProduced`) |
+| `/v1/decisions/{id}` | GET | Review | adds `PolicyDecisionRecord` and per-case consequences in Phase 2 |
 
 The split mirrors `ApiRoutes.cs`: reads on `Review`, mutations on `Administer`. Approval and
 activation are mutations, and the second approver must be a distinct authenticated principal with
 `Administer`, checked from the request identity, not from a body string.
+
+The review queue itself is not in Phase 1. `MailAction.Review` and its bounded state are a separate
+slice with their own store and schema approval; the capability endpoint in Phase 1 reports the
+action as `NotAvailable` with `denial_reason = "review_state_not_implemented"` until it lands. That is
+an honest absence, not a hidden one.
 
 ## Failure modes and invariants
 
@@ -519,41 +629,61 @@ These are the tests each phase must pin.
 4. **Cross-tenant read.** A pack id from another tenant resolves to null. No route enumerates across
    tenants.
 5. **Lowering without a second approver.** Refused at approval, with the violated level named.
-   A hard floor below `Strict` is refused regardless of approvers.
-6. **Profiles unavailable or a property unknown.** The conservative default applies. No inferred
-   adult lowers a protection, and a known country with no matching pack produces `Review`.
-7. **Pack store outage.** The effective pack is immutable and cached in memory after first read. A
-   cache miss during an outage produces `Review` with `policy.pack_store_unavailable`, never a
-   permission fallback. The legacy tiers still run; this is a decision to be ratified, because it
-   trades availability for the safety property that an unreadable pack is not an absent one.
-8. **Evaluator throws.** The composition falls back to the legacy decision and records
+   A hard floor below `Strict` is refused regardless of approvers. A same-principal second approval
+   is refused with `pack.second_approver_not_distinct`.
+6. **Backdating.** `effective_from` before `approved_at` is refused with
+   `pack.effective_before_approval`.
+7. **Profiles unavailable or a property unknown.** The conservative default applies. No inferred
+   adult lowers a protection, and a known country that differs from the pack's jurisdiction adds the
+   jurisdiction-sensitive categories to `ForcedReviewCategories`.
+8. **Pack store outage.** The effective pack is immutable and cached in memory after first read. A
+   cache miss during an outage produces `Review` with `policy.pack_store_unavailable`, never `Defer`
+   and never `Permit`. Until `MailAction.Review` exists, the fallback is the most protective legacy
+   outcome, or Quarantine when that outcome is `Allow`.
+9. **Evaluator throws.** The composition falls back to the legacy decision and records
    `policy.evaluator_failed`. An exception never produces an `Allow` that the pack would not have.
-9. **Binding expiry.** Resolved at read. `HoldForReview` holds the scope; `RevertToPack` returns to
-   the pack. No binding becomes permanent by being forgotten.
+10. **Binding expiry.** Resolved at read. `HoldForReview` holds the scope; `RevertToPack` returns to
+    the pack. No binding becomes permanent by being forgotten.
 10. **Shadow mode.** Records only. The delivered action is byte-identical to the production action,
     and the shadow record's `Applied` is always false.
-11. **A review verdict has no honest action.** Phase 3 does not ship until the mapping is ruled.
+11. **Shadow mode.** Records only. The delivered action is byte-identical to the production action,
+    and the shadow record's `Applied` is always false.
+12. **A pack never relaxes the legacy decision.** The composed action is at least as protective as
+    the legacy result for every pair in the mapping table, and a pack `Permit` cannot turn a legacy
+    `Hold`, `Quarantine`, `Defer` or `Reject` into an `Allow`. Pinned by a table-driven test, not by
+    a comment.
+13. **Recipient preference stays last.** It cannot relax a pack `Review`, `Hold` or `Quarantine`. A
+    test covers each of the three, because an action-only test would relax the review state the way
+    an earlier defect relaxed the semantic-blackout hold.
 
 ## Phases and their tests
 
 **Phase 1: stores, lifecycle, read-only routes.**
 - Host migration and store tests: draft edit revalidates, approved immutable, hash mismatch refused,
   one effective per jurisdiction, supersession in one transaction, withdrawal before effect only,
-  cross-tenant isolation, principal-based second approval, auth split.
-- No assessment path changes. The Policy suite and the Host suite stay green.
+  cross-tenant isolation, principal-based second approval, same-principal refusal, backdated
+  activation refusal, auth split.
+- Capability endpoint tests: every kind is present (including `MonitorAllMail`), availability and
+  denial reasons are explicit, and no consequence count is reported as zero when it is `NotProduced`.
+- No assessment path changes and **the evaluator is not called from any Phase 1 route**. The Policy
+  suite and the Host suite stay green.
 
 **Phase 2: shadow evaluation.**
 - `PolicyDecisionRecord` in Core, mirrored on `DecisionResponse`, with `Shadow = true`.
 - Assessment test: a tenant with an active pack records a candidate verdict; the action and the
   queue behaviour do not change; the evidence digest matches a re-evaluation of the same rows.
 - A tenant with no pack records null and is otherwise unchanged.
+- A cache-miss test: the shadow path records `policy.pack_store_unavailable` and still does not
+  change the action.
 - Desktop reads the record in a read-only pane section.
 
 **Phase 3: authoritative composition.**
-- Depends on the review mapping (C, recommended) and on `StyloMail.Profiles` being merged.
+- Depends on `MailAction.Review` and its bounded review state (option C) and on
+  `StyloMail.Profiles` being merged.
 - Composition tests: a pack cannot relax legacy tier 1-3; the more protective outcome wins; a
-  binding raises or lowers within its scope; a hard floor cannot be lowered; a jurisdiction
-  mismatch reviews; a missing property reviews rather than defaults.
+  binding raises or lowers within its scope; a hard floor cannot be lowered; a country difference
+  reviews the jurisdiction-sensitive categories; a missing property reviews rather than defaults;
+  the cache-miss fallback is Quarantine or the most protective legacy outcome.
 - Rollback: deactivating the pack returns the tenant to the legacy engine at the next assessment.
 
 **Phase 4: feedback writes.**
@@ -563,19 +693,20 @@ These are the tests each phase must pin.
 
 ## Open questions for `overview-`
 
-1. **Review mapping**: approve option C (add `MailAction.Review` and a bounded review state) before
-   Phase 3, or rule that B (quarantine while waiting) is the product behaviour. This is the only
-   blocker to authoritative wiring.
-2. **Schema approval**: the six tables above (pack and its events, rule set and its events, binding and its events). No migration has been written.
-3. **Move `PolicyVerdict` to Core**: needed for `MailAssessment.PolicyDecisionRecord`. Safe now,
-   breaking after a consumer exists.
-4. **Store-outage behaviour**: cache the last effective pack and review on a miss, or defer. I
-   recommend review on a miss, not defer, because a deferral returns the mail to the sender and
-   looks like a policy decision.
-5. **Pack selection**: one effective pack per tenant and jurisdiction, with properties only raising
-   protection. A tenant that needs a different vertical per entity is out of scope for v1.
-6. **Feedback provenance columns**: defer to Phase 4, but the decision to add them is needed before
-   a weak model label can be captured with its model and version.
+Rulings A-E are recorded in the sections above: schema approved in shape, `PolicyVerdict` moved to
+Core, review mapping C, cache-and-review on a store miss, one pack per tenant and jurisdiction. What
+remains:
+
+1. **Review state storage and queue ownership.** Ruling C is accepted; the review queue needs an
+   owner, a store and its own schema approval, and `MailAction.Review` touches Core, Host contracts,
+   desktop and the queue worker. Proposed default deadline is 24 hours, configurable per pack.
+2. **Feedback provenance columns.** Deferred to Phase 4, but the decision to add them is needed
+   before a weak model label can be captured with its model and version.
+3. **Profiles merge.** The read contract is stable in shape; the library is not merged yet. Policy
+   adds the ProjectReference after the SHA lands. No key is passed before then, and `audience` and
+   `contact_policy` are not passed at all in v1.
+4. **Pack authoring UI.** Read and lifecycle only in Phase 1; the consequence panel is rendered from
+   typed inputs, and the settings page copy is not authored here.
 
 ## Not in this design
 

@@ -20,6 +20,7 @@ using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Feedback;
 using StyloMail.Host.Observability;
+using StyloMail.Host.Policy;
 using StyloMail.Host.Profiles;
 using StyloMail.Host.Proxy;
 using StyloMail.Host.Storage;
@@ -32,6 +33,7 @@ using StyloMail.Jev;
 using StyloMail.Mime;
 using StyloMail.Nimble;
 using StyloMail.Persistence;
+using StyloMail.Policy;
 using StyloMail.Queue;
 using StyloMail.Transport.Cloudflare;
 using StyloMail.Transport.Ingress;
@@ -76,6 +78,17 @@ public static class HostServices
         // host can layer its configuration in before the store is first resolved.
         services.Configure<PropertyOptions>(configuration.GetSection(PropertyOptions.SectionName));
         services.AddSingleton<IPropertyStore, SqlitePropertyStore>();
+
+        // Policy packs, rule sets and bindings. The read ports are what the decision path may
+        // resolve; the lifecycle stores are reached only by the administration endpoints. Phase 1
+        // registers them without calling the evaluator from any route.
+        services.AddSingleton<SqlitePolicyRuleSetStore>();
+        services.AddSingleton<IPolicyRuleSetReader>(
+            provider => provider.GetRequiredService<SqlitePolicyRuleSetStore>());
+        services.AddSingleton<SqlitePolicyPackStore>();
+        services.AddSingleton<IPolicyPackReader>(
+            provider => provider.GetRequiredService<SqlitePolicyPackStore>());
+        services.AddSingleton<SqlitePolicyBindingStore>();
 
         // The access proxy backend. Registered unconditionally, with the key-dependent pieces
         // refusing at use rather than at composition: this composition root runs before a test host

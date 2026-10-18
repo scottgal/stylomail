@@ -1,3 +1,5 @@
+using StyloMail.Core;
+
 namespace StyloMail.Policy.Tests;
 
 /// <summary>
@@ -180,6 +182,21 @@ public sealed class PolicyPackTests
     }
 
     [Fact]
+    public void A_same_person_second_approver_is_refused_even_when_capture_is_disabled()
+    {
+        // The check lives outside the capture rule. It used to sit after the capture mode's early
+        // return, so a lowering with capture disabled accepted the same principal twice.
+        var validation = PolicyPackValidator.Validate(
+            PolicyFixtures.Pack(
+                capture: TextCaptureRules.Disabled,
+                secondApprover: "approver-a",
+                approver: "approver-a"));
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Violations, violation => violation.Code == PolicyPackValidator.SecondApproverMustDiffer);
+    }
+
+    [Fact]
     public void Capturing_content_requires_a_retention_clock()
     {
         var capture = PolicyFixtures.ExcerptCapture() with { RetentionDays = 0 };
@@ -256,6 +273,20 @@ public sealed class PolicyPackTests
 
         Assert.False(validation.IsValid);
         Assert.Contains(validation.Violations, violation => violation.Code == PolicyPackValidator.PreviousPackMismatch);
+    }
+
+    [Fact]
+    public void A_draft_may_be_validated_before_an_approver_exists()
+    {
+        var draft = PolicyFixtures.Pack() with { Approver = string.Empty };
+
+        var full = PolicyPackValidator.Validate(draft);
+        var asDraft = PolicyPackValidator.Validate(draft, previous: null, validateApprover: false);
+
+        // The approval step must still refuse it: the draft exemption is not a weaker pack.
+        Assert.False(full.IsValid);
+        Assert.Contains(full.Violations, violation => violation.Code == PolicyPackValidator.ApproverMissing);
+        Assert.True(asDraft.IsValid, Describe(asDraft));
     }
 
     [Fact]
