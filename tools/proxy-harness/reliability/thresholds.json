@@ -1,0 +1,16 @@
+{
+  "Concurrency": 8,
+  "Rounds": 3,
+  "RoundSeconds": 10,
+  "WarmupSessions": 16,
+  "SettleMilliseconds": 1000,
+  "SessionDeadlineSeconds": 8,
+  "MaxHandleDelta": 8,
+  "MaxSocketDelta": 0,
+  "MaxManagedDeltaBytes": 4194304,
+  "MaxManagedTrendBytesPerRound": 262144,
+  "MaxWorkingSetDeltaBytes": 33554432,
+  "MaxWorkingSetTrendBytesPerRound": 1048576,
+  "BackendDeadlineToleranceMilliseconds": 250,
+  "MinSessionsPerRound": 16
+}
