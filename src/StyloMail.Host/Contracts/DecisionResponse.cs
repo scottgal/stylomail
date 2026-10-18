@@ -34,7 +34,7 @@ public sealed record DecisionResponse
     /// Distinct from <see cref="ProposedActionInShadow"/>, which is the legacy engine's candidate.
     /// Phase 2 records the pack's verdict with Shadow=true and does not apply it.
     /// </remarks>
-    public PolicyDecisionRecord? Policy { get; init; }
+    public PolicyDecisionReadbackResponse? Policy { get; init; }
 
     /// <summary>
     /// Which channel the decision is about.
@@ -119,7 +119,9 @@ public sealed record DecisionResponse
         InternalMessageId = assessment.InternalMessageId,
         Action = assessment.Action,
         ProposedActionInShadow = assessment.ProposedActionInShadow,
-        Policy = assessment.Policy,
+        Policy = assessment.Policy is null
+            ? null
+            : PolicyDecisionReadbackResponse.From(assessment.Policy),
         Channel = assessment.Channel,
         DeliveryTiming = assessment.DeliveryTiming,
         RiskIndex = assessment.RiskIndex,
