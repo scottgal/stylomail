@@ -268,6 +268,10 @@ public static class EffectivePolicyResolver
             {
                 if (!string.IsNullOrWhiteSpace(binding.CategoryId))
                 {
+                    // The category is both forced and withheld: the forced set is the replay record
+                    // the effective-input snapshot carries, and the withheld set is the evaluator
+                    // semantics that continues withholding below the band.
+                    forced.Add(binding.CategoryId);
                     withheld.Add(binding.CategoryId);
                 }
                 else
@@ -276,6 +280,7 @@ public static class EffectivePolicyResolver
                     // or capture exception cannot be allowed to vanish at its expiry.
                     foreach (var category in PolicyCategories.All)
                     {
+                        forced.Add(category.Id);
                         withheld.Add(category.Id);
                     }
                 }

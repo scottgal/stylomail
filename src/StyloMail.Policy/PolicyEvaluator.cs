@@ -590,7 +590,10 @@ public sealed class DeterministicPolicyEvaluator
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        var verdict = evaluations.Max(evaluation => evaluation.Outcome ?? PolicyVerdict.Permit);
+        var verdict = evaluations
+            .Select(evaluation => evaluation.Outcome ?? PolicyVerdict.Permit)
+            .OrderByDescending(ProtectionRank)
+            .First();
         var requiresHumanReview = verdict is PolicyVerdict.Review or PolicyVerdict.Quarantine
             || evaluations.Any(evaluation => evaluation.RequiresHumanReview);
 
@@ -816,13 +819,15 @@ public sealed class DeterministicPolicyEvaluator
         // floor of the response to Review; it never raises it to an accusation. A band may still be
         // stricter than Review, and Hold or Quarantine are capped by the pack ceiling as usual.
         var zeroTolerance = level == ToleranceLevel.ZeroTolerance;
-        if (zeroTolerance && outcome < PolicyVerdict.Review)
+        // Review outranks Hold in the composition order (Quarantine > Review > Hold > Allow), even
+        // though the enum's numeric order puts Hold above Review. Use the composition rank here.
+        if (zeroTolerance && ProtectionRank(outcome) < ProtectionRank(PolicyVerdict.Review))
         {
             outcome = PolicyVerdict.Review;
         }
 
         if ((forced.Contains(rule.Category) || withheld.Contains(rule.Category))
-            && outcome < PolicyVerdict.Review)
+            && ProtectionRank(outcome) < ProtectionRank(PolicyVerdict.Review))
         {
             outcome = PolicyVerdict.Review;
         }
@@ -832,7 +837,7 @@ public sealed class DeterministicPolicyEvaluator
             || withheld.Contains(rule.Category)
             || outcome == PolicyVerdict.Review;
         var withheldOverride = withheld.Contains(rule.Category)
-            && band.Verdict < PolicyVerdict.Review;
+            && ProtectionRank(band.Verdict) < ProtectionRank(PolicyVerdict.Review);
 
         return new RuleEvaluation
         {
@@ -965,11 +970,21 @@ public sealed class DeterministicPolicyEvaluator
             || (distinct[0].SampleSupport ?? 0) >= rule.MinimumSampleSupport;
     }
 
+    /// <summary>The composition order: Quarantine, then Review, then Hold, then Allow.</summary>
+    private static int ProtectionRank(PolicyVerdict verdict) => verdict switch
+    {
+        PolicyVerdict.Permit or PolicyVerdict.Observe => 0,
+        PolicyVerdict.Hold => 1,
+        PolicyVerdict.Review => 2,
+        PolicyVerdict.Quarantine => 3,
+        _ => throw new ArgumentOutOfRangeException(nameof(verdict), verdict, "Unknown policy verdict."),
+    };
+
     private static RuleEvaluation? SelectDeciding(IReadOnlyList<RuleEvaluation> evaluations)
     {
         var fired = evaluations
             .Where(evaluation => evaluation.Outcome is not null)
-            .OrderByDescending(evaluation => evaluation.Outcome)
+            .OrderByDescending(evaluation => ProtectionRank(evaluation.Outcome!.Value))
             .ThenBy(evaluation => evaluation.RuleId, StringComparer.Ordinal)
             .ToList();
 
