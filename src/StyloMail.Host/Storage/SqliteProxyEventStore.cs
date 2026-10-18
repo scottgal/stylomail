@@ -668,32 +668,43 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             + "availability_reason=excluded.availability_reason,model_tag=excluded.model_tag,"
             + "prefix_version=excluded.prefix_version,dimension=excluded.dimension,"
             + "vocabulary_version=excluded.vocabulary_version,scorer_version=excluded.scorer_version;";
+        foreach (var name in new[]
+                 {
+                     "$tenant", "$message", "$direction", "$ordinal", "$element", "$scorer",
+                     "$thread", "$account", "$at", "$score", "$exemplar", "$availability",
+                     "$reason", "$model", "$prefix", "$dimension", "$vocabulary", "$scorerVersion",
+                 })
+        {
+            command.Parameters.AddWithValue(name, DBNull.Value);
+        }
+
         return command;
     }
 
     private static void BindPoint(SqliteCommand command, ProxyElementPoint point)
     {
-        command.Parameters.Clear();
-        command.Parameters.AddWithValue("$tenant", point.TenantId);
-        command.Parameters.AddWithValue("$message", point.MessageToken);
-        command.Parameters.AddWithValue("$direction", point.TrafficKind.ToString());
-        command.Parameters.AddWithValue("$ordinal", point.Ordinal);
-        command.Parameters.AddWithValue("$element", point.Element);
-        command.Parameters.AddWithValue("$scorer", point.Scorer);
-        command.Parameters.AddWithValue("$thread", point.ThreadToken);
-        command.Parameters.AddWithValue("$account", point.AccountId);
-        command.Parameters.AddWithValue("$at", Timestamp(point.ObservedAt));
-        command.Parameters.AddWithValue("$score", (object?)point.Score ?? DBNull.Value);
-        command.Parameters.AddWithValue("$exemplar", (object?)point.NearestExemplarId ?? DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$availability",
-            point.Availability == ProxyWarningAvailability.Available ? "available" : "not_produced");
-        command.Parameters.AddWithValue("$reason", point.AvailabilityReason);
-        command.Parameters.AddWithValue("$model", point.ModelTag);
-        command.Parameters.AddWithValue("$prefix", point.PrefixVersion);
-        command.Parameters.AddWithValue("$dimension", point.Dimension);
-        command.Parameters.AddWithValue("$vocabulary", point.VocabularyVersion);
-        command.Parameters.AddWithValue("$scorerVersion", point.ScorerVersion);
+        // Keep the parameter objects with the command across the whole batch. Assign every value,
+        // including nulls, so a prior point's score or exemplar cannot leak into an absent point.
+        var parameters = command.Parameters;
+        parameters[0].Value = point.TenantId;
+        parameters[1].Value = point.MessageToken;
+        parameters[2].Value = point.TrafficKind.ToString();
+        parameters[3].Value = point.Ordinal;
+        parameters[4].Value = point.Element;
+        parameters[5].Value = point.Scorer;
+        parameters[6].Value = point.ThreadToken;
+        parameters[7].Value = point.AccountId;
+        parameters[8].Value = Timestamp(point.ObservedAt);
+        parameters[9].Value = (object?)point.Score ?? DBNull.Value;
+        parameters[10].Value = (object?)point.NearestExemplarId ?? DBNull.Value;
+        parameters[11].Value =
+            point.Availability == ProxyWarningAvailability.Available ? "available" : "not_produced";
+        parameters[12].Value = point.AvailabilityReason;
+        parameters[13].Value = point.ModelTag;
+        parameters[14].Value = point.PrefixVersion;
+        parameters[15].Value = point.Dimension;
+        parameters[16].Value = point.VocabularyVersion;
+        parameters[17].Value = point.ScorerVersion;
     }
 
     public ValueTask<IReadOnlyList<ProxyElementRow>> ListElementPointsAsync(
@@ -774,12 +785,22 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             throw new ArgumentException("Element point names an unknown scorer or the wrong version.", nameof(point));
         }
 
-        // Validate element names only against the version that is currently closed; a future
-        // vocabulary is stored with its own version rather than rejected by an older build.
-        if (string.Equals(point.VocabularyVersion, ElementVocabulary.Version, StringComparison.Ordinal)
-            && !ElementVocabulary.Contains(point.Element))
+        // New writes must declare the vocabulary this build writes. Historical rows stay readable
+        // because their own version is stored, but accepting a removed element today would
+        // relabel a stale producer as history.
+        if (!string.Equals(point.VocabularyVersion, ElementVocabulary.Version, StringComparison.Ordinal))
         {
-            throw new ArgumentException("Element point names an element outside its vocabulary version.", nameof(point));
+            throw new ArgumentException(
+                $"Element point declares vocabulary '{point.VocabularyVersion}', "
+                + $"but this store writes '{ElementVocabulary.Version}'.",
+                nameof(point));
+        }
+
+        if (!ElementVocabulary.Contains(point.Element))
+        {
+            throw new ArgumentException(
+                $"Element '{point.Element}' is not in vocabulary '{point.VocabularyVersion}'.",
+                nameof(point));
         }
 
         if (point.Availability == ProxyWarningAvailability.Available)

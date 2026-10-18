@@ -338,6 +338,12 @@ public sealed record ProxyElementPointResponse
     /// <summary><c>Retrieval</c> or <c>Submission</c>; directions are never mixed.</summary>
     public required string TrafficKind { get; init; }
 
+    /// <summary>
+    /// The vocabulary this point was produced under. Points are never merged across versions, so a
+    /// historical elements/1 point is a separate point from an elements/2 one.
+    /// </summary>
+    public required string VocabularyVersion { get; init; }
+
     public required int Ordinal { get; init; }
 
     public required IReadOnlyList<ProxyElementScoreResponse> Elements { get; init; }

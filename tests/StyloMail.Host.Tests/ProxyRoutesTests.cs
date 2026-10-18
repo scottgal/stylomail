@@ -1190,7 +1190,7 @@ public sealed class ProxyRoutesTests
     }
 
     [Fact]
-    public async Task Historical_elements1_points_stay_readable_with_their_own_version()
+    public async Task Historical_elements1_points_stay_readable_without_mixing_versions()
     {
         using var host = ProxyHost();
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
@@ -1200,8 +1200,12 @@ public sealed class ProxyRoutesTests
 
         await sink.RecordOutcomeAsync(BatchOutcome("m-historical", thread, at), CancellationToken.None);
 
-        // A stored elements/1 row, including an element that elements/2 removes. It stays readable
-        // as historical data and carries the version it was produced under.
+        // The write path now refuses a non-current vocabulary, so a legacy row is seeded directly.
+        // This is exactly the shape an elements/1 ledger has on disk today.
+        InsertLegacyElementPoint(host, "m-historical", thread, at, "attachment_lure", "elements/1");
+
+        // A current-version point at the SAME ordinal and message. The response must keep them as
+        // two points rather than merging elements from different vocabularies.
         await sink.RecordPointAsync(
             new ProxyElementPoint
             {
@@ -1211,31 +1215,6 @@ public sealed class ProxyRoutesTests
                 MessageToken = "m-historical",
                 ThreadToken = thread,
                 Ordinal = 0,
-                Element = "attachment_lure",
-                Scorer = ElementScorers.PrototypeKnn,
-                ScorerVersion = ElementScorers.PrototypeKnnVersion,
-                Score = 0.4,
-                NearestExemplarId = "seed-1:attachment_lure:0003",
-                Availability = ProxyWarningAvailability.Available,
-                AvailabilityReason = "none",
-                ModelTag = "google/embeddinggemma-2",
-                PrefixVersion = "classification/1",
-                Dimension = 256,
-                VocabularyVersion = "elements/1",
-                ObservedAt = at,
-            },
-            CancellationToken.None);
-
-        // A current-version point on a different ordinal uses the kept vocabulary.
-        await sink.RecordPointAsync(
-            new ProxyElementPoint
-            {
-                TenantId = TestPrincipals.AcmeTenant,
-                AccountId = "pa_account",
-                TrafficKind = MessageTrafficKind.Retrieval,
-                MessageToken = "m-historical",
-                ThreadToken = thread,
-                Ordinal = 1,
                 Element = ElementVocabulary.CredentialRequest,
                 Scorer = ElementScorers.LinearProbe,
                 ScorerVersion = ElementScorers.LinearProbeVersion,
@@ -1255,15 +1234,105 @@ public sealed class ProxyRoutesTests
             await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
 
         Assert.Equal(2, series.Points.Count);
-        var historical = Assert.Single(series.Points, point => point.Ordinal == 0);
+
+        var historical = Assert.Single(series.Points, point => point.VocabularyVersion == "elements/1");
+        Assert.Equal(0, historical.Ordinal);
         var oldElement = Assert.Single(historical.Elements);
         Assert.Equal("attachment_lure", oldElement.Element);
         Assert.Equal("elements/1", oldElement.VocabularyVersion);
 
-        var current = Assert.Single(series.Points, point => point.Ordinal == 1);
+        var current = Assert.Single(
+            series.Points, point => point.VocabularyVersion == ElementVocabulary.Version);
+        Assert.Equal(0, current.Ordinal);
         var currentElement = Assert.Single(current.Elements);
-        Assert.Equal(ElementVocabulary.Version, currentElement.VocabularyVersion);
         Assert.Equal(ElementVocabulary.CredentialRequest, currentElement.Element);
+        Assert.Equal(ElementVocabulary.Version, currentElement.VocabularyVersion);
+
+        // New writes must declare the current version.
+        var legacyWrite = new ProxyElementPoint
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = "m-historical",
+            ThreadToken = thread,
+            Ordinal = 1,
+            Element = ElementVocabulary.CredentialRequest,
+            Scorer = ElementScorers.PrototypeKnn,
+            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Score = 0.2,
+            NearestExemplarId = "seed-1:credential_request:0007",
+            Availability = ProxyWarningAvailability.Available,
+            AvailabilityReason = "none",
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = "elements/1",
+            ObservedAt = at,
+        };
+        var versionError = await Assert.ThrowsAsync<ArgumentException>(
+            () => sink.RecordPointAsync(legacyWrite, CancellationToken.None).AsTask());
+        Assert.Contains("elements/1", versionError.Message);
+
+        // A removed element under the current version is refused and named, so a log can tell a
+        // stale producer from a corrupted row.
+        var removedWrite = new ProxyElementPoint
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = "m-historical",
+            ThreadToken = thread,
+            Ordinal = 1,
+            Element = "attachment_lure",
+            Scorer = ElementScorers.PrototypeKnn,
+            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Score = 0.2,
+            NearestExemplarId = "seed-1:attachment_lure:0003",
+            Availability = ProxyWarningAvailability.Available,
+            AvailabilityReason = "none",
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = ElementVocabulary.Version,
+            ObservedAt = at,
+        };
+        var elementError = await Assert.ThrowsAsync<ArgumentException>(
+            () => sink.RecordPointAsync(removedWrite, CancellationToken.None).AsTask());
+        Assert.Contains("attachment_lure", elementError.Message);
+    }
+
+    private static void InsertLegacyElementPoint(
+        TestHost host,
+        string message,
+        string thread,
+        DateTimeOffset at,
+        string element,
+        string vocabularyVersion)
+    {
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO proxy_element_point "
+            + "(tenant_id,message_token,direction,ordinal,element,scorer,thread_token,account_id,"
+            + "observed_at,score,nearest_exemplar_id,availability,availability_reason,model_tag,"
+            + "prefix_version,dimension,vocabulary_version,scorer_version) "
+            + "VALUES ($tenant,$message,'Retrieval',0,$element,$scorer,$thread,$account,$at,0.4,"
+            + "$exemplar,'available','none',$model,$prefix,256,$vocabulary,$scorerVersion);";
+        command.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+        command.Parameters.AddWithValue("$message", message);
+        command.Parameters.AddWithValue("$element", element);
+        command.Parameters.AddWithValue("$scorer", ElementScorers.PrototypeKnn);
+        command.Parameters.AddWithValue("$thread", thread);
+        command.Parameters.AddWithValue("$account", "pa_account");
+        command.Parameters.AddWithValue("$at", at.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("$exemplar", "seed-1:attachment_lure:0003");
+        command.Parameters.AddWithValue("$model", "google/embeddinggemma-2");
+        command.Parameters.AddWithValue("$prefix", "classification/1");
+        command.Parameters.AddWithValue("$vocabulary", vocabularyVersion);
+        command.Parameters.AddWithValue("$scorerVersion", ElementScorers.PrototypeKnnVersion);
+        command.ExecuteNonQuery();
     }
 
     private static ProxySegmentationOutcome BatchOutcome(
