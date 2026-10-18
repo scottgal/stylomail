@@ -11,6 +11,29 @@ namespace StyloMail.AccessProxy.Tests;
 public sealed class RelayOutputIdleTests
 {
     [Fact]
+    public async Task A_synchronous_read_fault_after_close_began_releases_owners_and_returns_settled_buffers()
+    {
+        await using var fixture = await Fixture.Create(TimeSpan.FromSeconds(3), faultAfterClose: true);
+        Assert.Equal(ProxyBoundReason.None, await fixture.Finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.AssertReleased();
+        Assert.Equal(2, fixture.Buffers!.Returned.Count);
+        Assert.All(fixture.Buffers.Returned, buffer => Assert.True(buffer.AsSpan().IndexOfAnyExcept((byte)0) < 0));
+        Assert.Equal(0, fixture.AbandonmentLogs);
+        Assert.Equal(nameof(ApplicationException), Assert.Single(fixture.SettledFaultLogs));
+    }
+
+    [Fact]
+    public async Task A_live_transport_fault_before_close_is_still_reported_as_a_failure()
+    {
+        await using var fixture = await Fixture.Create(TimeSpan.FromSeconds(3), faultOnWrite: true);
+        await fixture.BackendPeer.GetStream().WriteAsync(new byte[] { 41 });
+        await Assert.ThrowsAsync<ApplicationException>(() => fixture.Finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.AssertReleased();
+        Assert.Equal(2, fixture.Buffers!.Returned.Count);
+        Assert.Equal(0, fixture.AbandonmentLogs);
+    }
+
+    [Fact]
     public async Task Dispose_that_does_not_settle_a_write_releases_the_slot_without_clearing_or_pooling_its_array()
     {
         await using var fixture = await Fixture.Create(TimeSpan.FromMilliseconds(200), nonsettlingWrite: true);
@@ -168,7 +191,8 @@ public sealed class RelayOutputIdleTests
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TcpAccessProxyListener _listener = null!;
         private SessionLimiter _limiter = null!;
-        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false, string? faultOnClose = null)
+        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false, string? faultOnClose = null,
+            bool faultAfterClose = false, bool faultOnWrite = false)
         {
             var fixture = new Fixture();
             fixture.Buffers = new RecordingPool();
@@ -187,9 +211,10 @@ public sealed class RelayOutputIdleTests
             {
                 ((NetworkStream)raw.Input).Socket.SendBufferSize = 64 * 1024;
                 ((NetworkStream)raw.Input).Socket.NoDelay = true;
-                fixture.Output = new TrackedOutput(raw.Output, stallFlush, nonsettlingWrite, faultOnClose);
+                fixture.Output = new TrackedOutput(raw.Output, stallFlush, nonsettlingWrite, faultOnClose, faultOnWrite);
                 await using var clientChannel = new StreamDuplexChannel(raw.Input, fixture.Output, "test-client");
-                await using var backendChannel = new StreamDuplexChannel(backend.GetStream(), backend.GetStream(), "test-backend");
+                Stream backendInput = faultAfterClose ? new FaultAfterCloseInput(backend.GetStream(), () => fixture.Client.Client.Shutdown(SocketShutdown.Send)) : backend.GetStream();
+                await using var backendChannel = new StreamDuplexChannel(backendInput, backend.GetStream(), "test-backend");
                 fixture._started.TrySetResult();
                 try
                 {
@@ -211,7 +236,7 @@ public sealed class RelayOutputIdleTests
             // pending real writes and the resulting idle close are the control, not that value.
             fixture.Client.ReceiveBufferSize = 1024;
             await fixture._started.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            Assert.Equal(1, fixture._limiter.ActiveSessions);
+            if (!faultAfterClose) Assert.Equal(1, fixture._limiter.ActiveSessions);
             return fixture;
         }
         public async Task AssertReleased()
@@ -239,7 +264,31 @@ public sealed class RelayOutputIdleTests
         public override void Return(byte[] array, bool clearArray = false) { if (clearArray) Array.Clear(array); Returned.Enqueue(array); }
     }
 
-    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite, string? faultOnClose) : Stream
+    private sealed class FaultAfterCloseInput(Stream inner, Action endPeer) : Stream
+    {
+        private readonly ManualResetEventSlim _closed = new();
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            endPeer();
+            // Force the operation-creation race deterministically: the other real TCP direction
+            // reaches EOF and closes this input before ReadAsync itself throws synchronously.
+            if (!_closed.Wait(TimeSpan.FromSeconds(3))) throw new TimeoutException("The real peer close did not dispose the input.");
+            throw new ApplicationException("The closed input cannot create a read.");
+        }
+        public override async ValueTask DisposeAsync() { await inner.DisposeAsync(); _closed.Set(); GC.SuppressFinalize(this); }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
+
+    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite, string? faultOnClose, bool faultOnWrite) : Stream
     {
         public TaskCompletionSource WriteEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -264,6 +313,7 @@ public sealed class RelayOutputIdleTests
             using var registration = cancellationToken.Register(() => Interlocked.Increment(ref _canceled));
             try
             {
+                if (faultOnWrite) throw new ApplicationException("A live transport write failed.");
                 if (nonsettlingWrite)
                 {
                     CapturedWrite = buffer;

@@ -18,6 +18,27 @@ namespace StyloMail.AccessProxy.Tests;
 public sealed class SmtpStagingBoundsTests
 {
     [Fact]
+    public async Task Final_250_waits_for_actual_staging_disposal_and_capacity_release()
+    {
+        await using var fixture = await Fixture.Create(blockDisposal: true);
+        using var client = await fixture.Connect();
+        try
+        {
+            Assert.StartsWith("354", await client.BeginData());
+            await client.Write("body\r\n.\r\n");
+            await fixture.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var finalReply = client.Read();
+            Assert.NotSame(finalReply, await Task.WhenAny(finalReply, Task.Delay(100)));
+            Assert.Equal(1, fixture.Budget.Counters.ActiveStagers);
+            fixture.DisposalRelease.TrySetResult();
+            Assert.StartsWith("250", await finalReply);
+            Assert.Equal(default, fixture.Budget.Counters);
+            await client.Line("QUIT"); Assert.StartsWith("221", await client.Read());
+        }
+        finally { fixture.DisposalRelease.TrySetResult(); }
+    }
+
+    [Fact]
     public async Task Every_write_surface_is_bounded_before_growth_and_fragmented_writes_keep_fixed_capacity()
     {
         var budget = new SubmissionStagingBudget();
@@ -199,13 +220,16 @@ public sealed class SmtpStagingBoundsTests
         public ConcurrentQueue<Exception> Errors { get; } = new();
         public TaskCompletionSource AssessmentEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource AssessmentRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource DisposalEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource DisposalRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private X509Certificate2 _certificate = null!;
         private TcpAccessProxyListener _listener = null!;
-        public static async Task<Fixture> Create(AccessProxyBounds? bounds = null, bool failAssessment = false, bool blockAssessment = false)
+        public static async Task<Fixture> Create(AccessProxyBounds? bounds = null, bool failAssessment = false, bool blockAssessment = false, bool blockDisposal = false)
         {
             var fixture = new Fixture();
             fixture.Harness = new ProxyHarness(bounds ?? new AccessProxyBounds { MaxConcurrentSessions = 32, MaxSessionsPerAccount = 32 });
-            fixture.Harness.AddAccount(); fixture.Stager = new TrackingStager(new InMemoryEphemeralSubmissionStager(fixture.Budget));
+            fixture.Harness.AddAccount(); fixture.Stager = new TrackingStager(new InMemoryEphemeralSubmissionStager(fixture.Budget),
+                blockDisposal ? fixture.DisposalRelease.Task : null, () => fixture.DisposalEntered.TrySetResult());
             using var key = RSA.Create(2048);
             fixture._certificate = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
                 .CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(5));
@@ -304,12 +328,20 @@ public sealed class SmtpStagingBoundsTests
         }
         public async ValueTask DisposeAsync() { await _stop.CancelAsync(); await Task.WhenAll(_servers).WaitAsync(TimeSpan.FromSeconds(3)); _stop.Dispose(); }
     }
-    private sealed class TrackingStager(InMemoryEphemeralSubmissionStager inner) : IEphemeralSubmissionStager
+    private sealed class TrackingStager(InMemoryEphemeralSubmissionStager inner, Task? gate, Action entered) : IEphemeralSubmissionStager
     {
         public IStagedProxySubmission? Last { get; private set; }
         public async ValueTask<IStagedProxySubmission> CreateAsync(long maximumBytes, CancellationToken ct)
-        { Last = await inner.CreateAsync(maximumBytes, ct); return Last; }
+        { var staged = await inner.CreateAsync(maximumBytes, ct); Last = gate is null ? staged : new GatedDisposal(staged, gate, entered); return Last; }
         public ValueTask DeleteExpiredAsync(DateTimeOffset olderThan, CancellationToken ct) => inner.DeleteExpiredAsync(olderThan, ct);
+    }
+    private sealed class GatedDisposal(IStagedProxySubmission inner, Task gate, Action entered) : IStagedProxySubmission
+    {
+        private Task? _disposing;
+        public Stream Content => inner.Content;
+        public long Length => inner.Length;
+        public ValueTask DisposeAsync() => new(_disposing ??= DisposeCore());
+        private async Task DisposeCore() { entered(); await gate; await inner.DisposeAsync(); }
     }
     private sealed class Diagnostics : IProxySessionContextSink, IProxySubmissionReceiptSink, IProxySessionBoundSink
     {

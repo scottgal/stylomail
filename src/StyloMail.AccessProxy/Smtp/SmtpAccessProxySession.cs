@@ -479,6 +479,9 @@ public sealed class SmtpAccessProxySession
             await backendWriter.WriteLineAsync(".", cancellationToken).ConfigureAwait(false);
             var accepted = await backendReader.ReadLineAsync(_bounds.BackendAuthenticationTimeout, cancellationToken)
                 .ConfigureAwait(false) ?? throw new AccessProxyProtocolException("SMTP backend closed after DATA.");
+            // The upstream write has settled and no consumer needs the staged bytes. Complete
+            // deletion before the final reply makes acceptance also a resource-release boundary.
+            await staged.DisposeAsync().ConfigureAwait(false);
             await clientWriter.WriteLineAsync(accepted, cancellationToken).ConfigureAwait(false);
             return SessionOutcome.Relayed;
         }

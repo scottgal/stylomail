@@ -309,18 +309,22 @@ internal static class ByteRelay
         AccessProxyBounds bounds, TimeProvider clock, CancellationToken cancellationToken, RelayClose close, BufferOwnership ownership)
     {
         using var idle = new TimeoutScope(bounds.IdleTimeout, clock, cancellationToken);
-        var pending = operation(idle.Token);
-        try { return await pending.WaitAsync(idle.Token).ConfigureAwait(false); }
+        Task<T>? pending = null;
+        try
+        {
+            pending = operation(idle.Token);
+            return await pending.WaitAsync(idle.Token).ConfigureAwait(false);
+        }
         catch (OperationCanceledException)
         {
             var expired = idle.DeadlineElapsed && !cancellationToken.IsCancellationRequested;
             await close.CloseAsync().ConfigureAwait(false);
             // Cancellation of a wait is not cancellation of its I/O. Close the real streams and
             // bound actual settlement too. A live owner keeps the array; no clear or pool return.
-            try { await pending.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+            try { if (pending is not null) await pending.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
             catch (TimeoutException)
             {
-                if (!pending.IsCompleted)
+                if (pending is { IsCompleted: false })
                 {
                     ownership.Returnable = false;
                     close.ReportAbandonment();
@@ -330,6 +334,13 @@ internal static class ByteRelay
             catch (Exception exception) { close.ReportSettledFault(exception); }
             if (expired) throw new AccessProxyTimeoutException("Relay made no I/O progress within its idle bound.");
             throw;
+        }
+        catch (Exception exception) when (close.IsClosing)
+        {
+            // Close can race with operation creation or with the wait's result. A fault at this
+            // point is settled I/O after teardown began; the live, non-closing path still throws.
+            close.ReportSettledFault(exception);
+            throw new OperationCanceledException("Relay has closed.", exception, cancellationToken);
         }
     }
 
@@ -347,6 +358,7 @@ internal static class ByteRelay
         private Task? _closing;
         private int _abandonmentReported;
         private int _faultReported;
+        public bool IsClosing => Volatile.Read(ref _closing) is not null;
         public void ReportSettledFault(Exception exception)
         {
             if (Interlocked.Exchange(ref _faultReported, 1) != 0) return;
