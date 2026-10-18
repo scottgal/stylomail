@@ -16,7 +16,7 @@ internal sealed class ProxyRetrievalWorkPool : IAsyncDisposable
     private readonly Task[] _workers;
     private readonly long _maximumBytes;
     private long _bytes, _droppedChunks, _droppedBytes, _abandoned;
-    private int _active;
+    private int _active, _outstanding;
 
     internal ProxyRetrievalWorkPool(long maximumBytes, int workers, int readySessions = 64)
     {
@@ -31,7 +31,20 @@ internal sealed class ProxyRetrievalWorkPool : IAsyncDisposable
 
     internal ProxyRetrievalObservationCounters Counters => new(Interlocked.Read(ref _bytes), Volatile.Read(ref _active),
         _ready.Reader.Count, Interlocked.Read(ref _droppedChunks), Interlocked.Read(ref _droppedBytes), Interlocked.Read(ref _abandoned));
-    internal bool Schedule(ProxyRetrievalWarningAssembler assembler) => _ready.Writer.TryWrite(assembler);
+    internal bool Schedule(ProxyRetrievalWarningAssembler assembler)
+    {
+        // A scheduled parser owns a worker permit even before dispatch. Four stuck consumers
+        // must not accumulate a second cohort of retained session copies in the ready channel.
+        while (true)
+        {
+            var current = Volatile.Read(ref _outstanding);
+            if (current >= _workers.Length) return false;
+            if (Interlocked.CompareExchange(ref _outstanding, current + 1, current) == current) break;
+        }
+        if (_ready.Writer.TryWrite(assembler)) return true;
+        Interlocked.Decrement(ref _outstanding);
+        return false;
+    }
     internal bool Reserve(int bytes)
     {
         while (true)
@@ -50,7 +63,12 @@ internal sealed class ProxyRetrievalWorkPool : IAsyncDisposable
         {
             Interlocked.Increment(ref _active);
             try { await assembler.ProcessOneAsync().ConfigureAwait(false); }
-            finally { Interlocked.Decrement(ref _active); }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+                Interlocked.Decrement(ref _outstanding);
+                assembler.WorkCompleted();
+            }
         }
     }
     public async ValueTask DisposeAsync()

@@ -206,10 +206,15 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         finally
         {
             if (Abandoned || Volatile.Read(ref _disposed) != 0 && !_chunks.Reader.TryPeek(out _)) Cleanup();
-            // Transfer parser ownership only after all parser/buffer accesses are complete.
-            Interlocked.Exchange(ref _scheduled, 0);
-            if (!_finished.Task.IsCompleted && (_chunks.Reader.TryPeek(out _) || Volatile.Read(ref _disposed) != 0 || Abandoned)) Schedule();
         }
+    }
+
+    internal void WorkCompleted()
+    {
+        // The worker returns its global permit before this parser can schedule another chunk.
+        // Keep exclusive parser ownership until both processing and that release have completed.
+        Interlocked.Exchange(ref _scheduled, 0);
+        if (!_finished.Task.IsCompleted && (_chunks.Reader.TryPeek(out _) || Volatile.Read(ref _disposed) != 0 || Abandoned)) Schedule();
     }
 
     private async ValueTask ProcessChunkAsync(byte[] chunk, CancellationToken cancellationToken)

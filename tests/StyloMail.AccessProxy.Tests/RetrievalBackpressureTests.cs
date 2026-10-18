@@ -102,9 +102,9 @@ public sealed class RetrievalBackpressureTests
     }
 
     [Fact]
-    public async Task Four_stuck_workers_do_not_spawn_more_workers_and_the_ready_queue_is_bounded()
+    public async Task Four_stuck_workers_reject_new_sessions_without_retaining_more_copies()
     {
-        await using var pool = new ProxyRetrievalWorkPool(1024 * 1024, 4);
+        await using var pool = new ProxyRetrievalWorkPool(4 * 1024 * 1024, 4);
         var analyzer = new Analyzer(true);
         var sink = new Sink();
         List<ProxyRetrievalWarningAssembler> observers = [];
@@ -116,11 +116,18 @@ public sealed class RetrievalBackpressureTests
                 observer.Observe(Frame("Subject: gate\r\n\r\nbody"u8));
             }
             await Until(() => analyzer.Calls == 4);
+            foreach (var captured in observers)
+                for (var i = 0; i < 3; i++) captured.Observe(new byte[256 * 1024]);
+            var retained = pool.Counters.BufferedBytes;
+            Assert.InRange(retained, 3L * 1024 * 1024, 4L * 1024 * 1024);
             for (var i = 0; i < 64; i++)
             {
                 var observer = Create(pool, analyzer, sink); observers.Add(observer); observer.Observe("x"u8);
+                Assert.True(observer.Abandoned, "All four optional workers are occupied; no fresh stream may retain a copy.");
+                Assert.Equal(0, observer.ReservedBytes);
             }
-            Assert.Equal(64, pool.Counters.ReadySessions);
+            Assert.Equal(0, pool.Counters.ReadySessions);
+            Assert.Equal(retained, pool.Counters.BufferedBytes);
             var refused = Create(pool, analyzer, sink); observers.Add(refused); refused.Observe("x"u8);
             Assert.True(refused.Abandoned);
             Assert.Equal(0, refused.ReservedBytes);
