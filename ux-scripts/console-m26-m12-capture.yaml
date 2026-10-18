@@ -1,0 +1,52 @@
+name: console-m26-m12-capture
+description: Captures the content-free element panel and masked account-create form from an already-running Host.
+default_delay: 500
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Conversations)"
+  - type: Wait
+    value: "1000"
+  - type: Click
+    target: "type=Button:has-text(Open signals)"
+    window_id: ConversationsDialog
+  - type: Expect
+    target: "text='Thread signals'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Click
+    target: "text='Element signals'"
+    window_id: ConversationsDialog
+  - type: Expect
+    target: "text='Element signals'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Screenshot
+    value: "M26-element-signals"
+    composite: true
+    description: "Selected opaque thread with separately rendered element points and sibling tone availability"
+  - type: Click
+    target: "type=Button:has-text(Proxy management)"
+  - type: Expect
+    target: "text='Accounts'"
+    window_id: ProxyManagementDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Create account)"
+    window_id: ProxyManagementDialog
+  - type: Expect
+    target: "text='Create proxy account'"
+    window_id: ProxyAccountCreateDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Screenshot
+    value: "M12-create-account-form"
+    composite: true
+    description: "Masked write-only account credential form; no submission is attempted"
