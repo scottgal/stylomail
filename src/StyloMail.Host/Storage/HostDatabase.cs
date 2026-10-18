@@ -138,6 +138,53 @@ public sealed class HostDatabase
 
         ApplyConversationHistoryMigration(connection);
         ApplyProxySessionAuthenticationMigration(connection);
+        ApplyEntityPropertyCoverageMigration(connection);
+    }
+
+    /// <summary>
+    /// Adds the coverage columns to a property table created by an earlier build.
+    /// </summary>
+    /// <remarks>
+    /// <c>CREATE TABLE IF NOT EXISTS</c> leaves an existing table's shape alone, so a database
+    /// created before coverage was part of the contract would keep the old columns and every write
+    /// would fail on the first one it names. Additive, like the other migrations here.
+    /// </remarks>
+    private static void ApplyEntityPropertyCoverageMigration(SqliteConnection connection)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA table_info(host_entity_property);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+
+        if (existing.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var (column, definition) in new[]
+                 {
+                     ("coverage_analysed", "INTEGER NULL"),
+                     ("coverage_total", "INTEGER NULL"),
+                     ("coverage_window_start", "TEXT NULL"),
+                     ("coverage_window_end", "TEXT NULL"),
+                     ("coverage_unavailable_reason", "TEXT NULL"),
+                 })
+        {
+            if (existing.Contains(column))
+            {
+                continue;
+            }
+
+            using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE host_entity_property ADD COLUMN {column} {definition};";
+            alter.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
@@ -392,6 +439,77 @@ public sealed class HostDatabase
         -- members is the console's common query rather than an occasional one.
         CREATE INDEX IF NOT EXISTS ix_sender_profile_company
             ON sender_profile (tenant_id, company_id);
+
+        -- Entity properties: the policy input a conversation cannot be trusted to define.
+        --
+        -- One row per (tenant, scope, key). The tenant is in the primary key rather than a column to
+        -- be filtered on, so a row belonging to another tenant cannot be addressed even by a caller
+        -- who guesses a valid scope id. `scope_id` is opaque here: an entity is whatever the host
+        -- calls a principal, a domain is a domain, a company is `company.company_id`, and a
+        -- conversation is the host's thread id. Deliberately no cross-scope foreign key: inventing
+        -- linkage between a domain and the people under it is exactly the re-identification the spec
+        -- keeps deliberate (§9.12, invariant 4).
+        --
+        -- `source` and `confirmed_by` are separate facts, never one encoded in the other. The
+        -- surface pill is derived from both at read time; storing it would be a second answer that
+        -- can drift from the confirmation event.
+        CREATE TABLE IF NOT EXISTS host_entity_property (
+            tenant_id       TEXT NOT NULL,
+            scope_kind      TEXT NOT NULL,
+            scope_id        TEXT NOT NULL,
+            property_key    TEXT NOT NULL,
+            value           TEXT NOT NULL,
+            source          TEXT NOT NULL,
+            confidence      REAL NULL,
+            model_id        TEXT NULL,
+            model_version   TEXT NULL,
+            prompt_contract TEXT NULL,
+            spans           TEXT NULL,
+            evidence_refs   TEXT NULL,
+            coverage_analysed          INTEGER NULL,
+            coverage_total             INTEGER NULL,
+            coverage_window_start      TEXT NULL,
+            coverage_window_end        TEXT NULL,
+            coverage_unavailable_reason TEXT NULL,
+            set_by          TEXT NOT NULL,
+            set_at          TEXT NOT NULL,
+            expires_at      TEXT NULL,
+            confirmed_by    TEXT NULL,
+            confirmed_at    TEXT NULL,
+            PRIMARY KEY (tenant_id, scope_kind, scope_id, property_key)
+        );
+
+        -- Expiry is evaluated on read, and the sweep that records it looks for rows whose instant
+        -- has passed. Without this index that is a full scan of every tenant's properties.
+        CREATE INDEX IF NOT EXISTS ix_host_entity_property_expiry
+            ON host_entity_property (tenant_id, expires_at);
+
+        -- Every change to a property, including an expiry. The old and new values are both carried:
+        -- a clear leaves no row to join back to, and "what was it before" has to stay answerable.
+        CREATE TABLE IF NOT EXISTS host_entity_property_event (
+            tenant_id        TEXT NOT NULL,
+            event_id         TEXT NOT NULL,
+            scope_kind       TEXT NOT NULL,
+            scope_id         TEXT NOT NULL,
+            property_key     TEXT NOT NULL,
+            action           TEXT NOT NULL,
+            actor            TEXT NOT NULL,
+            recorded_at      TEXT NOT NULL,
+            old_value        TEXT NULL,
+            new_value        TEXT NULL,
+            old_source       TEXT NULL,
+            new_source       TEXT NULL,
+            old_confirmed_by TEXT NULL,
+            new_confirmed_by TEXT NULL,
+            reason           TEXT NULL,
+            PRIMARY KEY (tenant_id, event_id)
+        );
+
+        -- History is read per scope and key, newest first. The key is part of the index so that one
+        -- property's sequence does not scan a tenant's whole audit trail.
+        CREATE INDEX IF NOT EXISTS ix_host_entity_property_event_history
+            ON host_entity_property_event
+               (tenant_id, scope_kind, scope_id, property_key, recorded_at DESC, event_id DESC);
 
         -- Access-proxy credentials are deliberately separate from Host API principals. The account
         -- holds a verifier only; the backend record holds ciphertext only. Login lookup is scoped
