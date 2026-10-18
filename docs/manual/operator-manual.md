@@ -589,7 +589,8 @@ says so rather than offering a guessed conversation.
 
 The element layer is a second, content-free view of a proxied submission. It is designed to split
 the message into bounded segments and score five named elements per segment at a loopback embedding
-service. The console does not render this series yet. The Host route is
+service. The console renders it as the **Element signals** tab of the conversation view; Figure M26 is
+pending a retained capture. The Host route is
 `GET /v1/proxy/conversations/{threadToken}/elements?window=last_24_hours`, with provenance
 `proxy_element_classification`. It is a sibling of the tone and warning series, not a replacement
 for either.
@@ -621,7 +622,8 @@ The scorer and its version travel with every score, because the two numbers answ
 questions and must never be blended. A kNN margin must not be clamped into [0, 1] or read as a
 percentage. A negative margin is a measurement toward the benign exemplars, not a missing value. A
 `NearestExemplarId` is an opaque identifier such as `seed-1:credential_request:0007`; it is not a
-message fragment, an address or a subject.
+message fragment, an address or a subject. The console panel prints a signed kNN margin with its
+direction, never a percentage.
 
 #### Availability is per element
 
@@ -708,12 +710,11 @@ leave the machine.
   (segmentation).
 - Do not read the element series as a transcript. It is vocabulary names per segment, never text.
 
-> **Not available in this build.** The Host route and the semantics above are implemented; the
-> console does not render the element series yet. Figure M26 is pending capture.
->
-> **Figure M26 (pending capture).** The element series for one analysed submission: one score per
-> element name with its scorer and version, per-element availability and reason, an opaque nearest
-> exemplar id where one exists, and the sibling tone block. Run directory: pending.
+> **Figure M26 (pending capture).** The **Element signals** tab of the conversation view: one point
+> per segment with its traffic kind, ordinal, time and turn token; one entry per element name with
+> the scorer and version, the score (a signed kNN margin shown with its direction, or a probe
+> probability), the availability and reason, and a shortened opaque exemplar id where one exists.
+> The sibling tone line states the gap (`tone_model_unavailable`). Run directory: pending.
 
 ### 4.7 Quarantine and release
 
@@ -902,7 +903,7 @@ signals, not message content, and its caption says that.
 | M23 | Quarantined listing | pending | requested |
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
-| M26 | Element signals | pending | blocked: console does not render the element series yet |
+| M26 | Element signals | pending | capture requested; panel committed fa671c7 |
 
 Nine frames in this table are captured, in three batches. M08 and M21a come from the first batch,
 whose host build id was not reported. M09, M10 and M21 come from the second batch, build
