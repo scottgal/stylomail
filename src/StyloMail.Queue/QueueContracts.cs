@@ -62,17 +62,26 @@ public sealed record RecipientAdmission
 /// rule that produced the verdict, and the evidence digest, so a later read resolves the exact
 /// decision rather than whichever decision the message happens to have now.
 /// </remarks>
+public enum ReviewOpeningSource
+{
+    Pack = 0,
+    Fallback = 1,
+}
+
 public sealed record ReviewOpening
 {
     public required string AssessmentId { get; init; }
 
-    public required string PackId { get; init; }
+    /// <summary>Pack or Fallback. A fallback has no pack provenance and must not invent one.</summary>
+    public ReviewOpeningSource Source { get; init; } = ReviewOpeningSource.Pack;
 
-    public required string PackVersion { get; init; }
+    public string? PackId { get; init; }
 
-    public required string RuleSetId { get; init; }
+    public string? PackVersion { get; init; }
 
-    public required string RuleSetVersion { get; init; }
+    public string? RuleSetId { get; init; }
+
+    public string? RuleSetVersion { get; init; }
 
     public string? RuleId { get; init; }
 
@@ -84,12 +93,23 @@ public sealed record ReviewOpening
 
     public string? EvidenceSnapshotDigest { get; init; }
 
+    /// <summary>Named reason when <see cref="Source"/> is Fallback.</summary>
+    public string? UnavailableReason { get; init; }
+
+    /// <summary>Bounded fallback review deadline when <see cref="Source"/> is Fallback.</summary>
+    public DateTimeOffset? FallbackDeadline { get; init; }
+
+    /// <summary>True only for a migrated pack opening whose digest was genuinely absent.</summary>
+    public bool LegacyDigestAbsent { get; init; }
+
     public required DateTimeOffset DecidedAt { get; init; }
 
-    /// <summary>The exact policy reference recorded on every later event.</summary>
-    public string PolicyReference() =>
-        $"{PackId}@{PackVersion}/{RuleSetId}@{RuleSetVersion}"
-        + (RuleId is null ? string.Empty : $"/{RuleId}@{RuleVersion?.ToString() ?? "-"}");
+    /// <summary>The exact policy reference recorded on every later event, or null for a fallback.</summary>
+    public string? PolicyReference() =>
+        Source == ReviewOpeningSource.Fallback || PackId is null || PackVersion is null
+            ? null
+            : $"{PackId}@{PackVersion}/{RuleSetId}@{RuleSetVersion}"
+                + (RuleId is null ? string.Empty : $"/{RuleId}@{RuleVersion?.ToString() ?? "-"}");
 }
 
 /// <summary>A stored opening reference with the queue it belongs to.</summary>

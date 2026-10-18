@@ -237,6 +237,150 @@ public sealed class QueueReviewTests
         Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
     }
 
+    [Fact]
+    public async Task A_fallback_opening_has_null_pack_provenance()
+    {
+        using var h = new QueueHarness();
+        var fallback = new ReviewOpening
+        {
+            AssessmentId = "asm-fallback",
+            Source = ReviewOpeningSource.Fallback,
+            ReasonCode = "policy.pack_store_unavailable",
+            Reason = "no pack could be read",
+            UnavailableReason = "policy.pack_store_unavailable",
+            FallbackDeadline = QueueHarness.Start.AddHours(24),
+            DecidedAt = QueueHarness.Start,
+        };
+
+        var queueId = await h.AcceptAsync(QueueHarness.Submission(
+            state: DeliveryState.Review,
+            reviewDeadline: QueueHarness.Start.AddHours(24),
+            reviewOpening: fallback));
+
+        var opening = await h.Store.GetReviewOpeningAsync("acme", queueId);
+        Assert.NotNull(opening);
+        Assert.Equal(ReviewOpeningSource.Fallback, opening!.Opening.Source);
+        Assert.Null(opening.Opening.PackId);
+        Assert.Null(opening.Opening.PackVersion);
+        Assert.Null(opening.Opening.RuleSetId);
+        Assert.Null(opening.Opening.RuleSetVersion);
+        Assert.Null(opening.Opening.EvidenceSnapshotDigest);
+        Assert.Null(opening.Opening.PolicyReference());
+    }
+
+    [Fact]
+    public async Task A_pack_opening_without_a_digest_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            EvidenceSnapshotDigest = null,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_pack_opening_carrying_an_unavailable_reason_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            UnavailableReason = "policy.pack_store_unavailable",
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_pack_opening_carrying_a_fallback_deadline_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            FallbackDeadline = QueueHarness.Start.AddHours(24),
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_fallback_opening_carrying_pack_provenance_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = new ReviewOpening
+        {
+            AssessmentId = "asm-fallback",
+            Source = ReviewOpeningSource.Fallback,
+            PackId = "pack-commerce",
+            PackVersion = "1.0.0",
+            RuleSetId = "rules-commerce",
+            RuleSetVersion = "rules/1",
+            RuleId = "rule-payment",
+            RuleVersion = 1,
+            ReasonCode = "policy.pack_store_unavailable",
+            Reason = "no pack",
+            UnavailableReason = "policy.pack_store_unavailable",
+            FallbackDeadline = QueueHarness.Start.AddHours(24),
+            DecidedAt = QueueHarness.Start,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(24),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_pack_opening_without_a_deciding_rule_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            RuleId = null,
+            RuleVersion = null,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
+    public async Task A_fallback_opening_without_a_reason_or_deadline_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = new ReviewOpening
+        {
+            AssessmentId = "asm-fallback",
+            Source = ReviewOpeningSource.Fallback,
+            ReasonCode = "policy.pack_store_unavailable",
+            Reason = "no pack",
+            DecidedAt = QueueHarness.Start,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(24),
+                reviewOpening: opening)));
+    }
+
     [Theory]
     [InlineData(ReviewResolution.Release)]
     [InlineData(ReviewResolution.Quarantine)]

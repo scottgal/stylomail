@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="fixtures\legacy-assessment-6b62581.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\StyloMail.Assessment\StyloMail.Assessment.csproj" />
     <ProjectReference Include="..\..\src\StyloMail.Core\StyloMail.Core.csproj" />
     <ProjectReference Include="..\..\src\StyloMail.Mime\StyloMail.Mime.csproj" />

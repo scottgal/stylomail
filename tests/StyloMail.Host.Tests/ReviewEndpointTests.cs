@@ -340,6 +340,8 @@ public sealed class ReviewEndpointTests
 
     private static PolicyDecisionRecord PolicyRecord() => new()
     {
+        Source = PolicySource.Pack,
+        Admission = AdmissionOutcome.Admitted,
         PackId = "pack-commerce",
         PackVersion = "1.0.0",
         RuleSetId = "rules-commerce",
@@ -357,6 +359,7 @@ public sealed class ReviewEndpointTests
         Coverage = 1,
         BindingIds = [],
         PropertyFacts = [],
+        MissingPropertyKeys = [],
         EvidenceSnapshotDigest = new string('a', 64),
         EvaluatedAt = Start,
         Shadow = true,

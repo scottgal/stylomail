@@ -70,6 +70,16 @@ public sealed record PolicyRule
     public IReadOnlyList<string> RequiredSignals =>
         RequiredSignalIds is { Count: > 0 } required ? required : [SignalId];
 
+    /// <summary>
+    /// Property keys this rule needs. A missing key escalates the rule to Review before any band is
+    /// considered; a rule that does not name a key is independent of property absence.
+    /// </summary>
+    public IReadOnlyList<string>? RequiredPropertyKeys { get; init; }
+
+    /// <summary>The property keys actually required, empty when none.</summary>
+    public IReadOnlyList<string> RequiredProperties =>
+        RequiredPropertyKeys is { Count: > 0 } keys ? keys : [];
+
     /// <summary>Bands, ordered or not; the evaluator sorts by threshold for the comparison.</summary>
     public required IReadOnlyList<RuleBand> Bands { get; init; }
 
@@ -147,6 +157,7 @@ public static class RuleSetValidator
     public const string CoverageExcludesRequired = "rule.coverage_excludes_required";
     public const string SampleMinimumInvalid = "rule.sample_minimum_invalid";
     public const string MissingEvidenceNotEscalating = "rule.missing_evidence_not_escalating";
+    public const string PropertyKeyUnknown = "rule.property_key_unknown";
 
     public static IReadOnlyList<RuleSetViolation> Validate(PolicyRuleSet ruleSet)
     {
@@ -249,6 +260,17 @@ public static class RuleSetValidator
                 violations.Add(Violation(SampleMinimumInvalid, rule.Id, "Minimum sample support cannot be negative."));
             }
 
+            foreach (var key in rule.RequiredProperties)
+            {
+                if (!PolicyPropertyKeys.IsKnown(key))
+                {
+                    violations.Add(Violation(
+                        PropertyKeyUnknown,
+                        rule.Id,
+                        $"'{key}' is not a v1 property key. Supported: {string.Join(", ", PolicyPropertyKeys.All)}."));
+                }
+            }
+
             if (rule.OnMissingEvidence < PolicyVerdict.Review)
             {
                 violations.Add(Violation(
@@ -280,6 +302,12 @@ public sealed record PolicyEvaluationInput
 
     /// <summary>Evidence rows. Order is not meaningful and does not affect the outcome.</summary>
     public required IReadOnlyList<Evidence> Evidence { get; init; }
+
+    /// <summary>
+    /// The resolved effective policy. Null keeps the evaluator on the raw pack, which is the Phase 2
+    /// shadow contract; the authoritative path supplies it.
+    /// </summary>
+    public EffectivePolicy? Effective { get; init; }
 }
 
 /// <summary>What one rule did, whether or not it fired.</summary>
@@ -364,6 +392,15 @@ public enum RuleEvaluationState
 
     /// <summary>More than one distinct row answered the same signal; the engine will not pick one.</summary>
     ConflictingEvidence = 5,
+
+    /// <summary>A property key this rule requires could not be read.</summary>
+    MissingProperty = 6,
+
+    /// <summary>An effective property requires review even though no band fired.</summary>
+    ForcedReview = 7,
+
+    /// <summary>An expired HoldForReview binding withholds this category even below the band.</summary>
+    WithheldForReview = 8,
 }
 
 /// <summary>
@@ -429,6 +466,13 @@ public sealed record PolicyEvaluation
     public required string EvidenceSnapshotDigest { get; init; }
 
     public required DateTimeOffset EvaluatedAt { get; init; }
+
+    /// <summary>
+    /// True when the engine refused to evaluate a configuration failure (cross-tenant pack,
+    /// invalid pack or rule set, or no rules). A refusal is not a policy verdict and must be
+    /// surfaced as Unavailable by an authoritative caller, never admitted as a pack decision.
+    /// </summary>
+    public bool Refused { get; init; }
 
     /// <summary>Named so a decision can never be attributed to a model: this is the rules engine.</summary>
     public required string DecidedBy { get; init; }
@@ -512,11 +556,39 @@ public sealed class DeterministicPolicyEvaluator
         }
 
         var available = IndexEvidence(snapshot);
-        var levels = pack.CategoryLevels ?? new Dictionary<string, ToleranceLevel>();
+        var levels = input.Effective?.Levels ?? pack.CategoryLevels ?? new Dictionary<string, ToleranceLevel>();
+        var ceiling = input.Effective?.Ceiling ?? pack.ActionCeiling;
+        var missingProperties = input.Effective?.MissingPropertyKeys ?? [];
+        var forced = (input.Effective?.ForcedReviewCategories ?? []).ToHashSet(StringComparer.Ordinal);
+        var withheld = (input.Effective?.WithheldReviewCategories ?? []).ToHashSet(StringComparer.Ordinal);
         var evaluations = ruleSet.Rules
             .OrderBy(rule => rule.Id, StringComparer.Ordinal)
-            .Select(rule => EvaluateRule(rule, available, levels, pack.ActionCeiling))
+            .Select(rule => EvaluateRule(rule, available, levels, missingProperties, forced, withheld, ceiling))
             .ToList();
+
+        foreach (var category in withheld.Where(category =>
+                     evaluations.All(evaluation => !string.Equals(evaluation.Category, category, StringComparison.Ordinal))))
+        {
+            evaluations.Add(new RuleEvaluation
+            {
+                RuleId = $"policy.withheld_review.{category}",
+                RuleVersion = 1,
+                Category = category,
+                SignalId = string.Empty,
+                State = RuleEvaluationState.WithheldForReview,
+                Outcome = PolicyVerdict.Review,
+                Threshold = null,
+                ObservedValue = null,
+                Coverage = 1,
+                CoverageSignalsMeasured = 0,
+                CoverageSignalsExpected = 0,
+                SampleSupport = null,
+                MissingSignals = [],
+                RequiresHumanReview = true,
+                ReasonCode = "policy.binding_expired_hold",
+                Reason = $"An expired HoldForReview binding still withholds {category} for a human decision.",
+            });
+        }
 
         var deciding = SelectDeciding(evaluations);
         var missing = evaluations
@@ -525,7 +597,10 @@ public sealed class DeterministicPolicyEvaluator
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        var verdict = evaluations.Max(evaluation => evaluation.Outcome ?? PolicyVerdict.Permit);
+        var verdict = evaluations
+            .Select(evaluation => evaluation.Outcome ?? PolicyVerdict.Permit)
+            .OrderByDescending(ProtectionRank)
+            .First();
         var requiresHumanReview = verdict is PolicyVerdict.Review or PolicyVerdict.Quarantine
             || evaluations.Any(evaluation => evaluation.RequiresHumanReview);
 
@@ -565,8 +640,37 @@ public sealed class DeterministicPolicyEvaluator
         PolicyRule rule,
         IReadOnlyDictionary<string, IReadOnlyList<Evidence>> available,
         IReadOnlyDictionary<string, ToleranceLevel> levels,
+        IReadOnlyList<string> missingPropertyKeys,
+        IReadOnlySet<string> forced,
+        IReadOnlySet<string> withheld,
         PolicyVerdict ceiling)
     {
+        var missingProperty = rule.RequiredProperties
+            .FirstOrDefault(key => missingPropertyKeys.Contains(key, StringComparer.Ordinal));
+
+        if (missingProperty is not null)
+        {
+            return new RuleEvaluation
+            {
+                RuleId = rule.Id,
+                RuleVersion = rule.Version,
+                Category = rule.Category,
+                SignalId = rule.SignalId,
+                State = RuleEvaluationState.MissingProperty,
+                Outcome = PolicyVerdict.Review,
+                Threshold = null,
+                ObservedValue = null,
+                Coverage = 0,
+                CoverageSignalsMeasured = 0,
+                CoverageSignalsExpected = 0,
+                SampleSupport = null,
+                MissingSignals = [],
+                RequiresHumanReview = true,
+                ReasonCode = "policy.property_facts_unavailable",
+                Reason = $"Required property '{missingProperty}' could not be read, so the rule cannot answer. Missing facts are not low risk.",
+            };
+        }
+
         var level = levels.TryGetValue(rule.Category, out var declared) ? declared : (ToleranceLevel?)null;
         var required = rule.RequiredSignals.Distinct(StringComparer.Ordinal).ToList();
         var missing = new List<string>();
@@ -666,6 +770,29 @@ public sealed class DeterministicPolicyEvaluator
 
         if (band is null)
         {
+            if (withheld.Contains(rule.Category))
+            {
+                return new RuleEvaluation
+                {
+                    RuleId = rule.Id,
+                    RuleVersion = rule.Version,
+                    Category = rule.Category,
+                    SignalId = rule.SignalId,
+                    State = RuleEvaluationState.WithheldForReview,
+                    Outcome = PolicyVerdict.Review,
+                    Threshold = null,
+                    ObservedValue = value,
+                    Coverage = coverage,
+                    CoverageSignalsMeasured = coverageMeasured,
+                    CoverageSignalsExpected = coverageSignals.Count,
+                    SampleSupport = scored.SampleSupport,
+                    MissingSignals = [],
+                    RequiresHumanReview = true,
+                    ReasonCode = "policy.binding_expired_hold",
+                    Reason = $"An expired HoldForReview binding still withholds {rule.Category} for a human decision.",
+                };
+            }
+
             return new RuleEvaluation
             {
                 RuleId = rule.Id,
@@ -699,12 +826,25 @@ public sealed class DeterministicPolicyEvaluator
         // floor of the response to Review; it never raises it to an accusation. A band may still be
         // stricter than Review, and Hold or Quarantine are capped by the pack ceiling as usual.
         var zeroTolerance = level == ToleranceLevel.ZeroTolerance;
-        if (zeroTolerance && outcome < PolicyVerdict.Review)
+        // Review outranks Hold in the composition order (Quarantine > Review > Hold > Allow), even
+        // though the enum's numeric order puts Hold above Review. Use the composition rank here.
+        if (zeroTolerance && ProtectionRank(outcome) < ProtectionRank(PolicyVerdict.Review))
         {
             outcome = PolicyVerdict.Review;
         }
 
-        var requiresReview = zeroTolerance || outcome == PolicyVerdict.Review;
+        if ((forced.Contains(rule.Category) || withheld.Contains(rule.Category))
+            && ProtectionRank(outcome) < ProtectionRank(PolicyVerdict.Review))
+        {
+            outcome = PolicyVerdict.Review;
+        }
+
+        var requiresReview = zeroTolerance
+            || forced.Contains(rule.Category)
+            || withheld.Contains(rule.Category)
+            || outcome == PolicyVerdict.Review;
+        var withheldOverride = withheld.Contains(rule.Category)
+            && ProtectionRank(band.Verdict) < ProtectionRank(PolicyVerdict.Review);
 
         return new RuleEvaluation
         {
@@ -723,10 +863,16 @@ public sealed class DeterministicPolicyEvaluator
             MissingSignals = [],
             CappedByCeiling = capped,
             RequiresHumanReview = requiresReview,
-            ReasonCode = band.ReasonCode,
+            ReasonCode = withheldOverride
+                ? "policy.binding_expired_hold"
+                : band.ReasonCode,
             Reason = zeroTolerance
                 ? $"{rule.Category} is at zero tolerance: a candidate at {value.ToString("0.####", CultureInfo.InvariantCulture)} against {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)} routes to human review with the evidence preserved."
-                : $"Value {value.ToString("0.####", CultureInfo.InvariantCulture)} crossed rule '{rule.Id}' at threshold {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)}.",
+                : withheldOverride
+                    ? $"An expired HoldForReview binding still withholds {rule.Category} for a human decision."
+                    : forced.Contains(rule.Category)
+                        ? $"{rule.Category} requires human review because an effective property is unknown or differs from the pack jurisdiction."
+                        : $"Value {value.ToString("0.####", CultureInfo.InvariantCulture)} crossed rule '{rule.Id}' at threshold {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)}.",
         };
     }
 
@@ -831,11 +977,21 @@ public sealed class DeterministicPolicyEvaluator
             || (distinct[0].SampleSupport ?? 0) >= rule.MinimumSampleSupport;
     }
 
+    /// <summary>The composition order: Quarantine, then Review, then Hold, then Allow.</summary>
+    private static int ProtectionRank(PolicyVerdict verdict) => verdict switch
+    {
+        PolicyVerdict.Permit or PolicyVerdict.Observe => 0,
+        PolicyVerdict.Hold => 1,
+        PolicyVerdict.Review => 2,
+        PolicyVerdict.Quarantine => 3,
+        _ => throw new ArgumentOutOfRangeException(nameof(verdict), verdict, "Unknown policy verdict."),
+    };
+
     private static RuleEvaluation? SelectDeciding(IReadOnlyList<RuleEvaluation> evaluations)
     {
         var fired = evaluations
             .Where(evaluation => evaluation.Outcome is not null)
-            .OrderByDescending(evaluation => evaluation.Outcome)
+            .OrderByDescending(evaluation => ProtectionRank(evaluation.Outcome!.Value))
             .ThenBy(evaluation => evaluation.RuleId, StringComparer.Ordinal)
             .ToList();
 
@@ -916,6 +1072,7 @@ public sealed class DeterministicPolicyEvaluator
             EvidenceSnapshot = snapshot,
             EvidenceSnapshotDigest = digest,
             EvaluatedAt = _time.GetUtcNow(),
+            Refused = true,
             DecidedBy = DecidedBy,
         };
 }

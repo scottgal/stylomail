@@ -18,7 +18,7 @@ namespace StyloMail.Queue;
 public static class QueueSchema
 {
     /// <summary>Current schema version. Bump when the DDL below changes.</summary>
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
 
     /// <summary>Creates the schema if absent, stamping the version.</summary>
     /// <remarks>
@@ -65,6 +65,7 @@ public static class QueueSchema
         Execute(connection, transaction, AttemptDdl);
         Execute(connection, transaction, ReviewEventDdl);
         Execute(connection, transaction, ReviewOpeningDdl);
+        EnsureLegacyDigestColumn(connection, transaction);
 
         var version = ReadVersion(connection, transaction);
         if (version == 0)
@@ -78,7 +79,7 @@ public static class QueueSchema
             stamp.ExecuteNonQuery();
             version = CurrentVersion;
         }
-        else if (version is 4 or 5)
+        else if (version is 4 or 5 or 6)
         {
             // Additive migration. v4 gains the review deadline and the opening chain; v5 already
             // has the deadline and gains the opening chain. Existing rows keep NULL, which is the
@@ -231,12 +232,50 @@ public static class QueueSchema
         }
     }
 
-    /// <summary>Adds the opening-event column and verifies the opening table on a v4 or v5 queue.</summary>
+    /// <summary>
+    /// Adds the named legacy-digest flag to a tagged opening table that predates it. This is a
+    /// readback marker, so a migrated row can say "the digest was absent" rather than "unread".
+    /// </summary>
+    private static void EnsureLegacyDigestColumn(
+        SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "PRAGMA table_info(queue_review_opening);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        if (columns.Count == 0
+            || !columns.Contains("opening_source")
+            || columns.Contains("legacy_digest_absent"))
+        {
+            return;
+        }
+
+        Execute(connection, transaction,
+            "ALTER TABLE queue_review_opening ADD COLUMN legacy_digest_absent INTEGER NOT NULL DEFAULT 0;");
+        Execute(connection, transaction,
+            """
+            UPDATE queue_review_opening
+               SET legacy_digest_absent = 1
+             WHERE opening_source = 'pack' AND evidence_digest IS NULL;
+            """);
+    }
+
+    /// <summary>
+    /// Adds the opening-event column and the tagged source to an existing queue, recreating the
+    /// opening table once so fallback provenance can carry nulls.
+    /// </summary>
     private static void ApplyReviewOpeningMigration(
         SqliteConnection connection, SqliteTransaction transaction)
     {
-        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
+        var eventColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using (var read = connection.CreateCommand())
         {
             read.Transaction = transaction;
@@ -244,11 +283,11 @@ public static class QueueSchema
             using var reader = read.ExecuteReader();
             while (reader.Read())
             {
-                present.Add(reader.GetString(1));
+                eventColumns.Add(reader.GetString(1));
             }
         }
 
-        if (!present.Contains("opening_event_id"))
+        if (!eventColumns.Contains("opening_event_id"))
         {
             using var alter = connection.CreateCommand();
             alter.Transaction = transaction;
@@ -256,15 +295,45 @@ public static class QueueSchema
             alter.ExecuteNonQuery();
         }
 
-        using var exists = connection.CreateCommand();
-        exists.Transaction = transaction;
-        exists.CommandText =
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'queue_review_opening';";
-        if ((long)(exists.ExecuteScalar() ?? 0L) == 0)
+        var openingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
         {
-            throw new InvalidOperationException(
-                "The queue review opening table is missing after the schema was created. The database " +
-                "is not the one this build expects.");
+            read.Transaction = transaction;
+            read.CommandText = "PRAGMA table_info(queue_review_opening);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                openingColumns.Add(reader.GetString(1));
+            }
+        }
+
+        if (openingColumns.Count == 0)
+        {
+            Execute(connection, transaction, ReviewOpeningDdl);
+            return;
+        }
+
+        if (!openingColumns.Contains("opening_source"))
+        {
+            // SQLite cannot drop NOT NULL in place, so recreate the table and map every existing
+            // opening to pack. No row is reclassified and no missing value is invented.
+            Execute(connection, transaction, "ALTER TABLE queue_review_opening RENAME TO queue_review_opening_old;");
+            Execute(connection, transaction, ReviewOpeningDdl);
+            Execute(connection, transaction,
+                """
+                INSERT INTO queue_review_opening
+                    (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
+                     pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+                     reason_code, reason, evidence_digest, legacy_digest_absent,
+                     unavailable_reason, fallback_deadline, decided_at)
+                SELECT tenant_id, queue_id, opening_event_id, assessment_id, 'pack',
+                       pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+                       reason_code, reason, evidence_digest,
+                       CASE WHEN evidence_digest IS NULL THEN 1 ELSE 0 END,
+                       NULL, NULL, decided_at
+                  FROM queue_review_opening_old;
+                """);
+            Execute(connection, transaction, "DROP TABLE queue_review_opening_old;");
         }
     }
 
@@ -426,25 +495,48 @@ public static class QueueSchema
 
     private const string ReviewOpeningDdl =
         """
-        -- The immutable decision that opened a review. One row per queue item. It names the exact
-        -- assessment, pack, rule set and deciding rule, plus the reason and evidence digest, so a
-        -- reassessment or a pruned ledger cannot erase why the review exists.
+        -- The immutable decision that opened a review. A pack opening names the exact assessment,
+        -- pack, rule set and deciding rule; a fallback opening has no pack provenance and names the
+        -- unavailable reason and bounded deadline instead. The CHECK prevents a mixed row.
         CREATE TABLE IF NOT EXISTS queue_review_opening (
-            tenant_id       TEXT NOT NULL,
-            queue_id        TEXT NOT NULL,
+            tenant_id        TEXT NOT NULL,
+            queue_id         TEXT NOT NULL,
             opening_event_id TEXT NOT NULL,
-            assessment_id   TEXT NOT NULL,
-            pack_id         TEXT NOT NULL,
-            pack_version    TEXT NOT NULL,
-            rule_set_id     TEXT NOT NULL,
-            rule_set_version TEXT NOT NULL,
-            rule_id         TEXT NULL,
-            rule_version    INTEGER NULL,
-            reason_code     TEXT NOT NULL,
-            reason          TEXT NOT NULL,
-            evidence_digest TEXT NULL,
-            decided_at      TEXT NOT NULL,
-            PRIMARY KEY (tenant_id, queue_id)
+            assessment_id    TEXT NOT NULL,
+            opening_source   TEXT NOT NULL CHECK(opening_source IN ('pack','fallback')),
+            pack_id          TEXT NULL,
+            pack_version     TEXT NULL,
+            rule_set_id      TEXT NULL,
+            rule_set_version TEXT NULL,
+            rule_id          TEXT NULL,
+            rule_version     INTEGER NULL,
+            reason_code      TEXT NOT NULL,
+            reason           TEXT NOT NULL,
+            evidence_digest  TEXT NULL,
+            legacy_digest_absent INTEGER NOT NULL DEFAULT 0,
+            unavailable_reason TEXT NULL,
+            fallback_deadline  TEXT NULL,
+            decided_at       TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, queue_id),
+            CHECK (
+                (opening_source = 'pack'
+                    AND pack_id IS NOT NULL AND pack_version IS NOT NULL
+                    AND rule_set_id IS NOT NULL AND rule_set_version IS NOT NULL
+                    AND unavailable_reason IS NULL AND fallback_deadline IS NULL
+                    AND (
+                        (evidence_digest IS NOT NULL AND legacy_digest_absent = 0)
+                        OR
+                        (evidence_digest IS NULL AND legacy_digest_absent = 1)
+                    ))
+                OR
+                (opening_source = 'fallback'
+                    AND pack_id IS NULL AND pack_version IS NULL
+                    AND rule_set_id IS NULL AND rule_set_version IS NULL
+                    AND rule_id IS NULL AND rule_version IS NULL
+                    AND evidence_digest IS NULL
+                    AND legacy_digest_absent = 0
+                    AND unavailable_reason IS NOT NULL AND fallback_deadline IS NOT NULL)
+            )
         );
 
         CREATE INDEX IF NOT EXISTS ix_queue_review_opening_queue

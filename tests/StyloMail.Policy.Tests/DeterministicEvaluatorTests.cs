@@ -132,6 +132,22 @@ public sealed class DeterministicEvaluatorTests
     }
 
     [Fact]
+    public void A_zero_tolerance_hold_band_is_reviewed_not_held()
+    {
+        var levels = PolicyFixtures.DefaultLevels();
+        levels[PolicyCategories.PaymentRedirection] = ToleranceLevel.ZeroTolerance;
+
+        var evaluation = PolicyFixtures.Evaluate(PolicyFixtures.Input(
+            pack: PolicyFixtures.Pack(levels: levels),
+            evidence: [PolicyFixtures.Signal(PolicyFixtures.PaymentSignal, 0.60)]));
+
+        // Quarantine > Review > Hold > Allow. A zero-tolerance category is a Review floor, so a
+        // Hold band may not outrank it merely because Hold has the larger enum number.
+        Assert.Equal(PolicyVerdict.Review, evaluation.Verdict);
+        Assert.Equal(PolicyVerdict.Review, evaluation.Rules[0].Outcome);
+    }
+
+    [Fact]
     public void The_pack_ceiling_caps_a_fired_outcome_and_says_so()
     {
         var evaluation = PolicyFixtures.Evaluate(PolicyFixtures.Input(

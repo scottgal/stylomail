@@ -257,6 +257,12 @@ public sealed record PolicyPack
     /// </summary>
     public TimeSpan ReviewDeadline { get; init; } = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// How long a pack-selected Hold waits before re-evaluation. Resolved at the decision and
+    /// copied, never recomputed. A pack Hold never extends an existing legacy hold.
+    /// </summary>
+    public TimeSpan HoldWindow { get; init; } = TimeSpan.FromHours(24);
+
     /// <summary>The rule-set version this pack was written against. A mismatch is not replayable.</summary>
     public required string RuleSetVersion { get; init; }
 
@@ -341,6 +347,7 @@ public static class PolicyPackValidator
     public const string CaptureFullRequiresSecondApprover = "pack.capture_text_full_requires_second_approver";
     public const string EvidenceRetentionMissing = "pack.evidence_retention_missing";
     public const string ReviewDeadlineOutOfBounds = "pack.review_deadline_out_of_bounds";
+    public const string HoldWindowOutOfBounds = "pack.hold_window_out_of_bounds";
     public const string RuleSetVersionMissing = "pack.rule_set_version_missing";
     public const string ScorerVersionMissing = "pack.scorer_version_missing";
     public const string AuthorMissing = "pack.author_missing";
@@ -426,6 +433,14 @@ public static class PolicyPackValidator
                 ReviewDeadlineOutOfBounds,
                 nameof(PolicyPack.ReviewDeadline),
                 "A review deadline must be between 1 hour and 7 days. Shorter is a hold, longer is an abandoned queue."));
+        }
+
+        if (pack.HoldWindow < TimeSpan.FromHours(1) || pack.HoldWindow > TimeSpan.FromDays(7))
+        {
+            violations.Add(Violation(
+                HoldWindowOutOfBounds,
+                nameof(PolicyPack.HoldWindow),
+                "A pack hold window must be between 1 hour and 7 days."));
         }
 
         if (previous is not null)

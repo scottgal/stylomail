@@ -173,6 +173,8 @@ public sealed class PolicyShadowEvaluator : IPolicyShadowEvaluator
 
             return new PolicyDecisionRecord
             {
+                Source = PolicySource.Shadow,
+                Admission = AdmissionOutcome.NotApplicableForAssessmentOnly,
                 PackId = evaluation.PackId,
                 PackVersion = evaluation.PackVersion,
                 RuleSetId = evaluation.RuleSetId,
@@ -190,6 +192,7 @@ public sealed class PolicyShadowEvaluator : IPolicyShadowEvaluator
                 Coverage = evaluation.Coverage,
                 BindingIds = [],
                 PropertyFacts = [],
+                MissingPropertyKeys = [],
                 EvidenceSnapshotDigest = evaluation.EvidenceSnapshotDigest,
                 EvaluatedAt = now,
                 Shadow = true,
@@ -225,6 +228,8 @@ public sealed class PolicyShadowEvaluator : IPolicyShadowEvaluator
         string reason,
         DateTimeOffset now) => new()
         {
+            Source = PolicySource.Shadow,
+            Admission = AdmissionOutcome.NotApplicableForAssessmentOnly,
             PackId = packId,
             PackVersion = packVersion,
             RuleSetId = ruleSetId,
@@ -242,6 +247,7 @@ public sealed class PolicyShadowEvaluator : IPolicyShadowEvaluator
             Coverage = 0,
             BindingIds = [],
             PropertyFacts = [],
+            MissingPropertyKeys = [],
 
             // An uncomputed digest is not an empty one.
             EvidenceSnapshotDigest = null,

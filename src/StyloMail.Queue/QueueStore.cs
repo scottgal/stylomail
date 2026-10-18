@@ -1267,9 +1267,10 @@ public sealed partial class QueueStore
         cmd.Transaction = transaction;
         cmd.CommandText =
             """
-            SELECT opening_event_id, assessment_id, pack_id, pack_version, rule_set_id,
-                   rule_set_version, rule_id, rule_version, reason_code, reason,
-                   evidence_digest, decided_at
+            SELECT opening_event_id, assessment_id, opening_source, pack_id, pack_version,
+                   rule_set_id, rule_set_version, rule_id, rule_version, reason_code, reason,
+                   evidence_digest, legacy_digest_absent, unavailable_reason, fallback_deadline,
+                   decided_at
               FROM queue_review_opening
              WHERE tenant_id = $tenant AND queue_id = $queue;
             """;
@@ -1282,26 +1283,72 @@ public sealed partial class QueueStore
             return null;
         }
 
+        var opening = new ReviewOpening
+        {
+                AssessmentId = reader.GetString(1),
+                Source = string.Equals(reader.GetString(2), "fallback", StringComparison.OrdinalIgnoreCase)
+                    ? ReviewOpeningSource.Fallback
+                    : ReviewOpeningSource.Pack,
+                PackId = reader.IsDBNull(3) ? null : reader.GetString(3),
+                PackVersion = reader.IsDBNull(4) ? null : reader.GetString(4),
+                RuleSetId = reader.IsDBNull(5) ? null : reader.GetString(5),
+                RuleSetVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
+                RuleId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                RuleVersion = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                ReasonCode = reader.GetString(9),
+                Reason = reader.GetString(10),
+                EvidenceSnapshotDigest = reader.IsDBNull(11) ? null : reader.GetString(11),
+                LegacyDigestAbsent = reader.GetInt32(12) != 0,
+                UnavailableReason = reader.IsDBNull(13) ? null : reader.GetString(13),
+                FallbackDeadline = reader.IsDBNull(14) ? null : FromDb(reader.GetString(14)),
+                DecidedAt = FromDb(reader.GetString(15)) ?? _options.TimeProvider.GetUtcNow(),
+        };
+
+        ValidateStoredOpening(opening);
+
         return new ReviewOpeningRecord
         {
             TenantId = tenantId,
             QueueId = queueId,
             OpeningEventId = reader.GetString(0),
-            Opening = new ReviewOpening
-            {
-                AssessmentId = reader.GetString(1),
-                PackId = reader.GetString(2),
-                PackVersion = reader.GetString(3),
-                RuleSetId = reader.GetString(4),
-                RuleSetVersion = reader.GetString(5),
-                RuleId = reader.IsDBNull(6) ? null : reader.GetString(6),
-                RuleVersion = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                ReasonCode = reader.GetString(8),
-                Reason = reader.GetString(9),
-                EvidenceSnapshotDigest = reader.IsDBNull(10) ? null : reader.GetString(10),
-                DecidedAt = FromDb(reader.GetString(11)) ?? _options.TimeProvider.GetUtcNow(),
-            },
+            Opening = opening,
         };
+    }
+
+    private static void ValidateStoredOpening(ReviewOpening opening)
+    {
+        if (opening.Source == ReviewOpeningSource.Pack)
+        {
+            if (string.IsNullOrWhiteSpace(opening.PackId)
+                || string.IsNullOrWhiteSpace(opening.PackVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleSetId)
+                || string.IsNullOrWhiteSpace(opening.RuleSetVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleId)
+                || opening.RuleVersion is null
+                || opening.UnavailableReason is not null
+                || opening.FallbackDeadline is not null
+                || (opening.EvidenceSnapshotDigest is null) != opening.LegacyDigestAbsent)
+            {
+                throw new InvalidOperationException(
+                    "The stored review opening is a mixed pack row: it must carry pack, rule-set, "
+                    + "digest-or-legacy-absence provenance and no fallback-only fields.");
+            }
+        }
+        else if (opening.PackId is not null
+            || opening.PackVersion is not null
+            || opening.RuleSetId is not null
+            || opening.RuleSetVersion is not null
+            || opening.RuleId is not null
+            || opening.RuleVersion is not null
+            || opening.EvidenceSnapshotDigest is not null
+            || opening.LegacyDigestAbsent
+            || string.IsNullOrWhiteSpace(opening.UnavailableReason)
+            || opening.FallbackDeadline is null)
+        {
+            throw new InvalidOperationException(
+                "The stored review opening is a mixed fallback row: it must carry no pack "
+                + "provenance and must name an unavailable reason and bounded deadline.");
+        }
     }
 
     private static void InsertReviewOpening(
@@ -1312,31 +1359,84 @@ public sealed partial class QueueStore
         string openingEventId,
         ReviewOpening opening)
     {
+        if (opening.Source == ReviewOpeningSource.Pack)
+        {
+            if (string.IsNullOrWhiteSpace(opening.PackId)
+                || string.IsNullOrWhiteSpace(opening.PackVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleSetId)
+                || string.IsNullOrWhiteSpace(opening.RuleSetVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleId)
+                || opening.RuleVersion is null
+                || string.IsNullOrWhiteSpace(opening.EvidenceSnapshotDigest))
+            {
+                throw new ArgumentException(
+                    "A pack review opening requires pack, rule-set, deciding-rule and evidence-digest provenance.",
+                    nameof(opening));
+            }
+
+            if (opening.UnavailableReason is not null || opening.FallbackDeadline is not null)
+            {
+                throw new ArgumentException(
+                    "A pack review opening must not carry fallback-only fields.",
+                    nameof(opening));
+            }
+        }
+        else
+        {
+            if (opening.PackId is not null
+                || opening.PackVersion is not null
+                || opening.RuleSetId is not null
+                || opening.RuleSetVersion is not null
+                || opening.RuleId is not null
+                || opening.RuleVersion is not null
+                || opening.EvidenceSnapshotDigest is not null
+                || opening.LegacyDigestAbsent)
+            {
+                throw new ArgumentException(
+                    "A fallback review opening must not carry pack provenance or a legacy-digest flag.",
+                    nameof(opening));
+            }
+
+            if (string.IsNullOrWhiteSpace(opening.UnavailableReason)
+                || opening.FallbackDeadline is null)
+            {
+                throw new ArgumentException(
+                    "A fallback review opening requires an unavailable reason and a bounded deadline.",
+                    nameof(opening));
+            }
+        }
+
         using var cmd = connection.CreateCommand();
         cmd.Transaction = transaction;
         cmd.CommandText =
             """
             INSERT INTO queue_review_opening
-                (tenant_id, queue_id, opening_event_id, assessment_id, pack_id, pack_version,
-                 rule_set_id, rule_set_version, rule_id, rule_version, reason_code, reason,
-                 evidence_digest, decided_at)
-            VALUES ($tenant, $queue, $event, $assessment, $pack, $packVersion,
+                (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
+                 pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+                 reason_code, reason, evidence_digest, legacy_digest_absent,
+                 unavailable_reason, fallback_deadline, decided_at)
+            VALUES ($tenant, $queue, $event, $assessment, $source, $pack, $packVersion,
                     $ruleSet, $ruleSetVersion, $rule, $ruleVersion, $reasonCode, $reason,
-                    $digest, $decided);
+                    $digest, $legacyDigestAbsent, $unavailable, $fallbackDeadline, $decided);
             """;
         cmd.Parameters.AddWithValue("$tenant", tenantId);
         cmd.Parameters.AddWithValue("$queue", queueId);
         cmd.Parameters.AddWithValue("$event", openingEventId);
         cmd.Parameters.AddWithValue("$assessment", opening.AssessmentId);
-        cmd.Parameters.AddWithValue("$pack", opening.PackId);
-        cmd.Parameters.AddWithValue("$packVersion", opening.PackVersion);
-        cmd.Parameters.AddWithValue("$ruleSet", opening.RuleSetId);
-        cmd.Parameters.AddWithValue("$ruleSetVersion", opening.RuleSetVersion);
+        cmd.Parameters.AddWithValue("$source", opening.Source == ReviewOpeningSource.Fallback ? "fallback" : "pack");
+        cmd.Parameters.AddWithValue("$pack", (object?)opening.PackId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$packVersion", (object?)opening.PackVersion ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ruleSet", (object?)opening.RuleSetId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ruleSetVersion", (object?)opening.RuleSetVersion ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$rule", (object?)opening.RuleId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ruleVersion", (object?)opening.RuleVersion ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$reasonCode", opening.ReasonCode);
         cmd.Parameters.AddWithValue("$reason", opening.Reason);
         cmd.Parameters.AddWithValue("$digest", (object?)opening.EvidenceSnapshotDigest ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$legacyDigestAbsent", opening.LegacyDigestAbsent ? 1 : 0);
+        cmd.Parameters.AddWithValue("$unavailable", (object?)opening.UnavailableReason ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$fallbackDeadline",
+            opening.FallbackDeadline is { } deadline ? ToDb(deadline) : DBNull.Value);
         cmd.Parameters.AddWithValue("$decided", ToDb(opening.DecidedAt));
         cmd.ExecuteNonQuery();
     }
