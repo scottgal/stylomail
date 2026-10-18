@@ -302,6 +302,12 @@ The number that matters is the verified yield per type, and only that number jus
 The first benchmark pass verified the last turn instead of the turn carrying `element_turn`. That pass
 rate was withdrawn; the instrument now reads and range checks the index and verifies that turn.
 
+**Operational gotcha, measured.** A generation can hang with an established socket to Ollama, no
+model loaded and VRAM idle (763 MiB on a 15,352 MiB card). That is a stuck runner, not a slow model.
+Restart Ollama on the host and re-run; the pilot then proceeds. The restart must bind all interfaces
+(`OLLAMA_HOST=0.0.0.0:11434`) because WSL reaches the Windows service by its LAN address, not by
+localhost.
+
 ## The operator dataset, as a generation-artifact probe
 
 `ingest_operator_dataset.py` reads only `subject`, `email_body` and `label` from the operator CSV.
