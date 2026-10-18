@@ -80,6 +80,9 @@ public sealed record PolicyBinding
     /// <summary>The pack version this binding was authored against.</summary>
     public string? PackVersion { get; init; }
 
+    /// <summary>The pack id the version belongs to. With <see cref="PackVersion"/>, identifies the exact pack.</summary>
+    public string? PackId { get; init; }
+
     public required string Author { get; init; }
 
     /// <summary>

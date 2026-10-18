@@ -3,7 +3,7 @@
 Decision record for the slice bounded by `overview-` on 18 Oct 2026, after the first policy slice
 was accepted at merged main `264b177`.
 
-Status: **design accepted in shape, Phase 1 not built.** Rulings A-E were issued on 18 Oct 2026:
+Status: **design accepted in shape; Phase 1 implemented and awaiting the migration review.** Rulings A-E were issued on 18 Oct 2026:
 the six tables are approved in shape (no DDL executed), `PolicyVerdict` moves to Core, the review
 mapping is option C (a distinct bounded Review state), a store outage caches the last effective pack
 and reviews on a miss, and v1 has one pack per tenant and jurisdiction. No table was created, no
@@ -60,7 +60,8 @@ CREATE TABLE host_policy_pack (
     author           TEXT NOT NULL,        -- principal id, not a display name
     approver         TEXT NULL,
     second_approver  TEXT NULL,
-    effective_from   TEXT NULL,
+    effective_from   TEXT NOT NULL,
+    review_due       TEXT NULL,
     superseded_by    TEXT NULL,            -- "<pack_id>@<version>"
     created_at       TEXT NOT NULL,
     approved_at      TEXT NULL,
@@ -81,7 +82,7 @@ CREATE TABLE host_policy_pack_event (
     tenant_id   TEXT NOT NULL,
     pack_id     TEXT NOT NULL,
     version     TEXT NOT NULL,
-    event       TEXT NOT NULL,             -- drafted | edited | approved | activated | superseded | withdrawn
+    event       TEXT NOT NULL,             -- drafted | edited | approved | scheduled | activated | superseded | withdrawn | deactivated
     actor       TEXT NOT NULL,             -- principal id
     reason      TEXT NOT NULL,
     at          TEXT NOT NULL,
@@ -102,11 +103,13 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
   +----withdraw--------+----withdraw----> withdrawn
 ```
 
-- **Draft is editable.** Every save revalidates with `PolicyPackValidator`; an invalid draft is
-  refused and the refusal codes are returned to the console. `PolicyPackValidator` already refuses
-  an Off or Observe hard floor, an unknown category, an undeclared floor and a lowering without a
-  second approver (`PolicyPacks.cs`).
-- **Approved is immutable.** A change is a new version. `content_sha256` is over the canonical
+- **Draft is editable.** Every save revalidates the content with `PolicyPackValidator`; an invalid
+  draft is refused and the refusal codes are returned to the console. Draft validation does not
+  require the approver or compare against the previous pack, because the approver and the second
+  approver do not exist until approval. The full check, including the lowering comparison, runs at
+  approval, so a lowering cannot become effective without both signatures.
+- **Approved is immutable.** Only a draft may be approved, and a second approval attempt is
+  refused with `pack.version_immutable`. A change is a new version. `content_sha256` is over the canonical
   payload bytes (sorted keys, invariant culture) and is computed at approval, so an approval names
   bytes rather than a version label. A stored payload whose hash no longer matches its row is a
   corruption, and the row is refused at read.
@@ -139,6 +142,12 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
 3. If neither exists, return null. **Null means "no pack", not "all categories Off".** The
    evaluator is not called and the legacy decision stands.
 
+An approved pack whose `effective_from` is in the future is a schedule. Several schedules may
+coexist; the lookup promotes the earliest due one in a transaction when it is observed, superseding
+the current effective pack. The partial unique index still permits exactly one effective pack per
+tenant and jurisdiction. A rule set is resolved by version through one tenant lineage, so a version
+must map to exactly one live row (`rule_set.ambiguous` otherwise).
+
 **v1 selects one pack per tenant and jurisdiction, from the deployment's declared jurisdiction.**
 Ruling E: an entity's country may raise protection but may not select a different pack. A known,
 verified or declared country that differs from the pack's jurisdiction does not switch packs; it
@@ -158,6 +167,9 @@ public interface IPolicyPackReader
         string tenantId, string jurisdiction, DateTimeOffset now, CancellationToken cancellationToken);
 
     Task<PolicyPack?> GetVersionAsync(
+        string tenantId, string packId, string version, CancellationToken cancellationToken);
+
+    Task<PolicyPackSummary?> GetSummaryAsync(
         string tenantId, string packId, string version, CancellationToken cancellationToken);
 }
 
@@ -242,9 +254,10 @@ CREATE TABLE host_policy_binding_event (
 );
 ```
 
-- A binding is validated against the effective pack **at creation**: no hard-floor lowering below
-  `Strict`, no capture wider than the pack's declared mode. `PolicyBindingValidator` already
-  enforces both.
+- A binding is validated against the effective pack **at creation**: the pack must be `effective`,
+  the binding may not lower a hard floor below `Strict`, and capture may not be wider than the
+  pack's declared mode. `PolicyBindingValidator` enforces the last two; the store enforces the
+  first with `binding.pack_not_effective`.
 - Expiry is resolved at read with `IsActiveAt(now)`; there is no reliance on a sweeper. The
   `OnExpiry` resolution is part of the binding: `RevertToPack` or `HoldForReview`, with no "keep"
   member.
@@ -586,6 +599,7 @@ sends prose that a policy change can make false without a version bump.
 | `/v1/policy/packs/{id}/{version}/approve` | POST | Administer | 1 |
 | `/v1/policy/packs/{id}/{version}/activate` | POST | Administer | 1 |
 | `/v1/policy/packs/{id}/{version}/withdraw` | POST | Administer | 1 |
+| `/v1/policy/packs/{id}/{version}/deactivate` | POST | Administer | 1 (return to the legacy engine) |
 | `/v1/policy/bindings` | GET | Review | 1 |
 | `/v1/policy/bindings` | POST | Administer | 1 |
 | `/v1/policy/bindings/{id}/revoke` | POST | Administer | 1 |

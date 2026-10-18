@@ -82,6 +82,42 @@ public static class ApiRoutes
         v1.MapDelete("/properties/{kind}/{id}/{key}", PropertyEndpoints.ClearAsync)
             .RequireAuthorization(HostPolicies.Administer);
 
+        // Policy administration. Reading a pack, its versions or a binding is reviewer visibility;
+        // drafting, approving, activating, withdrawing, binding and revoking change what policy
+        // will do and are administrative. The capability catalogue is static and reads no pack.
+        v1.MapGet("/policy/packs", PolicyEndpoints.ListPacksAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/policy/packs/{id}", PolicyEndpoints.GetPackAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPost("/policy/packs", PolicyEndpoints.DraftPackAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/policy/packs/{id}/{version}/approve", PolicyEndpoints.ApprovePackAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/policy/packs/{id}/{version}/activate", PolicyEndpoints.ActivatePackAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/policy/packs/{id}/{version}/withdraw", PolicyEndpoints.WithdrawPackAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/policy/packs/{id}/{version}/deactivate", PolicyEndpoints.DeactivatePackAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapGet("/policy/bindings", PolicyEndpoints.ListBindingsAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPost("/policy/bindings", PolicyEndpoints.CreateBindingAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/policy/bindings/{id}/revoke", PolicyEndpoints.RevokeBindingAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapGet("/policy/capabilities", PolicyEndpoints.Capabilities)
+            .RequireAuthorization(HostPolicies.Review);
+
         v1.MapPost("/feedback", FeedbackEndpoints.SubmitAsync)
             .RequireAuthorization(HostPolicies.Feedback);
 

@@ -54,6 +54,11 @@ internal static class TestPrincipals
     public const string AcmeOperatorKey = "test-key-acme-operator";
     public const string AcmeOperatorPrincipal = "user-acme-operator";
 
+    /// <summary>A second acme administrator, for a second-approver control that must be a different
+    /// human rather than the same principal typing twice.</summary>
+    public const string AcmeSecondOperatorKey = "test-key-acme-second-operator";
+    public const string AcmeSecondOperatorPrincipal = "user-acme-second-operator";
+
     /// <summary>Globex's administrator, so a cross-tenant control action is refused on tenancy
     /// rather than merely on privilege.</summary>
     public const string GlobexOperatorKey = "test-key-globex-operator";
@@ -78,7 +83,7 @@ internal static class TestPrincipals
     /// </remarks>
     public static string TenantFor(string apiKey) => apiKey switch
     {
-        AcmeAssessKey or AcmeSenderKey or AcmeReviewerKey or AcmeOperatorKey => AcmeTenant,
+        AcmeAssessKey or AcmeSenderKey or AcmeReviewerKey or AcmeOperatorKey or AcmeSecondOperatorKey => AcmeTenant,
         GlobexSenderKey or GlobexReviewerKey or GlobexOperatorKey => GlobexTenant,
         _ => throw new ArgumentOutOfRangeException(
             nameof(apiKey),
@@ -111,6 +116,8 @@ internal sealed class TestHost : WebApplicationFactory<Program>
         AddPrincipal(TestPrincipals.AcmeReviewerPrincipal, TestPrincipals.AcmeReviewerKey,
             TestPrincipals.AcmeTenant, "Assess", "Review");
         AddPrincipal(TestPrincipals.AcmeOperatorPrincipal, TestPrincipals.AcmeOperatorKey,
+            TestPrincipals.AcmeTenant, "Assess", "Send", "Review", "Feedback", "Administer");
+        AddPrincipal(TestPrincipals.AcmeSecondOperatorPrincipal, TestPrincipals.AcmeSecondOperatorKey,
             TestPrincipals.AcmeTenant, "Assess", "Send", "Review", "Feedback", "Administer");
         AddPrincipal(TestPrincipals.GlobexSenderPrincipal, TestPrincipals.GlobexSenderKey,
             TestPrincipals.GlobexTenant, "Assess", "Send");
