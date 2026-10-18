@@ -300,6 +300,11 @@ def generate(output: pathlib.Path, manifest_path: pathlib.Path, kinds: tuple[str
         "attempts": attempts,
         "verified": verified,
         "verified_yield": yields,
+        "verification_state": {
+            "checked_clean": verified,
+            "not_checked": {kind: 0 for kind in kinds},
+            "note": "a row is written only after its check passes, so not_checked is zero by construction",
+        },
         "rows": len(rows),
         "discarded": discarded,
         "seed": seed,

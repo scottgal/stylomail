@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 OLLAMA = __import__("os").environ.get("EMB_OLLAMA", "http://127.0.0.1:11434")
 ELEMENTS = ("credential_request", "urgency_pressure", "threat", "impersonated_greeting", "attachment_lure")
 MAX_SEGMENTS = 8
-MAX_SEGMENT_CHARS = 2000
+MAX_SEGMENT_CHARS = 6000
 
 TEACHER_TEMPLATE = """Label each element that is present in this segment.
 
@@ -109,18 +109,43 @@ def main() -> int:
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--rows", type=int, default=200)
+    parser.add_argument("--corpus", type=pathlib.Path, default=None,
+                        help="corpus-labels.jsonl from ingest_corpora.py (real mail)")
+    parser.add_argument("--seed-labels", type=pathlib.Path, default=None,
+                        help="seed-labels.jsonl, the authored rows already in the artefact")
+    parser.add_argument("--spotcheck-out", type=pathlib.Path, default=None)
     parser.add_argument("--teacher", default="qwen3.8:latest")
     parser.add_argument("--verifier", default="gemma4:26b")
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20261018)
     args = parser.parse_args()
 
-    rows = [json.loads(line) for line in args.input.read_text(encoding="utf-8").splitlines() if line.strip()]
+    def read(path: pathlib.Path, source: str) -> list[dict]:
+        output = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            output.append({
+                "id": f"{source}:{row['id']}",
+                "text": row["text"],
+                "split": row.get("split", "train"),
+                "source": source,
+            })
+        return output
+
     rng = random.Random(args.seed)
-    phishing = [row for row in rows if row["label"] == 1]
-    benign = [row for row in rows if row["label"] == 0]
-    half = args.rows // 2
-    sample = rng.sample(phishing, min(half, len(phishing))) + rng.sample(benign, min(args.rows - half, len(benign)))
+    pools = {"operator": read(args.input, "operator")}
+    if args.corpus is not None and args.corpus.exists():
+        pools["corpus"] = read(args.corpus, "corpus")
+    if args.seed_labels is not None and args.seed_labels.exists():
+        pools["authored"] = read(args.seed_labels, "authored")
+
+    # Stratified across sources so the labels are not dominated by one generator or one corpus.
+    per_source = max(1, args.rows // len(pools))
+    sample = []
+    for source, pool in pools.items():
+        sample.extend(rng.sample(pool, min(per_source, len(pool))))
 
     work = []
     for row in sample:
@@ -159,6 +184,7 @@ def main() -> int:
         kept.append({
             "id": f"{row['id']}:{ordinal}",
             "source_row": row["id"],
+            "source": row.get("source", "unknown"),
             "ordinal": ordinal,
             "text": segment,
             "labels": teacher_labels,
@@ -173,8 +199,28 @@ def main() -> int:
 
     args.output.write_text("\n".join(json.dumps(row) for row in kept) + "\n", encoding="utf-8")
     total = len(results)
+    spotcheck = None
+    if args.spotcheck_out is not None:
+        lines = ["id,source,split,labels,text"]
+        for row in kept[:20]:
+            text = row["text"].replace('"', "'").replace("\n", " ")[:400]
+            labels = "|".join(row["labels"]) if row["labels"] else "none"
+            lines.append(f'{row["id"]},{row["source"]},{row["split"]},{labels},"{text}"')
+        args.spotcheck_out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        spotcheck = str(args.spotcheck_out)
+
+    agreement = round(len(kept) / total, 4) if total else 0.0
+    gate_passed = agreement >= 0.80
+    zero_elements = [element for element, count in per_label.items() if count == 0]
     manifest = {
         "rows_sampled": len(sample),
+        "sources": {source: len(pool) for source, pool in pools.items()},
+        "agreement_gate": 0.80,
+        "agreement_passed": gate_passed,
+        "seed_permitted": gate_passed,
+        "elements_with_no_positives": zero_elements,
+        "spotcheck_file": spotcheck,
+        "spotcheck_rows": 20 if spotcheck else 0,
         "segments_labelled": total,
         "segments_kept": len(kept),
         "exact_agreement_rate": round(len(kept) / total, 4) if total else None,
@@ -194,6 +240,8 @@ def main() -> int:
     }
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, indent=2))
+    if not gate_passed:
+        print("GATE FAILED: agreement below 0.80; do not seed an artefact from these labels")
     return 0
 
 
