@@ -987,14 +987,15 @@ public sealed class ProxyRoutesTests
             CancellationToken.None);
 
         await sink.RecordPointAsync(
-            Point("credential_request", score: 0.31, exemplar: "seed-1:credential_request:0007",
+            Point(ElementVocabulary.UrgencyPressure, score: 0.31, exemplar: "seed-1:urgency_pressure:0007",
                 availability: ProxyWarningAvailability.Available, reason: "none", at),
             CancellationToken.None);
 
-        // One element can be unavailable while another on the same segment is scored.
+        // One scorer can be unavailable for an element while another scorer is scored.
         await sink.RecordPointAsync(
-            Point("threat", score: null, exemplar: null,
-                availability: ProxyWarningAvailability.NotProduced, reason: "no_exemplars", at),
+            Point(ElementVocabulary.UrgencyPressure, score: null, exemplar: null,
+                availability: ProxyWarningAvailability.NotProduced, reason: "probe_not_trained", at,
+                scorer: ElementScorers.LinearProbe),
             CancellationToken.None);
 
         var series = await ReadAsync<ProxyElementSeriesResponse>(
@@ -1006,7 +1007,8 @@ public sealed class ProxyRoutesTests
         Assert.Equal("m-element", point.TurnToken);
         Assert.Equal(2, point.Elements.Count);
 
-        var available = Assert.Single(point.Elements, element => element.Element == "credential_request");
+        var available = Assert.Single(point.Elements, element => element.Scorer == ElementScorers.PrototypeKnn);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, available.Element);
         Assert.Equal("prototype_knn", available.Scorer);
         Assert.Equal(ElementScorers.PrototypeKnnVersion, available.ScorerVersion);
         Assert.Equal(ElementVocabulary.Version, available.VocabularyVersion);
@@ -1014,15 +1016,16 @@ public sealed class ProxyRoutesTests
         Assert.Equal("classification/1", available.PrefixVersion);
         Assert.Equal(256, available.Dimension);
         Assert.Equal(0.31, available.Score);
-        Assert.Equal("seed-1:credential_request:0007", available.NearestExemplarId);
+        Assert.Equal("seed-1:urgency_pressure:0007", available.NearestExemplarId);
         Assert.Equal("available", available.Availability);
         Assert.Equal("none", available.AvailabilityReason);
 
-        var missing = Assert.Single(point.Elements, element => element.Element == "threat");
+        var missing = Assert.Single(point.Elements, element => element.Scorer == ElementScorers.LinearProbe);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, missing.Element);
         Assert.Null(missing.Score);
         Assert.Null(missing.NearestExemplarId);
         Assert.Equal("not_produced", missing.Availability);
-        Assert.Equal("no_exemplars", missing.AvailabilityReason);
+        Assert.Equal("probe_not_trained", missing.AvailabilityReason);
 
         // Tone is a sibling series and its service is not published: not produced, never zeros.
         Assert.Equal("goemotions/1", point.Tone.VocabularyVersion);
@@ -1073,11 +1076,11 @@ public sealed class ProxyRoutesTests
                 MessageToken = "m-shared",
                 ThreadToken = thread,
                 Ordinal = 0,
-                Element = "credential_request",
+                Element = ElementVocabulary.UrgencyPressure,
                 Scorer = ElementScorers.PrototypeKnn,
                 ScorerVersion = ElementScorers.PrototypeKnnVersion,
                 Score = 0.31,
-                NearestExemplarId = "seed-1:credential_request:0007",
+                NearestExemplarId = "seed-1:urgency_pressure:0007",
                 Availability = ProxyWarningAvailability.Available,
                 AvailabilityReason = "none",
                 ModelTag = "google/embeddinggemma-2",
@@ -1097,7 +1100,7 @@ public sealed class ProxyRoutesTests
                 MessageToken = "m-shared",
                 ThreadToken = thread,
                 Ordinal = 0,
-                Element = "threat",
+                Element = ElementVocabulary.UrgencyPressure,
                 Scorer = ElementScorers.LinearProbe,
                 ScorerVersion = ElementScorers.LinearProbeVersion,
                 Score = 0.8,
@@ -1120,14 +1123,14 @@ public sealed class ProxyRoutesTests
 
         var retrieval = Assert.Single(series.Points, point => point.TrafficKind == "Retrieval");
         var retrievalElement = Assert.Single(retrieval.Elements);
-        Assert.Equal("credential_request", retrievalElement.Element);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, retrievalElement.Element);
         Assert.Equal(ElementScorers.PrototypeKnn, retrievalElement.Scorer);
         Assert.Equal(0.31, retrievalElement.Score);
         Assert.Equal("available", retrievalElement.Availability);
 
         var submission = Assert.Single(series.Points, point => point.TrafficKind == "Submission");
         var submissionElement = Assert.Single(submission.Elements);
-        Assert.Equal("threat", submissionElement.Element);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, submissionElement.Element);
         Assert.Equal(ElementScorers.LinearProbe, submissionElement.Scorer);
         Assert.Equal(0.8, submissionElement.Score);
         Assert.Equal("available", submissionElement.Availability);
@@ -1144,9 +1147,9 @@ public sealed class ProxyRoutesTests
         const string thread = "thread-batchPointsA";
 
         var outcome = BatchOutcome("m-batch", thread, at);
-        var credential = BatchPoint("m-batch", thread, "credential_request", 0.31,
-            "seed-1:credential_request:0007", at, ElementScorers.PrototypeKnn);
-        var threat = BatchPoint("m-batch", thread, "threat", 0.8,
+        var credential = BatchPoint("m-batch", thread, ElementVocabulary.UrgencyPressure, 0.31,
+            "seed-1:urgency_pressure:0007", at, ElementScorers.PrototypeKnn);
+        var threat = BatchPoint("m-batch", thread, ElementVocabulary.UrgencyPressure, 0.8,
             null, at, ElementScorers.LinearProbe);
 
         await sink.RecordBatchAsync(outcome, [credential, threat], CancellationToken.None);
@@ -1166,11 +1169,11 @@ public sealed class ProxyRoutesTests
             MessageToken = "m-batch",
             ThreadToken = thread,
             Ordinal = 1,
-            Element = "threat",
+            Element = ElementVocabulary.UrgencyPressure,
             Scorer = ElementScorers.PrototypeKnn,
             ScorerVersion = ElementScorers.PrototypeKnnVersion,
             Score = null,
-            NearestExemplarId = "seed-1:threat:0001",
+            NearestExemplarId = "seed-1:urgency_pressure:0001",
             Availability = ProxyWarningAvailability.Available,
             AvailabilityReason = "none",
             ModelTag = "google/embeddinggemma-2",
@@ -1190,7 +1193,7 @@ public sealed class ProxyRoutesTests
             await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
         var point = Assert.Single(series.Points);
         var element = Assert.Single(point.Elements);
-        Assert.Equal("credential_request", element.Element);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, element.Element);
     }
 
     [Fact]
@@ -1206,7 +1209,10 @@ public sealed class ProxyRoutesTests
 
         // The write path now refuses a non-current vocabulary, so a legacy row is seeded directly.
         // This is exactly the shape an elements/1 ledger has on disk today.
-        InsertLegacyElementPoint(host, "m-historical", thread, at, "attachment_lure", "elements/1");
+        InsertLegacyElementPoint(
+            host, "m-historical", thread, at, "attachment_lure", "elements/1", "seed-1:attachment_lure:0003");
+        InsertLegacyElementPoint(
+            host, "m-historical", thread, at, "threat", "elements/2", "seed-1:threat:0008");
 
         // A current-version point at the SAME ordinal and message. The response must keep them as
         // two points rather than merging elements from different vocabularies.
@@ -1219,7 +1225,7 @@ public sealed class ProxyRoutesTests
                 MessageToken = "m-historical",
                 ThreadToken = thread,
                 Ordinal = 0,
-                Element = ElementVocabulary.CredentialRequest,
+                Element = ElementVocabulary.UrgencyPressure,
                 Scorer = ElementScorers.LinearProbe,
                 ScorerVersion = ElementScorers.LinearProbeVersion,
                 Score = 0.7,
@@ -1237,19 +1243,25 @@ public sealed class ProxyRoutesTests
         var series = await ReadAsync<ProxyElementSeriesResponse>(
             await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
 
-        Assert.Equal(2, series.Points.Count);
+        Assert.Equal(3, series.Points.Count);
 
-        var historical = Assert.Single(series.Points, point => point.VocabularyVersion == "elements/1");
-        Assert.Equal(0, historical.Ordinal);
-        var oldElement = Assert.Single(historical.Elements);
-        Assert.Equal("attachment_lure", oldElement.Element);
-        Assert.Equal("elements/1", oldElement.VocabularyVersion);
+        var firstVersion = Assert.Single(series.Points, point => point.VocabularyVersion == "elements/1");
+        Assert.Equal(0, firstVersion.Ordinal);
+        var firstElement = Assert.Single(firstVersion.Elements);
+        Assert.Equal("attachment_lure", firstElement.Element);
+        Assert.Equal("elements/1", firstElement.VocabularyVersion);
+
+        var secondVersion = Assert.Single(series.Points, point => point.VocabularyVersion == "elements/2");
+        Assert.Equal(0, secondVersion.Ordinal);
+        var secondElement = Assert.Single(secondVersion.Elements);
+        Assert.Equal("threat", secondElement.Element);
+        Assert.Equal("elements/2", secondElement.VocabularyVersion);
 
         var current = Assert.Single(
             series.Points, point => point.VocabularyVersion == ElementVocabulary.Version);
         Assert.Equal(0, current.Ordinal);
         var currentElement = Assert.Single(current.Elements);
-        Assert.Equal(ElementVocabulary.CredentialRequest, currentElement.Element);
+        Assert.Equal(ElementVocabulary.UrgencyPressure, currentElement.Element);
         Assert.Equal(ElementVocabulary.Version, currentElement.VocabularyVersion);
 
         // New writes must declare the current version.
@@ -1261,7 +1273,7 @@ public sealed class ProxyRoutesTests
             MessageToken = "m-historical",
             ThreadToken = thread,
             Ordinal = 1,
-            Element = ElementVocabulary.CredentialRequest,
+            Element = ElementVocabulary.UrgencyPressure,
             Scorer = ElementScorers.PrototypeKnn,
             ScorerVersion = ElementScorers.PrototypeKnnVersion,
             Score = 0.2,
@@ -1312,7 +1324,8 @@ public sealed class ProxyRoutesTests
         string thread,
         DateTimeOffset at,
         string element,
-        string vocabularyVersion)
+        string vocabularyVersion,
+        string exemplar)
     {
         var database = host.Services.GetRequiredService<HostDatabase>();
         using var connection = database.Open();
@@ -1331,7 +1344,7 @@ public sealed class ProxyRoutesTests
         command.Parameters.AddWithValue("$thread", thread);
         command.Parameters.AddWithValue("$account", "pa_account");
         command.Parameters.AddWithValue("$at", at.ToUniversalTime().ToString("O"));
-        command.Parameters.AddWithValue("$exemplar", "seed-1:attachment_lure:0003");
+        command.Parameters.AddWithValue("$exemplar", exemplar);
         command.Parameters.AddWithValue("$model", "google/embeddinggemma-2");
         command.Parameters.AddWithValue("$prefix", "classification/1");
         command.Parameters.AddWithValue("$vocabulary", vocabularyVersion);
@@ -1394,7 +1407,7 @@ public sealed class ProxyRoutesTests
             MessageToken = message,
             ThreadToken = thread,
             Ordinal = ordinal,
-            Element = ElementVocabulary.Threat,
+            Element = ElementVocabulary.UrgencyPressure,
             Scorer = ElementScorers.PrototypeKnn,
             ScorerVersion = ElementScorers.PrototypeKnnVersion,
             Score = null,
@@ -1478,7 +1491,7 @@ public sealed class ProxyRoutesTests
 
         // Available with no score is a contract break; the whole point is refused.
         await Assert.ThrowsAsync<ArgumentException>(() => sink.RecordPointAsync(
-            Point("credential_request", score: null, exemplar: "seed-1:credential_request:0007",
+            Point(ElementVocabulary.UrgencyPressure, score: null, exemplar: "seed-1:urgency_pressure:0007",
                 availability: ProxyWarningAvailability.Available, reason: "none", at),
             CancellationToken.None).AsTask());
 
@@ -1492,11 +1505,11 @@ public sealed class ProxyRoutesTests
                 MessageToken = "m-element",
                 ThreadToken = "thread-elementsABC",
                 Ordinal = 0,
-                Element = "threat",
+                Element = ElementVocabulary.UrgencyPressure,
                 Scorer = ElementScorers.LinearProbe,
                 ScorerVersion = ElementScorers.LinearProbeVersion,
                 Score = 0.5,
-                NearestExemplarId = "seed-1:threat:0001",
+                NearestExemplarId = "seed-1:urgency_pressure:0001",
                 Availability = ProxyWarningAvailability.Available,
                 AvailabilityReason = "none",
                 ModelTag = "google/embeddinggemma-2",
@@ -1514,7 +1527,8 @@ public sealed class ProxyRoutesTests
         string? exemplar,
         ProxyWarningAvailability availability,
         string reason,
-        DateTimeOffset at)
+        DateTimeOffset at,
+        string scorer = ElementScorers.PrototypeKnn)
         => new()
         {
             TenantId = TestPrincipals.AcmeTenant,
@@ -1524,8 +1538,8 @@ public sealed class ProxyRoutesTests
             ThreadToken = "thread-elementsABC",
             Ordinal = 0,
             Element = element,
-            Scorer = ElementScorers.PrototypeKnn,
-            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Scorer = scorer,
+            ScorerVersion = ElementScorers.VersionOf(scorer)!,
             Score = score,
             NearestExemplarId = exemplar,
             Availability = availability,

@@ -22,20 +22,29 @@ public static class ElementVocabulary
     /// not evidence, so both are out. credential_request stays PROVISIONAL: the teacher missed it on
     /// three rows the independent check found, and it earns its place only if a 60-row check agrees.
     /// </remarks>
-    public const string Version = "elements/2";
+    public const string Version = "elements/3";
 
+    /// <summary>
+    /// Not in elements/3. Retained so stored elements/2 and elements/1 rows remain readable and
+    /// code that names the old strings still compiles; nothing in <see cref="All"/> produces them.
+    /// </summary>
     public const string CredentialRequest = "credential_request";
+
     public const string UrgencyPressure = "urgency_pressure";
+
+    /// <summary>
+    /// Not in elements/3. Retained for stored-row readability and source compatibility only.
+    /// </summary>
     public const string Threat = "threat";
 
     /// <summary>
-    /// Not in elements/2. Retained so stored elements/1 rows remain readable and code that names the
+    /// Not in elements/3. Retained so stored elements/1 rows remain readable and code that names the
     /// old strings still compiles; nothing in <see cref="All"/> produces them.
     /// </summary>
     public const string ImpersonatedGreeting = "impersonated_greeting";
 
     /// <summary>
-    /// Not in elements/2. Retained so stored elements/1 rows remain readable and code that names the
+    /// Not in elements/3. Retained so stored elements/1 rows remain readable and code that names the
     /// old strings still compiles; nothing in <see cref="All"/> produces them.
     /// </summary>
     public const string AttachmentLure = "attachment_lure";
@@ -43,12 +52,10 @@ public static class ElementVocabulary
     /// <summary>Every element, in the order a response reports them.</summary>
     public static readonly IReadOnlyList<string> All = new[]
     {
-        CredentialRequest,
         UrgencyPressure,
-        Threat,
     };
 
-    /// <summary>True when a name is one of the five this version defines.</summary>
+    /// <summary>True when a name is one of the elements this version defines.</summary>
     public static bool Contains(string? element) =>
         element is not null && ((IReadOnlyList<string>)All).Contains(element, StringComparer.Ordinal);
 }
