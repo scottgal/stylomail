@@ -1,0 +1,21 @@
+name: console-moderator-polish-capture
+description: >
+  Captures the non-technical moderator wording against an already-running Host.
+  This script must run only through run-console-external-host-capture.sh. It
+  reads the Host; it does not seed mail, mutate a sender, or start a Host.
+
+default_delay: 250
+
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Click
+    target: "type=Button:has-text(Being re-checked)"
+    description: "Show the held/re-check queue label"
+  - type: Screenshot
+    value: "01-being-rechecked"
+    description: "Queue wording before technical detail is expanded"
