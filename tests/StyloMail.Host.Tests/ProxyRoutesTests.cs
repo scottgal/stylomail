@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -1213,6 +1216,88 @@ public sealed class ProxyRoutesTests
         Assert.True(started.BindPort > 0);
 
         await operatorClient.PostAsync("/v1/proxy/listeners/smtp-main/disable", null);
+    }
+
+    [Fact]
+    public async Task A_tls_required_retrieval_listener_never_speaks_plaintext()
+    {
+        using var host = ProxyHost();
+        var certificate = CreateCertificate(host.Root);
+        host
+            .Configure("StyloMail:Proxy:Listeners:0:ListenerId", "imap-tls")
+            .Configure("StyloMail:Proxy:Listeners:0:TenantId", TestPrincipals.AcmeTenant)
+            .Configure("StyloMail:Proxy:Listeners:0:Protocol", "Imap")
+            .Configure("StyloMail:Proxy:Listeners:0:BindAddress", "127.0.0.1")
+            .Configure("StyloMail:Proxy:Listeners:0:Port", "0")
+            .Configure("StyloMail:Proxy:Listeners:0:TlsPolicy", "Required")
+            .Configure("StyloMail:Proxy:Listeners:0:CertificateReference", certificate)
+            .Configure("StyloMail:Proxy:Listeners:0:Enabled", "false");
+
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        var started = await ReadAsync<ProxyListenerResponse>(
+            await operatorClient.PostAsync("/v1/proxy/listeners/imap-tls/enable", null));
+        Assert.Equal("started", started.State);
+
+        // 1. No plaintext greeting before a ClientHello. The listener is waiting for TLS.
+        using (var raw = new TcpClient())
+        {
+            await raw.ConnectAsync(IPAddress.Loopback, started.BindPort);
+            var stream = raw.GetStream();
+            var buffer = new byte[128];
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(700));
+            var read = await ReadOrZeroAsync(stream, buffer, cts.Token);
+            Assert.Equal(0, read);
+        }
+
+        // 2. A plaintext LOGIN is not answered in plaintext; the handshake fails instead.
+        using (var raw = new TcpClient())
+        {
+            await raw.ConnectAsync(IPAddress.Loopback, started.BindPort);
+            var stream = raw.GetStream();
+            await stream.WriteAsync("a1 LOGIN alice secret\r\n"u8.ToArray());
+            var buffer = new byte[256];
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(700));
+            var read = await ReadOrZeroAsync(stream, buffer, cts.Token);
+            var text = read > 0 ? Encoding.ASCII.GetString(buffer, 0, read) : string.Empty;
+            Assert.DoesNotContain("OK", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("LOGIN", text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 3. The greeting is available only after an eager TLS handshake.
+        using (var tlsClient = new TcpClient())
+        {
+            await tlsClient.ConnectAsync(IPAddress.Loopback, started.BindPort);
+            await using var ssl = new SslStream(
+                tlsClient.GetStream(),
+                leaveInnerStreamOpen: false,
+                (_, _, _, _) => true);
+            await ssl.AuthenticateAsClientAsync("localhost");
+
+            using var reader = new StreamReader(ssl, Encoding.ASCII, leaveOpen: true);
+            var greeting = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.StartsWith("* OK", greeting);
+        }
+
+        await operatorClient.PostAsync("/v1/proxy/listeners/imap-tls/disable", null);
+    }
+
+    private static async Task<int> ReadOrZeroAsync(
+        Stream stream,
+        byte[] buffer,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await stream.ReadAsync(buffer, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return 0;
+        }
+        catch (System.IO.IOException)
+        {
+            return 0;
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -299,8 +299,23 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
                 return await TrackedAsync(tenantId, channel, cancellationToken).ConfigureAwait(false);
             }
 
-            await using var startTls = new StartTlsServerDuplexChannel(channel.Input, _tls, channel.Description);
-            return await TrackedAsync(tenantId, startTls, cancellationToken).ConfigureAwait(false);
+            if (_options.Protocol == ProxyListenerProtocol.Smtp)
+            {
+                // SMTP has STARTTLS as a protocol step; the session drives the upgrade before AUTH.
+                await using var startTls = new StartTlsServerDuplexChannel(channel.Input, _tls, channel.Description);
+                return await TrackedAsync(tenantId, startTls, cancellationToken).ConfigureAwait(false);
+            }
+
+            // IMAP and POP3 have no STARTTLS command in these sessions: they reject it. A deferred
+            // channel would therefore serve retrieval in plaintext and accept LOGIN. Establish TLS
+            // eagerly, before any greeting or authentication command is read.
+            var secure = await TlsServerDuplexChannel.AuthenticateAsync(
+                channel.Input, _tls, channel.Description, cancellationToken).ConfigureAwait(false);
+
+            await using (secure)
+            {
+                return await TrackedAsync(tenantId, secure, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         private async Task<SessionOutcome> TrackedAsync(
