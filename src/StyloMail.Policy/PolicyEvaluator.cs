@@ -456,6 +456,9 @@ public sealed class DeterministicPolicyEvaluator
 {
     public const string DecidedBy = "deterministic-policy-evaluator";
 
+    /// <summary>The evaluator version stamped on every decision and shadow record.</summary>
+    public const string Version = "deterministic-policy-evaluator/1";
+
     private readonly TimeProvider _time;
 
     public DeterministicPolicyEvaluator(TimeProvider? timeProvider = null)

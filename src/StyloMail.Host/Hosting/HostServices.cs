@@ -546,7 +546,47 @@ public static class HostServices
             {
                 ProfileKeyHasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(profileMasterKey)),
             },
-            services.GetRequiredService<IEmergencyKillSwitch>());
+            services.GetRequiredService<IEmergencyKillSwitch>(),
+            policyShadow: BuildPolicyShadow(services));
+    }
+
+    /// <summary>
+    /// Builds the pack shadow for this deployment, or null when it is disabled or unconfigured.
+    /// </summary>
+    /// <remarks>
+    /// Off by default. An enabled shadow with no jurisdiction is refused rather than guessed: a pack
+    /// selected for the wrong legal context is worse than no record at all. A null return means the
+    /// assessment carries no <c>Policy</c> record and does no pack read.
+    /// </remarks>
+    private static IPolicyShadowEvaluator? BuildPolicyShadow(IServiceProvider services)
+    {
+        var configuration = services.GetRequiredService<IConfiguration>();
+
+        if (!configuration.GetValue<bool>("StyloMail:Policy:Shadow:Enabled"))
+        {
+            return null;
+        }
+
+        var jurisdiction = configuration["StyloMail:Policy:Shadow:Jurisdiction"];
+
+        if (string.IsNullOrWhiteSpace(jurisdiction))
+        {
+            services.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("StyloMail.Host.Policy")
+                .LogWarning(
+                    "StyloMail policy shadow is enabled but no jurisdiction is configured, so no "
+                    + "shadow record will be produced. Set StyloMail:Policy:Shadow:Jurisdiction.");
+            return null;
+        }
+
+        return new PolicyShadowEvaluator(
+            services.GetRequiredService<IPolicyPackReader>(),
+            services.GetRequiredService<IPolicyRuleSetReader>(),
+            new PolicyShadowOptions
+            {
+                Enabled = true,
+                Jurisdiction = jurisdiction,
+            });
     }
 
     /// <summary>
@@ -778,7 +818,8 @@ public static class HostServices
             // insertion would silently repoint it at the wrong one.
             policyContext: new HostPolicyContextSource(
                 services.GetRequiredService<IEmergencyKillSwitch>()),
-            semanticCacheDiagnostic: kind => logger.LogWarning("Semantic cache shared flight event {FlightEvent}.", kind));
+            semanticCacheDiagnostic: kind => logger.LogWarning("Semantic cache shared flight event {FlightEvent}.", kind),
+            policyShadow: BuildPolicyShadow(services));
     }
 
     /// <summary>

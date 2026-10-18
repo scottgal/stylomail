@@ -38,7 +38,8 @@ public sealed class MailAssessorTests
         bool queueThrowsIfReached = false,
         bool classifierUnavailable = false,
         int outboundRecipientBudget = 500,
-        bool neverAsks = false)
+        bool neverAsks = false,
+        IPolicyShadowEvaluator? policyShadow = null)
     {
         var clock = new FixedClock();
         var recorder = new StepRecorder();
@@ -65,7 +66,8 @@ public sealed class MailAssessorTests
             queue,
             options ?? Builders.Options(),
             payloads,
-            quotaLedger: ledger);
+            quotaLedger: ledger,
+            policyShadow: policyShadow);
 
         return new Harness(assessor, clock, classifier, mime, profiles, queue, recorder, payloads, ledger);
     }
@@ -80,6 +82,80 @@ public sealed class MailAssessorTests
     // ---------------------------------------------------------------------------------------------
     // Order
     // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_pack_shadow_is_recorded_without_changing_the_action()
+    {
+        var record = new PolicyDecisionRecord
+        {
+            PackId = "pack-commerce",
+            PackVersion = "1.0.0",
+            RuleSetId = "rules-commerce",
+            RuleSetVersion = "rules/1",
+            ScorerVersion = "scorer/1",
+            EvaluatorVersion = DeterministicPolicyEvaluator.Version,
+            Verdict = PolicyVerdict.Quarantine,
+            RequiresHumanReview = false,
+            DecidingRuleId = "rule-payment-redirection",
+            DecidingRuleVersion = 1,
+            DecidingThreshold = 0.80,
+            DecidingReasonCode = "policy.payment_redirection_quarantine",
+            DecidingReason = "test record",
+            MissingDimensions = [],
+            Coverage = 1,
+            BindingIds = [],
+            PropertyFacts = [],
+            EvidenceSnapshotDigest = new string('a', 64),
+            EvaluatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            Shadow = true,
+        };
+
+        var shadow = new FixedShadow(record);
+        var baselineHarness = Build();
+        var shadowHarness = Build(policyShadow: shadow);
+        var message = Submittable();
+
+        baselineHarness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+        shadowHarness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var baseline = await baselineHarness.Assessor.AssessAsync(
+            message,
+            Builders.Context(baselineHarness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        var shadowed = await shadowHarness.Assessor.AssessAsync(
+            message,
+            Builders.Context(shadowHarness.Clock, assessmentOnly: true),
+            CancellationToken.None);
+
+        // The pack record is recorded, and the action is byte-identical to the run without it.
+        Assert.Null(baseline.Policy);
+        Assert.Same(record, shadowed.Policy);
+        Assert.Equal(baseline.Action, shadowed.Action);
+        Assert.Equal(1, shadow.Calls);
+
+        // ProposedActionInShadow keeps its existing meaning and is not repurposed for the pack.
+        Assert.Equal(baseline.ProposedActionInShadow, shadowed.ProposedActionInShadow);
+    }
+
+    private sealed class FixedShadow : IPolicyShadowEvaluator
+    {
+        private readonly PolicyDecisionRecord _record;
+
+        public FixedShadow(PolicyDecisionRecord record) => _record = record;
+
+        public int Calls { get; private set; }
+
+        public Task<PolicyDecisionRecord?> EvaluateAsync(
+            string tenantId,
+            IReadOnlyList<Evidence> evidence,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<PolicyDecisionRecord?>(_record);
+        }
+    }
 
     [Fact]
     public async Task ThePipelineRunsInTheStatedOrder()

@@ -211,6 +211,16 @@ public sealed record MailAssessment
     public MailAction? ProposedActionInShadow { get; init; }
 
     /// <summary>
+    /// The pack's evaluation, recorded beside the legacy decision. Null when no pack was active.
+    /// </summary>
+    /// <remarks>
+    /// Phase 2 records this with <see cref="PolicyDecisionRecord.Shadow"/> true and never applies it:
+    /// <see cref="Action"/> remains the legacy engine's action. A configured pack that could not be
+    /// read is a Review record with a named reason, never null, because null means "no pack".
+    /// </remarks>
+    public PolicyDecisionRecord? Policy { get; init; }
+
+    /// <summary>
     /// Whether this assessment could have stopped the message or only reacts to it.
     /// </summary>
     /// <remarks>

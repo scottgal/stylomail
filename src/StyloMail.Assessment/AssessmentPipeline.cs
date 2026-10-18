@@ -4,6 +4,7 @@ using StyloMail.Assessment.Semantic;
 using StyloMail.Core;
 using StyloMail.Mime;
 using StyloMail.Persistence;
+using StyloMail.Policy;
 using StyloMail.Queue;
 
 namespace StyloMail.Assessment;
@@ -46,7 +47,8 @@ public static class AssessmentPipeline
         QueueOptions? queueOptions = null,
         AdaptiveOptions? adaptiveOptions = null,
         IAssessmentPolicyContextSource? policyContext = null,
-        Action<string>? semanticCacheDiagnostic = null)
+        Action<string>? semanticCacheDiagnostic = null,
+        IPolicyShadowEvaluator? policyShadow = null)
     {
         ArgumentNullException.ThrowIfNull(mimeAnalyzer);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -78,6 +80,7 @@ public static class AssessmentPipeline
             policyContext,
             campaignWindow: null,
             quotaLedger: null,
-            learningGate: null);
+            learningGate: null,
+            policyShadow: policyShadow);
     }
 }
