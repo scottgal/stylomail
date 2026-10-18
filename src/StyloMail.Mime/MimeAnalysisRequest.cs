@@ -36,4 +36,16 @@ public sealed record MimeAnalysisRequest
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
     public MimeParseLimits Limits { get; init; } = MimeParseLimits.Default;
+
+    /// <summary>
+    /// Optional image-part observer. Null means no image descriptor collection, no content stream is
+    /// opened for images and the analysis result is unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The observer is invoked once, with every collected image part, while the parsed message is
+    /// still alive. It returns at most 13 Core evidence rows, which are appended to
+    /// <see cref="MimeAnalysisResult.Evidence"/>. See <see cref="IImagePartObserver"/> for the
+    /// retention and failure contract.
+    /// </remarks>
+    public IImagePartObserver? ImageParts { get; init; }
 }

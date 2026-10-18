@@ -28,6 +28,12 @@ internal sealed record CollectedContent
 
     public required IReadOnlyList<CollectedAttachment> Attachments { get; init; }
 
+    /// <summary>
+    /// Image descriptors collected only when an observer was supplied. Bounded by the walk's part
+    /// limit, independently of the attachment-result cap.
+    /// </summary>
+    public required IReadOnlyList<CollectedImagePart> ImageParts { get; init; }
+
     public required int PartCount { get; init; }
 
     public required int MaxDepth { get; init; }
@@ -75,11 +81,12 @@ internal static class PartCollector
         "application/x-pkcs7-encrypted",
     };
 
-    public static CollectedContent Collect(MimeMessage message, MimeParseLimits limits)
+    public static CollectedContent Collect(MimeMessage message, MimeParseLimits limits, bool includeImageParts = false)
     {
         var plain = new List<string>();
         var html = new List<string>();
         var attachments = new List<CollectedAttachment>();
+        var imageParts = includeImageParts ? new List<CollectedImagePart>() : null;
 
         var partCount = 0;
         var maxDepth = 0;
@@ -98,6 +105,7 @@ internal static class PartCollector
                 PlainBodies = [],
                 HtmlBodies = [],
                 Attachments = [],
+                ImageParts = [],
                 PartCount = 0,
                 MaxDepth = 0,
                 SignaturePartCount = 0,
@@ -206,6 +214,21 @@ internal static class PartCollector
                                 });
                             }
 
+                            // Collected independently of the attachment-result cap, and only when
+                            // the optional observer asked for it.
+                            if (imageParts is not null &&
+                                imageParts.Count < limits.MaxParts &&
+                                IsImageCandidate(classified.Metadata!))
+                            {
+                                imageParts.Add(new CollectedImagePart
+                                {
+                                    Ordinal = partCount,
+                                    DeclaredContentType = classified.Metadata!.DeclaredContentType,
+                                    Metadata = classified.Metadata,
+                                    Part = part,
+                                });
+                            }
+
                             break;
 
                         default:
@@ -226,6 +249,7 @@ internal static class PartCollector
             PlainBodies = plain,
             HtmlBodies = html,
             Attachments = attachments,
+            ImageParts = imageParts ?? [],
             PartCount = partCount,
             MaxDepth = maxDepth,
             SignaturePartCount = signatureParts,
@@ -235,6 +259,25 @@ internal static class PartCollector
             BodyParsed = bodyParsed,
             LimitBreach = breach,
         };
+    }
+
+    private static bool IsImageCandidate(AttachmentMetadata metadata)
+    {
+        // A failed or encrypted read is not an image candidate even when the hash byte count looks
+        // complete. ContentUnavailable is the collector's authoritative signal for that.
+        if (metadata.ContentUnavailable)
+        {
+            return false;
+        }
+
+        if (metadata.DeclaredContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var implied = AttachmentTypes.ImpliedContentType(metadata.FileName);
+        return implied is not null &&
+               implied.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
     }
 
     private enum PartKind

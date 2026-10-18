@@ -107,30 +107,43 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
                 coverage: EmptyCoverage);
         }
 
-        var collected = PartCollector.Collect(message, limits);
+        var observer = request.ImageParts;
+        var imageScope = observer is null ? null : new ImagePartScope();
 
-        if (collected.LimitBreach is not null)
+        try
         {
-            return Reject(
-                request,
-                builder,
-                new MimeParseRejection
-                {
-                    Disposition = MimeParseDisposition.LimitExceeded,
+            var collected = PartCollector.Collect(message, limits, includeImageParts: observer is not null);
 
-                    // Distinct from the preflight's reason on purpose. Reaching here means the
-                    // structural scan let the message through and the walk caught it afterwards,
-                    // so the work had already been done. That is a different incident from an
-                    // early refusal, and the ledger should not make them look alike.
-                    Reason = collected.LimitBreach + "-after-parse",
-                    LimitName = collected.LimitBreach == "part-count" ? "MaxParts" : "MaxMimeDepth",
-                    Observed = collected.PartCount,
-                    Limit = collected.LimitBreach == "part-count" ? limits.MaxParts : limits.MaxMimeDepth,
-                },
-                coverage: EmptyCoverage with { ParserLimitExceeded = true });
+            if (collected.LimitBreach is not null)
+            {
+                return Reject(
+                    request,
+                    builder,
+                    new MimeParseRejection
+                    {
+                        Disposition = MimeParseDisposition.LimitExceeded,
+
+                        // Distinct from the preflight's reason on purpose. Reaching here means the
+                        // structural scan let the message through and the walk caught it afterwards,
+                        // so the work had already been done. That is a different incident from an
+                        // early refusal, and the ledger should not make them look alike.
+                        Reason = collected.LimitBreach + "-after-parse",
+                        LimitName = collected.LimitBreach == "part-count" ? "MaxParts" : "MaxMimeDepth",
+                        Observed = collected.PartCount,
+                        Limit = collected.LimitBreach == "part-count" ? limits.MaxParts : limits.MaxMimeDepth,
+                    },
+                    coverage: EmptyCoverage with { ParserLimitExceeded = true });
+            }
+
+            return Build(request, builder, limits, message, collected, preflight, imageScope);
         }
-
-        return Build(request, builder, limits, message, collected, preflight);
+        finally
+        {
+            // Close every source before the message is disposed, including on rejection or an
+            // observer failure. No MIME entity or stream escapes the result.
+            imageScope?.Invalidate();
+            message.Dispose();
+        }
     }
 
     private static MimeAnalysisResult Build(
@@ -139,7 +152,8 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
         MimeParseLimits limits,
         MimeMessage message,
         CollectedContent collected,
-        PreflightResult preflight)
+        PreflightResult preflight,
+        ImagePartScope? imageScope)
     {
         var evidence = new List<Evidence>();
 
@@ -391,6 +405,11 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             Coverage = coverage,
         };
 
+        if (request.ImageParts is not null && imageScope is not null)
+        {
+            TryAppendImageEvidence(request.ImageParts, collected.ImageParts, imageScope, evidence);
+        }
+
         return new MimeAnalysisResult
         {
             Disposition = MimeParseDisposition.Parsed,
@@ -398,6 +417,69 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             Evidence = evidence,
             Coverage = coverage,
         };
+    }
+
+    /// <summary>Maximum image evidence rows a MIME result may accept. Mirrors image-observation/1.</summary>
+    private const int MaximumImageEvidenceRows = 13;
+
+    /// <summary>
+    /// Invokes the observer once and appends its materialised rows only if the whole result is
+    /// acceptable. Failure of any kind preserves the baseline MIME evidence atomically.
+    /// </summary>
+    private static void TryAppendImageEvidence(
+        IImagePartObserver observer,
+        IReadOnlyList<CollectedImagePart> parts,
+        ImagePartScope scope,
+        List<Evidence> evidence)
+    {
+        try
+        {
+            var sources = new ImagePartSource[parts.Count];
+            for (var index = 0; index < parts.Count; index++)
+            {
+                sources[index] = new ImagePartSource(parts[index], scope);
+            }
+
+            var returned = observer.Complete(sources);
+            if (returned is null)
+            {
+                return;
+            }
+
+            // Materialise before appending: a list whose enumeration throws, or one that is
+            // oversized or contains a row outside the deterministic image vocabulary, contributes
+            // nothing at all rather than a partial set.
+            var rows = returned.ToArray();
+            if (rows.Length > MaximumImageEvidenceRows)
+            {
+                return;
+            }
+
+            foreach (var row in rows)
+            {
+                if (!IsAcceptableImageEvidence(row))
+                {
+                    return;
+                }
+            }
+
+            evidence.AddRange(rows);
+        }
+        catch
+        {
+            // Image observation is optional and must never fail MIME analysis.
+        }
+    }
+
+    private static bool IsAcceptableImageEvidence(Evidence? row)
+    {
+        return row is not null &&
+               row.Origin == EvidenceOrigin.Deterministic &&
+               !string.IsNullOrWhiteSpace(row.SignalId) &&
+               row.SignalId.StartsWith("deterministic.image_", StringComparison.Ordinal) &&
+               !string.IsNullOrWhiteSpace(row.SourceVersion) &&
+               row.ObservedAt != default &&
+               Enum.IsDefined(typeof(EvidenceAvailability), row.Availability);
     }
 
     private static IReadOnlyList<Evidence> BuildAuthenticationEvidence(
