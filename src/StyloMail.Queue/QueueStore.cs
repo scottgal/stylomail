@@ -1024,7 +1024,7 @@ public sealed partial class QueueStore
 
         var refreshed = ReadRecipients(connection, transaction, queueId);
         var (state, nextAttemptAt) = RollUp(refreshed, now);
-        WriteItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now, lastError: null);
+        WriteReviewItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now);
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
@@ -1102,7 +1102,7 @@ public sealed partial class QueueStore
         {
             var refreshed = ReadRecipients(connection, transaction, queueId);
             var (state, nextAttemptAt) = RollUp(refreshed, now);
-            WriteItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now, lastError: null);
+            WriteReviewItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -1125,7 +1125,6 @@ public sealed partial class QueueStore
             """
             UPDATE queue_recipient
                SET state = $state,
-                   attempts = attempts + 1,
                    last_attempt_at = $now,
                    next_attempt_at = $nextAttemptAt,
                    review_deadline = NULL,
@@ -2115,6 +2114,46 @@ public sealed partial class QueueStore
     }
 
     /// <summary>Writes the item-level roll-up of its per-recipient states.</summary>
+    /// <summary>
+    /// Writes the item roll-up for a review transition without stealing a live delivery lease.
+    /// </summary>
+    /// <remarks>
+    /// A review decision concerns one recipient. If another recipient is in flight, the item is
+    /// leased to a worker and its state is Delivering; re-rolling it to Queued while keeping the
+    /// owner would let a second worker claim the same item, and clearing the owner would let it do
+    /// so immediately. While the lease is live the only safe write is the audit fields: the lease
+    /// owner or expiry re-rolls the item when the delivery settles or recovery reclaims it.
+    /// </remarks>
+    private static void WriteReviewItemScheduling(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string queueId,
+        DeliveryState state,
+        DateTimeOffset? nextAttemptAt,
+        DateTimeOffset now)
+    {
+        if (ReadItemHeader(connection, transaction, queueId) is { } header
+            && header.LeaseOwner is not null
+            && header.LeaseExpiresAt is { } expiry
+            && expiry > now)
+        {
+            using var preserve = connection.CreateCommand();
+            preserve.Transaction = transaction;
+            preserve.CommandText =
+                """
+                UPDATE queue_item
+                   SET updated_at = $now
+                 WHERE queue_id = $queueId;
+                """;
+            preserve.Parameters.AddWithValue("$now", ToDb(now));
+            preserve.Parameters.AddWithValue("$queueId", queueId);
+            preserve.ExecuteNonQuery();
+            return;
+        }
+
+        WriteItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now, lastError: null);
+    }
+
     private static void WriteItemScheduling(
         SqliteConnection connection,
         SqliteTransaction transaction,

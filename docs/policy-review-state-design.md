@@ -71,6 +71,15 @@ Rules:
 - **Resolution is per recipient**, like delivery. A multi-recipient message can have one recipient
   released and another quarantined; the queue's existing per-recipient model already supports that,
   and the item roll-up reports the mixture.
+- **A review transition never steals a live sibling delivery.** If another recipient is in flight,
+  the item is `Delivering` and leased. The transition writes the review recipient and the audit
+  fields but leaves the item state and lease to the worker that owns them, or to the lease expiry.
+  Re-rolling the item to `Queued` while a worker holds it, or clearing the lease, would let a second
+  worker claim the same item and duplicate a delivery.
+- **Human review does not consume a transport retry.** A review transition increments no attempt
+  counter. Only an actual delivery attempt counts against `MaxAttemptsPerRecipient`, so releasing a
+  review and then hitting one temporary transport failure schedules a retry rather than exhausting
+  the budget.
 
 The queue methods, all tenant-scoped and transactional:
 

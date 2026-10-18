@@ -1,3 +1,4 @@
+using System.Text;
 using StyloMail.Core;
 
 namespace StyloMail.Queue.Tests;
@@ -195,4 +196,98 @@ public sealed class QueueReviewTests
         Assert.Empty(await h.Store.ListReviewEventsAsync("globex", queueId));
         Assert.Equal(DeliveryState.Review, (await h.Store.GetItemAsync(queueId, "acme"))!.State);
     }
+
+    [Theory]
+    [InlineData(ReviewResolution.Release)]
+    [InlineData(ReviewResolution.Quarantine)]
+    [InlineData(ReviewResolution.Reject)]
+    public async Task A_review_resolution_does_not_steal_a_live_sibling_lease(ReviewResolution resolution)
+    {
+        using var h = new QueueHarness();
+        var queueId = await h.AcceptAsync(Mixed(QueueHarness.Start.AddHours(1)));
+
+        var lease = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(lease);
+
+        Assert.True(await h.Store.ResolveReviewAsync(
+            queueId, resolution, "reviewer-7", "sibling delivery is in flight"));
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        Assert.Equal("worker-a", item.LeaseOwner);
+        Assert.True(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+        Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
+    }
+
+    [Fact]
+    public async Task The_sweep_does_not_steal_a_live_sibling_lease()
+    {
+        using var h = new QueueHarness();
+        var queueId = await h.AcceptAsync(Mixed(QueueHarness.Start.AddMinutes(1)));
+
+        var lease = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(lease);
+
+        // Two minutes into a five-minute lease: the review deadline is due, the delivery lease is not.
+        h.Clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.Equal(1, await h.Store.SweepReviewDeadlinesAsync());
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        Assert.Equal("worker-a", item.LeaseOwner);
+        Assert.True(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+        Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
+    }
+
+    [Fact]
+    public async Task A_human_resolution_does_not_consume_a_transport_retry()
+    {
+        using var h = new QueueHarness(clock => new QueueOptions
+        {
+            TimeProvider = clock,
+            MaxAttemptsPerRecipient = 2,
+        });
+        var queueId = await h.AcceptAsync(QueueHarness.Submission(
+            state: DeliveryState.Review,
+            reviewDeadline: QueueHarness.Start.AddHours(1)));
+
+        Assert.True(await h.Store.ResolveReviewAsync(
+            queueId, ReviewResolution.Release, "reviewer-7", "cleared"));
+
+        var lease = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(lease);
+
+        await h.Store.CompleteAsync(
+            lease!, QueueHarness.TemporaryFailure("worker-a", "rcpt@example.test"));
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        var recipient = QueueHarness.By(item, "rcpt@example.test");
+        Assert.Equal(DeliveryState.RetryScheduled, recipient.State);
+        Assert.Equal(1, recipient.Attempts);
+    }
+
+    private static QueueSubmission Mixed(DateTimeOffset reviewDeadline) => new()
+    {
+        TenantId = "acme",
+        InternalMessageId = "msg-" + Guid.NewGuid().ToString("N"),
+        Direction = MailDirection.Inbound,
+        TrustedPrincipalId = "principal-1",
+        MailFrom = "sender@acme.test",
+        MimeDigest = "digest-" + Guid.NewGuid().ToString("N"),
+        Payload = Encoding.UTF8.GetBytes("Subject: mixed\r\n\r\nbody"),
+        Recipients =
+        [
+            new RecipientAdmission
+            {
+                Recipient = "review@example.test",
+                State = DeliveryState.Review,
+                ReviewDeadline = reviewDeadline,
+            },
+            new RecipientAdmission
+            {
+                Recipient = "queued@example.test",
+                State = DeliveryState.Queued,
+            },
+        ],
+        HopCount = 0,
+        ReviewOpening = QueueHarness.DefaultReviewOpening(),
+    };
 }
