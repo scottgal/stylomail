@@ -36,6 +36,35 @@ public class QueueSchemaTests
     }
 
     [Fact]
+    public async Task The_review_deadline_and_audit_table_are_part_of_the_schema()
+    {
+        using var h = new QueueHarness();
+        await h.Store.InitializeAsync();
+
+        await using var connection = h.Connections.Open();
+
+        await using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(queue_recipient);";
+            var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await columns.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                present.Add(reader.GetString(1));
+            }
+
+            Assert.Contains("review_deadline", present);
+        }
+
+        await using (var table = connection.CreateCommand())
+        {
+            table.CommandText =
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'queue_review_event';";
+            Assert.Equal(1L, (long)(await table.ExecuteScalarAsync())!);
+        }
+    }
+
+    [Fact]
     public async Task Deleting_an_item_takes_its_recipients_and_history_with_it()
     {
         using var h = new QueueHarness();

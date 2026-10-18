@@ -118,6 +118,14 @@ public sealed class ChatIntakeDrainTests
             return Task.CompletedTask;
         }
 
+        public Task<MailAssessment?> FindByMessageAsync(
+            string tenantId,
+            string internalMessageId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Recorded.LastOrDefault(assessment =>
+                string.Equals(assessment.TenantId, tenantId, StringComparison.Ordinal)
+                && string.Equals(assessment.InternalMessageId, internalMessageId, StringComparison.Ordinal)));
+
         public Task<MailAssessment?> FindAsync(string tenantId, string assessmentId, CancellationToken cancellationToken) =>
             Task.FromResult(Recorded.FirstOrDefault(a => a.AssessmentId == assessmentId));
 

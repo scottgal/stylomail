@@ -55,14 +55,17 @@ public sealed partial class QueueStore
         var now = _options.TimeProvider.GetUtcNow();
         var cursor = DecodeCursor(query.After);
 
-        // Two fixed parameters rather than a variable-length IN list or a JSON1 helper: the filter
-        // is a closed set of three cases, and this keeps the SQL static and the statement
-        // preparable without depending on which extensions a given SQLite build was compiled with.
-        var (stateA, stateB) = query.Filter switch
+        // Three fixed parameters rather than a variable-length IN list or a JSON1 helper: the filter
+        // is a closed set of four cases, and this keeps the SQL static and the statement preparable
+        // without depending on which extensions a given SQLite build was compiled with.
+        var (stateA, stateB, stateC) = query.Filter switch
         {
-            QueueListingFilter.Held => (DeliveryState.Held, DeliveryState.Held),
-            QueueListingFilter.Quarantined => (DeliveryState.Quarantined, DeliveryState.Quarantined),
-            _ => (DeliveryState.Held, DeliveryState.Quarantined),
+            QueueListingFilter.Held => (DeliveryState.Held, DeliveryState.Held, DeliveryState.Held),
+            QueueListingFilter.Quarantined =>
+                (DeliveryState.Quarantined, DeliveryState.Quarantined, DeliveryState.Quarantined),
+            QueueListingFilter.Review =>
+                (DeliveryState.Review, DeliveryState.Review, DeliveryState.Review),
+            _ => (DeliveryState.Held, DeliveryState.Quarantined, DeliveryState.Review),
         };
 
         await using var connection = OpenConnection();
@@ -85,7 +88,7 @@ public sealed partial class QueueStore
                    AND EXISTS (
                        SELECT 1 FROM queue_recipient r
                         WHERE r.queue_id = i.queue_id
-                          AND r.state IN ($stateA, $stateB))
+                          AND r.state IN ($stateA, $stateB, $stateC))
                    AND ($afterAt IS NULL
                         OR i.created_at < $afterAt
                         OR (i.created_at = $afterAt AND i.queue_id < $afterId))
@@ -96,6 +99,7 @@ public sealed partial class QueueStore
             cmd.Parameters.AddWithValue("$tenant", query.TenantId);
             cmd.Parameters.AddWithValue("$stateA", (int)stateA);
             cmd.Parameters.AddWithValue("$stateB", (int)stateB);
+            cmd.Parameters.AddWithValue("$stateC", (int)stateC);
             cmd.Parameters.AddWithValue("$afterAt", cursor is null ? DBNull.Value : ToDb(cursor.Value.CreatedAt));
             cmd.Parameters.AddWithValue("$afterId", cursor is null ? DBNull.Value : cursor.Value.QueueId);
             cmd.Parameters.AddWithValue("$limit", limit + 1);

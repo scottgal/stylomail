@@ -249,7 +249,24 @@ public sealed partial class QueueStore
 
         var recipients = BuildRecipients(submission, now);
         var (state, nextAttemptAt) = RollUp(recipients, now);
+        var latestReviewDeadline = recipients
+            .Where(r => r.State == DeliveryState.Review && r.ReviewDeadline is not null)
+            .Select(r => r.ReviewDeadline!.Value)
+            .DefaultIfEmpty(DateTimeOffset.MinValue)
+            .Max();
+
+        var reviewExpiry = latestReviewDeadline == DateTimeOffset.MinValue
+            ? (DateTimeOffset?)null
+            : latestReviewDeadline + _options.RetryExpiry;
+
         var expiresAt = submission.ExpiresAt ?? now + _options.RetryExpiry;
+        if (reviewExpiry is { } due && expiresAt < due)
+        {
+            // A review is not a delivery attempt. Its lifetime must cover the human deadline and a
+            // retention window, or the expiry sweep would abandon a message a person is still
+            // entitled to decide.
+            expiresAt = due;
+        }
 
         try
         {
@@ -886,6 +903,307 @@ public sealed partial class QueueStore
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// Resolves a recipient awaiting human review: release, quarantine or reject.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The transition is guarded on the recipient still being <see cref="DeliveryState.Review"/>, so
+    /// a reviewer racing the deadline sweep settles exactly once and the loser writes no effect.
+    /// Each applied transition appends a delivery attempt and a review event in the same
+    /// transaction; a state change with no audit row is not an acceptable outcome.
+    /// </para>
+    /// <para>
+    /// <c>assessmentId</c> and <c>policyReference</c> are opaque to the queue. The caller supplies
+    /// them so the review history can name the decision and the pack/rule versions that opened it.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ResolveReviewAsync(
+        string queueId,
+        ReviewResolution resolution,
+        string decidedBy,
+        string reason,
+        string? assessmentId = null,
+        string? policyReference = null,
+        string? tenantId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(decidedBy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = _options.TimeProvider.GetUtcNow();
+
+        await using var connection = OpenConnection();
+        await using var transaction = connection.BeginTransaction(deferred: false);
+
+        if (ReadItemHeader(connection, transaction, queueId) is not { } header
+            || !TenantMatches(header, tenantId))
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        var reviewing = ReadRecipients(connection, transaction, queueId)
+            .Where(r => r.State == DeliveryState.Review)
+            .ToList();
+
+        if (reviewing.Count == 0)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        var (target, outcome, eventName) = resolution switch
+        {
+            ReviewResolution.Release => (DeliveryState.Queued, DeliveryAttemptOutcome.ReviewReleased, "review.released"),
+            ReviewResolution.Quarantine => (DeliveryState.Quarantined, DeliveryAttemptOutcome.ReviewQuarantined, "review.quarantined"),
+            ReviewResolution.Reject => (DeliveryState.TerminalFailure, DeliveryAttemptOutcome.ReviewRejected, "review.rejected"),
+            _ => throw new ArgumentOutOfRangeException(nameof(resolution), resolution, "Unknown review resolution."),
+        };
+
+        foreach (var recipient in reviewing)
+        {
+            var applied = TransitionReviewRecipient(
+                connection, transaction, queueId, recipient.Recipient, target, now,
+                target == DeliveryState.Queued ? now : null,
+                lastError: resolution == ReviewResolution.Reject
+                    ? $"Review rejected by '{decidedBy}'."
+                    : null);
+
+            if (!applied)
+            {
+                continue;
+            }
+
+            AppendAttempt(
+                connection, transaction, queueId, recipient.Recipient, decidedBy, outcome,
+                resolution switch
+                {
+                    ReviewResolution.Release => $"Review released by '{decidedBy}'; returned to the delivery pool.",
+                    ReviewResolution.Quarantine => $"Review quarantined by '{decidedBy}'; retained for review.",
+                    _ => $"Review rejected by '{decidedBy}'; retained as a record, not delivered.",
+                },
+                now);
+
+            AppendReviewEvent(
+                connection, transaction, header.TenantId, queueId, recipient.Recipient,
+                assessmentId, eventName, DeliveryState.Review, target, decidedBy, reason,
+                policyReference, now);
+        }
+
+        var refreshed = ReadRecipients(connection, transaction, queueId);
+        var (state, nextAttemptAt) = RollUp(refreshed, now);
+        WriteItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now, lastError: null);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Escalates every open review whose deadline has passed to quarantine.
+    /// </summary>
+    /// <remarks>
+    /// This is the only automatic review transition. It never releases and never delivers. The
+    /// sweep is idempotent: each recipient is moved with a guarded update from Review, so a second
+    /// run finds nothing to do and a reviewer who acted first wins.
+    /// </remarks>
+    public async Task<int> SweepReviewDeadlinesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = _options.TimeProvider.GetUtcNow();
+
+        await using var connection = OpenConnection();
+        await using var transaction = connection.BeginTransaction(deferred: false);
+
+        var due = new List<(string QueueId, string TenantId, string Recipient)>();
+        using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText =
+                """
+                SELECT q.queue_id, q.tenant_id, r.recipient_key
+                  FROM queue_recipient r
+                  JOIN queue_item q ON q.queue_id = r.queue_id
+                 WHERE r.state = $review
+                   AND r.review_deadline IS NOT NULL
+                   AND r.review_deadline <= $now;
+                """;
+            select.Parameters.AddWithValue("$review", (int)DeliveryState.Review);
+            select.Parameters.AddWithValue("$now", ToDb(now));
+
+            using var reader = select.ExecuteReader();
+            while (reader.Read())
+            {
+                due.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            }
+        }
+
+        var moved = 0;
+
+        foreach (var (queueId, tenantId, recipient) in due)
+        {
+            var applied = TransitionReviewRecipient(
+                connection, transaction, queueId, recipient, DeliveryState.Quarantined, now,
+                nextAttemptAt: null, lastError: null);
+
+            if (!applied)
+            {
+                continue;
+            }
+
+            moved++;
+            AppendAttempt(
+                connection, transaction, queueId, recipient, "policy-scheduler",
+                DeliveryAttemptOutcome.ReviewExpired,
+                "Review deadline elapsed; escalated to quarantine. Nothing was released or delivered.",
+                now);
+            AppendReviewEvent(
+                connection, transaction, tenantId, queueId, recipient, assessmentId: null,
+                "review.expired", DeliveryState.Review, DeliveryState.Quarantined,
+                "policy-scheduler", "review deadline elapsed", policyReference: null, now);
+        }
+
+        foreach (var queueId in due.Select(entry => entry.QueueId).Distinct(StringComparer.Ordinal))
+        {
+            var refreshed = ReadRecipients(connection, transaction, queueId);
+            var (state, nextAttemptAt) = RollUp(refreshed, now);
+            WriteItemScheduling(connection, transaction, queueId, state, nextAttemptAt, now, lastError: null);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return moved;
+    }
+
+    private static bool TransitionReviewRecipient(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string queueId,
+        string recipient,
+        DeliveryState target,
+        DateTimeOffset now,
+        DateTimeOffset? nextAttemptAt,
+        string? lastError)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            """
+            UPDATE queue_recipient
+               SET state = $state,
+                   attempts = attempts + 1,
+                   last_attempt_at = $now,
+                   next_attempt_at = $nextAttemptAt,
+                   review_deadline = NULL,
+                   last_error = $lastError
+             WHERE queue_id = $queueId AND recipient_key = $recipient AND state = $review;
+            """;
+        cmd.Parameters.AddWithValue("$state", (int)target);
+        cmd.Parameters.AddWithValue("$now", ToDb(now));
+        cmd.Parameters.AddWithValue("$nextAttemptAt", nextAttemptAt is null ? DBNull.Value : ToDb(nextAttemptAt.Value));
+        cmd.Parameters.AddWithValue("$lastError", (object?)lastError ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$queueId", queueId);
+        cmd.Parameters.AddWithValue("$recipient", recipient);
+        cmd.Parameters.AddWithValue("$review", (int)DeliveryState.Review);
+
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
+    private static void AppendReviewEvent(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tenantId,
+        string queueId,
+        string recipient,
+        string? assessmentId,
+        string @event,
+        DeliveryState from,
+        DeliveryState to,
+        string actor,
+        string reason,
+        string? policyReference,
+        DateTimeOffset now)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            """
+            INSERT INTO queue_review_event
+                (event_id, tenant_id, queue_id, recipient_key, assessment_id, event,
+                 from_state, to_state, actor, reason, policy_reference, at)
+            VALUES ($id, $tenant, $queue, $recipient, $assessment, $event,
+                    $from, $to, $actor, $reason, $policy, $at);
+            """;
+        cmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+        cmd.Parameters.AddWithValue("$tenant", tenantId);
+        cmd.Parameters.AddWithValue("$queue", queueId);
+        cmd.Parameters.AddWithValue("$recipient", recipient);
+        cmd.Parameters.AddWithValue("$assessment", (object?)assessmentId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$event", @event);
+        cmd.Parameters.AddWithValue("$from", (int)from);
+        cmd.Parameters.AddWithValue("$to", (int)to);
+        cmd.Parameters.AddWithValue("$actor", actor);
+        cmd.Parameters.AddWithValue("$reason", reason);
+        cmd.Parameters.AddWithValue("$policy", (object?)policyReference ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$at", ToDb(now));
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Reads the review history for one queue item, newest first.</summary>
+    public async Task<IReadOnlyList<QueueReviewEvent>> ListReviewEventsAsync(
+        string tenantId,
+        string queueId,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        var bounded = Math.Clamp(limit, 1, 500);
+
+        await using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT event_id, queue_id, recipient_key, assessment_id, event, from_state,
+                   to_state, actor, reason, policy_reference, at
+              FROM queue_review_event
+             WHERE tenant_id = $tenant AND queue_id = $queue
+             ORDER BY at DESC, event_id DESC
+             LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$tenant", tenantId);
+        cmd.Parameters.AddWithValue("$queue", queueId);
+        cmd.Parameters.AddWithValue("$limit", bounded);
+
+        var events = new List<QueueReviewEvent>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            events.Add(new QueueReviewEvent
+            {
+                EventId = reader.GetString(0),
+                TenantId = tenantId,
+                QueueId = reader.GetString(1),
+                Recipient = reader.GetString(2),
+                AssessmentId = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Event = reader.GetString(4),
+                FromState = (DeliveryState)reader.GetInt32(5),
+                ToState = (DeliveryState)reader.GetInt32(6),
+                Actor = reader.GetString(7),
+                Reason = reader.GetString(8),
+                PolicyReference = reader.IsDBNull(9) ? null : reader.GetString(9),
+                At = FromDb(reader.GetString(10)) ?? _options.TimeProvider.GetUtcNow(),
+            });
+        }
+
+        return events;
     }
 
     /// <summary>Tenant-scopes an item addressed by queue id.</summary>
@@ -1535,10 +1853,10 @@ public sealed partial class QueueStore
                 """
                 INSERT INTO queue_recipient (
                     queue_id, recipient_key, state, attempts, last_attempt_at, delivered_at,
-                    next_attempt_at, re_evaluate_by, hold_surfaced_at, last_error)
+                    next_attempt_at, re_evaluate_by, review_deadline, hold_surfaced_at, last_error)
                 VALUES (
                     $queueId, $recipient, $state, 0, NULL, NULL,
-                    $nextAttemptAt, $reEvaluateBy, NULL, NULL);
+                    $nextAttemptAt, $reEvaluateBy, $reviewDeadline, NULL, NULL);
                 """;
 
             cmd.Parameters.AddWithValue("$queueId", queueId);
@@ -1548,6 +1866,8 @@ public sealed partial class QueueStore
                 "$nextAttemptAt", recipient.NextAttemptAt is null ? DBNull.Value : ToDb(recipient.NextAttemptAt.Value));
             cmd.Parameters.AddWithValue(
                 "$reEvaluateBy", recipient.ReEvaluateBy is null ? DBNull.Value : ToDb(recipient.ReEvaluateBy.Value));
+            cmd.Parameters.AddWithValue(
+                "$reviewDeadline", recipient.ReviewDeadline is null ? DBNull.Value : ToDb(recipient.ReviewDeadline.Value));
 
             cmd.ExecuteNonQuery();
         }
@@ -1866,7 +2186,7 @@ public sealed partial class QueueStore
         cmd.CommandText =
             """
             SELECT recipient_key, state, attempts, last_attempt_at, delivered_at,
-                   next_attempt_at, re_evaluate_by, last_error
+                   next_attempt_at, re_evaluate_by, last_error, review_deadline
               FROM queue_recipient
              WHERE queue_id = $queueId
              ORDER BY recipient_key;
@@ -1886,6 +2206,7 @@ public sealed partial class QueueStore
                 NextAttemptAt = reader.IsDBNull(5) ? null : FromDb(reader.GetString(5)),
                 ReEvaluateBy = reader.IsDBNull(6) ? null : FromDb(reader.GetString(6)),
                 LastError = reader.IsDBNull(7) ? null : reader.GetString(7),
+                ReviewDeadline = reader.IsDBNull(8) ? null : FromDb(reader.GetString(8)),
             });
         }
 
@@ -1919,14 +2240,19 @@ public sealed partial class QueueStore
         }
 
         var awaitingDecision = recipients
-            .Where(r => r.State is DeliveryState.Held or DeliveryState.Quarantined)
+            .Where(r => r.State is DeliveryState.Held or DeliveryState.Quarantined or DeliveryState.Review)
             .ToList();
 
         if (awaitingDecision.Count > 0)
         {
+            if (awaitingDecision.Any(r => r.State == DeliveryState.Quarantined))
+            {
+                return (DeliveryState.Quarantined, null);
+            }
+
             return (
-                awaitingDecision.Any(r => r.State == DeliveryState.Quarantined)
-                    ? DeliveryState.Quarantined
+                awaitingDecision.Any(r => r.State == DeliveryState.Review)
+                    ? DeliveryState.Review
                     : DeliveryState.Held,
                 null);
         }
@@ -1946,6 +2272,12 @@ public sealed partial class QueueStore
             NextAttemptAt = admission.State == DeliveryState.Queued ? now : null,
             ReEvaluateBy = admission.State == DeliveryState.Held
                 ? admission.ReEvaluateBy ?? now + _options.DefaultHoldWindow
+                : null,
+            ReviewDeadline = admission.State == DeliveryState.Review
+                ? admission.ReviewDeadline
+                    ?? throw new ArgumentException(
+                        "A Review admission requires a review deadline. The queue does not invent one.",
+                        nameof(submission))
                 : null,
         })];
 

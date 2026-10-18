@@ -1305,6 +1305,7 @@ public sealed class MessageRow
         DeliveryState.Queued => "Ready to send",
         DeliveryState.Held => "Being re-checked",
         DeliveryState.Quarantined => "Waiting for review",
+        DeliveryState.Review => "Awaiting human review",
         DeliveryState.Delivering => "Sending now",
         DeliveryState.Delivered => "Delivered",
         DeliveryState.RetryScheduled => "Will try again",
@@ -1324,6 +1325,7 @@ public sealed class MessageRow
     {
         DeliveryState.Held => "Waiting for its scheduled re-check before it can move on. The specific reason is not available in this view.",
         DeliveryState.Quarantined => "Stopped before delivery and waiting for a review decision. The specific reason is not available in this view.",
+        DeliveryState.Review => "Delivery is withheld for an authenticated human decision. Open the review queue to release, quarantine or reject it.",
         DeliveryState.RetryScheduled => "A delivery attempt did not finish; StyloMail will try again.",
         DeliveryState.TerminalFailure => "Delivery could not be completed. Check the delivery record before acting.",
         _ => string.Empty,

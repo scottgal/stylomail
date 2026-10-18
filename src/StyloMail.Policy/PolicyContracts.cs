@@ -47,6 +47,12 @@ public sealed record PolicyDecision
     /// <summary>For holds: when the message must be re-evaluated. A hold never extends silently forever.</summary>
     public DateTimeOffset? ReEvaluateBy { get; init; }
 
+    /// <summary>
+    /// For reviews: when the human decision is due. A review with no deadline is not admissible;
+    /// the queue refuses to invent one.
+    /// </summary>
+    public DateTimeOffset? ReviewDeadline { get; init; }
+
     /// <summary>Precedence tier that produced the decision, for audit and for explaining overrides.</summary>
     public required string DecidedBy { get; init; }
 

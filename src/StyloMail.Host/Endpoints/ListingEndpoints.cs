@@ -43,6 +43,7 @@ internal static class ListingEndpoints
             ["awaiting_decision"] = QueueListingFilter.AwaitingDecision,
             ["held"] = QueueListingFilter.Held,
             ["quarantined"] = QueueListingFilter.Quarantined,
+            ["review"] = QueueListingFilter.Review,
         };
 
     internal static async Task<IResult> ListSendersAsync(

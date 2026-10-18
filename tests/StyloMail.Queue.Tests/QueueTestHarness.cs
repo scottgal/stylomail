@@ -81,7 +81,8 @@ internal sealed class QueueHarness : IDisposable
         int? hopCount = 0,
         int payloadBytes = 64,
         DeliveryState state = DeliveryState.Queued,
-        DateTimeOffset? reEvaluateBy = null)
+        DateTimeOffset? reEvaluateBy = null,
+        DateTimeOffset? reviewDeadline = null)
         => new()
         {
             TenantId = tenantId,
@@ -96,6 +97,7 @@ internal sealed class QueueHarness : IDisposable
                 Recipient = r,
                 State = state,
                 ReEvaluateBy = reEvaluateBy,
+                ReviewDeadline = reviewDeadline,
             })],
             IdempotencyKey = idempotencyKey,
             HopCount = hopCount,

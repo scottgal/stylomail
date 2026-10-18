@@ -40,6 +40,17 @@ public sealed record RecipientAdmission
     /// </para>
     /// </remarks>
     public DateTimeOffset? ReEvaluateBy { get; init; }
+
+    /// <summary>
+    /// Deadline after which a Review must escalate to Quarantine. Meaningful only when
+    /// <see cref="State"/> is <see cref="DeliveryState.Review"/>.
+    /// </summary>
+    /// <remarks>
+    /// Required for a Review admission. Unlike a hold, there is no default: a review with no
+    /// deadline would be an indefinite human queue, and the queue refuses to invent one. The caller
+    /// copies the resolved pack deadline here, so a later pack change cannot move it.
+    /// </remarks>
+    public DateTimeOffset? ReviewDeadline { get; init; }
 }
 
 /// <summary>
@@ -246,6 +257,9 @@ public sealed record QueueRecipientState
 
     /// <summary>Deadline after which a hold must be re-evaluated by policy.</summary>
     public DateTimeOffset? ReEvaluateBy { get; init; }
+
+    /// <summary>Deadline after which an open Review escalates to Quarantine.</summary>
+    public DateTimeOffset? ReviewDeadline { get; init; }
 
     /// <summary>
     /// When this recipient is next due for a delivery attempt.
@@ -469,6 +483,59 @@ public enum DeliveryAttemptOutcome
 
     /// <summary>A reviewer refused a quarantined message. Retained as a record; not delivered.</summary>
     QuarantineRejected = 10,
+
+    /// <summary>A reviewer released a Review for delivery.</summary>
+    ReviewReleased = 11,
+
+    /// <summary>A reviewer contained a Review as quarantine.</summary>
+    ReviewQuarantined = 12,
+
+    /// <summary>A reviewer permanently refused a Review. Retained, not delivered.</summary>
+    ReviewRejected = 13,
+
+    /// <summary>The review deadline elapsed; the queue escalated it to quarantine.</summary>
+    ReviewExpired = 14,
+}
+
+/// <summary>One recorded review transition, newest first.</summary>
+public sealed record QueueReviewEvent
+{
+    public required string EventId { get; init; }
+
+    public required string TenantId { get; init; }
+
+    public required string QueueId { get; init; }
+
+    public required string Recipient { get; init; }
+
+    public string? AssessmentId { get; init; }
+
+    public required string Event { get; init; }
+
+    public required DeliveryState FromState { get; init; }
+
+    public required DeliveryState ToState { get; init; }
+
+    public required string Actor { get; init; }
+
+    public required string Reason { get; init; }
+
+    public string? PolicyReference { get; init; }
+
+    public required DateTimeOffset At { get; init; }
+}
+
+/// <summary>What a reviewer decided about a message awaiting review.</summary>
+public enum ReviewResolution
+{
+    /// <summary>Release for delivery. The recipient returns to the delivery pool.</summary>
+    Release = 0,
+
+    /// <summary>Contain it as quarantine, resolvable through the existing quarantine surface.</summary>
+    Quarantine = 1,
+
+    /// <summary>Refuse it permanently. The payload is retained until retention releases it.</summary>
+    Reject = 2,
 }
 
 /// <summary>What a reviewer decided about a quarantined message.</summary>

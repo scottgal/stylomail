@@ -1092,10 +1092,16 @@ public sealed class MailAssessor : IMailAssessor
                 {
                     MailAction.Hold => DeliveryState.Held,
                     MailAction.Quarantine => DeliveryState.Quarantined,
+                    MailAction.Review => DeliveryState.Review,
                     _ => DeliveryState.Queued,
                 },
                 // A hold without a deadline is an indefinite retention, which the spec forbids.
                 ReEvaluateBy = action == MailAction.Hold ? decision.ReEvaluateBy : null,
+
+                // A review without a deadline is an indefinite human queue. The queue refuses to
+                // invent one, so a Review action with no resolved pack deadline fails admission
+                // rather than silently becoming a hold or a delivery.
+                ReviewDeadline = action == MailAction.Review ? decision.ReviewDeadline : null,
             })
             .ToList();
 

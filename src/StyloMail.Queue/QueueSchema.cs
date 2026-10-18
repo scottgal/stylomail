@@ -18,7 +18,7 @@ namespace StyloMail.Queue;
 public static class QueueSchema
 {
     /// <summary>Current schema version. Bump when the DDL below changes.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     /// <summary>Creates the schema if absent, stamping the version.</summary>
     /// <remarks>
@@ -63,10 +63,27 @@ public static class QueueSchema
         Execute(connection, transaction, ItemDdl);
         Execute(connection, transaction, RecipientDdl);
         Execute(connection, transaction, AttemptDdl);
+        Execute(connection, transaction, ReviewEventDdl);
 
         var version = ReadVersion(connection, transaction);
         if (version == 0)
         {
+            using var stamp = connection.CreateCommand();
+            stamp.Transaction = transaction;
+            stamp.CommandText =
+                "INSERT INTO queue_schema_version (version, applied_at) VALUES ($v, $at);";
+            stamp.Parameters.AddWithValue("$v", CurrentVersion);
+            stamp.Parameters.AddWithValue("$at", timeProvider.GetUtcNow().ToString("O"));
+            stamp.ExecuteNonQuery();
+            version = CurrentVersion;
+        }
+        else if (version == 4)
+        {
+            // Additive migration from v4: the review deadline column and its index. Existing rows
+            // keep NULL, which is the honest "this row predates the review state" value. No other
+            // row is rewritten and no accepted message changes.
+            ApplyReviewDeadlineMigration(connection, transaction);
+
             using var stamp = connection.CreateCommand();
             stamp.Transaction = transaction;
             stamp.CommandText =
@@ -84,6 +101,12 @@ public static class QueueSchema
                 "proceeding would leave rows with missing columns and fail later while accepting mail. " +
                 "Migrate or re-create the queue tables before starting.");
         }
+
+        Execute(connection, transaction,
+            """
+            CREATE INDEX IF NOT EXISTS ix_queue_recipient_review
+                ON queue_recipient (state, review_deadline);
+            """);
 
         VerifyShape(connection, transaction, requireAllTables: true);
 
@@ -104,6 +127,7 @@ public static class QueueSchema
         ("queue_item", ["queue_id", "untrusted_message_id", "payload_bytes", "idempotency_key", "purged_at"]),
         ("queue_recipient", ["queue_id", "recipient_key", "next_attempt_at", "re_evaluate_by", "hold_surfaced_at"]),
         ("queue_attempt", ["queue_id", "recipient_key", "outcome", "attempted_at"]),
+        ("queue_review_event", ["event_id", "queue_id", "assessment_id", "policy_reference", "at"]),
     ];
 
     /// <summary>
@@ -167,6 +191,35 @@ public static class QueueSchema
                     "table of the same name with a different shape, so these rows are NOT the queue's. " +
                     "Rename one of the tables, do not drop anything until you know whose rows these are.");
             }
+        }
+    }
+
+    /// <summary>
+    /// Adds the review deadline column to a v4 queue. Guarded, so a partially migrated database is
+    /// not altered twice.
+    /// </summary>
+    private static void ApplyReviewDeadlineMigration(
+        SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "PRAGMA table_info(queue_recipient);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                present.Add(reader.GetString(1));
+            }
+        }
+
+        if (!present.Contains("review_deadline"))
+        {
+            using var alter = connection.CreateCommand();
+            alter.Transaction = transaction;
+            alter.CommandText = "ALTER TABLE queue_recipient ADD COLUMN review_deadline TEXT NULL;";
+            alter.ExecuteNonQuery();
         }
     }
 
@@ -276,6 +329,11 @@ public static class QueueSchema
 
             re_evaluate_by  TEXT    NULL,
 
+            -- Deadline for an open Review. NULL on every row that predates the review state and
+            -- on every non-review row. Required when state = Review (7); the store refuses a
+            -- review admission without it rather than inventing an indefinite one.
+            review_deadline TEXT    NULL,
+
             -- When a lapsed hold was last reported to policy. Keeps the sweep idempotent without
             -- destroying the deadline, so "which holds are still awaiting a decision" stays
             -- answerable after the fact.
@@ -293,6 +351,31 @@ public static class QueueSchema
         -- therefore need a policy decision.
         CREATE INDEX IF NOT EXISTS ix_queue_recipient_hold
             ON queue_recipient (state, re_evaluate_by);
+        """;
+
+    private const string ReviewEventDdl =
+        """
+        -- Every review transition, written in the same transaction as the recipient state change.
+        -- The queue owns this table because the audit must commit with the state it describes; a
+        -- Host-side table would need a two-phase write. policy_reference is opaque to the queue and
+        -- carries the pack/rule versions from the decision that opened the review.
+        CREATE TABLE IF NOT EXISTS queue_review_event (
+            event_id        TEXT NOT NULL PRIMARY KEY,
+            tenant_id       TEXT NOT NULL,
+            queue_id        TEXT NOT NULL,
+            recipient_key   TEXT NOT NULL,
+            assessment_id   TEXT NULL,
+            event           TEXT NOT NULL,
+            from_state      INTEGER NOT NULL,
+            to_state        INTEGER NOT NULL,
+            actor           TEXT NOT NULL,
+            reason          TEXT NOT NULL,
+            policy_reference TEXT NULL,
+            at              TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_queue_review_event_history
+            ON queue_review_event (tenant_id, queue_id, at DESC);
         """;
 
     private const string AttemptDdl =

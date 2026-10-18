@@ -129,6 +129,47 @@ public sealed class SqliteDecisionLedger : IDecisionLedger
                 : JsonSerializer.Deserialize<MailAssessment>(payload, HostJson.PersistedRead));
     }
 
+    public Task<MailAssessment?> FindByMessageAsync(
+        string tenantId,
+        string internalMessageId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(internalMessageId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string? payload;
+
+        try
+        {
+            using var connection = _database.Open();
+            using var command = connection.CreateCommand();
+
+            // Tenant is in the predicate, not a post-read check, so another tenant's row is never
+            // materialised. Newest first because one message can be assessed repeatedly.
+            command.CommandText =
+                """
+                SELECT payload FROM host_decision_ledger
+                WHERE tenant_id = $tenant AND internal_message_id = $message
+                ORDER BY recorded_at DESC
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$tenant", tenantId);
+            command.Parameters.AddWithValue("$message", internalMessageId);
+
+            payload = command.ExecuteScalar() as string;
+        }
+        catch (SqliteException ex)
+        {
+            throw new StorageUnavailableException("The decision ledger could not be read.", ex);
+        }
+
+        return Task.FromResult(
+            payload is null
+                ? null
+                : JsonSerializer.Deserialize<MailAssessment>(payload, HostJson.PersistedRead));
+    }
+
     public Task<DecisionListingPage> ListAsync(
         DecisionListingQuery query,
         CancellationToken cancellationToken)
