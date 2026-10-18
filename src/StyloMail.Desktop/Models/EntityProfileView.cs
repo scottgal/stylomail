@@ -54,6 +54,7 @@ public sealed class KpiTileView : ObservableObject
 {
     private bool _isExpanded;
     private bool _isEvidenceExpanded;
+    private string _evidence;
 
     public KpiTileView(KpiValueResponse value)
     {
@@ -68,6 +69,7 @@ public sealed class KpiTileView : ObservableObject
         };
         Coverage = $"Coverage: {value.Coverage.Analysed} analysed of {value.Coverage.Total}." +
             (value.Coverage.Truncated ? " Limited to the most recent 2,000 messages." : string.Empty) +
+            (value.Coverage.IncompleteExclusions is { } exclusions ? $" {exclusions} incomplete candidate exclusion{(exclusions == 1 ? string.Empty : "s")}." : string.Empty) +
             (string.IsNullOrWhiteSpace(value.Coverage.Reason) ? string.Empty : $" {value.Coverage.Reason}");
         Trend = value.Trend switch
         {
@@ -75,7 +77,8 @@ public sealed class KpiTileView : ObservableObject
             { } trend => $"Trend not produced: {trend.Reason ?? trend.Detail ?? trend.State.ToString()}.",
             null => "Trend not produced: profile did not return a comparison.",
         };
-        Evidence = $"Definition v{value.Definition.Version}. {value.Definition.Question}";
+        _evidence = $"Definition v{value.Definition.Version}. {value.Definition.Question}\nEvidence has not been loaded.";
+        DefinitionId = value.Definition.Id;
         AutomationStem = "profile-kpi-" + value.Definition.Id.Replace('.', '-').Replace('_', '-');
         // These are the same mutable properties used by the Expander headers.
         // The opening state makes the first useful observation and the first
@@ -84,11 +87,12 @@ public sealed class KpiTileView : ObservableObject
         _isEvidenceExpanded = value.Definition.Id == "responsiveness.address_reciprocity";
     }
     public string Label { get; }
+    public string DefinitionId { get; }
     public string Question { get; }
     public string Observation { get; }
     public string Trend { get; }
     public string Coverage { get; }
-    public string Evidence { get; }
+    public string Evidence { get => _evidence; set => Set(ref _evidence, value); }
     public string AutomationStem { get; }
     /// <summary>Shared state for the visible Expander and user interaction.</summary>
     public bool IsExpanded { get => _isExpanded; set => Set(ref _isExpanded, value); }
@@ -99,6 +103,31 @@ public sealed class KpiTileView : ObservableObject
     public string TrendAutomationId => AutomationStem + "-trend";
     public string EvidenceDrawerAutomationId => AutomationStem + "-evidence-drawer";
     public string EvidenceAutomationId => AutomationStem + "-evidence";
+
+    /// <summary>Applies content-free, bounded KPI evidence returned by the Host.</summary>
+    public void ApplyEvidence(KpiEvidenceResponse evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        var signals = evidence.Signals.Count == 0
+            ? "No signal rows were returned."
+            : string.Join("\n", evidence.Signals.Select(DescribeSignal));
+        var sourceSummary = evidence.SourceCount == 0
+            ? "No source rows were returned."
+            : $"Sources: {evidence.Sources.Count} shown of {evidence.SourceCount}." +
+              (evidence.SourcesTruncated ? " The source list is truncated." : string.Empty);
+        Evidence = $"Definition v{evidence.Definition.Version}. {evidence.Definition.Question}\nEvidence: {signals}\n{sourceSummary}";
+    }
+
+    /// <summary>Names a failed evidence dereference without substituting a zero value.</summary>
+    public void SetEvidenceUnavailable(string reason) => Evidence = $"Evidence unavailable: {reason}.";
+
+    private static string DescribeSignal(KpiEvidenceSignalResponse signal)
+    {
+        var unavailable = signal.Unavailable is { } unavailableCount ? unavailableCount.ToString(CultureInfo.CurrentCulture) : "not measured";
+        var notApplicable = signal.NotApplicable is { } notApplicableCount ? notApplicableCount.ToString(CultureInfo.CurrentCulture) : "not measured";
+        return $"{signal.Label}: {signal.Answered} answered; {signal.Confirming} confirming; {unavailable} unavailable; {notApplicable} not applicable; {signal.Missing} missing." +
+            (string.IsNullOrWhiteSpace(signal.Reason) ? string.Empty : $" {signal.Reason}");
+    }
     private static string Format(double value, KpiUnit unit) => unit switch
     {
         KpiUnit.Ratio => value.ToString("P0", CultureInfo.CurrentCulture),

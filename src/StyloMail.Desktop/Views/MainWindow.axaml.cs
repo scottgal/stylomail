@@ -1219,18 +1219,41 @@ public partial class MainWindow : Window
     public async Task OpenEntityProfileAsync(SidebarItem sender, CancellationToken cancellationToken = default)
     {
         if (_services is null || string.IsNullOrWhiteSpace(sender.PrincipalId)) return;
+        var client = _services.Client;
         try
         {
-            var settings = await _services.Client.GetSenderSettingsAsync(sender.PrincipalId, cancellationToken).ConfigureAwait(false);
-            var profile = await _services.Client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var settings = await client.GetSenderSettingsAsync(sender.PrincipalId, cancellationToken).ConfigureAwait(false);
+            var profile = await client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken).ConfigureAwait(false);
             PolicyEffectiveBindingResponse? binding = null;
-            try { binding = await _services.Client.GetEffectivePolicyBindingAsync(sender.PrincipalId, settings.CompanyId, cancellationToken).ConfigureAwait(false); }
+            try { binding = await client.GetEffectivePolicyBindingAsync(sender.PrincipalId, settings.CompanyId, cancellationToken).ConfigureAwait(false); }
             catch (StyloMailApiException) { /* Profile remains usable; its line says policy was unavailable. */ }
+            var evidence = await Task.WhenAll(profile.Kpis.Select(kpi => LoadEvidenceAsync(kpi))).ConfigureAwait(false);
             await Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                var dialog = new EntityProfileDialog(new EntityProfileView(profile, binding));
+                var profileView = new EntityProfileView(profile, binding);
+                foreach (var result in evidence)
+                {
+                    var tile = profileView.Tiles.SingleOrDefault(x => x.DefinitionId == result.DefinitionId);
+                    if (tile is null) continue;
+                    if (result.Evidence is not null) tile.ApplyEvidence(result.Evidence);
+                    else tile.SetEvidenceUnavailable(result.Failure ?? "reason not supplied");
+                }
+                var dialog = new EntityProfileDialog(profileView);
                 await dialog.ShowDialog(this);
             }).ConfigureAwait(false);
+
+            async Task<(string DefinitionId, KpiEvidenceResponse? Evidence, string? Failure)> LoadEvidenceAsync(KpiValueResponse kpi)
+            {
+                try
+                {
+                    var result = await client.GetKpiEvidenceAsync(kpi.Definition.Id, profile.Scope.Kind, profile.Scope.Id, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    return (kpi.Definition.Id, result, null);
+                }
+                catch (StyloMailApiException failure)
+                {
+                    return (kpi.Definition.Id, null, failure.Detail ?? failure.Code);
+                }
+            }
         }
         catch (StyloMailApiException failure)
         {

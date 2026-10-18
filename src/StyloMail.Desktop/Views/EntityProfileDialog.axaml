@@ -14,7 +14,7 @@
         <TextBlock Classes="cardTitle" AutomationProperties.AutomationId="{Binding ObservationAutomationId}" TextWrapping="Wrap" Text="{Binding Observation}" />
         <TextBlock Classes="cardBody" AutomationProperties.AutomationId="{Binding TrendAutomationId}" TextWrapping="Wrap" Text="{Binding Trend}" />
         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Coverage}" />
-        <Expander Header="View definition" IsExpanded="{Binding IsEvidenceExpanded}" AutomationProperties.AutomationId="{Binding EvidenceDrawerAutomationId}"><TextBlock Classes="cardBody" AutomationProperties.AutomationId="{Binding EvidenceAutomationId}" TextWrapping="Wrap" Text="{Binding Evidence}" /></Expander>
+        <Expander Header="Evidence" IsExpanded="{Binding IsEvidenceExpanded}" AutomationProperties.AutomationId="{Binding EvidenceDrawerAutomationId}"><TextBlock Classes="cardBody" AutomationProperties.AutomationId="{Binding EvidenceAutomationId}" TextWrapping="Wrap" Text="{Binding Evidence}" /></Expander>
       </StackPanel></Border></Expander>
     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
     <TextBlock Classes="sectionLabel" Text="Not measured" />

@@ -43,7 +43,7 @@ actions:
     target: "testid=profile-kpi-responsiveness-address-reciprocity-evidence"
     window_id: EntityProfileDialog
     matcher: ContainsText
-    value: "Definition v1.1.0"
+    value: "Evidence:"
   - type: Expect
     target: "testid=profile-kpi-sensitive-requests-model-prevalence-observation"
     window_id: EntityProfileDialog
@@ -52,7 +52,7 @@ actions:
   - type: Screenshot
     value: "01-governed-profile-produced"
     window_id: EntityProfileDialog
-    description: "Governed harness data — real Host and routes: profile header, produced trend, and served KPI definition."
+    description: "Governed harness data — real Host and routes: profile header, produced trend, and opaque KPI evidence rows."
   - type: Scroll
     value: down
     window_id: EntityProfileDialog

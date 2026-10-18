@@ -65,12 +65,22 @@ public sealed class EntityProfileViewTests
     }
 
     [Fact]
-    public void Definition_drawer_contains_the_served_definition_without_promising_evidence()
+    public void Evidence_rows_keep_nullable_absence_counts_named_instead_of_rendering_them_as_zero()
     {
         var tile = new EntityProfileView(Profile()).Tiles.Single();
 
-        Assert.Equal("Definition v1. Was pressure language observed?", tile.Evidence);
-        Assert.DoesNotContain("evidence", tile.Evidence, StringComparison.OrdinalIgnoreCase);
+        tile.ApplyEvidence(new KpiEvidenceResponse
+        {
+            TenantId = "tenant", Scope = new() { Kind = "entity", Id = "entity-identifier-long" }, ResolvedAt = DateTimeOffset.UtcNow,
+            Definition = new() { Id = "pressure", Label = "Pressure", Question = "Was pressure language observed?", MinimumSample = 5, Unit = KpiUnit.Ratio, Version = "1" },
+            Value = Profile().Kpis.Single(), PriorValue = Profile().Kpis.Single(),
+            Signals = [new() { SignalId = "signal-1", Label = "Signal", Answered = 3, Confirming = 2, Unavailable = null, NotApplicable = null, Missing = 1, Reason = "window_not_observed" }],
+            Sources = [], SourceCount = 4, SourcesTruncated = true
+        });
+
+        Assert.Contains("Evidence: Signal: 3 answered; 2 confirming; not measured unavailable; not measured not applicable; 1 missing. window_not_observed", tile.Evidence);
+        Assert.Contains("Sources: 0 shown of 4. The source list is truncated.", tile.Evidence);
+        Assert.DoesNotContain("0 unavailable", tile.Evidence);
     }
 
     private static ProfileResponse Profile() => new()

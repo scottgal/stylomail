@@ -110,6 +110,9 @@ public sealed class StyloMailApiClient
         return SendAsync<PolicyEffectiveBindingResponse>(HttpMethod.Get, "/v1/policy/effective-binding?" + query, body: null, cancellationToken);
     }
 
+    public Task<KpiEvidenceResponse> GetKpiEvidenceAsync(string definitionId, string kind, string id, int windowDays = 90, CancellationToken cancellationToken = default)
+        => SendAsync<KpiEvidenceResponse>(HttpMethod.Get, $"/v1/evidence/kpi/{Uri.EscapeDataString(definitionId)}/{Uri.EscapeDataString(kind)}/{Uri.EscapeDataString(id)}?windowDays={windowDays}", null, cancellationToken);
+
     /// <summary>
     /// Reads a page of original assessed records for a Slack workspace/channel.
     /// Tenant identity comes only from the Host's authenticated Review key.
