@@ -35,6 +35,18 @@ public sealed class QueueReviewTests
     }
 
     [Fact]
+    public async Task A_review_admission_without_an_opening_is_refused()
+    {
+        using var h = new QueueHarness();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                includeReviewOpening: false)));
+    }
+
+    [Fact]
     public async Task Releasing_a_review_returns_it_to_delivery()
     {
         using var h = new QueueHarness();
@@ -54,11 +66,22 @@ public sealed class QueueReviewTests
         Assert.NotNull(lease);
         Assert.Equal(queueId, lease!.QueueId);
 
+        var opening = await h.Store.GetReviewOpeningAsync("acme", queueId);
+        Assert.NotNull(opening);
+        Assert.Equal("asm-review-1", opening!.Opening.AssessmentId);
+
         var events = await h.Store.ListReviewEventsAsync("acme", queueId);
+        var opened = Assert.Single(events, @event => @event.Event == "review.opened");
+        Assert.Equal(opening.OpeningEventId, opened.EventId);
+        Assert.Equal("asm-review-1", opened.AssessmentId);
+        Assert.Contains("rule-payment-redirection@1", opened.PolicyReference!);
+
         var released = Assert.Single(events, @event => @event.Event == "review.released");
+        Assert.Equal(opening.OpeningEventId, released.OpeningEventId);
+        Assert.Equal("asm-review-1", released.AssessmentId);
         Assert.Equal("reviewer-7", released.Actor);
-        Assert.Equal("assessment-1", released.AssessmentId);
-        Assert.Equal("pack@1/rules@1", released.PolicyReference);
+        Assert.Equal("asm-review-1", released.AssessmentId);
+        Assert.Contains("rule-payment-redirection@1", released.PolicyReference!);
         Assert.Equal(DeliveryState.Review, released.FromState);
         Assert.Equal(DeliveryState.Queued, released.ToState);
     }
@@ -113,6 +136,9 @@ public sealed class QueueReviewTests
         var expired = Assert.Single(events, @event => @event.Event == "review.expired");
         Assert.Equal("policy-scheduler", expired.Actor);
         Assert.Equal(DeliveryState.Quarantined, expired.ToState);
+        Assert.Equal("asm-review-1", expired.AssessmentId);
+        Assert.NotNull(expired.OpeningEventId);
+        Assert.Contains("rule-payment-redirection@1", expired.PolicyReference!);
 
         // Idempotent: a second sweep has nothing to move.
         Assert.Equal(0, await h.Store.SweepReviewDeadlinesAsync());

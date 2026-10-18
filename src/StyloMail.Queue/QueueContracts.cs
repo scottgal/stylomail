@@ -54,6 +54,57 @@ public sealed record RecipientAdmission
 }
 
 /// <summary>
+/// The decision that opened a review, stored so the question "why is this held" survives a
+/// reassessment or a pruned ledger row.
+/// </summary>
+/// <remarks>
+/// This is a reference, not a second copy of the assessment: it names the assessment, the pack and
+/// rule that produced the verdict, and the evidence digest, so a later read resolves the exact
+/// decision rather than whichever decision the message happens to have now.
+/// </remarks>
+public sealed record ReviewOpening
+{
+    public required string AssessmentId { get; init; }
+
+    public required string PackId { get; init; }
+
+    public required string PackVersion { get; init; }
+
+    public required string RuleSetId { get; init; }
+
+    public required string RuleSetVersion { get; init; }
+
+    public string? RuleId { get; init; }
+
+    public int? RuleVersion { get; init; }
+
+    public required string ReasonCode { get; init; }
+
+    public required string Reason { get; init; }
+
+    public string? EvidenceSnapshotDigest { get; init; }
+
+    public required DateTimeOffset DecidedAt { get; init; }
+
+    /// <summary>The exact policy reference recorded on every later event.</summary>
+    public string PolicyReference() =>
+        $"{PackId}@{PackVersion}/{RuleSetId}@{RuleSetVersion}"
+        + (RuleId is null ? string.Empty : $"/{RuleId}@{RuleVersion?.ToString() ?? "-"}");
+}
+
+/// <summary>A stored opening reference with the queue it belongs to.</summary>
+public sealed record ReviewOpeningRecord
+{
+    public required string TenantId { get; init; }
+
+    public required string QueueId { get; init; }
+
+    public required string OpeningEventId { get; init; }
+
+    public required ReviewOpening Opening { get; init; }
+}
+
+/// <summary>
 /// A message offered to the queue for durable delivery.
 /// </summary>
 /// <remarks>
@@ -103,6 +154,12 @@ public sealed record QueueSubmission
     public required ReadOnlyMemory<byte> Payload { get; init; }
 
     public required IReadOnlyList<RecipientAdmission> Recipients { get; init; }
+
+    /// <summary>
+    /// Required when any recipient is admitted in Review. The queue refuses a review with no
+    /// opening reference rather than storing a state whose origin cannot be named.
+    /// </summary>
+    public ReviewOpening? ReviewOpening { get; init; }
 
     /// <summary>
     /// The message's own <c>Message-ID</c> header. <b>UNTRUSTED</b>, sender-supplied, recorded for
@@ -521,6 +578,12 @@ public sealed record QueueReviewEvent
     public required string Reason { get; init; }
 
     public string? PolicyReference { get; init; }
+
+    /// <summary>
+    /// The opening event this transition belongs to. Null only on a legacy review row that predates
+    /// the opening chain; the surface names that rather than treating it as a normal absence.
+    /// </summary>
+    public string? OpeningEventId { get; init; }
 
     public required DateTimeOffset At { get; init; }
 }

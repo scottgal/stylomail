@@ -50,10 +50,19 @@ public sealed record ReviewItemResponse
     public PolicyDecisionRecord? Policy { get; init; }
 
     /// <summary>
-    /// True when the ledger has no assessment for this message at all, which is an integrity
-    /// anomaly rather than "no pack was active". The surface must name it, not render Permit.
+    /// The immutable decision that opened the review. Null only on a row that predates the opening
+    /// chain; the surface names that rather than treating it as a normal absence.
+    /// </summary>
+    public ReviewOpening? Opening { get; init; }
+
+    /// <summary>
+    /// True when the opening assessment can no longer be read from the ledger (for example it was
+    /// pruned). The opening reference above still names the pack, rule and reason.
     /// </summary>
     public required bool PolicyRecordMissing { get; init; }
+
+    /// <summary>True on a review row created before the opening chain existed.</summary>
+    public required bool LegacyReviewOpeningMissing { get; init; }
 
     public required DateTimeOffset CreatedAt { get; init; }
 

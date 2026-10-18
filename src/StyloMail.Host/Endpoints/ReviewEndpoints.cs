@@ -68,11 +68,23 @@ internal static class ReviewEndpoints
 
             foreach (var item in page.Items)
             {
-                var assessment = await ledger
-                    .FindByMessageAsync(tenant, item.Envelope.InternalMessageId, cancellationToken)
+                var opening = await queue
+                    .GetReviewOpeningAsync(tenant, item.QueueId, cancellationToken)
                     .ConfigureAwait(false);
 
-                items.Add(ToResponse(item, assessment?.Policy, assessment is null, now));
+                var assessment = opening is null
+                    ? null
+                    : await ledger
+                        .FindAsync(tenant, opening.Opening.AssessmentId, cancellationToken)
+                        .ConfigureAwait(false);
+
+                items.Add(ToResponse(
+                    item,
+                    opening?.Opening,
+                    assessment?.Policy,
+                    policyRecordMissing: opening is not null && assessment is null,
+                    legacyOpeningMissing: opening is null,
+                    now));
             }
 
             return Results.Ok(new ReviewListResponse
@@ -184,8 +196,11 @@ internal static class ReviewEndpoints
                 return EndpointResults.NotFound("review_not_found", "No such review for this tenant.");
             }
 
-            var assessment = await ledger
-                .FindByMessageAsync(tenant, item.Envelope.InternalMessageId, cancellationToken)
+            // The opening record is the authoritative reference. Passing it here means the
+            // resolution event names the decision that opened the review, not whatever decision
+            // the message has now.
+            var opening = await queue
+                .GetReviewOpeningAsync(tenant, queueId, cancellationToken)
                 .ConfigureAwait(false);
 
             var applied = await queue.ResolveReviewAsync(
@@ -193,8 +208,8 @@ internal static class ReviewEndpoints
                 resolution,
                 actor,
                 reason,
-                assessment?.AssessmentId,
-                PolicyReference(assessment?.Policy),
+                opening?.Opening.AssessmentId,
+                opening?.Opening.PolicyReference(),
                 tenant,
                 cancellationToken).ConfigureAwait(false);
 
@@ -241,21 +256,35 @@ internal static class ReviewEndpoints
             return EndpointResults.NotFound("review_not_found", "No such review for this tenant.");
         }
 
-        var assessment = await ledger
-            .FindByMessageAsync(tenant, item.Envelope.InternalMessageId, cancellationToken)
+        var opening = await queue
+            .GetReviewOpeningAsync(tenant, queueId, cancellationToken)
             .ConfigureAwait(false);
+
+        var assessment = opening is null
+            ? null
+            : await ledger
+                .FindAsync(tenant, opening.Opening.AssessmentId, cancellationToken)
+                .ConfigureAwait(false);
 
         return Results.Ok(new ReviewDetailResponse
         {
-            Item = ToResponse(item, assessment?.Policy, assessment is null, clock.GetUtcNow()),
+            Item = ToResponse(
+                item,
+                opening?.Opening,
+                assessment?.Policy,
+                policyRecordMissing: opening is not null && assessment is null,
+                legacyOpeningMissing: opening is null,
+                clock.GetUtcNow()),
             Events = [.. events.Select(ReviewEventResponse.From)],
         });
     }
 
     private static ReviewItemResponse ToResponse(
         QueueItem item,
+        ReviewOpening? opening,
         StyloMail.Core.PolicyDecisionRecord? policy,
         bool policyRecordMissing,
+        bool legacyOpeningMissing,
         DateTimeOffset now) => new()
         {
             QueueId = item.QueueId,
@@ -263,13 +292,10 @@ internal static class ReviewEndpoints
             InternalMessageId = item.Envelope.InternalMessageId,
             Recipients = [.. item.Recipients.Select(recipient => ReviewRecipientResponse.From(recipient, now))],
             Policy = policy,
+            Opening = opening,
             PolicyRecordMissing = policyRecordMissing,
+            LegacyReviewOpeningMissing = legacyOpeningMissing,
             CreatedAt = item.CreatedAt,
             UpdatedAt = item.UpdatedAt,
         };
-
-    private static string? PolicyReference(StyloMail.Core.PolicyDecisionRecord? policy) =>
-        policy is null
-            ? null
-            : $"{policy.PackId}@{policy.PackVersion}/{policy.RuleSetId}@{policy.RuleSetVersion}";
 }

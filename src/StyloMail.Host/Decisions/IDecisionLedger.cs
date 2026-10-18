@@ -20,19 +20,6 @@ public interface IDecisionLedger
     Task<MailAssessment?> FindAsync(string tenantId, string assessmentId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The newest decision recorded for a message, or null when none exists for this tenant.
-    /// </summary>
-    /// <remarks>
-    /// A review is addressed by queue id, and the queue holds the message id, not the assessment id.
-    /// This is the tenant-scoped join between them. Newest wins because a message can be assessed
-    /// more than once and the review is about the decision that opened it.
-    /// </remarks>
-    Task<MailAssessment?> FindByMessageAsync(
-        string tenantId,
-        string internalMessageId,
-        CancellationToken cancellationToken);
-
-    /// <summary>
     /// One page of this tenant's ledger, newest first.
     /// </summary>
     /// <remarks>

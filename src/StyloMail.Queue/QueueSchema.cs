@@ -18,7 +18,7 @@ namespace StyloMail.Queue;
 public static class QueueSchema
 {
     /// <summary>Current schema version. Bump when the DDL below changes.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     /// <summary>Creates the schema if absent, stamping the version.</summary>
     /// <remarks>
@@ -64,6 +64,7 @@ public static class QueueSchema
         Execute(connection, transaction, RecipientDdl);
         Execute(connection, transaction, AttemptDdl);
         Execute(connection, transaction, ReviewEventDdl);
+        Execute(connection, transaction, ReviewOpeningDdl);
 
         var version = ReadVersion(connection, transaction);
         if (version == 0)
@@ -77,12 +78,18 @@ public static class QueueSchema
             stamp.ExecuteNonQuery();
             version = CurrentVersion;
         }
-        else if (version == 4)
+        else if (version is 4 or 5)
         {
-            // Additive migration from v4: the review deadline column and its index. Existing rows
-            // keep NULL, which is the honest "this row predates the review state" value. No other
-            // row is rewritten and no accepted message changes.
-            ApplyReviewDeadlineMigration(connection, transaction);
+            // Additive migration. v4 gains the review deadline and the opening chain; v5 already
+            // has the deadline and gains the opening chain. Existing rows keep NULL, which is the
+            // honest "this row predates the review state" value. No row is rewritten and no
+            // accepted message changes.
+            if (version == 4)
+            {
+                ApplyReviewDeadlineMigration(connection, transaction);
+            }
+
+            ApplyReviewOpeningMigration(connection, transaction);
 
             using var stamp = connection.CreateCommand();
             stamp.Transaction = transaction;
@@ -128,6 +135,7 @@ public static class QueueSchema
         ("queue_recipient", ["queue_id", "recipient_key", "next_attempt_at", "re_evaluate_by", "hold_surfaced_at"]),
         ("queue_attempt", ["queue_id", "recipient_key", "outcome", "attempted_at"]),
         ("queue_review_event", ["event_id", "queue_id", "assessment_id", "policy_reference", "at"]),
+        ("queue_review_opening", ["tenant_id", "queue_id", "opening_event_id", "assessment_id", "pack_id"]),
     ];
 
     /// <summary>
@@ -220,6 +228,43 @@ public static class QueueSchema
             alter.Transaction = transaction;
             alter.CommandText = "ALTER TABLE queue_recipient ADD COLUMN review_deadline TEXT NULL;";
             alter.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Adds the opening-event column and verifies the opening table on a v4 or v5 queue.</summary>
+    private static void ApplyReviewOpeningMigration(
+        SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "PRAGMA table_info(queue_review_event);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                present.Add(reader.GetString(1));
+            }
+        }
+
+        if (!present.Contains("opening_event_id"))
+        {
+            using var alter = connection.CreateCommand();
+            alter.Transaction = transaction;
+            alter.CommandText = "ALTER TABLE queue_review_event ADD COLUMN opening_event_id TEXT NULL;";
+            alter.ExecuteNonQuery();
+        }
+
+        using var exists = connection.CreateCommand();
+        exists.Transaction = transaction;
+        exists.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'queue_review_opening';";
+        if ((long)(exists.ExecuteScalar() ?? 0L) == 0)
+        {
+            throw new InvalidOperationException(
+                "The queue review opening table is missing after the schema was created. The database " +
+                "is not the one this build expects.");
         }
     }
 
@@ -371,11 +416,39 @@ public static class QueueSchema
             actor           TEXT NOT NULL,
             reason          TEXT NOT NULL,
             policy_reference TEXT NULL,
+            opening_event_id TEXT NULL,
             at              TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS ix_queue_review_event_history
             ON queue_review_event (tenant_id, queue_id, at DESC);
+        """;
+
+    private const string ReviewOpeningDdl =
+        """
+        -- The immutable decision that opened a review. One row per queue item. It names the exact
+        -- assessment, pack, rule set and deciding rule, plus the reason and evidence digest, so a
+        -- reassessment or a pruned ledger cannot erase why the review exists.
+        CREATE TABLE IF NOT EXISTS queue_review_opening (
+            tenant_id       TEXT NOT NULL,
+            queue_id        TEXT NOT NULL,
+            opening_event_id TEXT NOT NULL,
+            assessment_id   TEXT NOT NULL,
+            pack_id         TEXT NOT NULL,
+            pack_version    TEXT NOT NULL,
+            rule_set_id     TEXT NOT NULL,
+            rule_set_version TEXT NOT NULL,
+            rule_id         TEXT NULL,
+            rule_version    INTEGER NULL,
+            reason_code     TEXT NOT NULL,
+            reason          TEXT NOT NULL,
+            evidence_digest TEXT NULL,
+            decided_at      TEXT NOT NULL,
+            PRIMARY KEY (tenant_id, queue_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_queue_review_opening_queue
+            ON queue_review_opening (tenant_id, queue_id);
         """;
 
     private const string AttemptDdl =

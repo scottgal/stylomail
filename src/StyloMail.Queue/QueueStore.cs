@@ -274,6 +274,28 @@ public sealed partial class QueueStore
                 connection, transaction, submission, queueId, payloadReference,
                 state, nextAttemptAt, expiresAt, now);
             InsertRecipients(connection, transaction, queueId, recipients);
+
+            if (recipients.Any(recipient => recipient.State == DeliveryState.Review))
+            {
+                var opening = submission.ReviewOpening
+                    ?? throw new ArgumentException(
+                        "A Review admission requires the decision that opened it. The queue does not "
+                        + "store a state whose origin cannot be named.",
+                        nameof(submission));
+
+                var openingEventId = Guid.NewGuid().ToString("N");
+                InsertReviewOpening(connection, transaction, submission.TenantId, queueId, openingEventId, opening);
+                AppendReviewEvent(
+                    connection, transaction, submission.TenantId, queueId, ItemLevelRecipient,
+                    opening.AssessmentId, "review.opened", DeliveryState.Review, DeliveryState.Review,
+                    "policy", opening.Reason, opening.PolicyReference(), openingEventId, now);
+            }
+            else if (submission.ReviewOpening is not null)
+            {
+                throw new ArgumentException(
+                    "A review opening was supplied for a submission with no Review recipient.",
+                    nameof(submission));
+            }
         }
         catch (SqliteException ex) when (
             ex.SqliteErrorCode == SqliteConstraintViolation && submission.IdempotencyKey is { Length: > 0 })
@@ -965,6 +987,10 @@ public sealed partial class QueueStore
             _ => throw new ArgumentOutOfRangeException(nameof(resolution), resolution, "Unknown review resolution."),
         };
 
+        // The opening record is the authoritative reference. The caller's assessment id is only a
+        // legacy fallback for a row that predates the opening chain.
+        var opening = ReadReviewOpening(connection, transaction, header.TenantId, queueId);
+
         foreach (var recipient in reviewing)
         {
             var applied = TransitionReviewRecipient(
@@ -991,8 +1017,9 @@ public sealed partial class QueueStore
 
             AppendReviewEvent(
                 connection, transaction, header.TenantId, queueId, recipient.Recipient,
-                assessmentId, eventName, DeliveryState.Review, target, decidedBy, reason,
-                policyReference, now);
+                opening?.Opening.AssessmentId ?? assessmentId, eventName, DeliveryState.Review, target,
+                decidedBy, reason, opening?.Opening.PolicyReference() ?? policyReference,
+                opening?.OpeningEventId, now);
         }
 
         var refreshed = ReadRecipients(connection, transaction, queueId);
@@ -1058,15 +1085,17 @@ public sealed partial class QueueStore
             }
 
             moved++;
+            var opening = ReadReviewOpening(connection, transaction, tenantId, queueId);
             AppendAttempt(
                 connection, transaction, queueId, recipient, "policy-scheduler",
                 DeliveryAttemptOutcome.ReviewExpired,
                 "Review deadline elapsed; escalated to quarantine. Nothing was released or delivered.",
                 now);
             AppendReviewEvent(
-                connection, transaction, tenantId, queueId, recipient, assessmentId: null,
-                "review.expired", DeliveryState.Review, DeliveryState.Quarantined,
-                "policy-scheduler", "review deadline elapsed", policyReference: null, now);
+                connection, transaction, tenantId, queueId, recipient,
+                opening?.Opening.AssessmentId, "review.expired", DeliveryState.Review,
+                DeliveryState.Quarantined, "policy-scheduler", "review deadline elapsed",
+                opening?.Opening.PolicyReference(), opening?.OpeningEventId, now);
         }
 
         foreach (var queueId in due.Select(entry => entry.QueueId).Distinct(StringComparer.Ordinal))
@@ -1127,6 +1156,7 @@ public sealed partial class QueueStore
         string actor,
         string reason,
         string? policyReference,
+        string? openingEventId,
         DateTimeOffset now)
     {
         using var cmd = connection.CreateCommand();
@@ -1135,11 +1165,17 @@ public sealed partial class QueueStore
             """
             INSERT INTO queue_review_event
                 (event_id, tenant_id, queue_id, recipient_key, assessment_id, event,
-                 from_state, to_state, actor, reason, policy_reference, at)
+                 from_state, to_state, actor, reason, policy_reference, opening_event_id, at)
             VALUES ($id, $tenant, $queue, $recipient, $assessment, $event,
-                    $from, $to, $actor, $reason, $policy, $at);
+                    $from, $to, $actor, $reason, $policy, $opening, $at);
             """;
-        cmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+        // The opening event's id is the opening reference itself, so later events can point at the
+        // exact row rather than a second identifier. Every other transition gets a fresh id.
+        var eventId = @event == "review.opened" && openingEventId is not null
+            ? openingEventId
+            : Guid.NewGuid().ToString("N");
+
+        cmd.Parameters.AddWithValue("$id", eventId);
         cmd.Parameters.AddWithValue("$tenant", tenantId);
         cmd.Parameters.AddWithValue("$queue", queueId);
         cmd.Parameters.AddWithValue("$recipient", recipient);
@@ -1150,6 +1186,7 @@ public sealed partial class QueueStore
         cmd.Parameters.AddWithValue("$actor", actor);
         cmd.Parameters.AddWithValue("$reason", reason);
         cmd.Parameters.AddWithValue("$policy", (object?)policyReference ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$opening", (object?)openingEventId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$at", ToDb(now));
         cmd.ExecuteNonQuery();
     }
@@ -1172,7 +1209,7 @@ public sealed partial class QueueStore
         cmd.CommandText =
             """
             SELECT event_id, queue_id, recipient_key, assessment_id, event, from_state,
-                   to_state, actor, reason, policy_reference, at
+                   to_state, actor, reason, policy_reference, at, opening_event_id
               FROM queue_review_event
              WHERE tenant_id = $tenant AND queue_id = $queue
              ORDER BY at DESC, event_id DESC
@@ -1200,10 +1237,109 @@ public sealed partial class QueueStore
                 Reason = reader.GetString(8),
                 PolicyReference = reader.IsDBNull(9) ? null : reader.GetString(9),
                 At = FromDb(reader.GetString(10)) ?? _options.TimeProvider.GetUtcNow(),
+                OpeningEventId = reader.IsDBNull(11) ? null : reader.GetString(11),
             });
         }
 
         return events;
+    }
+
+    /// <summary>Reads the immutable decision that opened a review, or null on a legacy row.</summary>
+    public async Task<ReviewOpeningRecord?> GetReviewOpeningAsync(
+        string tenantId,
+        string queueId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var connection = OpenConnection();
+        return ReadReviewOpening(connection, transaction: null, tenantId, queueId);
+    }
+
+    private ReviewOpeningRecord? ReadReviewOpening(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string tenantId,
+        string queueId)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            """
+            SELECT opening_event_id, assessment_id, pack_id, pack_version, rule_set_id,
+                   rule_set_version, rule_id, rule_version, reason_code, reason,
+                   evidence_digest, decided_at
+              FROM queue_review_opening
+             WHERE tenant_id = $tenant AND queue_id = $queue;
+            """;
+        cmd.Parameters.AddWithValue("$tenant", tenantId);
+        cmd.Parameters.AddWithValue("$queue", queueId);
+
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new ReviewOpeningRecord
+        {
+            TenantId = tenantId,
+            QueueId = queueId,
+            OpeningEventId = reader.GetString(0),
+            Opening = new ReviewOpening
+            {
+                AssessmentId = reader.GetString(1),
+                PackId = reader.GetString(2),
+                PackVersion = reader.GetString(3),
+                RuleSetId = reader.GetString(4),
+                RuleSetVersion = reader.GetString(5),
+                RuleId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                RuleVersion = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                ReasonCode = reader.GetString(8),
+                Reason = reader.GetString(9),
+                EvidenceSnapshotDigest = reader.IsDBNull(10) ? null : reader.GetString(10),
+                DecidedAt = FromDb(reader.GetString(11)) ?? _options.TimeProvider.GetUtcNow(),
+            },
+        };
+    }
+
+    private static void InsertReviewOpening(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tenantId,
+        string queueId,
+        string openingEventId,
+        ReviewOpening opening)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            """
+            INSERT INTO queue_review_opening
+                (tenant_id, queue_id, opening_event_id, assessment_id, pack_id, pack_version,
+                 rule_set_id, rule_set_version, rule_id, rule_version, reason_code, reason,
+                 evidence_digest, decided_at)
+            VALUES ($tenant, $queue, $event, $assessment, $pack, $packVersion,
+                    $ruleSet, $ruleSetVersion, $rule, $ruleVersion, $reasonCode, $reason,
+                    $digest, $decided);
+            """;
+        cmd.Parameters.AddWithValue("$tenant", tenantId);
+        cmd.Parameters.AddWithValue("$queue", queueId);
+        cmd.Parameters.AddWithValue("$event", openingEventId);
+        cmd.Parameters.AddWithValue("$assessment", opening.AssessmentId);
+        cmd.Parameters.AddWithValue("$pack", opening.PackId);
+        cmd.Parameters.AddWithValue("$packVersion", opening.PackVersion);
+        cmd.Parameters.AddWithValue("$ruleSet", opening.RuleSetId);
+        cmd.Parameters.AddWithValue("$ruleSetVersion", opening.RuleSetVersion);
+        cmd.Parameters.AddWithValue("$rule", (object?)opening.RuleId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ruleVersion", (object?)opening.RuleVersion ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$reasonCode", opening.ReasonCode);
+        cmd.Parameters.AddWithValue("$reason", opening.Reason);
+        cmd.Parameters.AddWithValue("$digest", (object?)opening.EvidenceSnapshotDigest ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$decided", ToDb(opening.DecidedAt));
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>Tenant-scopes an item addressed by queue id.</summary>

@@ -73,7 +73,9 @@ public sealed class ReviewEndpointTests
         var audit = Assert.Single(released.Events, @event => @event.Event == "review.released");
         Assert.Equal(TestPrincipals.AcmeReviewerPrincipal, audit.Actor);
         Assert.Equal("recipient confirmed it", audit.Reason);
-        Assert.Equal("pack-commerce@1.0.0/rules-commerce@rules/1", audit.PolicyReference);
+        Assert.Equal(
+            "pack-commerce@1.0.0/rules-commerce@rules/1/rule-payment-redirection@1",
+            audit.PolicyReference);
     }
 
     [Fact]
@@ -159,6 +161,49 @@ public sealed class ReviewEndpointTests
         Assert.Equal("policy-scheduler", expired.Actor);
     }
 
+    [Fact]
+    public async Task The_review_keeps_the_opening_decision_after_a_reassessment()
+    {
+        using var host = new TestHost().WithClock();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var queueId = await SeedAsync(host, policy: true);
+
+        var queue = host.Services.GetRequiredService<QueueStore>();
+        var ledger = host.Services.GetRequiredService<IDecisionLedger>();
+        var item = await queue.GetItemForTenantAsync(queueId, TestPrincipals.AcmeTenant);
+        Assert.NotNull(item);
+
+        // A later assessment of the same message must not rewrite why the review was opened.
+        await ledger.RecordAsync(
+            Assessment(
+                TestPrincipals.AcmeTenant,
+                "asm-newer",
+                item!.Envelope.InternalMessageId,
+                withPolicy: true) with
+            {
+                Action = MailAction.Allow,
+                Policy = PolicyRecord() with
+                {
+                    PackId = "pack-newer",
+                    PackVersion = "9.0.0",
+                    Verdict = PolicyVerdict.Permit,
+                    RequiresHumanReview = false,
+                },
+            },
+            CancellationToken.None);
+
+        var detail = await ReadAsync<ReviewDetailResponse>(
+            await reviewer.GetAsync($"/v1/policy/reviews/{queueId}"));
+
+        Assert.NotNull(detail.Item.Opening);
+        Assert.Equal("pack-commerce", detail.Item.Opening!.PackId);
+        Assert.Equal("pack-commerce", detail.Item.Policy!.PackId);
+        Assert.Equal("rule-payment-redirection", detail.Item.Opening.RuleId);
+        Assert.Equal("gray zone", detail.Item.Opening.Reason);
+        Assert.False(detail.Item.LegacyReviewOpeningMissing);
+        Assert.False(detail.Item.PolicyRecordMissing);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
@@ -193,6 +238,7 @@ public sealed class ReviewEndpointTests
                 },
             ],
             HopCount = 0,
+            ReviewOpening = Opening(assessmentId),
         });
 
         Assert.True(accepted.IsAccepted, accepted.Detail);
@@ -238,6 +284,21 @@ public sealed class ReviewEndpointTests
             AssessedAt = Start,
             Policy = withPolicy ? PolicyRecord() : null,
         };
+
+    private static ReviewOpening Opening(string assessmentId) => new()
+    {
+        AssessmentId = assessmentId,
+        PackId = "pack-commerce",
+        PackVersion = "1.0.0",
+        RuleSetId = "rules-commerce",
+        RuleSetVersion = "rules/1",
+        RuleId = "rule-payment-redirection",
+        RuleVersion = 1,
+        ReasonCode = "policy.payment_redirection_review",
+        Reason = "gray zone",
+        EvidenceSnapshotDigest = new string('a', 64),
+        DecidedAt = Start,
+    };
 
     private static PolicyDecisionRecord PolicyRecord() => new()
     {

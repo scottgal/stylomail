@@ -109,9 +109,13 @@ For each open review: queue id, internal message id, assessment id, recipient(s)
 decision record (verdict, pack id/version, rule set version, deciding rule id/version, threshold,
 reason code/message, missing dimensions, coverage, evidence digest), the stored review deadline,
 the review queue/owner, the escalation rule, and the allowed next actions with their consequences.
-A null policy record is shown as **"No policy pack was active"**; it is not rendered as Permit and
-no rule or threshold is invented. A Review queue state can only be created by a pack decision, so a
-null record on a Review item is an integrity anomaly the surface names rather than explains away.
+The surface reads the **opening decision** by its assessment id, never the latest decision for the
+message. A reassessment therefore cannot rewrite why the review was opened. If the ledger row has
+been pruned, `Policy` is null and `PolicyRecordMissing` is true while the opening reference still
+names the pack, rule, reason and digest. A row that predates the opening chain sets
+`LegacyReviewOpeningMissing`; the surface names it and does not fabricate a record. A null policy
+record is shown as **"No policy pack was active"**; it is not rendered as Permit and no rule or
+threshold is invented.
 
 ### Routes
 
@@ -153,13 +157,17 @@ Two durable records, both required:
 1. **Queue attempt history** (`queue_attempt`): `ReviewReleased`, `ReviewQuarantined`,
    `ReviewRejected` and the sweep's `ReviewExpired`, each with actor, reason and timestamp. This is
    the delivery-side history and already survives restart.
-2. **Policy review events** (new `queue_review_event`, queue-owned): one row per transition with
-   tenant, queue id, recipient, assessment id, from-state, to-state, actor, reason, timestamp and an
-   opaque policy reference naming the pack/rule versions. The queue owns it because the audit must
-   commit with the state it describes; a Host-side table would need a two-phase write. This is the
-   operator-facing audit: "who decided, on what policy, and when". A reviewer resolution carries the
-   assessment id from the Host; the deadline sweep does not own one, so its event may carry null and
-   the surface joins the decision by queue id and message id instead of inventing a record.
+2. **The opening record** (new `queue_review_opening`, queue-owned): one immutable row per review
+   naming the assessment id, pack id/version, rule-set id/version, deciding rule id/version, reason
+   and evidence digest. It is written in the same transaction as the Review admission, and a Review
+   admission without it is refused. This is what survives a reassessment or a pruned ledger.
+3. **Policy review events** (new `queue_review_event`, queue-owned): one row per transition with
+   tenant, queue id, recipient, assessment id, from-state, to-state, actor, reason, timestamp, an
+   opaque policy reference naming the pack/rule versions, and the opening event id. The opening
+   event (`review.opened`) is the first row and its id is the opening reference every later event
+   carries, so a human resolution and the deadline sweep name the same decision. The queue owns it
+   because the audit must commit with the state it describes; a Host-side table would need a
+   two-phase write. This is the operator-facing audit: "who decided, on what policy, and when".
 
 The Host database and the queue schema are one SQLite file in this deployment, so the event and the
 state change are committed in one transaction. **Outbox rule for a future split:** if the queue and
@@ -194,9 +202,12 @@ changes that need explicit coordination because they cross Core and Queue.
 
 - Core enum members appended: `MailAction.Review = 5`, `DeliveryState.Review = 7`.
 - `queue_recipient.review_deadline TEXT NULL` plus
-  `ix_queue_recipient_review (state, review_deadline)`, applied by an additive v4-to-v5 queue
-  migration. Existing rows are untouched; a null deadline means the row predates Review.
-- `queue_review_event` table and its tenant/time index, owned by the queue.
+  `ix_queue_recipient_review (state, review_deadline)`.
+- `queue_review_opening` and `queue_review_event.opening_event_id`, applied by an additive
+  v4/v5-to-v6 queue migration. Existing rows are untouched; a review row with no opening is named
+  `legacy_review_opening_missing` rather than backfilled.
+- `queue_review_opening` table, and `queue_review_event.opening_event_id`, owned by the queue, with
+  an additive v4/v5-to-v6 migration.
 - `PolicyPack.ReviewDeadline` is a payload field, not a column; existing packs read as the 24-hour
   default.
 
@@ -224,8 +235,10 @@ Composition:
 Queue:
 - A Review recipient is never claimed; roll-up returns Review, and Quarantined when mixed.
 - Release, Quarantine and Reject each move the recipient and append the right attempt outcome.
-- The sweep moves a due Review to Quarantine, is idempotent across two runs, and records actor
-  `policy-scheduler`; it never releases.
+- The sweep moves a due Review to Quarantine, is idempotent across two runs, records actor
+  `policy-scheduler`, and its event carries the opening event id and assessment id; it never releases.
+- A review admission with no opening decision is refused. After a reassessment, the review read
+  still resolves the opening assessment, pack, rule and reason.
 - A reviewer decision racing the sweep settles exactly once.
 - Restart before the deadline preserves Review and the deadline; restart after the deadline
   escalates on the first sweep.
