@@ -490,6 +490,15 @@ public sealed class MailAssessor : IMailAssessor
             UpdateObservedState(analysis, context, profiles, dimensionVector, action != MailAction.Allow, now);
         }
 
+        // A second opinion, recorded and never applied. The legacy action above is the action this
+        // message gets; the pack's candidate is explanation only until Phase 3. It runs before
+        // acceptance because a Review admission must name the decision that opened it.
+        var policyRecord = _policyShadow is null
+            ? null
+            : await _policyShadow
+                .EvaluateAsync(context.TenantId, evidence, now, cancellationToken)
+                .ConfigureAwait(false);
+
         // ---- Step 7: for submissions, durably accept, or decline responsibility before acceptance.
         // The assessor is the only component that accepts, a second acceptor would double-deliver,
         // and no amount of care at either call site fixes two components each believing they own it.
@@ -499,6 +508,9 @@ public sealed class MailAssessor : IMailAssessor
             payload,
             action,
             decision,
+            policyRecord,
+            assessmentId,
+            now,
             recipientScopedSignals,
             cancellationToken).ConfigureAwait(false);
 
@@ -520,14 +532,6 @@ public sealed class MailAssessor : IMailAssessor
         // there is no authorized outcome and, unless an operator has named a rule, no permitted rule
         // either, so nothing is learned. The gate is what refuses it, not this method's restraint.
         CommitAssessmentLearning(context, profiles, dimensionVector, now);
-
-        // A second opinion, recorded and never applied. The legacy action above is the action this
-        // message gets; the pack's candidate is explanation only until Phase 3.
-        var policyRecord = _policyShadow is null
-            ? null
-            : await _policyShadow
-                .EvaluateAsync(context.TenantId, evidence, now, cancellationToken)
-                .ConfigureAwait(false);
 
         return new MailAssessment
         {
@@ -1027,12 +1031,47 @@ public sealed class MailAssessor : IMailAssessor
         };
     }
 
+    /// <summary>
+    /// Builds the immutable opening reference for a Review admission. A Review with no pack record
+    /// cannot name why it exists, so this refuses rather than storing an unexplainable state.
+    /// </summary>
+    private static ReviewOpening BuildReviewOpening(
+        string assessmentId,
+        PolicyDecisionRecord? policy,
+        DateTimeOffset now)
+    {
+        if (policy is null)
+        {
+            throw new InvalidOperationException(
+                "A Review action reached acceptance without a policy decision record. The queue " +
+                "requires the opening decision, and inventing one would fabricate the audit trail.");
+        }
+
+        return new ReviewOpening
+        {
+            AssessmentId = assessmentId,
+            PackId = policy.PackId,
+            PackVersion = policy.PackVersion,
+            RuleSetId = policy.RuleSetId,
+            RuleSetVersion = policy.RuleSetVersion,
+            RuleId = policy.DecidingRuleId,
+            RuleVersion = policy.DecidingRuleVersion,
+            ReasonCode = policy.DecidingReasonCode,
+            Reason = policy.DecidingReason,
+            EvidenceSnapshotDigest = policy.EvidenceSnapshotDigest,
+            DecidedAt = policy.EvaluatedAt == default ? now : policy.EvaluatedAt,
+        };
+    }
+
     private async Task<AcceptanceOutcome> Step7Async(
         MailAnalysisInput analysis,
         AssessmentContext context,
         ReadOnlyMemory<byte>? payload,
         MailAction action,
         PolicyDecision decision,
+        PolicyDecisionRecord? policyRecord,
+        string assessmentId,
+        DateTimeOffset now,
         IReadOnlyDictionary<string, IReadOnlyList<string>> recipientScopedSignals,
         CancellationToken cancellationToken)
     {
@@ -1092,10 +1131,16 @@ public sealed class MailAssessor : IMailAssessor
                 {
                     MailAction.Hold => DeliveryState.Held,
                     MailAction.Quarantine => DeliveryState.Quarantined,
+                    MailAction.Review => DeliveryState.Review,
                     _ => DeliveryState.Queued,
                 },
                 // A hold without a deadline is an indefinite retention, which the spec forbids.
                 ReEvaluateBy = action == MailAction.Hold ? decision.ReEvaluateBy : null,
+
+                // A review without a deadline is an indefinite human queue. The queue refuses to
+                // invent one, so a Review action with no resolved pack deadline fails admission
+                // rather than silently becoming a hold or a delivery.
+                ReviewDeadline = action == MailAction.Review ? decision.ReviewDeadline : null,
             })
             .ToList();
 
@@ -1140,6 +1185,12 @@ public sealed class MailAssessor : IMailAssessor
                         // would look like replay protection while providing none, which is worse than
                         // an honest absence.
                         IdempotencyKey = context.ClientIdempotencyKey,
+
+                        // A review names the decision that opened it. The queue requires this and
+                        // refuses the admission without it; it is never fabricated here.
+                        ReviewOpening = action == MailAction.Review
+                            ? BuildReviewOpening(assessmentId, policyRecord, now)
+                            : null,
                     },
                     cancellationToken)
                 .ConfigureAwait(false);

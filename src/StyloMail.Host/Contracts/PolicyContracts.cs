@@ -21,6 +21,9 @@ public sealed record PolicyPackDraftRequest
 
     public required int EvidenceRetentionDays { get; init; }
 
+    /// <summary>Review deadline. Omitted means the 24-hour default.</summary>
+    public TimeSpan? ReviewDeadline { get; init; }
+
     public required string RuleSetVersion { get; init; }
 
     public required string ScorerVersion { get; init; }
@@ -52,6 +55,8 @@ public sealed record PolicyPackResponse
     public required TextCaptureRules CaptureText { get; init; }
 
     public required int EvidenceRetentionDays { get; init; }
+
+    public required TimeSpan ReviewDeadline { get; init; }
 
     public required string RuleSetVersion { get; init; }
 
@@ -88,6 +93,7 @@ public sealed record PolicyPackResponse
         ActionCeiling = pack.ActionCeiling,
         CaptureText = pack.CaptureText,
         EvidenceRetentionDays = pack.EvidenceRetentionDays,
+        ReviewDeadline = pack.ReviewDeadline,
         RuleSetVersion = pack.RuleSetVersion,
         ScorerVersion = pack.ScorerVersion,
         Author = pack.Author,

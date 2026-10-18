@@ -250,6 +250,13 @@ public sealed record PolicyPack
     /// <summary>How long evidence rows, which never carry message content, are retained.</summary>
     public required int EvidenceRetentionDays { get; init; }
 
+    /// <summary>
+    /// How long a human has to decide a Review before it escalates to Quarantine. Resolved at
+    /// admission and copied to the queue row, so a later pack change cannot move an existing
+    /// deadline.
+    /// </summary>
+    public TimeSpan ReviewDeadline { get; init; } = TimeSpan.FromHours(24);
+
     /// <summary>The rule-set version this pack was written against. A mismatch is not replayable.</summary>
     public required string RuleSetVersion { get; init; }
 
@@ -333,6 +340,7 @@ public static class PolicyPackValidator
     public const string CaptureBoundMissing = "pack.capture_text_bound_missing";
     public const string CaptureFullRequiresSecondApprover = "pack.capture_text_full_requires_second_approver";
     public const string EvidenceRetentionMissing = "pack.evidence_retention_missing";
+    public const string ReviewDeadlineOutOfBounds = "pack.review_deadline_out_of_bounds";
     public const string RuleSetVersionMissing = "pack.rule_set_version_missing";
     public const string ScorerVersionMissing = "pack.scorer_version_missing";
     public const string AuthorMissing = "pack.author_missing";
@@ -410,6 +418,14 @@ public static class PolicyPackValidator
         if (pack.EvidenceRetentionDays <= 0)
         {
             violations.Add(Violation(EvidenceRetentionMissing, nameof(PolicyPack.EvidenceRetentionDays), "Evidence retention must be a positive number of days."));
+        }
+
+        if (pack.ReviewDeadline < TimeSpan.FromHours(1) || pack.ReviewDeadline > TimeSpan.FromDays(7))
+        {
+            violations.Add(Violation(
+                ReviewDeadlineOutOfBounds,
+                nameof(PolicyPack.ReviewDeadline),
+                "A review deadline must be between 1 hour and 7 days. Shorter is a hold, longer is an abandoned queue."));
         }
 
         if (previous is not null)

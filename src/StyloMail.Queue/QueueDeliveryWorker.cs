@@ -361,6 +361,11 @@ public sealed class QueueDeliveryWorker
                 if (_queueOptions.TimeProvider.GetUtcNow() >= nextRecovery)
                 {
                     await _store.RecoverAsync(cancellationToken: inFlight.Token).ConfigureAwait(false);
+
+                    // A review deadline is a human deadline, not a delivery timer. The sweep is on
+                    // the same bounded recovery tick so it survives restart without a second
+                    // scheduler, and it escalates to quarantine only; it never releases.
+                    await _store.SweepReviewDeadlinesAsync(inFlight.Token).ConfigureAwait(false);
                     nextRecovery = _queueOptions.TimeProvider.GetUtcNow() + _workerOptions.RecoveryInterval;
                 }
 

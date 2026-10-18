@@ -139,6 +139,7 @@ internal static class PolicyEndpoints
             ActionCeiling = request.ActionCeiling,
             CaptureText = request.CaptureText,
             EvidenceRetentionDays = request.EvidenceRetentionDays,
+            ReviewDeadline = request.ReviewDeadline ?? TimeSpan.FromHours(24),
             RuleSetVersion = request.RuleSetVersion,
             ScorerVersion = request.ScorerVersion,
             EffectiveFrom = request.EffectiveFrom,

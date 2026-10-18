@@ -13,6 +13,9 @@ public enum PolicyActionKind
     UnblockSender = 7,
     MonitorAllMail = 8,
     CaptureText = 9,
+    ReleaseReview = 10,
+    QuarantineReview = 11,
+    RejectReview = 12,
 }
 
 /// <summary>Whether an action can be offered at all right now.</summary>
@@ -76,6 +79,23 @@ public sealed record ConsequenceInputDescriptor
 /// requested action with no state yet, and the honest descriptor says so rather than hiding it.
 /// </para>
 /// </remarks>
+/// <summary>The review terms a Review capability carries, and the console renders.</summary>
+public sealed record PolicyReviewTerms
+{
+    /// <summary>Disclose-safe queue name, or <c>unknown</c> when it cannot be disclosed.</summary>
+    public required string Queue { get; init; }
+
+    public string? Owner { get; init; }
+
+    public required TimeSpan Deadline { get; init; }
+
+    /// <summary>What happens at the deadline. Quarantine in v1; never a release.</summary>
+    public required string EscalationAction { get; init; }
+
+    /// <summary>The actions available to the reviewer.</summary>
+    public required string NextAction { get; init; }
+}
+
 public sealed record PolicyActionCapability
 {
     public required PolicyActionKind Kind { get; init; }
@@ -113,6 +133,9 @@ public sealed record PolicyActionCapability
 
     /// <summary>e.g. <c>none</c>, <c>review_queue</c>, <c>sender_owner</c>, <c>tenant_administrators</c>.</summary>
     public required string NotificationEffect { get; init; }
+
+    /// <summary>Review terms, present only for the Review action.</summary>
+    public PolicyReviewTerms? Review { get; init; }
 
     public required string ConsequenceTemplateId { get; init; }
 
@@ -228,18 +251,25 @@ public static class PolicyCapabilityCatalog
         new PolicyActionCapability
         {
             Kind = PolicyActionKind.Review,
-            Availability = PolicyCapabilityAvailability.NotAvailable,
-            DenialReason = "review_state_not_implemented",
+            Availability = PolicyCapabilityAvailability.Available,
             AuthorityTier = 2,
             Automatic = true,
             RequiresHumanApproval = true,
             RequiredPrivilege = "Review",
             Scopes = MessageScopes,
             ResultingState = PolicyResultingState.WithheldForReview,
-            Reversible = false,
+            Reversible = true,
             ReasonRequired = false,
             AuditEventKind = "decision.review",
             NotificationEffect = "review_queue",
+            Review = new PolicyReviewTerms
+            {
+                Queue = "review",
+                Owner = null,
+                Deadline = TimeSpan.FromHours(24),
+                EscalationAction = "quarantine",
+                NextAction = "release|quarantine|reject",
+            },
             ConsequenceTemplateId = "policy.review",
             ConsequenceTemplateVersion = 1,
             Inputs = [.. CommonInputs, .. ReviewInputs, .. EffectInputs],
@@ -356,6 +386,61 @@ public static class PolicyCapabilityCatalog
             ConsequenceTemplateId = "policy.monitor_all_mail",
             ConsequenceTemplateVersion = 1,
             Inputs = [.. CommonInputs, .. EffectInputs],
+        },
+        new PolicyActionCapability
+        {
+            Kind = PolicyActionKind.ReleaseReview,
+            Availability = PolicyCapabilityAvailability.Available,
+            AuthorityTier = 2,
+            Automatic = false,
+            RequiresHumanApproval = false,
+            RequiredPrivilege = "Review",
+            Scopes = MessageScopes,
+            ResultingState = PolicyResultingState.Delivered,
+            Reversible = false,
+            ReasonRequired = true,
+            AuditEventKind = "review.release",
+            NotificationEffect = "none",
+            ConsequenceTemplateId = "policy.release_review",
+            ConsequenceTemplateVersion = 1,
+            Inputs = [.. CommonInputs, .. ReviewInputs, .. EffectInputs],
+        },
+        new PolicyActionCapability
+        {
+            Kind = PolicyActionKind.QuarantineReview,
+            Availability = PolicyCapabilityAvailability.Available,
+            AuthorityTier = 3,
+            Automatic = false,
+            RequiresHumanApproval = false,
+            RequiredPrivilege = "Review",
+            Scopes = MessageScopes,
+            ResultingState = PolicyResultingState.Contained,
+            Reversible = true,
+            ReversalAction = PolicyActionKind.ReleaseQuarantine,
+            ReasonRequired = true,
+            AuditEventKind = "review.quarantine",
+            NotificationEffect = "review_queue",
+            ConsequenceTemplateId = "policy.quarantine_review",
+            ConsequenceTemplateVersion = 1,
+            Inputs = [.. CommonInputs, .. ReviewInputs, .. EffectInputs],
+        },
+        new PolicyActionCapability
+        {
+            Kind = PolicyActionKind.RejectReview,
+            Availability = PolicyCapabilityAvailability.Available,
+            AuthorityTier = 4,
+            Automatic = false,
+            RequiresHumanApproval = true,
+            RequiredPrivilege = "Administer",
+            Scopes = MessageScopes,
+            ResultingState = PolicyResultingState.Rejected,
+            Reversible = false,
+            ReasonRequired = true,
+            AuditEventKind = "review.reject",
+            NotificationEffect = "tenant_administrators",
+            ConsequenceTemplateId = "policy.reject_review",
+            ConsequenceTemplateVersion = 1,
+            Inputs = [.. CommonInputs, .. ReviewInputs, .. EffectInputs],
         },
         new PolicyActionCapability
         {

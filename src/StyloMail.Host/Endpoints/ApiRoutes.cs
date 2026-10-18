@@ -118,6 +118,23 @@ public static class ApiRoutes
         v1.MapGet("/policy/capabilities", PolicyEndpoints.Capabilities)
             .RequireAuthorization(HostPolicies.Review);
 
+        // Review queue. Reads and the reversible decisions are Review; Reject is a permanent
+        // refusal and requires Administer. Every mutation takes a reason in the body.
+        v1.MapGet("/policy/reviews", ReviewEndpoints.ListAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/policy/reviews/{queueId}", ReviewEndpoints.GetAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPost("/policy/reviews/{queueId}/release", ReviewEndpoints.ReleaseAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPost("/policy/reviews/{queueId}/quarantine", ReviewEndpoints.QuarantineAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPost("/policy/reviews/{queueId}/reject", ReviewEndpoints.RejectAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
         v1.MapPost("/feedback", FeedbackEndpoints.SubmitAsync)
             .RequireAuthorization(HostPolicies.Feedback);
 

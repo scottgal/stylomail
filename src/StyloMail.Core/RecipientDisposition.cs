@@ -10,6 +10,9 @@ public enum DeliveryState
     Delivered = 4,
     RetryScheduled = 5,
     TerminalFailure = 6,
+
+    /// <summary>Withheld for a human decision, with a stored deadline. Never claimable for delivery.</summary>
+    Review = 7,
 }
 
 /// <summary>

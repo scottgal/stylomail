@@ -81,7 +81,10 @@ internal sealed class QueueHarness : IDisposable
         int? hopCount = 0,
         int payloadBytes = 64,
         DeliveryState state = DeliveryState.Queued,
-        DateTimeOffset? reEvaluateBy = null)
+        DateTimeOffset? reEvaluateBy = null,
+        DateTimeOffset? reviewDeadline = null,
+        ReviewOpening? reviewOpening = null,
+        bool includeReviewOpening = true)
         => new()
         {
             TenantId = tenantId,
@@ -96,9 +99,13 @@ internal sealed class QueueHarness : IDisposable
                 Recipient = r,
                 State = state,
                 ReEvaluateBy = reEvaluateBy,
+                ReviewDeadline = reviewDeadline,
             })],
             IdempotencyKey = idempotencyKey,
             HopCount = hopCount,
+            ReviewOpening = state == DeliveryState.Review && includeReviewOpening
+                ? reviewOpening ?? DefaultReviewOpening()
+                : null,
         };
 
     /// <summary>Accepts a submission and asserts it really was accepted.</summary>
@@ -108,6 +115,21 @@ internal sealed class QueueHarness : IDisposable
         Assert.True(result.IsAccepted, $"Expected acceptance but got {result.Admission}: {result.Detail}");
         return result.QueueId!;
     }
+
+    public static ReviewOpening DefaultReviewOpening() => new()
+    {
+        AssessmentId = "asm-review-1",
+        PackId = "pack-commerce",
+        PackVersion = "1.0.0",
+        RuleSetId = "rules-commerce",
+        RuleSetVersion = "rules/1",
+        RuleId = "rule-payment-redirection",
+        RuleVersion = 1,
+        ReasonCode = "policy.payment_redirection_review",
+        Reason = "gray zone",
+        EvidenceSnapshotDigest = new string('a', 64),
+        DecidedAt = Start,
+    };
 
     public static QueueRecipientState By(QueueItem item, string recipient)
         => item.Recipients.Single(r =>

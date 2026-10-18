@@ -38,6 +38,9 @@ public enum MailAction
 
     /// <summary>Responsibility declined permanently, before acceptance.</summary>
     Reject = 4,
+
+    /// <summary>Withheld for an authenticated human review decision.</summary>
+    Review = 5,
 }
 
 /// <summary>Where one recipient's copy of a message has got to.</summary>
@@ -50,6 +53,9 @@ public enum DeliveryState
     Delivered = 4,
     RetryScheduled = 5,
     TerminalFailure = 6,
+
+    /// <summary>Withheld for an authenticated human review decision.</summary>
+    Review = 7,
 }
 
 /// <summary>Whether a signal was actually produced, and over what coverage.</summary>

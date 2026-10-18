@@ -290,6 +290,24 @@ public sealed class PolicyPackTests
     }
 
     [Fact]
+    public void The_default_review_deadline_is_24_hours()
+    {
+        Assert.Equal(TimeSpan.FromHours(24), PolicyFixtures.Pack().ReviewDeadline);
+    }
+
+    [Theory]
+    [InlineData(0, 30)]
+    [InlineData(8, 0)]
+    public void A_review_deadline_outside_the_bounds_is_refused(int days, int minutes)
+    {
+        var validation = PolicyPackValidator.Validate(
+            PolicyFixtures.Pack() with { ReviewDeadline = TimeSpan.FromDays(days) + TimeSpan.FromMinutes(minutes) });
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Violations, violation => violation.Code == PolicyPackValidator.ReviewDeadlineOutOfBounds);
+    }
+
+    [Fact]
     public void A_pack_without_an_effective_date_is_refused()
     {
         var validation = PolicyPackValidator.Validate(

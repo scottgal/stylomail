@@ -13,6 +13,9 @@ public enum QueueListingFilter
 
     /// <summary>Items with at least one recipient currently quarantined.</summary>
     Quarantined = 2,
+
+    /// <summary>Items with at least one recipient awaiting a human review decision.</summary>
+    Review = 3,
 }
 
 /// <summary>

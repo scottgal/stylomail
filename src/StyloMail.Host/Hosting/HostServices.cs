@@ -1129,6 +1129,12 @@ public static class HostServices
             SqliteSchema.EnsureCreated(connection);
         }
 
-        await services.GetRequiredService<QueueStore>().InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var queue = services.GetRequiredService<QueueStore>();
+        await queue.InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        // Catch up any review deadline that elapsed while the host was down. The delivery worker
+        // repeats this on its recovery tick; doing it once at startup means a host that boots with
+        // an overdue review does not wait for the first tick to escalate it.
+        await queue.SweepReviewDeadlinesAsync(cancellationToken).ConfigureAwait(false);
     }
 }

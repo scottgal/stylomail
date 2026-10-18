@@ -259,6 +259,7 @@ public sealed class DecisionView
         MailAction.Quarantine => "This email was stopped before delivery for review.",
         MailAction.Defer => "This email was not accepted yet; the sender can try again later.",
         MailAction.Reject => "This email was not accepted for delivery.",
+        MailAction.Review => "This email is awaiting human review; no final delivery decision has been made.",
         _ => "StyloMail recorded a decision for this email.",
     };
 }

@@ -449,8 +449,17 @@ public sealed class PolicySurfaceTests
         }
 
         var review = Assert.Single(response.Capabilities, capability => capability.Kind == PolicyActionKind.Review);
-        Assert.Equal(PolicyCapabilityAvailability.NotAvailable, review.Availability);
-        Assert.Equal("review_state_not_implemented", review.DenialReason);
+        Assert.Equal(PolicyCapabilityAvailability.Available, review.Availability);
+        Assert.Null(review.DenialReason);
+        Assert.NotNull(review.Review);
+        Assert.Equal("quarantine", review.Review!.EscalationAction);
+
+        Assert.Contains(response.Capabilities, capability => capability.Kind == PolicyActionKind.ReleaseReview);
+        Assert.Contains(response.Capabilities, capability => capability.Kind == PolicyActionKind.QuarantineReview);
+        var rejectReview = Assert.Single(
+            response.Capabilities,
+            capability => capability.Kind == PolicyActionKind.RejectReview);
+        Assert.Equal("Administer", rejectReview.RequiredPrivilege);
 
         var monitor = Assert.Single(response.Capabilities, capability => capability.Kind == PolicyActionKind.MonitorAllMail);
         Assert.Equal(PolicyCapabilityAvailability.NotAvailable, monitor.Availability);

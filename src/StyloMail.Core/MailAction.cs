@@ -29,4 +29,11 @@ public enum MailAction
 
     /// <summary>Decline responsibility <em>permanently</em>, before acceptance, under explicit policy.</summary>
     Reject = 4,
+
+    /// <summary>
+    /// Delivery is withheld and an authenticated human must decide. Not a longer hold and not a
+    /// quarantine: a hold re-checks automatically, quarantine contains the message, and Review says
+    /// the deterministic rule could not finish the decision.
+    /// </summary>
+    Review = 5,
 }

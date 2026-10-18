@@ -1,7 +1,7 @@
 # MailAction.Review: the bounded review state
 
-Status: **design only, no code.** Requested by `overview-` on 18 Oct 2026. Phase 3's authoritative
-composition depends on this ruling; nothing here is implemented.
+Status: **approved, implementation in progress.** Rulings a-f accepted 18 Oct 2026. Phase 3's
+authoritative composition still waits for this slice to be green.
 
 ## 1. Semantics and composition
 
@@ -71,6 +71,17 @@ Rules:
 - **Resolution is per recipient**, like delivery. A multi-recipient message can have one recipient
   released and another quarantined; the queue's existing per-recipient model already supports that,
   and the item roll-up reports the mixture.
+- **A review transition never steals a live sibling delivery.** If another recipient is in flight,
+  the item is `Delivering` and leased. The transition writes the review recipient and the audit
+  fields but leaves the item state and lease to the worker that owns them, or to the lease expiry.
+  Re-rolling the item to `Queued` while a worker holds it, or clearing the lease, would let a second
+  worker claim the same item and duplicate a delivery. The owner keeps authority until recovery
+  actually reclaims the lease, not until its timestamp passes: an expired but unreclaimed lease is
+  still preserved, and late renewal/completion remain valid. Only the recovery path may take it.
+- **Human review does not consume a transport retry.** A review transition increments no attempt
+  counter. Only an actual delivery attempt counts against `MaxAttemptsPerRecipient`, so releasing a
+  review and then hitting one temporary transport failure schedules a retry rather than exhausting
+  the budget.
 
 The queue methods, all tenant-scoped and transactional:
 
@@ -109,9 +120,13 @@ For each open review: queue id, internal message id, assessment id, recipient(s)
 decision record (verdict, pack id/version, rule set version, deciding rule id/version, threshold,
 reason code/message, missing dimensions, coverage, evidence digest), the stored review deadline,
 the review queue/owner, the escalation rule, and the allowed next actions with their consequences.
-A null policy record is shown as **"No policy pack was active"**; it is not rendered as Permit and
-no rule or threshold is invented. A Review queue state can only be created by a pack decision, so a
-null record on a Review item is an integrity anomaly the surface names rather than explains away.
+The surface reads the **opening decision** by its assessment id, never the latest decision for the
+message. A reassessment therefore cannot rewrite why the review was opened. If the ledger row has
+been pruned, `Policy` is null and `PolicyRecordMissing` is true while the opening reference still
+names the pack, rule, reason and digest. A row that predates the opening chain sets
+`LegacyReviewOpeningMissing`; the surface names it and does not fabricate a record. A null policy
+record is shown as **"No policy pack was active"**; it is not rendered as Permit and no rule or
+threshold is invented.
 
 ### Routes
 
@@ -121,9 +136,11 @@ null record on a Review item is an integrity anomaly the surface names rather th
 | `/v1/policy/reviews/{queueId}` | GET | Review |
 | `/v1/policy/reviews/{queueId}/release` | POST | Review |
 | `/v1/policy/reviews/{queueId}/quarantine` | POST | Review |
-| `/v1/policy/reviews/{queueId}/reject` | POST | Review |
+| `/v1/policy/reviews/{queueId}/reject` | POST | **Administer** (ruling b) |
 
-Every mutation takes a reason in the body and an actor from the authenticated principal. The
+Every mutation takes a reason in the body and an actor from the authenticated principal. Reject is a
+permanent refusal, not a routine reviewer action, so it carries `Administer`; Release and
+Quarantine are reversible and stay on `Review`. The
 response is the same typed shape as the read, with the new state, so the console does not have to
 guess. Tenant comes from the principal and is never a parameter.
 
@@ -151,15 +168,24 @@ Two durable records, both required:
 1. **Queue attempt history** (`queue_attempt`): `ReviewReleased`, `ReviewQuarantined`,
    `ReviewRejected` and the sweep's `ReviewExpired`, each with actor, reason and timestamp. This is
    the delivery-side history and already survives restart.
-2. **Policy review events** (new `host_policy_review_event`): one row per transition with tenant,
-   queue id, assessment id, from-state, to-state, actor, reason, timestamp, pack id/version, rule id
-   and version, and the evidence digest. This is the operator-facing audit: "who decided, on what
-   policy, and when".
+2. **The opening record** (new `queue_review_opening`, queue-owned): one immutable row per review
+   naming the assessment id, pack id/version, rule-set id/version, deciding rule id/version, reason
+   and evidence digest. It is written in the same transaction as the Review admission, and a Review
+   admission without it is refused. This is what survives a reassessment or a pruned ledger.
+3. **Policy review events** (new `queue_review_event`, queue-owned): one row per transition with
+   tenant, queue id, recipient, assessment id, from-state, to-state, actor, reason, timestamp, an
+   opaque policy reference naming the pack/rule versions, and the opening event id. The opening
+   event (`review.opened`) is the first row and its id is the opening reference every later event
+   carries, so a human resolution and the deadline sweep name the same decision. The queue owns it
+   because the audit must commit with the state it describes; a Host-side table would need a
+   two-phase write. This is the operator-facing audit: "who decided, on what policy, and when".
 
-The Host database and the queue schema are one SQLite file in this deployment, so the review event
-and the queue state change are committed in one transaction. If a future deployment separates them,
-the event becomes an outbox row in the queue's transaction and the Host drains it; a state change
-with no audit row is not acceptable.
+The Host database and the queue schema are one SQLite file in this deployment, so the event and the
+state change are committed in one transaction. **Outbox rule for a future split:** if the queue and
+the Host store are ever separated, a single-transaction write is no longer available, so the queue
+writes an outbox row in the same transaction as the state change and the Host drains it into its own
+audit store. Do not build the outbox now; do not split the stores without it. A state change with no
+audit row is not acceptable in either arrangement.
 
 A reviewer's resolution is a human action. Recording it as a feedback label is **not** part of this
 slice: feedback writes remain read-only until Phase 4, and this design adds only the review event.
@@ -172,8 +198,8 @@ slice: feedback writes remain read-only until Phase 4, and this design adds only
 | Composition table, ceiling behaviour, `PolicyPack.ReviewDeadline` and its validation | `policy-` | Policy's authority |
 | Mapping `MailAction.Review` to queue admission and the stored deadline | Assessment composition (`overview-` assigns) | The composition root maps actions to dispositions |
 | Queue state, claim exclusion, roll-up, deadline sweep, resolutions, listing filter | `queue-` | Durable state and spool |
-| Queue attempt outcomes and the review event table | `queue-` (attempts) and Host (`host_policy_review_event`) | State and audit are written together |
-| Host routes, contracts, auth split, review-event table, decision-ledger join | `ingress-` by default; `overview-` assigns if that lane stays exited | Host surface ownership |
+| Queue attempt outcomes and `queue_review_event` | `queue-` | State and audit are written together |
+| Host review routes, contracts, auth split and decision-ledger join | **`policy-` for this slice** (ruling e), with `review-` verifying the queue changes | `ingress-` is exited; the ownership is temporary and returns to the queue/Host owners when they are live |
 | Review queue UI, capability binding, pinned copy | `desktop-` | Console |
 | Delivery dispatch | `queue-`, no transport change | The delivery worker already skips non-queued states |
 | Ruling and merge | `overview-` | Design authority |
@@ -187,9 +213,12 @@ changes that need explicit coordination because they cross Core and Queue.
 
 - Core enum members appended: `MailAction.Review = 5`, `DeliveryState.Review = 7`.
 - `queue_recipient.review_deadline TEXT NULL` plus
-  `ix_queue_recipient_review (state, review_deadline)`. Existing rows are untouched; a null
-  deadline means the row predates Review.
-- `host_policy_review_event` table and its tenant/time index.
+  `ix_queue_recipient_review (state, review_deadline)`.
+- `queue_review_opening` and `queue_review_event.opening_event_id`, applied by an additive
+  v4/v5-to-v6 queue migration. Existing rows are untouched; a review row with no opening is named
+  `legacy_review_opening_missing` rather than backfilled.
+- `queue_review_opening` table, and `queue_review_event.opening_event_id`, owned by the queue, with
+  an additive v4/v5-to-v6 migration.
 - `PolicyPack.ReviewDeadline` is a payload field, not a column; existing packs read as the 24-hour
   default.
 
@@ -217,8 +246,10 @@ Composition:
 Queue:
 - A Review recipient is never claimed; roll-up returns Review, and Quarantined when mixed.
 - Release, Quarantine and Reject each move the recipient and append the right attempt outcome.
-- The sweep moves a due Review to Quarantine, is idempotent across two runs, and records actor
-  `policy-scheduler`; it never releases.
+- The sweep moves a due Review to Quarantine, is idempotent across two runs, records actor
+  `policy-scheduler`, and its event carries the opening event id and assessment id; it never releases.
+- A review admission with no opening decision is refused. After a reassessment, the review read
+  still resolves the opening assessment, pack, rule and reason.
 - A reviewer decision racing the sweep settles exactly once.
 - Restart before the deadline preserves Review and the deadline; restart after the deadline
   escalates on the first sweep.
