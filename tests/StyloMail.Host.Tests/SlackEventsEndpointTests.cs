@@ -122,6 +122,31 @@ public sealed class SlackEventsEndpointTests
         Assert.Empty(Intake(host).Waiting(8));
     }
 
+    [Theory]
+    [InlineData("9223372036854775807")]
+    [InlineData("-9223372036854775808")]
+    public async Task A_timestamp_outside_the_calendar_is_refused_rather_than_failing_the_request(string timestamp)
+    {
+        // The timestamp header is unauthenticated input, and long.TryParse accepts any Int64 while
+        // the calendar does not. The signature below is genuine for the string it covers, so the
+        // only fact that decides this answer is that the instant cannot be represented: it must
+        // arrive as an ordinary refusal, not as an exception raised before the comparison.
+        using var host = new TestHost().WithSlackIngress(Secret, OurBotId);
+        using var client = host.Anonymous();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, SlackEventsEndpoints.Route)
+        {
+            Content = new StringContent(MessageEvent, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add(SlackEventsEndpoints.TimestampHeader, timestamp);
+        request.Headers.Add(SlackEventsEndpoints.SignatureHeader, Sign(timestamp, MessageEvent));
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(Intake(host).Waiting(8));
+    }
+
     [Fact]
     public async Task The_challenge_handshake_is_echoed_back()
     {

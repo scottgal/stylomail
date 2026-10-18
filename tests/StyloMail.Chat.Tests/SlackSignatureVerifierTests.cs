@@ -107,4 +107,39 @@ public sealed class SlackSignatureVerifierTests
 
         Assert.Equal(SlackSignatureVerdict.MalformedSignature, verdict);
     }
+
+    [Theory]
+    [InlineData(long.MaxValue)]
+    [InlineData(long.MinValue)]
+    [InlineData(253_402_300_800)]  // One second after 9999-12-31T23:59:59Z, the last instant.
+    [InlineData(-62_135_596_801)]  // One second before 0001-01-01T00:00:00Z, the first instant.
+    public void A_timestamp_outside_the_calendar_is_refused_rather_than_thrown(long timestamp)
+    {
+        // long.TryParse accepts any Int64 and DateTimeOffset.FromUnixTimeSeconds throws outside the
+        // calendar, so a caller who controls this header could reach an unhandled exception before
+        // the signature was ever compared. An unrepresentable instant is not a timestamp at all, so
+        // it is refused in the same shape as a value that is not a number.
+        var verdict = SlackSignatureVerifier.Verify(
+            Secret, timestamp.ToString(), Sign(timestamp.ToString(), Body), Body, Now);
+
+        Assert.Equal(SlackSignatureVerdict.MalformedSignature, verdict);
+    }
+
+    [Theory]
+    [InlineData("-62135596800")]  // DateTimeOffset.MinValue.ToUnixTimeSeconds()
+    [InlineData("253402300799")]  // DateTimeOffset.MaxValue.ToUnixTimeSeconds()
+    public void The_boundaries_of_the_calendar_are_representable_and_refused_as_stale(string timestamp)
+    {
+        // The control for the range check above. These two instants are the outermost ones the type
+        // accepts, so they must not be collapsed into MalformedSignature: that would make an age
+        // decision out of a representability one. The round trip is what keeps the literals from
+        // drifting away from the range the check uses.
+        var boundary = long.Parse(timestamp, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(boundary, DateTimeOffset.FromUnixTimeSeconds(boundary).ToUnixTimeSeconds());
+
+        var verdict = SlackSignatureVerifier.Verify(
+            Secret, timestamp, Sign(timestamp, Body), Body, Now);
+
+        Assert.Equal(SlackSignatureVerdict.StaleRequest, verdict);
+    }
 }

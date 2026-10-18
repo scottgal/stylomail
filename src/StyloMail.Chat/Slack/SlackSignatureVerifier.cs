@@ -39,6 +39,24 @@ public static class SlackSignatureVerifier
     /// <summary>Slack's own guidance, and the window this replicates.</summary>
     public static readonly TimeSpan Tolerance = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// The outermost instants <see cref="DateTimeOffset"/> can represent, in Unix seconds.
+    /// </summary>
+    /// <remarks>
+    /// <b>Checked rather than caught.</b> <c>FromUnixTimeSeconds</c> throws
+    /// <see cref="ArgumentOutOfRangeException"/> outside this range, and a signed 64-bit integer spans
+    /// far more than the calendar does. The timestamp header is unauthenticated, so any caller can
+    /// send <see cref="long.MaxValue"/>: attempting the conversion first turns that request into an
+    /// unhandled exception and a 500 before the signature is compared, which is a refusal that skipped
+    /// the evidence. Derived from the type itself so the bound cannot drift away from the range the
+    /// conversion actually accepts.
+    /// </remarks>
+    private static readonly long MinUnixSeconds = DateTimeOffset.MinValue.ToUnixTimeSeconds();
+
+    /// <summary>The latest instant <see cref="DateTimeOffset"/> can represent, in Unix seconds.</summary>
+    /// <remarks>Same derivation and reason as <see cref="MinUnixSeconds"/>.</remarks>
+    private static readonly long MaxUnixSeconds = DateTimeOffset.MaxValue.ToUnixTimeSeconds();
+
     public static SlackSignatureVerdict Verify(
         string signingSecret,
         string? timestamp,
@@ -56,8 +74,14 @@ public static class SlackSignatureVerifier
             return SlackSignatureVerdict.MalformedSignature;
         }
 
-        if (!long.TryParse(timestamp, out var sentAtUnix))
+        if (!long.TryParse(timestamp, out var sentAtUnix)
+            || sentAtUnix < MinUnixSeconds
+            || sentAtUnix > MaxUnixSeconds)
         {
+            // A value that is not a number and a value that is not an instant are the same kind of
+            // fact: this is not a timestamp the platform made. Refused in one shape, so the caller
+            // learns only that they could not prove themselves, exactly as for the other malformed
+            // inputs above.
             return SlackSignatureVerdict.MalformedSignature;
         }
 
