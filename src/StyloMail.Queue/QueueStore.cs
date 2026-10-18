@@ -2121,8 +2121,10 @@ public sealed partial class QueueStore
     /// A review decision concerns one recipient. If another recipient is in flight, the item is
     /// leased to a worker and its state is Delivering; re-rolling it to Queued while keeping the
     /// owner would let a second worker claim the same item, and clearing the owner would let it do
-    /// so immediately. While the lease is live the only safe write is the audit fields: the lease
-    /// owner or expiry re-rolls the item when the delivery settles or recovery reclaims it.
+    /// so immediately. The queue's ownership contract is that the owner retains authority until
+    /// recovery actually reclaims the lease, not until the timestamp passes, so this preserves a
+    /// non-null owner regardless of expiry. Late RenewLease and Complete remain valid; only the
+    /// recovery sweep may take an unreclaimed lease away.
     /// </remarks>
     private static void WriteReviewItemScheduling(
         SqliteConnection connection,
@@ -2133,9 +2135,7 @@ public sealed partial class QueueStore
         DateTimeOffset now)
     {
         if (ReadItemHeader(connection, transaction, queueId) is { } header
-            && header.LeaseOwner is not null
-            && header.LeaseExpiresAt is { } expiry
-            && expiry > now)
+            && header.LeaseOwner is not null)
         {
             using var preserve = connection.CreateCommand();
             preserve.Transaction = transaction;

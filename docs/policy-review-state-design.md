@@ -75,7 +75,9 @@ Rules:
   the item is `Delivering` and leased. The transition writes the review recipient and the audit
   fields but leaves the item state and lease to the worker that owns them, or to the lease expiry.
   Re-rolling the item to `Queued` while a worker holds it, or clearing the lease, would let a second
-  worker claim the same item and duplicate a delivery.
+  worker claim the same item and duplicate a delivery. The owner keeps authority until recovery
+  actually reclaims the lease, not until its timestamp passes: an expired but unreclaimed lease is
+  still preserved, and late renewal/completion remain valid. Only the recovery path may take it.
 - **Human review does not consume a transport retry.** A review transition increments no attempt
   counter. Only an actual delivery attempt counts against `MaxAttemptsPerRecipient`, so releasing a
   review and then hitting one temporary transport failure schedules a retry rather than exhausting

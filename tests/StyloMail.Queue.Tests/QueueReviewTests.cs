@@ -237,6 +237,60 @@ public sealed class QueueReviewTests
         Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
     }
 
+    [Theory]
+    [InlineData(ReviewResolution.Release)]
+    [InlineData(ReviewResolution.Quarantine)]
+    [InlineData(ReviewResolution.Reject)]
+    public async Task An_expired_but_unreclaimed_lease_survives_a_review_resolution(
+        ReviewResolution resolution)
+    {
+        using var h = new QueueHarness();
+        var queueId = await h.AcceptAsync(Mixed(QueueHarness.Start.AddHours(1)));
+
+        var lease = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(lease);
+
+        // Past the timestamp, but no recovery has run. Ownership has not moved.
+        h.Clock.Advance(TimeSpan.FromMinutes(6));
+
+        Assert.True(await h.Store.ResolveReviewAsync(
+            queueId, resolution, "reviewer-7", "sibling delivery is still owned"));
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        Assert.Equal(DeliveryState.Delivering, item.State);
+        Assert.Equal("worker-a", item.LeaseOwner);
+        Assert.True(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+        Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
+
+        var completion = await h.Store.CompleteAsync(
+            lease!, QueueHarness.Delivered("worker-a", "queued@example.test"));
+        Assert.Equal(QueueCompletionStatus.Applied, completion.Status);
+    }
+
+    [Fact]
+    public async Task An_expired_but_unreclaimed_lease_survives_the_sweep()
+    {
+        using var h = new QueueHarness();
+        var queueId = await h.AcceptAsync(Mixed(QueueHarness.Start.AddMinutes(1)));
+
+        var lease = await h.Store.ClaimNextAsync("worker-a");
+        Assert.NotNull(lease);
+
+        h.Clock.Advance(TimeSpan.FromMinutes(6));
+
+        Assert.Equal(1, await h.Store.SweepReviewDeadlinesAsync());
+
+        var item = (await h.Store.GetItemAsync(queueId))!;
+        Assert.Equal(DeliveryState.Delivering, item.State);
+        Assert.Equal("worker-a", item.LeaseOwner);
+        Assert.True(await h.Store.RenewLeaseAsync(queueId, "worker-a"));
+        Assert.Null(await h.Store.ClaimNextAsync("worker-b"));
+
+        var completion = await h.Store.CompleteAsync(
+            lease!, QueueHarness.Delivered("worker-a", "queued@example.test"));
+        Assert.Equal(QueueCompletionStatus.Applied, completion.Status);
+    }
+
     [Fact]
     public async Task A_human_resolution_does_not_consume_a_transport_retry()
     {
