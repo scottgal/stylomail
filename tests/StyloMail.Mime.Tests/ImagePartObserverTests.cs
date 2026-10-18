@@ -94,6 +94,7 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(1, observer.Calls);
         Assert.DoesNotContain(result.Evidence, e => e.SignalId.StartsWith("deterministic.image_", StringComparison.Ordinal));
     }
@@ -128,6 +129,8 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.IsType<InvalidOperationException>(observer.Failure);
+        Assert.Equal("observer failure", observer.Failure!.Message);
         Assert.Equal(baseline.Evidence.Select(e => e.SignalId), result.Evidence.Select(e => e.SignalId));
         Assert.NotNull(retained);
         Assert.False(retained!.IsValid);
@@ -146,6 +149,23 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
+        Assert.Equal(baseline.Evidence.Select(e => e.SignalId), result.Evidence.Select(e => e.SignalId));
+        Assert.DoesNotContain(result.Evidence, e => e.SignalId.StartsWith("deterministic.image_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LazyOversizedRowsAreRejectedAfterFourteenMoveNexts()
+    {
+        var raw = ImageMessage.WithImages(("image/png", "x.png", ImageBytes(), "base64"));
+        var baseline = Analyze(raw, observer: null);
+        var rows = new LazyOversizedRows();
+        var observer = new RecordingObserver { OnComplete = _ => rows };
+
+        var result = Analyze(raw, observer);
+
+        Assert.Null(observer.Failure);
+        Assert.Equal(14, rows.MoveNextCalls);
         Assert.Equal(baseline.Evidence.Select(e => e.SignalId), result.Evidence.Select(e => e.SignalId));
         Assert.DoesNotContain(result.Evidence, e => e.SignalId.StartsWith("deterministic.image_", StringComparison.Ordinal));
     }
@@ -165,6 +185,7 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(baseline.Evidence.Select(e => e.SignalId), result.Evidence.Select(e => e.SignalId));
     }
 
@@ -177,7 +198,32 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(baseline.Evidence.Select(e => e.SignalId), result.Evidence.Select(e => e.SignalId));
+    }
+
+    [Fact]
+    public void SourcesAreInvalidatedBeforeReturnedRowsAreEnumerated()
+    {
+        var raw = ImageMessage.WithImages(("image/png", "x.png", ImageBytes(), "base64"));
+        ImagePartSource? source = null;
+        var rows = new ValidityProbeRows();
+        var observer = new RecordingObserver
+        {
+            OnComplete = parts =>
+            {
+                source = parts[0];
+                rows.Source = parts[0];
+                return rows;
+            },
+        };
+
+        Analyze(raw, observer);
+
+        Assert.Null(observer.Failure);
+        Assert.NotNull(source);
+        Assert.False(rows.SawValidAfterComplete);
+        Assert.False(source!.IsValid);
     }
 
     [Fact]
@@ -189,18 +235,14 @@ public sealed class ImagePartObserverTests
         var raw = ImageMessage.WithImages(images);
         var observer = new RecordingObserver();
 
-        observer.OnComplete = parts =>
-        {
-            Assert.Equal(130, parts.Count);
-            Assert.Equal(parts.Count, parts.Select(p => p.Ordinal).Distinct().Count());
-            Assert.All(parts, p => Assert.True(p.Ordinal > 0));
-            return [];
-        };
-
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(1, observer.Calls);
+        Assert.NotNull(observer.Parts);
         Assert.Equal(130, observer.Parts!.Count);
+        Assert.Equal(130, observer.Parts.Select(p => p.Ordinal).Distinct().Count());
+        Assert.All(observer.Parts, p => Assert.True(p.Ordinal > 0));
         Assert.Equal(128, result.Message!.Attachments.Count);
     }
 
@@ -212,6 +254,7 @@ public sealed class ImagePartObserverTests
 
         var result = Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(1, observer.Calls);
         Assert.Empty(observer.Parts!);
         Assert.DoesNotContain(result.Evidence, e => e.SignalId.StartsWith("deterministic.image_", StringComparison.Ordinal));
@@ -225,6 +268,7 @@ public sealed class ImagePartObserverTests
 
         Analyze(raw, observer);
 
+        Assert.Null(observer.Failure);
         Assert.Equal(1, observer.Calls);
         Assert.Empty(observer.Parts!);
     }
@@ -241,6 +285,8 @@ public sealed class ImagePartObserverTests
             ImageMessage.WithImages(("image/jpeg", "b.jpg", ImageBytes(), "base64")), second));
         var results = await Task.WhenAll(firstTask, secondTask);
 
+        Assert.Null(first.Failure);
+        Assert.Null(second.Failure);
         Assert.Equal(1, first.Calls);
         Assert.Equal(1, second.Calls);
         Assert.Single(first.Parts!);
@@ -337,6 +383,91 @@ public sealed class ImagePartObserverTests
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
+    /// <summary>A lazy, lying list: Count is huge, and it yields 14 rows before throwing.</summary>
+    private sealed class LazyOversizedRows : IReadOnlyList<Evidence>
+    {
+        public int MoveNextCalls { get; private set; }
+
+        public Evidence this[int index] => throw new NotSupportedException();
+
+        public int Count => int.MaxValue;
+
+        public IEnumerator<Evidence> GetEnumerator() => new Enumerator(this);
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private sealed class Enumerator(LazyOversizedRows owner) : IEnumerator<Evidence>
+        {
+            public Evidence Current { get; private set; } = Row();
+
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                owner.MoveNextCalls++;
+                if (owner.MoveNextCalls <= 14)
+                {
+                    Current = Row();
+                    return true;
+                }
+
+                throw new InvalidOperationException("the analyzer must stop at 14");
+            }
+
+            public void Reset() => throw new NotSupportedException();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    /// <summary>Records whether a source was still valid when its rows were first enumerated.</summary>
+    private sealed class ValidityProbeRows : IReadOnlyList<Evidence>
+    {
+        public ValidityProbeRows()
+        {
+        }
+
+        public ImagePartSource? Source { get; set; }
+
+        public bool SawValidAfterComplete { get; private set; }
+
+        public Evidence this[int index] => throw new NotSupportedException();
+
+        public int Count => 0;
+
+        public IEnumerator<Evidence> GetEnumerator() => new Enumerator(this);
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private sealed class Enumerator(ValidityProbeRows owner) : IEnumerator<Evidence>
+        {
+            private int _moved;
+
+            public Evidence Current => Row();
+
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                if (_moved++ > 0)
+                {
+                    return false;
+                }
+
+                owner.SawValidAfterComplete = owner.Source?.IsValid ?? true;
+                return false;
+            }
+
+            public void Reset() => throw new NotSupportedException();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
 }
 
 /// <summary>Builds multipart/mixed messages with image attachments for the observer seam.</summary>
@@ -362,7 +493,7 @@ internal static class ImageMessage
             builder.Append(image.Encoding.Equals("base64", StringComparison.OrdinalIgnoreCase)
                 ? Convert.ToBase64String(image.Bytes, Base64FormattingOptions.InsertLineBreaks)
                 : QuotedPrintable(image.Bytes));
-            builder.Append("\r\n\r\n");
+            builder.Append("\r\n");
         }
 
         builder.Append("--img--\r\n");
@@ -388,6 +519,13 @@ internal static class ImageMessage
 
             builder.Append(token);
             lineLength += token.Length;
+        }
+
+        // End with a soft line break so the CRLF that precedes the MIME boundary is not decoded
+        // as part of the body.
+        if (lineLength > 0)
+        {
+            builder.Append("=\r\n");
         }
 
         return builder.ToString();

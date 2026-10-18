@@ -440,24 +440,36 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
                 sources[index] = new ImagePartSource(parts[index], scope);
             }
 
-            var returned = observer.Complete(sources);
+            IReadOnlyList<Evidence>? returned;
+            try
+            {
+                returned = observer.Complete(sources);
+            }
+            finally
+            {
+                // The observer may hold sources only during Complete. Invalidate immediately on
+                // return (or throw), not after the rows have been enumerated or appended.
+                scope.Invalidate();
+            }
+
             if (returned is null)
             {
                 return;
             }
 
-            // Materialise before appending: a list whose enumeration throws, or one that is
-            // oversized or contains a row outside the deterministic image vocabulary, contributes
-            // nothing at all rather than a partial set.
-            var rows = returned.ToArray();
-            if (rows.Length > MaximumImageEvidenceRows)
-            {
-                return;
-            }
-
-            foreach (var row in rows)
+            // Do not trust Count or materialise the whole list. Enumerate at most one row beyond
+            // the cap, so an unbounded or lying IReadOnlyList cannot allocate or spin here. A
+            // fourteenth row rejects the whole result without appending anything.
+            var rows = new List<Evidence>(MaximumImageEvidenceRows + 1);
+            foreach (var row in returned)
             {
                 if (!IsAcceptableImageEvidence(row))
+                {
+                    return;
+                }
+
+                rows.Add(row!);
+                if (rows.Count > MaximumImageEvidenceRows)
                 {
                     return;
                 }
