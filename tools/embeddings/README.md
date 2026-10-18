@@ -295,6 +295,16 @@ fastest, and it had the highest verified rate. qwen3.8 is excluded on this host:
 card is spilling, and 134 s per conversation is not a teacher. gemma4:26b's five JSON failures are
 being tested against Ollama structured outputs before the model is dismissed.
 
+**Correction, because the first benign figure was wrong.** The pilot's "8 of 8 verified" for benign
+types was not verification: the generator only verified element types, so benign conversations were
+kept with no check at all. Benign conversations are now verified by a second prompt that asks whether
+any turn contains any element, and a yes discards the row.
+
+**Prompt revision 2** plans first (persona, goal, element turn, exact cue), shows two few-shot
+examples per element, requires the cue to appear verbatim in the labelled turn (checked in code before
+any model is asked), and has the verifier report `cue_present` as well as `contains`. A same-model
+check is labelled "second prompt (same model)" in the manifest, never "independent verifier".
+
 **The verification rate is the pilot's result, not an obstacle.** Three of five generations placed the
 element where an independent verifier disagreed, so most generated rows will be discarded by design.
 The number that matters is the verified yield per type, and only that number justifies scaling.
