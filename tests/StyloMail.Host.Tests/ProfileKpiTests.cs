@@ -2,10 +2,12 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using StyloMail.Core;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
+using StyloMail.Host.Profiles;
 using StyloMail.Host.Serialization;
 using StyloMail.Host.Storage;
 using StyloMail.Profiles.Kpis;
@@ -381,9 +383,13 @@ public sealed class ProfileKpiTests
         Assert.Equal(5, kpi.Denominator);
         Assert.Equal(0.8, kpi.Value!.Value, 3);
 
-        var median = Assert.Single(kpi.Measurements);
-        Assert.Equal("median_reply_gap", median.Id);
+        var median = Assert.Single(kpi.Measurements, measurement => measurement.Id == "median_reply_gap");
         Assert.Equal(2.0, median.Value!.Value, 3);
+
+        var censored = Assert.Single(
+            kpi.Measurements,
+            measurement => measurement.Id == "recent_inbound_censored");
+        Assert.Equal(0, censored.Value!.Value);
         Assert.Contains("address reciprocity", kpi.Definition.Window, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NOT produced", kpi.Definition.Window, StringComparison.Ordinal);
     }
@@ -755,6 +761,279 @@ public sealed class ProfileKpiTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Coverage guards found in review
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_null_valued_signal_is_not_an_answer()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a1", at, MailAction.Allow),
+            Signal("semantic.urgency_pressure", 0.9)));
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a2", at, MailAction.Allow),
+            Signal("semantic.urgency_pressure", 0.9)));
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a3", at, MailAction.Allow),
+            Signal("semantic.urgency_pressure", 0.9)));
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a4", at, MailAction.Allow),
+            Signal("semantic.urgency_pressure", 0.1)));
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a5", at, MailAction.Allow),
+            Signal("semantic.urgency_pressure", 0.1)));
+
+        // A model answer that was "available" but carried no value is not a negative answer.
+        await SeedAsync(host, WithSignals(
+            Assessment(Acme, "a6", at, MailAction.Allow),
+            SignalWithNoValue("semantic.urgency_pressure")));
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var pressure = Kpi(
+            await ProfileAsync(reviewer, "entity", PrincipalA),
+            KpiDefinitions.Pressure);
+
+        Assert.Equal(KpiState.Produced, pressure.State);
+        Assert.Equal(5, pressure.Denominator);
+        Assert.Equal(3, pressure.Numerator);
+        Assert.Equal(0.6, pressure.Value!.Value, 3);
+        Assert.Equal(6, pressure.Coverage.Total);
+    }
+
+    [Fact]
+    public async Task Recent_inbound_is_censored_not_counted_as_unanswered()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(Key);
+        var now = host.Clock.GetUtcNow();
+        var old = now.AddDays(-20);
+
+        for (var index = 0; index < 5; index++)
+        {
+            var inboundAt = old.AddHours(index);
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"in{index}", inboundAt, MailAction.Allow),
+                mailFrom: $"old{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+
+            if (index == 4)
+            {
+                continue;
+            }
+
+            await SeedAsync(
+                host,
+                Assessment(
+                    Acme,
+                    $"out{index}",
+                    inboundAt.AddHours(2),
+                    MailAction.Allow,
+                    dispositions:
+                    [
+                        new RecipientDisposition
+                        {
+                            Recipient = $"old{index}@example.test",
+                            RecipientRisk = 0,
+                            Action = MailAction.Allow,
+                            DeliveryState = DeliveryState.Queued,
+                        },
+                    ]),
+                mailFrom: "owner@acme.test",
+                direction: MailDirection.Outbound,
+                recipients: $"old{index}@example.test");
+        }
+
+        // Two messages younger than the 7-day opportunity: too early to know, not unanswered.
+        for (var index = 0; index < 2; index++)
+        {
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"recent{index}", now.AddDays(-2), MailAction.Allow),
+                mailFrom: $"new{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var kpi = Kpi(
+            await ProfileAsync(reviewer, "entity", PrincipalA),
+            KpiDefinitions.Responsiveness);
+
+        Assert.Equal(KpiState.Produced, kpi.State);
+        Assert.Equal(5, kpi.Denominator);
+        Assert.Equal(4, kpi.Numerator);
+        Assert.Equal(0.8, kpi.Value!.Value, 3);
+        Assert.Equal(2, kpi.Coverage.Censored);
+
+        var censored = Assert.Single(
+            kpi.Measurements,
+            measurement => measurement.Id == "recent_inbound_censored");
+        Assert.Equal(2, censored.Value!.Value);
+    }
+
+    [Fact]
+    public async Task A_truncated_candidate_set_reduces_coverage_and_never_counts_negatives()
+    {
+        using var host = WithReadCap(new TestHost().WithClock().WithProfileMasterKey(Key), 10);
+        var now = host.Clock.GetUtcNow();
+        var old = now.AddDays(-20);
+
+        // Twenty old outbound rows occupy the older part of the candidate window.
+        for (var index = 0; index < 20; index++)
+        {
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"oldout{index}", old.AddDays(-10).AddMinutes(index), MailAction.Allow),
+                mailFrom: "owner@acme.test",
+                direction: MailDirection.Outbound,
+                recipients: $"someone{index}@elsewhere.test");
+        }
+
+        for (var index = 0; index < 5; index++)
+        {
+            var inboundAt = old.AddHours(index);
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"in{index}", inboundAt, MailAction.Allow),
+                mailFrom: $"person{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+
+            await SeedAsync(
+                host,
+                Assessment(
+                    Acme,
+                    $"reply{index}",
+                    inboundAt.AddHours(2),
+                    MailAction.Allow,
+                    dispositions:
+                    [
+                        new RecipientDisposition
+                        {
+                            Recipient = $"person{index}@example.test",
+                            RecipientRisk = 0,
+                            Action = MailAction.Allow,
+                            DeliveryState = DeliveryState.Queued,
+                        },
+                    ]),
+                mailFrom: "owner@acme.test",
+                direction: MailDirection.Outbound,
+                recipients: $"person{index}@example.test");
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var kpi = Kpi(
+            await ProfileAsync(reviewer, "entity", PrincipalA),
+            KpiDefinitions.Responsiveness);
+
+        Assert.True(kpi.Coverage.CandidatesTruncated);
+        Assert.Equal(10, kpi.Coverage.CandidateCount);
+
+        // The retained candidates still reach back before every inbound message, so the five are
+        // judgeable and matched; the state discloses that only part of the candidate set was read.
+        Assert.Equal(KpiState.ReducedCoverage, kpi.State);
+        Assert.Equal(KpiReasons.ReplyCandidatesIncomplete, kpi.Reason);
+        Assert.Equal(5, kpi.Denominator);
+        Assert.Equal(5, kpi.Numerator);
+        Assert.Equal(1.0, kpi.Value!.Value, 3);
+    }
+
+    [Fact]
+    public async Task An_unreadable_outbound_candidate_reduces_coverage()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(Key);
+        var now = host.Clock.GetUtcNow();
+        var start = now.AddDays(-30);
+
+        var corrupted = false;
+
+        for (var index = 0; index < 6; index++)
+        {
+            var inboundAt = start.AddDays(index);
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"in{index}", inboundAt, MailAction.Allow),
+                mailFrom: $"person{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+
+            await SeedAsync(
+                host,
+                Assessment(
+                    Acme,
+                    $"reply{index}",
+                    inboundAt.AddHours(2),
+                    MailAction.Allow,
+                    dispositions:
+                    [
+                        new RecipientDisposition
+                        {
+                            Recipient = $"person{index}@example.test",
+                            RecipientRisk = 0,
+                            Action = MailAction.Allow,
+                            DeliveryState = DeliveryState.Queued,
+                        },
+                    ]),
+                mailFrom: "owner@acme.test",
+                direction: MailDirection.Outbound,
+                recipients: $"person{index}@example.test");
+
+            if (!corrupted && index == 0)
+            {
+                using var connection = host.Services.GetRequiredService<HostDatabase>().Open();
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    "UPDATE host_decision_ledger SET payload = '{not-json' "
+                    + "WHERE tenant_id = $tenant AND assessment_id = 'reply0';";
+                command.Parameters.AddWithValue("$tenant", Acme);
+                command.ExecuteNonQuery();
+                corrupted = true;
+            }
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var kpi = Kpi(
+            await ProfileAsync(reviewer, "entity", PrincipalA),
+            KpiDefinitions.Responsiveness);
+
+        Assert.Equal(1, kpi.Coverage.CandidateUnparsable);
+        Assert.Equal(KpiState.ReducedCoverage, kpi.State);
+        Assert.Equal(KpiReasons.ReplyCandidatesIncomplete, kpi.Reason);
+        Assert.Equal(5, kpi.Denominator);
+        Assert.Equal(5, kpi.Numerator);
+
+        var excluded = Assert.Single(
+            kpi.Measurements,
+            measurement => measurement.Id == "inbound_excluded_incomplete_candidates");
+        Assert.Equal(1, excluded.Value!.Value);
+    }
+
+    [Fact]
+    public async Task A_reduced_coverage_prior_window_is_not_a_trend_baseline()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(Key);
+        var now = host.Clock.GetUtcNow();
+        var priorStart = now.AddDays(-120);
+        var currentStart = now.AddDays(-30);
+
+        await SeedReciprocityAsync(host, "prior", priorStart, corruptFirstReply: true);
+        await SeedReciprocityAsync(host, "current", currentStart, corruptFirstReply: false);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var profile = await ProfileAsync(reviewer, "entity", PrincipalA, windowDays: 90);
+        var trend = Kpi(profile, KpiDefinitions.Responsiveness).Trend;
+
+        Assert.NotNull(trend);
+        Assert.Equal(KpiTrendState.NotProduced, trend!.State);
+        Assert.Equal(KpiReasons.PriorWindowReducedCoverage, trend.Reason);
+        Assert.Null(trend.Movement);
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
 
@@ -837,6 +1116,79 @@ public sealed class ProfileKpiTests
             RecipientDispositions = dispositions ?? [],
             AssessedAt = at,
         };
+
+    private static TestHost WithReadCap(TestHost host, int cap)
+        => host.Override(services =>
+        {
+            services.RemoveAll<ProfileQueryStore>();
+            services.AddSingleton(sp => new ProfileQueryStore(
+                sp.GetRequiredService<HostDatabase>(),
+                sp.GetRequiredService<IAddressPseudonymSource>())
+            {
+                ReadCap = cap,
+            });
+        });
+
+    private static async Task SeedReciprocityAsync(
+        TestHost host,
+        string prefix,
+        DateTimeOffset start,
+        bool corruptFirstReply)
+    {
+        for (var index = 0; index < 6; index++)
+        {
+            var inboundAt = start.AddDays(index);
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"{prefix}-in{index}", inboundAt, MailAction.Allow),
+                mailFrom: $"{prefix}-person{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+
+            await SeedAsync(
+                host,
+                Assessment(
+                    Acme,
+                    $"{prefix}-reply{index}",
+                    inboundAt.AddHours(2),
+                    MailAction.Allow,
+                    dispositions:
+                    [
+                        new RecipientDisposition
+                        {
+                            Recipient = $"{prefix}-person{index}@example.test",
+                            RecipientRisk = 0,
+                            Action = MailAction.Allow,
+                            DeliveryState = DeliveryState.Queued,
+                        },
+                    ]),
+                mailFrom: "owner@acme.test",
+                direction: MailDirection.Outbound,
+                recipients: $"{prefix}-person{index}@example.test");
+
+            if (corruptFirstReply && index == 0)
+            {
+                using var connection = host.Services.GetRequiredService<HostDatabase>().Open();
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    "UPDATE host_decision_ledger SET payload = '{not-json' "
+                    + "WHERE tenant_id = $tenant AND assessment_id = $id;";
+                command.Parameters.AddWithValue("$tenant", Acme);
+                command.Parameters.AddWithValue("$id", $"{prefix}-reply0");
+                command.ExecuteNonQuery();
+            }
+        }
+    }
+
+    private static Evidence SignalWithNoValue(string signalId) => new()
+    {
+        SignalId = signalId,
+        Origin = EvidenceOrigin.Semantic,
+        Availability = EvidenceAvailability.Available,
+        Value = null,
+        SourceVersion = "test/1",
+        ObservedAt = DateTimeOffset.UnixEpoch,
+    };
 
     private static MailAssessment WithSignals(MailAssessment assessment, params Evidence[] evidence)
         => assessment with { Evidence = [.. assessment.Evidence, .. evidence] };

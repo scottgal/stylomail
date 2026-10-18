@@ -43,6 +43,12 @@ public enum KpiState
 
     /// <summary>Nothing could be measured. Always carries a named reason.</summary>
     NotProduced = 2,
+
+    /// <summary>
+    /// A value is produced, but part of its observation set could not be judged (an incomplete
+    /// candidate set). Always carries a named reason; a consumer must not render it as a full value.
+    /// </summary>
+    ReducedCoverage = 3,
 }
 
 /// <summary>Whether a prior-window comparison produced a movement, and if not why.</summary>
@@ -180,6 +186,22 @@ public sealed record KpiCoverage
 
     /// <summary>Why coverage is thin, when a KPI is not produced or is below its minimum.</summary>
     public string? Reason { get; init; }
+
+    /// <summary>
+    /// Observations excluded because their observation window has not fully elapsed. Currently used
+    /// by the responsiveness proxy: a message younger than 7 days is "too early to know", not
+    /// unanswered.
+    /// </summary>
+    public int? Censored { get; init; }
+
+    /// <summary>How many outbound candidate rows were read. Null for KPIs with no candidate set.</summary>
+    public int? CandidateCount { get; init; }
+
+    /// <summary>The candidate read hit its cap; only the newest candidates were judged.</summary>
+    public bool? CandidatesTruncated { get; init; }
+
+    /// <summary>Candidate rows whose payload could not be read.</summary>
+    public int? CandidateUnparsable { get; init; }
 }
 
 /// <summary>A secondary observation served with a KPI, such as the median reply gap.</summary>
@@ -280,6 +302,15 @@ public static class KpiReasons
 
     /// <summary>The definition version changed between the two windows; the values are not comparable.</summary>
     public const string DefinitionVersionChanged = "definition_version_changed";
+
+    /// <summary>The prior window's own coverage was reduced, so it cannot be a comparison baseline.</summary>
+    public const string PriorWindowReducedCoverage = "prior_window_reduced_coverage";
+
+    /// <summary>The outbound candidate set was capped or unreadable, so the numerator is incomplete.</summary>
+    public const string ReplyCandidatesIncomplete = "reply_candidates_incomplete";
+
+    /// <summary>Inbound messages exist, but none is old enough for its 7-day window to have elapsed.</summary>
+    public const string NoFullyObservedInbound = "no_fully_observed_inbound";
 
     public const string NoIdentityCaptured = "no_identity_captured";
 }

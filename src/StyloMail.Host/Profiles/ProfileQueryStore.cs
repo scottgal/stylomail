@@ -55,6 +55,12 @@ public sealed class ProfileQueryStore
         _pseudonyms = pseudonyms;
     }
 
+    /// <summary>
+    /// The per-query row cap. <see cref="MaxMessages"/> in every deployment; overridable inside the
+    /// test assembly so a cap-hit path can be exercised without seeding 2,001 rows.
+    /// </summary>
+    internal int ReadCap { get; init; } = MaxMessages;
+
     public Task<ProfileSnapshot> ReadAsync(
         string tenantId,
         PropertyScope scope,
@@ -74,13 +80,15 @@ public sealed class ProfileQueryStore
         {
             using var connection = _database.Open();
 
-            var current = ReadRange(connection, tenantId, scope, windowStart, windowEnd);
+            var current = ReadRange(connection, tenantId, scope, windowStart, windowEnd, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             var prior = ReadRange(
                 connection,
                 tenantId,
                 scope,
                 windowStart.AddDays(-days),
-                windowStart);
+                windowStart,
+                cancellationToken);
 
             return Task.FromResult(AttachTrends(current, prior));
         }
@@ -96,18 +104,28 @@ public sealed class ProfileQueryStore
         string tenantId,
         PropertyScope scope,
         DateTimeOffset windowStart,
-        DateTimeOffset windowEnd)
+        DateTimeOffset windowEnd,
+        CancellationToken cancellationToken)
     {
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var scopeCount = CountScope(connection, tenantId, scope, windowStart, windowEnd);
-            var rows = ReadMessages(connection, tenantId, scope, windowStart, windowEnd);
-            var truncated = scopeCount > MaxMessages;
+            var rows = ReadMessages(connection, tenantId, scope, windowStart, windowEnd, out _);
+            var truncated = scopeCount > ReadCap;
 
             var parsed = new List<ParsedMessage>(rows.Count);
             var unparsable = 0;
 
             foreach (var row in rows)
             {
+                // The parse is the long synchronous stretch after the query; check between rows so
+                // a cancelled request does not keep deserialising up to two thousand payloads.
+                if ((parsed.Count & 63) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 var assessment = Parse(row.Payload);
                 if (assessment is null)
                 {
@@ -128,15 +146,22 @@ public sealed class ProfileQueryStore
 
             var hasher = _pseudonyms.Current;
 
-            var replyCandidates = scope.Kind is PropertyScopeKind.Entity or PropertyScopeKind.Company
-                ? ReadMessages(
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var replyCandidates = new List<MessageRow>();
+            var replyTruncated = false;
+
+            if (scope.Kind is PropertyScopeKind.Entity or PropertyScopeKind.Company)
+            {
+                replyCandidates = ReadMessages(
                     connection,
                     tenantId,
                     scope,
                     windowStart,
-                    windowEnd.Add(ReplyWindow),
-                    onlyOutbound: true)
-                : [];
+                    windowEnd,
+                    out replyTruncated,
+                    onlyOutbound: true);
+            }
 
             return Build(
                 tenantId,
@@ -149,7 +174,9 @@ public sealed class ProfileQueryStore
                 tenantMessages,
                 hasher,
                 replyCandidates,
-                ReadDisplayLabel(connection, tenantId, scope));
+                replyTruncated,
+                ReadDisplayLabel(connection, tenantId, scope),
+                cancellationToken);
         }
     }
 
@@ -168,8 +195,11 @@ public sealed class ProfileQueryStore
         int tenantMessages,
         ProfileKeyHasher? hasher,
         List<MessageRow> replyCandidates,
-        (string? Label, string? Source, string? Reason) displayLabel)
+        bool replyCandidatesTruncated,
+        (string? Label, string? Source, string? Reason) displayLabel,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var total = parsed.Count;
         var coverage = new ProfileCoverage
         {
@@ -184,7 +214,7 @@ public sealed class ProfileQueryStore
             Reason = total == 0 ? KpiReasons.NoAttributableMessages : null,
         };
 
-        var counts = new KpiCounts(parsed);
+        var counts = new KpiCounts(parsed, cancellationToken);
         var counterparties = CounterpartyKeys(tenantId, parsed, hasher);
         var conversationCount = parsed
             .Select(message => message.Row.ThreadId)
@@ -214,7 +244,7 @@ public sealed class ProfileQueryStore
         var kpis = new List<KpiValue>
         {
             BuildResponsiveness(
-                tenantId, scope, parsed, replyCandidates, hasher,
+                tenantId, scope, parsed, replyCandidates, replyCandidatesTruncated, hasher,
                 total, truncated, windowStart, windowEnd),
             BuildMomentum(parsed, total, truncated, windowStart, windowEnd),
             BuildSignalPrevalence(
@@ -511,6 +541,14 @@ public sealed class ProfileQueryStore
                 + $"{prior.Definition.MinimumSample}.");
         }
 
+        if (prior.State == KpiState.ReducedCoverage)
+        {
+            return Refused(
+                KpiTrendState.NotProduced,
+                KpiReasons.PriorWindowReducedCoverage,
+                "The prior window's own coverage was reduced, so it is not a comparison baseline.");
+        }
+
         if (prior.State != KpiState.Produced || prior.Value is null)
         {
             return Refused(
@@ -548,6 +586,7 @@ public sealed class ProfileQueryStore
         PropertyScope scope,
         List<ParsedMessage> parsed,
         List<MessageRow> replyCandidates,
+        bool replyCandidatesTruncated,
         ProfileKeyHasher? hasher,
         int total,
         bool truncated,
@@ -592,12 +631,33 @@ public sealed class ProfileQueryStore
             .Where(message => !string.IsNullOrWhiteSpace(message.Row.MailFrom))
             .ToList();
 
+        // A message younger than its full 7-day opportunity is "too early to know", not unanswered.
+        // The strict bound also means every possible reply is before windowEnd, so the candidate
+        // query never needs to look into the next window.
+        var observableUntil = windowEnd.Subtract(ReplyWindow);
+        var fullyObserved = inbound
+            .Where(message => message.Row.RecordedAt < observableUntil)
+            .ToList();
+        var censored = inbound.Count - fullyObserved.Count;
+
         var outbound = new List<(DateTimeOffset At, string Counterparty)>();
+        var unparsableTimes = new List<DateTimeOffset>();
+        DateTimeOffset? oldestRetained = null;
 
         foreach (var candidate in replyCandidates)
         {
+            oldestRetained = oldestRetained is null || candidate.RecordedAt < oldestRetained
+                ? candidate.RecordedAt
+                : oldestRetained;
+
             var assessment = Parse(candidate.Payload);
-            if (assessment is null || candidate.Direction != MailDirection.Outbound)
+            if (assessment is null)
+            {
+                unparsableTimes.Add(candidate.RecordedAt);
+                continue;
+            }
+
+            if (candidate.Direction != MailDirection.Outbound)
             {
                 continue;
             }
@@ -614,11 +674,78 @@ public sealed class ProfileQueryStore
         }
 
         outbound.Sort((left, right) => left.At.CompareTo(right.At));
+        unparsableTimes.Sort();
+        unparsableTimes.Reverse();
+
+        var baseCoverage = new KpiCoverage
+        {
+            Analysed = 0,
+            Total = total,
+            WindowStart = windowStart,
+            WindowEnd = windowEnd,
+            Truncated = truncated,
+            Censored = censored,
+            CandidateCount = replyCandidates.Count,
+            CandidatesTruncated = replyCandidatesTruncated,
+            CandidateUnparsable = unparsableTimes.Count,
+        };
+
+        if (inbound.Count == 0)
+        {
+            return new KpiValue
+            {
+                Definition = definition,
+                State = KpiState.NotProduced,
+                Coverage = baseCoverage with { Reason = KpiReasons.SignalNotProduced },
+                Reason = KpiReasons.SignalNotProduced,
+                Detail = "No inbound message carried a counterparty address to match.",
+            };
+        }
+
+        if (fullyObserved.Count == 0)
+        {
+            return new KpiValue
+            {
+                Definition = definition,
+                State = KpiState.NotProduced,
+                Coverage = baseCoverage with { Reason = KpiReasons.NoFullyObservedInbound },
+                Reason = KpiReasons.NoFullyObservedInbound,
+                Detail = "Every inbound message is younger than its 7-day reply window; none is "
+                    + "old enough to judge.",
+            };
+        }
+
+        // A truncated candidate set keeps the newest rows, so candidates older than the oldest
+        // retained row are missing. An inbound message whose window starts before that boundary
+        // could have had its reply in the missing band, so it is excluded rather than counted as a
+        // negative. An unreadable candidate excludes only messages whose window contains it.
+        var judgeable = new List<ParsedMessage>();
+        var excludedIncomplete = 0;
+
+        foreach (var message in fullyObserved)
+        {
+            var limit = message.Row.RecordedAt.Add(ReplyWindow);
+
+            var blockedByTruncation = replyCandidatesTruncated
+                && oldestRetained is { } oldest
+                && message.Row.RecordedAt < oldest;
+
+            var blockedByUnparsable = unparsableTimes.Any(
+                at => at > message.Row.RecordedAt && at <= limit);
+
+            if (blockedByTruncation || blockedByUnparsable)
+            {
+                excludedIncomplete++;
+                continue;
+            }
+
+            judgeable.Add(message);
+        }
 
         var matched = 0;
         var gaps = new List<double>();
 
-        foreach (var message in inbound)
+        foreach (var message in judgeable)
         {
             var counterparty = hasher.Hash(tenantId, message.Row.MailFrom!);
             var limit = message.Row.RecordedAt.Add(ReplyWindow);
@@ -635,32 +762,18 @@ public sealed class ProfileQueryStore
             }
         }
 
-        var denominator = inbound.Count;
-        var coverage = new KpiCoverage
+        var denominator = judgeable.Count;
+        var reduced = excludedIncomplete > 0 || replyCandidatesTruncated || unparsableTimes.Count > 0;
+
+        var coverage = baseCoverage with
         {
             Analysed = denominator,
-            Total = total,
-            WindowStart = windowStart,
-            WindowEnd = windowEnd,
-            Truncated = truncated,
-            Reason = denominator == 0
-                ? KpiReasons.SignalNotProduced
-                : denominator < definition.MinimumSample
-                    ? KpiReasons.NotEnoughHistory
+            Reason = denominator < definition.MinimumSample
+                ? KpiReasons.NotEnoughHistory
+                : reduced
+                    ? KpiReasons.ReplyCandidatesIncomplete
                     : null,
         };
-
-        if (denominator == 0)
-        {
-            return new KpiValue
-            {
-                Definition = definition,
-                State = KpiState.NotProduced,
-                Coverage = coverage,
-                Reason = KpiReasons.SignalNotProduced,
-                Detail = "No inbound message carried a counterparty address to match.",
-            };
-        }
 
         if (denominator < definition.MinimumSample)
         {
@@ -672,8 +785,11 @@ public sealed class ProfileQueryStore
                 Denominator = denominator,
                 Coverage = coverage,
                 Reason = KpiReasons.NotEnoughHistory,
-                Detail = $"Needs at least {definition.MinimumSample} inbound messages with an address; "
-                    + $"saw {denominator}.",
+                Detail = $"Needs at least {definition.MinimumSample} fully observed inbound messages "
+                    + $"with an address; judged {denominator}"
+                    + (excludedIncomplete > 0
+                        ? $" and excluded {excludedIncomplete} because the candidate set was incomplete."
+                        : "."),
             };
         }
 
@@ -705,14 +821,38 @@ public sealed class ProfileQueryStore
             });
         }
 
+        measurements.Add(new KpiMeasurement
+        {
+            Id = "recent_inbound_censored",
+            Label = "Inbound messages too recent for their 7-day window",
+            Unit = KpiUnit.Count,
+            Value = censored,
+        });
+
+        if (excludedIncomplete > 0)
+        {
+            measurements.Add(new KpiMeasurement
+            {
+                Id = "inbound_excluded_incomplete_candidates",
+                Label = "Inbound messages excluded because the candidate set was incomplete",
+                Unit = KpiUnit.Count,
+                Value = excludedIncomplete,
+            });
+        }
+
         return new KpiValue
         {
             Definition = definition,
-            State = KpiState.Produced,
+            State = reduced ? KpiState.ReducedCoverage : KpiState.Produced,
             Value = (double)matched / denominator,
             Numerator = matched,
             Denominator = denominator,
             Coverage = coverage,
+            Reason = reduced ? KpiReasons.ReplyCandidatesIncomplete : null,
+            Detail = reduced
+                ? "Part of the candidate set could not be judged, so only fully observed messages "
+                    + "are in the denominator; unmatched messages were not counted as negatives."
+                : null,
             Measurements = measurements,
         };
     }
@@ -944,13 +1084,20 @@ public sealed class ProfileQueryStore
     /// <summary>The counts every KPI shares, computed once per profile.</summary>
     private sealed class KpiCounts
     {
-        public KpiCounts(List<ParsedMessage> messages)
+        public KpiCounts(List<ParsedMessage> messages, CancellationToken cancellationToken)
         {
             InboundMessages = messages.Count(message => message.Row.Direction == MailDirection.Inbound);
             OutboundMessages = messages.Count(message => message.Row.Direction == MailDirection.Outbound);
 
+            var index = 0;
+
             foreach (var message in messages)
             {
+                if ((index++ & 255) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 if (Find(message.Assessment, "semantic.urgency_pressure") is { } pressure
                     && IsAnswered(pressure))
                 {
@@ -1037,8 +1184,9 @@ public sealed class ProfileQueryStore
             evidence => string.Equals(evidence.SignalId, signalId, StringComparison.Ordinal));
 
     private static bool IsAnswered(Evidence evidence)
-        => evidence.Availability is EvidenceAvailability.Available
-            or EvidenceAvailability.ReducedCoverage;
+        => evidence.Value is not null
+            && evidence.Availability is EvidenceAvailability.Available
+                or EvidenceAvailability.ReducedCoverage;
 
     private static bool Establishes(string signalId, Evidence evidence)
         => evidence.Value is { } value
@@ -1136,12 +1284,13 @@ public sealed class ProfileQueryStore
         _ => throw new ArgumentOutOfRangeException(nameof(scope), scope.Kind, "Unknown scope kind."),
     };
 
-    private static List<MessageRow> ReadMessages(
+    private List<MessageRow> ReadMessages(
         SqliteConnection connection,
         string tenantId,
         PropertyScope scope,
         DateTimeOffset from,
         DateTimeOffset to,
+        out bool truncated,
         bool onlyOutbound = false)
     {
         var (predicate, joinsQueue) = Filter(scope);
@@ -1172,7 +1321,7 @@ public sealed class ProfileQueryStore
         BindScope(command, tenantId, scope, joinsQueue);
         command.Parameters.AddWithValue("$from", Stamp(from));
         command.Parameters.AddWithValue("$to", Stamp(to));
-        command.Parameters.AddWithValue("$limit", MaxMessages);
+        command.Parameters.AddWithValue("$limit", ReadCap + 1);
 
         if (onlyOutbound)
         {
@@ -1195,6 +1344,13 @@ public sealed class ProfileQueryStore
                 reader.IsDBNull(3) ? null : reader.GetString(3),
                 direction,
                 reader.GetString(5)));
+        }
+
+        truncated = rows.Count > ReadCap;
+        if (truncated)
+        {
+            // The cap keeps the newest rows; the extra row only proves the cap was hit.
+            rows.RemoveRange(ReadCap, rows.Count - ReadCap);
         }
 
         return rows;

@@ -67,6 +67,18 @@ public sealed record KpiCoverageResponse
 
     public string? Reason { get; init; }
 
+    /// <summary>Observations excluded because their window has not elapsed (responsiveness).</summary>
+    public int? Censored { get; init; }
+
+    /// <summary>Outbound candidate rows read (responsiveness).</summary>
+    public int? CandidateCount { get; init; }
+
+    /// <summary>The candidate read hit its cap; unmatched messages were excluded, not counted.</summary>
+    public bool? CandidatesTruncated { get; init; }
+
+    /// <summary>Candidate rows whose payload could not be read.</summary>
+    public int? CandidateUnparsable { get; init; }
+
     public static KpiCoverageResponse From(KpiCoverage coverage) => new()
     {
         Analysed = coverage.Analysed,
@@ -75,6 +87,10 @@ public sealed record KpiCoverageResponse
         WindowEnd = coverage.WindowEnd,
         Truncated = coverage.Truncated,
         Reason = coverage.Reason,
+        Censored = coverage.Censored,
+        CandidateCount = coverage.CandidateCount,
+        CandidatesTruncated = coverage.CandidatesTruncated,
+        CandidateUnparsable = coverage.CandidateUnparsable,
     };
 }
 
