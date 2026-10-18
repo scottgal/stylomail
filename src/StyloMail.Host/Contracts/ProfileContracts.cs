@@ -485,6 +485,8 @@ public sealed record ReferenceCitationResponse
 
     public DateTimeOffset? RetentionUntil { get; init; }
 
+    public DateTimeOffset? ObservedAt { get; init; }
+
     public static ReferenceCitationResponse From(Profiles.ReferenceCitation citation) => new()
     {
         Scope = PropertyScopeResponse.From(citation.Scope),
@@ -499,6 +501,7 @@ public sealed record ReferenceCitationResponse
         AccessOutcome = citation.AccessOutcome,
         Retention = citation.Retention,
         RetentionUntil = citation.RetentionUntil,
+        ObservedAt = citation.ObservedAt,
     };
 }
 
@@ -526,7 +529,8 @@ public sealed record ReferenceMetadataResponse
 
     public required EvidenceKind Kind { get; init; }
 
-    public required DateTimeOffset ObservedAt { get; init; }
+    /// <summary>The claim's observed time, or null when the writer did not state one.</summary>
+    public DateTimeOffset? ObservedAt { get; init; }
 
     public required EvidenceRetention Retention { get; init; }
 
@@ -544,7 +548,7 @@ public sealed record ReferenceMetadataResponse
     {
         Id = reference.Id,
         Kind = reference.Kind,
-        ObservedAt = reference.ObservedAt ?? DateTimeOffset.UnixEpoch,
+        ObservedAt = reference.ObservedAt,
         Retention = reference.Retention,
         RetentionUntil = reference.RetentionUntil,
         AccessOutcome = reference.AccessOutcome,

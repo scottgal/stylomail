@@ -172,8 +172,18 @@ public static class PropertyWriteRules
                 $"A property may cite at most {MaxEvidenceRefs} evidence references.");
         }
 
+        var identities = new HashSet<(EvidenceKind Kind, string Id)>();
+
         foreach (var reference in write.EvidenceRefs)
         {
+            if (!identities.Add((reference.Kind, reference.Id)))
+            {
+                return PropertyWriteCheck.Refused(
+                    "duplicate_evidence_ref",
+                    "A property may cite the same (kind, id) only once. Two claims about one "
+                    + "identity would be collapsed, and a restrictive claim could be lost.");
+            }
+
             if (string.IsNullOrWhiteSpace(reference.Id)
                 || reference.Id.Length > MaxEvidenceRefLength)
             {

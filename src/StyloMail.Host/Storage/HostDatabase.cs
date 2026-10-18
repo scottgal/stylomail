@@ -71,7 +71,14 @@ public sealed class HostDatabase
     }
 
     /// <summary>Creates the host tables if they are not already present.</summary>
-    public void EnsureCreated()
+    public void EnsureCreated() => EnsureCreated(null);
+
+    /// <summary>
+    /// The test seam for the evidence backfill: invokes <paramref name="evidenceBackfillFault"/>
+    /// after the first inserted claim, so a crash between the first insert and the migration marker
+    /// can be proven to roll back and resume.
+    /// </summary>
+    internal void EnsureCreated(Action? evidenceBackfillFault)
     {
         using var connection = Open();
 
@@ -93,7 +100,7 @@ public sealed class HostDatabase
 
         transaction.Commit();
 
-        ApplyColumnMigrations(connection);
+        ApplyColumnMigrations(connection, evidenceBackfillFault);
     }
 
     /// <summary>
@@ -106,7 +113,7 @@ public sealed class HostDatabase
     /// host. This is deliberately a small, additive migration rather than a versioning system;
     /// when the schema changes in a way this cannot express, it will need a real one.
     /// </remarks>
-    private static void ApplyColumnMigrations(SqliteConnection connection)
+    private static void ApplyColumnMigrations(SqliteConnection connection, Action? evidenceBackfillFault)
     {
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -140,53 +147,73 @@ public sealed class HostDatabase
         ApplyConversationHistoryMigration(connection);
         ApplyProxySessionAuthenticationMigration(connection);
         ApplyEntityPropertyCoverageMigration(connection);
-        ApplyPropertyEvidenceMigration(connection);
+        ApplyPropertyEvidenceMigration(connection, evidenceBackfillFault);
     }
 
+    internal const string PropertyEvidenceMigrationName = "property-evidence-v1";
+
     /// <summary>
-    /// Ensures the normalised evidence table exists and is populated from JSON rows written before
-    /// it was introduced.
+    /// One transactional rebuild of the normalised evidence table, with an explicit completion
+    /// marker.
     /// </summary>
     /// <remarks>
-    /// The backfill is one-time and only runs when the evidence table is empty. A row whose stored
-    /// array is malformed, or contains a null/empty element, is marked <c>evidence_invalid</c> and
-    /// contributes no citation; the evidence route names that state rather than failing a query.
+    /// <para>
+    /// <b>A nonempty index is not a completion marker.</b> A crash after the first inserted claim
+    /// would otherwise leave a partial index that every later startup trusts, silently hiding
+    /// claims. The backfill therefore deletes and rebuilds the whole table from the JSON rows inside
+    /// one transaction, and writes <c>property-evidence-v1</c> into <c>host_schema_migration</c> in
+    /// the same transaction. A failure rolls back both the rows and the marker, so the next startup
+    /// resumes rather than trusting a partial state.
+    /// </para>
+    /// <para>
+    /// Duplicates of the same <c>(kind, id)</c> within one stored array are merged conservatively:
+    /// the most restrictive access outcome wins and the earliest retention instant is kept. Insert
+    /// order can never make a withheld claim disappear. New writes reject duplicates instead.
+    /// </para>
     /// </remarks>
-    private static void ApplyPropertyEvidenceMigration(SqliteConnection connection)
+    private static void ApplyPropertyEvidenceMigration(
+        SqliteConnection connection,
+        Action? faultAfterFirstInsert)
     {
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using (var read = connection.CreateCommand())
+        using (var marker = connection.CreateCommand())
         {
-            read.CommandText = "PRAGMA table_info(host_entity_property);";
-            using var reader = read.ExecuteReader();
-            while (reader.Read())
-            {
-                columns.Add(reader.GetString(1));
-            }
-        }
-
-        if (!columns.Contains("evidence_invalid"))
-        {
-            using var alter = connection.CreateCommand();
-            alter.CommandText =
-                "ALTER TABLE host_entity_property ADD COLUMN evidence_invalid INTEGER NOT NULL DEFAULT 0;";
-            alter.ExecuteNonQuery();
-        }
-
-        using (var count = connection.CreateCommand())
-        {
-            count.CommandText = "SELECT COUNT(*) FROM host_entity_property_evidence;";
-            if (Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+            marker.CommandText =
+                "SELECT COUNT(*) FROM host_schema_migration WHERE name = $name;";
+            marker.Parameters.AddWithValue("$name", PropertyEvidenceMigrationName);
+            if (Convert.ToInt32(marker.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
             {
                 return;
             }
         }
 
-        var rows = new List<(string Tenant, string ScopeKind, string ScopeId, string Key, string? Refs, bool Invalid)>();
+        using var transaction = connection.BeginTransaction();
+
+        if (!ColumnExists(connection, transaction, "host_entity_property", "evidence_invalid"))
+        {
+            Execute(
+                connection,
+                transaction,
+                "ALTER TABLE host_entity_property ADD COLUMN evidence_invalid INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        if (!ColumnExists(connection, transaction, "host_entity_property_evidence", "observed_at"))
+        {
+            Execute(
+                connection,
+                transaction,
+                "ALTER TABLE host_entity_property_evidence ADD COLUMN observed_at TEXT NULL;");
+        }
+
+        // Rebuild, never resume from whatever happens to be there. This repairs a partial index
+        // written by an earlier build.
+        Execute(connection, transaction, "DELETE FROM host_entity_property_evidence;");
+
+        var rows = new List<(string Tenant, string ScopeKind, string ScopeId, string Key, string? Refs)>();
         using (var read = connection.CreateCommand())
         {
+            read.Transaction = transaction;
             read.CommandText =
-                "SELECT tenant_id, scope_kind, scope_id, property_key, evidence_refs, evidence_invalid "
+                "SELECT tenant_id, scope_kind, scope_id, property_key, evidence_refs "
                 + "FROM host_entity_property;";
             using var reader = read.ExecuteReader();
             while (reader.Read())
@@ -196,60 +223,190 @@ public sealed class HostDatabase
                     reader.GetString(1),
                     reader.GetString(2),
                     reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4),
-                    reader.GetInt32(5) != 0));
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
             }
         }
+
+        var inserted = 0;
 
         foreach (var row in rows)
         {
-            if (row.Invalid)
-            {
-                continue;
-            }
-
             var references = ParseStoredEvidence(row.Refs);
             if (references is null)
             {
-                using var mark = connection.CreateCommand();
-                mark.CommandText =
-                    "UPDATE host_entity_property SET evidence_invalid = 1 "
-                    + "WHERE tenant_id = $tenant AND scope_kind = $kind AND scope_id = $id "
-                    + "AND property_key = $key;";
-                mark.Parameters.AddWithValue("$tenant", row.Tenant);
-                mark.Parameters.AddWithValue("$kind", row.ScopeKind);
-                mark.Parameters.AddWithValue("$id", row.ScopeId);
-                mark.Parameters.AddWithValue("$key", row.Key);
-                mark.ExecuteNonQuery();
+                MarkEvidenceInvalid(connection, transaction, row, invalid: true);
                 continue;
             }
 
-            foreach (var reference in references)
+            MarkEvidenceInvalid(connection, transaction, row, invalid: false);
+
+            foreach (var reference in MergeEvidenceClaims(references))
             {
-                using var insert = connection.CreateCommand();
-                insert.CommandText =
-                    """
-                    INSERT OR IGNORE INTO host_entity_property_evidence
-                        (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id,
-                         access_outcome, retention, retention_until)
-                    VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until);
-                    """;
-                insert.Parameters.AddWithValue("$tenant", row.Tenant);
-                insert.Parameters.AddWithValue("$kind", row.ScopeKind);
-                insert.Parameters.AddWithValue("$id", row.ScopeId);
-                insert.Parameters.AddWithValue("$key", row.Key);
-                insert.Parameters.AddWithValue("$refKind", reference.Kind.ToString());
-                insert.Parameters.AddWithValue("$refId", reference.Id);
-                insert.Parameters.AddWithValue("$access", reference.AccessOutcome.ToString());
-                insert.Parameters.AddWithValue("$retention", reference.Retention.ToString());
-                insert.Parameters.AddWithValue(
-                    "$until",
-                    reference.RetentionUntil is { } until
-                        ? until.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
-                        : DBNull.Value);
-                insert.ExecuteNonQuery();
+                InsertEvidenceClaim(connection, transaction, row, reference);
+                inserted++;
+
+                if (faultAfterFirstInsert is not null && inserted == 1)
+                {
+                    faultAfterFirstInsert();
+                }
             }
         }
+
+        Execute(
+            connection,
+            transaction,
+            "INSERT OR REPLACE INTO host_schema_migration (name, applied_at) VALUES ($name, $at);",
+            ("$name", PropertyEvidenceMigrationName),
+            ("$at", DateTimeOffset.UtcNow.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)));
+
+        transaction.Commit();
+    }
+
+    private static List<EvidenceReference> MergeEvidenceClaims(
+        IReadOnlyList<EvidenceReference> references)
+    {
+        var merged = new Dictionary<(EvidenceKind Kind, string Id), EvidenceReference>();
+
+        foreach (var reference in references)
+        {
+            var key = (reference.Kind, reference.Id);
+            if (!merged.TryGetValue(key, out var existing))
+            {
+                merged[key] = reference;
+                continue;
+            }
+
+            var access = MostRestrictive(existing.AccessOutcome, reference.AccessOutcome);
+            var until = Earliest(existing.RetentionUntil, reference.RetentionUntil);
+            var observed = Latest(existing.ObservedAt, reference.ObservedAt);
+            var chosen = access == existing.AccessOutcome ? existing : reference;
+
+            merged[key] = chosen with
+            {
+                AccessOutcome = access,
+                Retention = until is not null ? EvidenceRetention.Scheduled : chosen.Retention,
+                RetentionUntil = until,
+                ObservedAt = observed,
+            };
+        }
+
+        return [.. merged.Values];
+    }
+
+    private static EvidenceAccessOutcome MostRestrictive(
+        EvidenceAccessOutcome left,
+        EvidenceAccessOutcome right)
+    {
+        static int Rank(EvidenceAccessOutcome outcome) => outcome switch
+        {
+            EvidenceAccessOutcome.Withheld => 2,
+            EvidenceAccessOutcome.NotEvaluated => 1,
+            _ => 0,
+        };
+
+        return Rank(left) >= Rank(right) ? left : right;
+    }
+
+    private static DateTimeOffset? Earliest(DateTimeOffset? left, DateTimeOffset? right)
+        => left is null ? right : right is null ? left : (left <= right ? left : right);
+
+    private static DateTimeOffset? Latest(DateTimeOffset? left, DateTimeOffset? right)
+        => left is null ? right : right is null ? left : (left >= right ? left : right);
+
+    private static void MarkEvidenceInvalid(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        (string Tenant, string ScopeKind, string ScopeId, string Key, string? Refs) row,
+        bool invalid)
+    {
+        using var mark = connection.CreateCommand();
+        mark.Transaction = transaction;
+        mark.CommandText =
+            "UPDATE host_entity_property SET evidence_invalid = $invalid "
+            + "WHERE tenant_id = $tenant AND scope_kind = $kind AND scope_id = $id "
+            + "AND property_key = $key;";
+        mark.Parameters.AddWithValue("$invalid", invalid ? 1 : 0);
+        mark.Parameters.AddWithValue("$tenant", row.Tenant);
+        mark.Parameters.AddWithValue("$kind", row.ScopeKind);
+        mark.Parameters.AddWithValue("$id", row.ScopeId);
+        mark.Parameters.AddWithValue("$key", row.Key);
+        mark.ExecuteNonQuery();
+    }
+
+    private static void InsertEvidenceClaim(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        (string Tenant, string ScopeKind, string ScopeId, string Key, string? Refs) row,
+        EvidenceReference reference)
+    {
+        using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText =
+            """
+            INSERT OR REPLACE INTO host_entity_property_evidence
+                (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id,
+                 access_outcome, retention, retention_until, observed_at)
+            VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until, $observed);
+            """;
+        insert.Parameters.AddWithValue("$tenant", row.Tenant);
+        insert.Parameters.AddWithValue("$kind", row.ScopeKind);
+        insert.Parameters.AddWithValue("$id", row.ScopeId);
+        insert.Parameters.AddWithValue("$key", row.Key);
+        insert.Parameters.AddWithValue("$refKind", reference.Kind.ToString());
+        insert.Parameters.AddWithValue("$refId", reference.Id);
+        insert.Parameters.AddWithValue("$access", reference.AccessOutcome.ToString());
+        insert.Parameters.AddWithValue("$retention", reference.Retention.ToString());
+        insert.Parameters.AddWithValue(
+            "$until",
+            reference.RetentionUntil is { } until
+                ? until.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                : DBNull.Value);
+        insert.Parameters.AddWithValue(
+            "$observed",
+            reference.ObservedAt is { } observed
+                ? observed.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                : DBNull.Value);
+        insert.ExecuteNonQuery();
+    }
+
+    private static bool ColumnExists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table,
+        string column)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"PRAGMA table_info({table});";
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void Execute(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        params (string Name, object? Value)[] parameters)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+
+        foreach (var (name, value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        }
+
+        command.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -315,14 +472,6 @@ public sealed class HostDatabase
         }
     }
 
-    /// <summary>
-    /// Adds the coverage columns to a property table created by an earlier build.
-    /// </summary>
-    /// <remarks>
-    /// <c>CREATE TABLE IF NOT EXISTS</c> leaves an existing table's shape alone, so a database
-    /// created before coverage was part of the contract would keep the old columns and every write
-    /// would fail on the first one it names. Additive, like the other migrations here.
-    /// </remarks>
     private static void ApplyEntityPropertyCoverageMigration(SqliteConnection connection)
     {
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -700,6 +849,7 @@ public sealed class HostDatabase
             access_outcome  TEXT NOT NULL,
             retention       TEXT NOT NULL,
             retention_until TEXT NULL,
+            observed_at     TEXT NULL,
             PRIMARY KEY (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id)
         );
 
