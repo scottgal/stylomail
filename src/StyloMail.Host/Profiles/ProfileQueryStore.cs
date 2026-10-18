@@ -779,6 +779,7 @@ public sealed class ProfileQueryStore
         var coverage = baseCoverage with
         {
             Analysed = denominator,
+            IncompleteExclusions = excludedIncomplete,
             Reason = denominator < definition.MinimumSample
                 ? KpiReasons.NotEnoughHistory
                 : reduced
@@ -1352,11 +1353,8 @@ public sealed class ProfileQueryStore
                     "Inbound messages with a fully observed 7-day window",
                     value.Coverage.Analysed,
                     value.Numerator ?? 0,
-                    (int)(value.Measurements
-                        .FirstOrDefault(measurement =>
-                            measurement.Id == "inbound_excluded_incomplete_candidates")
-                        ?.Value ?? 0),
-                    value.Coverage.Censored ?? 0,
+                    value.Coverage.IncompleteExclusions,
+                    value.Coverage.Censored,
                     0,
                     value.Reason),
             ],
@@ -1477,36 +1475,38 @@ public sealed class ProfileQueryStore
         {
             using var connection = _database.Open();
 
-            var citationCount = CountCitations(connection, tenantId, referenceId);
-            var citations = ReadCitations(connection, tenantId, referenceId);
-            var source = ReadReferenceSource(connection, tenantId, referenceId);
+            var scan = ReadCitations(connection, tenantId, requestedKind, referenceId);
+            var source = ReadReferenceSource(connection, tenantId, requestedKind, referenceId);
 
-            if (citations.Count == 0 && source is null)
+            if (scan.Citations.Count == 0 && scan.InvalidRows == 0 && source is null)
             {
                 return Task.FromResult<ReferenceEvidenceRead?>(null);
             }
 
-            var reference = citations
+            var latest = scan.Citations
                 .Select(citation => citation.Reference)
                 .FirstOrDefault(candidate => candidate is not null)
                 ?? new EvidenceReference { Id = referenceId, Kind = requestedKind };
 
-            var outcome = reference.RetentionUntil is { } until && until < now
-                ? ReferenceOutcome.Expired
-                : reference.AccessOutcome switch
-                {
-                    EvidenceAccessOutcome.Withheld => ReferenceOutcome.Withheld,
-                    EvidenceAccessOutcome.NotEvaluated => ReferenceOutcome.NotEvaluated,
-                    _ => ReferenceOutcome.Resolved,
-                };
+            var claims = scan.Citations
+                .Select(citation => citation.Reference)
+                .Where(candidate => candidate is not null)
+                .Cast<EvidenceReference>()
+                .ToList();
+
+            var (outcome, reason) = Judge(claims, requestedKind, source, scan.InvalidRows, now);
 
             return Task.FromResult<ReferenceEvidenceRead?>(new ReferenceEvidenceRead(
-                reference,
+                latest,
                 outcome,
-                [.. citations.Select(citation => citation.Citation)],
-                citationCount,
-                citationCount > MaxReferenceCitations,
-                source));
+                reason,
+                "all",
+                [.. scan.Citations.Select(citation => citation.Citation)],
+                scan.Citations.Count,
+                scan.Truncated,
+                scan.InvalidRows,
+                source,
+                source is not null));
         }
         catch (SqliteException ex)
         {
@@ -1514,54 +1514,124 @@ public sealed class ProfileQueryStore
         }
     }
 
-    private static int CountCitations(
-        SqliteConnection connection,
-        string tenantId,
-        string referenceId)
+    /// <summary>
+    /// The most restrictive claim wins, independently of citation order.
+    /// </summary>
+    /// <remarks>
+    /// Withheld is an explicit restriction, so it outranks everything. Expired means the claim's own
+    /// retention has passed. A Message without its ledger row cannot be resolved even when a claim
+    /// says available. A kind with no backend here is Unverified: existence cannot be checked, so it
+    /// is never called Resolved. A malformed stored array with no valid claim is Invalid, named
+    /// rather than surfaced as a storage failure.
+    /// </remarks>
+    private static (ReferenceOutcome Outcome, string? Reason) Judge(
+        List<EvidenceReference> claims,
+        EvidenceKind requestedKind,
+        ReferenceSource? source,
+        int invalidRows,
+        DateTimeOffset now)
     {
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT COUNT(*)
-            FROM host_entity_property p, json_each(p.evidence_refs) AS ref
-            WHERE p.tenant_id = $tenant
-              AND COALESCE(json_extract(ref.value, '$.id'),
-                           CASE WHEN json_type(ref.value) = 'text' THEN ref.value END) = $id;
-            """;
-        command.Parameters.AddWithValue("$tenant", tenantId);
-        command.Parameters.AddWithValue("$id", referenceId);
+        if (claims.Count == 0)
+        {
+            return invalidRows > 0
+                ? (ReferenceOutcome.Invalid, "invalid_ref")
+                : (ReferenceOutcome.NotEvaluated, "no_access_claim");
+        }
 
-        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        static bool IsExpired(EvidenceReference reference, DateTimeOffset now)
+            => reference.RetentionUntil is { } until && until < now;
+
+        if (claims.Any(reference =>
+                !IsExpired(reference, now)
+                && reference.AccessOutcome == EvidenceAccessOutcome.Withheld))
+        {
+            return (ReferenceOutcome.Withheld, "claim_withheld");
+        }
+
+        if (claims.Any(reference => IsExpired(reference, now)))
+        {
+            return (ReferenceOutcome.Expired, "retention_passed");
+        }
+
+        if (requestedKind == EvidenceKind.Message && source is null)
+        {
+            return (ReferenceOutcome.SourceMissing, "source_row_missing");
+        }
+
+        if (requestedKind != EvidenceKind.Message)
+        {
+            return (ReferenceOutcome.Unverified, "source_not_checkable_for_kind");
+        }
+
+        if (claims.Any(reference => reference.AccessOutcome == EvidenceAccessOutcome.NotEvaluated))
+        {
+            return (ReferenceOutcome.NotEvaluated, "claim_not_evaluated");
+        }
+
+        return (ReferenceOutcome.Resolved, null);
     }
 
-    private static List<(ReferenceCitation Citation, EvidenceReference? Reference)> ReadCitations(
+    private sealed record CitationScan(
+        List<(ReferenceCitation Citation, EvidenceReference? Reference)> Citations,
+        int InvalidRows,
+        bool Truncated);
+
+    /// <summary>
+    /// Finds citations without SQL JSON functions.
+    /// </summary>
+    /// <remarks>
+    /// <c>json_extract</c> over a <c>json_each</c> element that is a plain string raises
+    /// "malformed JSON", so a legacy array of ids became a storage error rather than a citation.
+    /// The candidate rows are selected by a bounded LIKE on the raw text and parsed in C#; a
+    /// malformed array is counted and named, never allowed to fail the query.
+    /// </remarks>
+    private static CitationScan ReadCitations(
         SqliteConnection connection,
         string tenantId,
+        EvidenceKind requestedKind,
         string referenceId)
     {
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT p.scope_kind, p.scope_id, p.property_key, p.value, p.source, p.set_by, p.set_at,
-                   p.confirmed_by, p.confirmed_at, p.evidence_refs
-            FROM host_entity_property p, json_each(p.evidence_refs) AS ref
-            WHERE p.tenant_id = $tenant
-              AND COALESCE(json_extract(ref.value, '$.id'),
-                           CASE WHEN json_type(ref.value) = 'text' THEN ref.value END) = $id
-            ORDER BY p.set_at DESC
+            SELECT scope_kind, scope_id, property_key, value, source, set_by, set_at,
+                   confirmed_by, confirmed_at, evidence_refs
+            FROM host_entity_property
+            WHERE tenant_id = $tenant AND evidence_refs LIKE $pattern ESCAPE '\'
+            ORDER BY set_at DESC
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$tenant", tenantId);
-        command.Parameters.AddWithValue("$id", referenceId);
-        command.Parameters.AddWithValue("$limit", MaxReferenceCitations);
+        command.Parameters.AddWithValue("$pattern", "%" + EscapeLike(referenceId) + "%");
+        command.Parameters.AddWithValue("$limit", MaxReferenceCitations + 1);
 
         var citations = new List<(ReferenceCitation, EvidenceReference?)>();
+        var invalidRows = 0;
+        var scanned = 0;
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            if (!Enum.TryParse<PropertyScopeKind>(reader.GetString(0), out var kind)
+            scanned++;
+
+            if (!Enum.TryParse<PropertyScopeKind>(reader.GetString(0), out var scopeKind)
                 || !Enum.TryParse<PropertySource>(reader.GetString(4), out var source))
+            {
+                continue;
+            }
+
+            var references = ParseReferences(reader.GetString(9));
+            if (references is null)
+            {
+                invalidRows++;
+                continue;
+            }
+
+            var reference = references.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, referenceId, StringComparison.Ordinal)
+                && candidate.Kind == requestedKind);
+
+            if (reference is null)
             {
                 continue;
             }
@@ -1570,7 +1640,7 @@ public sealed class ProfileQueryStore
 
             citations.Add((
                 new ReferenceCitation(
-                    new PropertyScope(kind, reader.GetString(1)),
+                    new PropertyScope(scopeKind, reader.GetString(1)),
                     reader.GetString(2),
                     reader.GetString(3),
                     source,
@@ -1578,22 +1648,30 @@ public sealed class ProfileQueryStore
                     reader.GetString(5),
                     ParseStamp(reader.GetString(6)),
                     confirmedBy,
-                    reader.IsDBNull(8) ? null : ParseStamp(reader.GetString(8))),
-                FindReference(reader.GetString(9), referenceId)));
+                    reader.IsDBNull(8) ? null : ParseStamp(reader.GetString(8)),
+                    reference.AccessOutcome,
+                    reference.Retention,
+                    reference.RetentionUntil),
+                reference));
         }
 
-        return citations;
+        var truncated = scanned > MaxReferenceCitations;
+        if (truncated)
+        {
+            citations = [.. citations.Take(MaxReferenceCitations)];
+        }
+
+        return new CitationScan(citations, invalidRows, truncated);
     }
 
-    private static EvidenceReference? FindReference(string json, string referenceId)
+    private static List<EvidenceReference>? ParseReferences(string json)
     {
         try
         {
             var references = JsonSerializer.Deserialize<List<EvidenceReference>>(json, HostJson.Options);
             if (references is not null)
             {
-                return references.FirstOrDefault(reference =>
-                    string.Equals(reference.Id, referenceId, StringComparison.Ordinal));
+                return references;
             }
         }
         catch (JsonException)
@@ -1604,10 +1682,15 @@ public sealed class ProfileQueryStore
         try
         {
             var legacy = JsonSerializer.Deserialize<List<string>>(json);
-            return legacy is not null
-                && legacy.Contains(referenceId, StringComparer.Ordinal)
-                    ? new EvidenceReference { Id = referenceId }
-                    : null;
+            return legacy is null
+                ? null
+                : [.. legacy
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => new EvidenceReference
+                    {
+                        Id = id,
+                        Kind = EvidenceKind.Other,
+                    })];
         }
         catch (JsonException)
         {
@@ -1615,11 +1698,27 @@ public sealed class ProfileQueryStore
         }
     }
 
+    private static string EscapeLike(string value)
+        => value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The ledger backend for an evidence kind. Only <see cref="EvidenceKind.Message"/> maps to a
+    /// ledger row; no other kind may borrow a message's row.
+    /// </summary>
     private static ReferenceSource? ReadReferenceSource(
         SqliteConnection connection,
         string tenantId,
+        EvidenceKind kind,
         string referenceId)
     {
+        if (kind != EvidenceKind.Message)
+        {
+            return null;
+        }
+
         using var command = connection.CreateCommand();
         command.CommandText =
             """
