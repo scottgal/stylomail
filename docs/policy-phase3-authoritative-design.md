@@ -1,244 +1,331 @@
 # Phase 3: authoritative pack composition
 
-Status: **design only, no code.** Requested by `overview-` on 18 Oct 2026. The review state is merged
-at `b885420`; the pack evaluator currently runs only in shadow. Nothing here is implemented, and no
-flag is on.
+Status: **design only, no code, no flag on.** Revised on 18 Oct 2026 after the independent
+reliability review and `overview-`'s rulings on all eight gaps. This revision is the artifact for
+document review; implementation stays blocked.
 
-## 1. The feature flag
+## 1. Enablement and typed resolution
 
-**Default OFF, per tenant, and never global.**
+Authoritative mode is decided **only from the authenticated tenant and configuration**. Dependency
+health does not decide whether a tenant is enabled; it decides what that enabled tenant gets.
 
 ```yaml
 StyloMail:
   Policy:
     Authoritative:
       Tenants:
-        acme: GB           # tenant id -> declared jurisdiction; presence = enabled
+        acme: GB           # tenant id -> required jurisdiction; presence = enabled
         globex: US
+      FallbackReviewDeadline: 24:00:00   # optional, 1h..7d, default 24h
 ```
 
-A tenant is opted in by being a key. The value is its required jurisdiction; there is no host-wide
-jurisdiction, because one Host can serve tenants in different legal contexts. An empty map (or an
-absent section) is off everywhere. A present tenant with a blank jurisdiction is a startup fault for
-that tenant, not a silent fallback to legacy: a deployment that believes it enabled policy must not
-quietly be running the old path.
+- Absence of the tenant key, or an empty map, means authoritative mode is **off** for that tenant.
+  A flag-off tenant is gated **before** any pack, rule-set, Profiles, cache or status access. A
+  throwing dependency is never called for it.
+- A present tenant with a blank jurisdiction is a startup fault, not silent legacy.
+- The resolution is typed, not nullable:
 
-Rules:
+```csharp
+enum PolicyResolutionKind { Absent, Pack, Unavailable }
 
-- The flag is consulted per assessment from the authenticated tenant. There is no process-wide
-  on-switch.
-- A tenant is authoritative only when **all** of these hold: it is listed with a non-blank
-  jurisdiction, an approved effective pack exists for that tenant and jurisdiction, and its
-  referenced rule set is live. Profiles availability is not an enablement condition: a missing
-  property is a named absence for the rules that need it, not a global outage.
-- **Flag off is the legacy decision byte-for-byte.** With both the authoritative and shadow flags
-  off, the assessment is identical to a build without pack evaluation: same action, reasons, risk
-  arithmetic and queue admission. The test serialises the assessment and compares bytes.
-- The shadow flag is separate and already merged. If shadow is on while authoritative is off, the
-  only difference is the nullable `Policy` record with `Shadow = true`; the action and reasons are
-  unchanged. That distinction is tested explicitly, because "byte-for-byte" is true of the
-  decision, not of an assessment that has opted into shadow.
-- A listed tenant with no effective pack falls back to the legacy decision and records no
-  authoritative `Policy`. A listed tenant whose pack or rule set cannot be read fails closed
-  (section 5), not open.
+record PolicyResolution
+{
+    PolicyResolutionKind Kind;
+    PolicyPack? Pack;
+    PolicyRuleSet? RuleSet;
+    PolicyResolutionSource Source;     // Store, Cache
+    string? UnavailableReason;
+}
+```
 
-## 2. Composition
+- **Absent** is a healthy "no effective pack": the legacy decision stands.
+- **Pack** is a pack plus a live rule-set version (or a coherent cached pair within the staleness
+  bound).
+- **Unavailable** is an exception, timeout, malformed result, missing required service, or a stale
+  cache: it is never Absent and never falls back to legacy. It enters the fallback path in section 6.
+- Profiles availability is not an enablement condition. A missing property is a named absence for
+  the rules that require it, not a global outage.
 
-The legacy tiers run first and unchanged: resource controls, verified security rules,
-suspected-compromise posture, then risk. The pack verdict is computed over the same evidence, then
-composed by the table already implemented in `PackPolicyComposer`:
+## 2. Ordering, composition and the global shadow mode
 
-| Legacy outcome | Pack Permit/Observe | Pack Hold | Pack Quarantine | Pack Review |
-|---|---|---|---|---|
-| Allow | legacy Allow | Hold | Quarantine | Review |
-| Hold | legacy Hold | Hold | Quarantine | Review |
-| Quarantine | Quarantine | Quarantine | Quarantine | Quarantine |
-| Defer | Defer | Defer | Defer | Defer |
-| Reject | Reject | Reject | Reject | Reject |
+The order is fixed:
 
-- **The more protective outcome wins.** A pack never relaxes a legacy Hold, Quarantine, Defer or
-  Reject, and a pack Permit cannot turn any of them into an Allow.
-- **Recipient preference remains last.** It cannot relax a pack Review, Hold or Quarantine. The
-  existing tier-5 preference logic runs before composition, so its Allow cannot survive a pack Hold.
-- **The ceiling caps fired bands, never escalations.** The evaluator already refuses to cap missing
-  evidence, conflicting evidence, insufficient coverage/sample and zero tolerance. The ceiling is
-  read from the resolved effective policy, not from the raw pack, so a binding cannot raise it.
-- **The evaluator evaluates over the effective policy, not the raw pack.** `PolicyEvaluationInput`
-  gains an `EffectivePolicy` carrying the resolved levels, ceiling, binding ids, property facts,
-  missing property keys and `ForcedReviewCategories`. The raw `PolicyPack` stays on the input and in
-  the record as provenance; it is not the source of the thresholds.
-- **A rule declares the property keys it needs.** `PolicyRule.RequiredPropertyKeys` names them (for
-  example `age_band` or `country`). If a required key is absent, that rule escalates to Review with
-  `policy.property_facts_unavailable`; rules that do not require it compose normally on message
-  evidence. A pack must not read a missing fact as low risk, and must not turn one missing fact into
-  a mailbox-wide hold.
-- `Observe` changes no action. It adds an Observe record and a reason; it never maps to a hold.
+1. Legacy tiers 1–3 and the legacy risk decision, unchanged.
+2. If `AssessmentContext.ShadowMode` is true, the existing contract wins: `ProposedActionInShadow`
+   is the legacy action and the delivered action is Allow. The pack may still be evaluated for the
+   record, but its action is never applied. The record has `Applied = false`, `Shadow = true`,
+   `Authoritative = true` (the flag was on and the pack ran), `PolicySource = GlobalShadow`, and
+   reason `policy.global_shadow_precedence`. This combination is explicitly unsupported for action,
+   not silently relaxed in either direction.
+3. Otherwise resolve the policy: Absent → legacy; Unavailable → the fallback candidate in section 6;
+   Pack → evaluate the pack.
+4. Compose the pack candidate with the legacy decision through `PackPolicyComposer`:
+   `Quarantine > Review > Hold > Allow`. Legacy Defer and Reject are never replaced. A pack Permit
+   cannot turn a legacy protective outcome into Allow; recipient preference remains last and cannot
+   relax a pack Review, Hold or Quarantine.
+5. Admission. If the queue refuses admission (missing payload, spool failure, quota), the final
+   action is Defer because responsibility never transferred. The record has `Applied = false`,
+   `AdmissionRefused = true`; a pack cannot claim Review/Quarantine durability that admission did
+   not take. Only policy evaluation is "never Defer"; Step 7 can still Defer.
+
+The ceiling caps a fired band and never an escalation. Missing evidence, conflicting evidence,
+insufficient coverage/sample, zero tolerance and a missing required property key are escalations
+and are not capped.
 
 ## 3. Action mapping
 
 | Pack verdict | Action | Path |
 |---|---|---|
-| Permit | legacy action | none; record only if the authoritative path ran |
-| Observe | legacy action | none; record carries the Observe verdict |
-| Hold | `MailAction.Hold` | existing queue `Held` with the pack's hold window |
-| Quarantine | `MailAction.Quarantine` | existing queue `Quarantined` |
-| Review | `MailAction.Review` | queue Review with the opening chain and `ReviewDeadline` |
+| Permit | legacy action | none |
+| Observe | legacy action | none; record only |
+| Hold | `MailAction.Hold` | queue Held with the resolved pack hold deadline |
+| Quarantine | `MailAction.Quarantine` | existing quarantine path |
+| Review | `MailAction.Review` | queue Review with the opening chain and resolved deadline |
 
-- `ReviewDeadline` is resolved from the effective pack (`ReviewDeadline`, default 24h) and copied to
-  `PolicyDecision.ReviewDeadline` at composition, so the queue row stores the resolved value.
-- **MonitorAllMail is not a pack verdict.** It is an operator capability, observe-only, and a pack
-  that wants monitoring uses `Observe` (no side effect) or the tenant's monitoring setting. No
-  pack verdict selects MonitorAllMail in v1.
-- **Block is not executable in v1.** The composer and the evaluator cannot produce it; a future
-  rule naming it would be refused by the rule-set validator before activation.
-- **A verdict with no executable mapping fails closed.** If the Review state is unavailable, the
-  mapped Review becomes Quarantine with `policy.review_state_unavailable`; if any other mapping is
-  missing or the composed action is not a known `MailAction`, the result is Quarantine. It is never
-  Allow and never Defer.
+- `ReviewDeadline` is the pack field (default 24h), resolved to an absolute instant at the decision
+  and copied into `PolicyDecision.ReviewDeadline`, the queue row, the opening record and the readback.
+- `HoldWindow` is a new pack field, bounded 1h–7d, default 24h. A pack Hold sets
+  `ReEvaluateBy = now + HoldWindow`. If the legacy decision is already a Hold, the earlier of the
+  legacy and pack deadlines governs; a pack Hold never extends a legacy hold.
+- **MonitorAllMail is not a pack verdict.** It remains an operator capability, observe-only.
+- **Block is not executable in v1.** The evaluator and composer cannot produce it.
+- **No executable mapping fails closed.** A Review that cannot be admitted becomes Quarantine with
+  `policy.review_state_unavailable`; any other unmappable composed action becomes Quarantine. It is
+  never Allow and never Defer in the policy layer.
 
-## 4. Profiles: effective facts, not raw guesses
+## 4. Profiles: conditional uncertainty, not a global outage
 
-`StyloMail.Policy` gains a ProjectReference to `StyloMail.Profiles`. The direction stays Policy to
-Profiles; Profiles never references Policy.
+`StyloMail.Policy` references `StyloMail.Profiles` (Policy → Profiles only). The v1 keys are exactly
+`age_band`, `country`, `role`, `language`, read through
+`PropertyScopeChain.Create(addressed, ancestors...)` and
+`IPropertyStore.GetEffectiveAsync(tenantId, chain, keys, now, ct)`. Active and expired
+`HoldForReview` bindings come through a read-only `IPolicyBindingReader` implemented by the Host.
 
-For each assessment the composition root builds the scope chain and reads exactly the v1 keys:
+- `PolicyRule.RequiredPropertyKeys` names the property keys a rule needs. It is validated against
+  the fixed v1 catalog. The check runs **before band firing**: a rule whose required key is missing
+  returns Review with `policy.property_facts_unavailable`, even when its measured score is below
+  every band. Missing facts are never low risk.
+- Rules that do not require the missing key evaluate normally. In a rule set containing both, the
+  aggregate is the maximum outcome, so a dependent rule's Review is not discarded by another rule's
+  Permit/NotFired. A separate assessment with no dependent rule is the positive control that
+  ordinary processing continues.
+- **Healthy Unknown is not missing.** `State=Unknown`, `Value=null` with a named availability is a
+  measured answer. A healthy `age_band=unknown` adds the affected categories to
+  `ForcedReviewCategories`; it does not fail `RequiredPropertyKeys`. A read failure is missing and
+  fails only the rules that require the key.
+- **Only-ineligible country is a named answer, not a read failure.** `State=Unknown` with
+  `only_ineligible_candidates` records `country_eligible=false`; a rule requiring `country`
+  escalates, other rules compose.
+- A read failure records `PropertyFactsUnavailable=true` and the missing keys on the decision. There
+  is **no global Profiles-outage Review candidate**.
+- A Suggested value may raise and never lower: minor or unknown age raises adult content and
+  coercion to at least Strict and harassment to at least Standard. An inferred adult never lowers a
+  declared minor. A later confirmation does not rewrite the stored decision.
 
-- `age_band`, `country`, `role`, `language` via
-  `PropertyScopeChain.Create(addressed, ancestors...)` and
-  `IPropertyStore.GetEffectiveAsync(tenantId, chain, keys, now, ct)`.
-- Active bindings come through a new read-only `IPolicyBindingReader` in `StyloMail.Policy`,
-  implemented by the Host over the landed binding store. The resolver reads bindings at the decision
-  instant and records their ids; it never writes one.
-- A conversation assessment addresses the conversation; a mail assessment addresses the sender
-  entity, with known domain/company ancestors. The recipient's preferences use the recipient chain
-  for role/language. The chain used and its governing scope are recorded per fact.
-- `audience` and `contact_policy` are not requested: they are not v1 keys and an unknown key throws.
+## 5. Bindings and precedence
 
-The resolver produces an `EffectivePolicy`:
+Bindings are resolved per category, deterministically:
 
-```
-levels   = max(pack.CategoryLevels[category], propertyProtectiveFloor(category, facts))
-levels   = binding.RaiseTolerance or LowerTolerance, most specific active binding
-ceiling  = pack.ActionCeiling                       // bindings cannot raise it
-forced   = property-driven review categories         // unknown age, country difference
-assert hard floors >= Strict
-```
+1. Start with the pack's category level.
+2. Apply the category hard floor (never below Strict).
+3. Apply property-driven protective floors (minor/unknown age, country rules).
+4. Apply binding targets in this order: active bindings, plus expired bindings whose
+   `OnExpiry = HoldForReview`. For each category, choose by **more protective target, then narrower
+   scope, then latest effective, then binding id ordinal**.
+5. **Reapply every property and hard floor after the binding target.** A less protective binding can
+   never erase a minor or unknown floor.
 
-- A **Suggested** value may raise and never lower: a minor or unknown age band raises adult content
-  and coercion to at least Strict, harassment to at least Standard, and an unknown band adds those
-  categories to `ForcedReviewCategories`. An inferred adult never lowers a declared minor.
-- Country is verified/declared only. A known country different from the deployment jurisdiction adds
-  the jurisdiction-sensitive categories to `ForcedReviewCategories`; it never selects a different
-  pack in v1.
-- Binding ids, each fact's key/value/state/source/scope, and the resolved levels go into the
-  decision record. The facts are the replay input: a later reader can recompute the levels without
-  reading the live profile, and a suggestion that has since been confirmed does not rewrite the
-  decision.
-- A Profiles read failure is **not** a permissive default and **not** a global outage. Missing facts
-  are recorded as `PropertyFactsUnavailable` plus the missing keys on the decision. Only rules that
-  declare a missing key in `RequiredPropertyKeys` escalate to Review; every other rule composes
-  normally on message evidence. A protection is never lowered by absence, and the mailbox is not
-  stopped because one property could not be read.
+Support in Phase 3:
 
-## 5. Store outage and cache
+| Binding action | Support |
+|---|---|
+| RaiseTolerance | Applied to the level, then floors reapplied |
+| LowerTolerance | Applied, then floors reapplied; cannot undercut hard/property floors |
+| CaptureText | Grants capture within the pack's declared mode; never a policy verdict or level |
+| Permit | Recorded but **not applied** to an action or level in Phase 3; would relax a protection and needs its own ruling |
+| Observe | Recorded but **not applied** to an action or level in Phase 3; no silent relaxation |
 
-- The last successful effective pack per (tenant, jurisdiction) is cached in memory as an immutable
-  value. It is never mutated in place; a read replaces the reference atomically.
-- Pack store failure with a cached pack: compose with the cached pack and record
-  `policy.pack_cache_used` with the pack version and the cache age. Flag off remains off.
-- Pack store failure with no cache: `Review` with `policy.pack_store_unavailable`. Never Allow and
-  never Defer.
-- Rule-set read failure: `Review` with `policy.rule_set_unavailable` (or the cached immutable rule
-  set for that exact version, with `policy.rule_cache_used` when it is used). A pack is never
-  evaluated against a different rule version.
-- Profiles read failure: named absence (`PropertyFactsUnavailable` and the missing keys); only rules
-  that require a missing key escalate to Review. This is not a global Review and not a global hold.
-- Review state unavailable: `Quarantine` with `policy.review_state_unavailable`.
-- The cache is tenant-scoped, so a tenant cannot read another's pack through a cache key.
+- An expired `HoldForReview` binding keeps the scope withheld for human review. It does not get
+  dropped just because `IsActiveAt(now)` is false. `RevertToPack` stops applying at expiry.
+- Window semantics are `[StartsAt, ExpiresAt)`: just before expiry it applies; exactly at expiry it
+  is expired and the `OnExpiry` rule applies.
+- A binding for another tenant or a pack version different from the resolved pack is refused.
+- Binding resolution snapshots (id, action, category, target, scope, starts, expires, on-expiry,
+  selected/rejected) are recorded in the effective-input snapshot.
 
-## 6. The decision record
+## 6. Deadlines, fallback and admission
 
-`PolicyDecisionRecord` gains:
+- `PolicyPack.ReviewDeadline` and `PolicyPack.HoldWindow` are both bounded 1h–7d with verified
+  defaults; `ReviewDeadline` is 24h and `HoldWindow` is 24h per ruling.
+- Absolute deadlines are resolved once at the decision instant (`now + span`) and copied unchanged
+  into the decision record, opening record, queue row and readback. Nothing recomputes them later.
+- **No-cache Unavailable fallback**: use the configured `FallbackReviewDeadline` (default 24h,
+  bounded 1h–7d), compose it as a Review candidate, and record:
+  `Applied = true`, `Authoritative = false`, `Shadow = false`, `PolicySource = Fallback`,
+  `PackUnavailable = true`, `FallbackReason`, `OpeningSource = fallback`, and **null pack id,
+  version, rule-set id/version, rule id/version and evidence digest**. Do not invent values. The
+  queue opening record and event carry the same null provenance and a fallback reason.
+- A missing rule set for a configured pack is Unavailable, not Absent: fallback Review (bounded),
+  never legacy.
+- If the Review state is unavailable, the fallback candidate becomes Quarantine with
+  `policy.review_state_unavailable`.
+- `Applied` means the final action changed from the legacy action and admission succeeded.
+  `Applied = true, Authoritative = false, Shadow = false` is the fallback record, and the console
+  must not render it as shadow or no-policy.
+- Admission refusal: if the queue refuses, the final action is Defer and `Applied = false`,
+  `AdmissionRefused = true`; policy evaluation never claims durability it did not get.
+
+## 7. Cache
+
+The cache owns an immutable **pack + live rule-set version pair**, keyed by
+`(tenant, jurisdiction, ruleSetId, ruleSetVersion)`, never a sender-specific `EffectivePolicy`.
+
+- Maximum staleness is **5 minutes**. A cache entry older than that is Unavailable, not Pack.
+- A healthy Absent result clears the tenant's cache entry; a pack or binding update in this process
+  invalidates the same tenant immediately. Another process sees the update within the 5-minute
+  bound.
+- Capacity is bounded (e.g. 256 entries) with least-recently-used eviction.
+- Each entry carries a monotonic generation. A slow older read may not overwrite a newer result;
+  install only if its generation is newer.
+- The pack and rule-set versions are cached coherently: an entry never pairs a pack with a rule
+  version it did not reference.
+- The record names `PolicyResolutionSource.Cache` and the cache age; a stale cache never supplies a
+  pack.
+
+## 8. The decision record and replay
+
+`PolicyDecisionRecord` gains and clarifies:
 
 ```csharp
-public bool Applied { get; init; }            // true only when the pack changed the action
-public MailAction? LegacyAction { get; init; } // the action the legacy tiers chose
-public MailAction? ComposedAction { get; init; } // the action after composition
-public bool Authoritative { get; init; }      // true only when the tenant flag is on and the pack ran
+public PolicySource Source { get; init; }          // Pack | Shadow | Fallback | GlobalShadow
+public bool Applied { get; init; }                  // final action changed and admission succeeded
+public MailAction? LegacyAction { get; init; }
+public MailAction? ComposedAction { get; init; }
+public bool Authoritative { get; init; }            // true only when the tenant flag was on and a pack ran
+public bool PackUnavailable { get; init; }
+public string? FallbackReason { get; init; }
+public bool AdmissionRefused { get; init; }
 public bool PropertyFactsUnavailable { get; init; }
-public IReadOnlyList<string> MissingPropertyKeys { get; init; } // empty when facts were available
+public IReadOnlyList<string> MissingPropertyKeys { get; init; }
+public PolicyEffectiveInputSnapshot? EffectiveInput { get; init; }
+public string? EffectiveInputDigest { get; init; }
 ```
 
-- `Applied = composedAction != legacyAction`. A pack verdict equal to the legacy action is still
-  recorded, with `Applied = false`, because "the pack agreed" is a fact worth keeping.
-- `Shadow = false` and `Authoritative = true` only when the tenant flag is on and the pack actually
-  ran; a pack that agreed with the legacy action is still authoritative and `Applied = false`. The
-  existing shadow record keeps `Shadow = true`, `Authoritative = false`, `Applied = false`.
-- The record carries pack id/version, rule-set id/version, scorer version, deciding rule
-  id/version/threshold, reason code and text, missing dimensions, coverage, evidence digest,
-  binding ids and property facts. The console can answer "why did the action change" from the record
-  and the ledger without reading live policy.
-- A flag-off assessment has no authoritative record. A shadow-only assessment keeps its shadow
-  record. Null still means no pack was active or the path was not entered, and is never Permit.
+`PolicyEffectiveInputSnapshot` is self-contained and canonical: resolved level per category (recorded
+by its stable name, so Core does not reference Policy), ceiling, forced categories, property facts
+(key, value, state, source, scope, availability/reason), the addressed chain, binding resolution
+snapshots, and the resolver version. It has its own SHA-256 digest. `EvidenceSnapshotDigest` stays
+evidence-only; the two are never conflated. Same evidence with different facts or bindings must not
+produce the same effective-input digest.
+
+For a fallback record, `PackId`, `PackVersion`, `RuleSetId`, `RuleSetVersion`, `ScorerVersion`,
+`DecidingRuleId` and `DecidingRuleVersion` are null. Null means unavailable, never an empty value;
+the existing record fields that are `required` strings become nullable in this slice. The queue
+opening row likewise gains nullable pack provenance and `OpeningSource` (`pack` or `fallback`), with
+a migration; it does not store empty strings as if they were versions.
+
+- `Source = Pack`, `Authoritative = true`, `Shadow = false` on the normal path.
+- `Source = Shadow`, `Applied = false`, `Authoritative = false` on the pack shadow path.
+- `Source = GlobalShadow`, `Applied = false`, `Shadow = true`, `Authoritative = true` when the
+  global shadow mode wins.
+- `Source = Fallback`, `Applied` per the final action, `Authoritative = false`, `Shadow = false`,
+  null pack provenance as in section 6.
+- Null `Policy` still means no pack was active **or the path was not entered**; it is never Permit.
+  `Source` is the discriminator, not the booleans alone.
+- `Applied = false` means the action did not change, not "the pack agreed": a pack Permit beside a
+  legacy Reject, or a pack Review overridden by legacy Quarantine, is not agreement. Console copy
+  preserves the recorded verdict: "Pack verdict Quarantine; legacy Quarantine preserved; action
+  unchanged."
 - The record travels in the existing assessment JSON; no new table.
 
-## 7. Tests
+## 9. Legacy parity
 
-- **Flag off parity**: a tenant with no flag and both pack paths off produces an assessment
-  byte-identical to a build without pack evaluation; a tenant with a pack but flag off has the same
-  action and reasons.
-- **Composition matrix**: every cell of the table, at the assessment level, including a pack Permit
-  against a legacy Hold/Quarantine/Defer/Reject.
-- **No relaxation**: each legacy protective outcome against every pack verdict.
-- **Review mapping**: pack Review produces `MailAction.Review`, a queue Review row with the opening
-  chain and the resolved deadline; a pack Hold/Quarantine maps to the existing paths; a pack
-  Observe changes no action.
-- **Outage fallback**: pack-store failure with no cache → Review; with a cache → cached pack and a
-  `policy.pack_cache_used` reason; rule-set failure → Review; Review state unavailable → Quarantine.
-- **Profiles fact absence, refined**: a rule whose `RequiredPropertyKeys` include a missing key
-  escalates to Review and the record carries `PropertyFactsUnavailable` plus the key; a rule that does
-  not require it composes normally, and the decision is not a global Review. The same test also
-  proves a missing fact never lowers a protection.
-- **Property-fact replay**: a record replays to the same levels and verdict from its facts alone; a
-  Suggested minor raises; an inferred adult does not lower a declared minor; a later confirmation
-  does not rewrite the record.
-- **Tenant isolation**: a tenant not in the flag list is legacy even when another tenant is
-  authoritative; a cached pack never crosses tenants.
-- **Determinism**: same evidence, facts, bindings and versions produce the same composed action and
-  record digest.
+Parity is against a **pinned legacy reference**, not two calls through the new path.
+
+- The reference is a serialised assessment produced by the legacy build at a named commit, with
+  controlled assessment id, clock, provider results, reservations and profile store contents.
+- The comparison uses independent stores per arm, so the first run cannot change the second's
+  input.
+- Positive controls prove the test can detect a changed action, a changed reason, and a changed
+  queue mapping; a parity test that cannot fail is not a test.
+- Flag-off tenants query no Profiles, cache or status store and mutate no state. The test uses
+  throwing dependency fakes to prove they are never reached.
+- Shadow-only parity excludes exactly the `Policy` field and asserts every other member unchanged.
+
+## 10. Tests
+
+Enablement/absence:
+- Flag off with throwing Profiles/cache/status fakes: legacy baseline, zero dependency calls.
+- Flag on, healthy no pack: legacy decision.
+- Flag on, pack/rule exception/timeout/malformed: fallback Review, never legacy; missing rule set is
+  Unavailable, not Absent.
+
+Ordering/shadow:
+- Global `ShadowMode` + flag on: action unchanged, `Source=GlobalShadow`, `Applied=false`,
+  `Authoritative=true`, `Shadow=true`, reason; pack verdict preserved.
+- Every legacy protective outcome (Allow/Hold/Quarantine/Defer/Reject) against every pack verdict,
+  including the fallback candidate.
+
+Profiles:
+- Dependent rule with fully measured below-band score still Reviews on a missing required key.
+- Identical rule with no property requirement evaluates normally.
+- Mixed rule set: dependent Review is not discarded by an independent Permit.
+- No-dependent assessment continues ordinarily.
+- Healthy Unknown age forces review via categories; read failure only affects required-key rules;
+  only-ineligible country is distinguished from no country and from a read failure.
+
+Deadlines/admission:
+- Pack Hold sets the deadline from `HoldWindow`; legacy Hold deadline is never extended.
+- No-cache fallback has a 24h Review deadline, null pack provenance, `OpeningSource=fallback`.
+- Successful admission after a pack Review; refused admission ends in Defer with `Applied=false`,
+  `AdmissionRefused=true`.
+- Absolute deadlines are identical across record, opening, queue and readback.
+
+Bindings:
+- Minor + less protective binding: property floor survives.
+- Two equal-specificity bindings in reversed enumeration order resolve identically.
+- Deadline just before/at expiry for `RevertToPack` and `HoldForReview`; expired HoldForReview still
+  withholds.
+- Revoked binding, wrong tenant, wrong pack version.
+
+Replay/cache/parity:
+- Replay after deleting live profile/binding state; input-order permutations; later confirmation.
+- Evidence digest and effective-input digest are distinct; differing facts/bindings change the
+  effective digest.
+- Cache: 5-minute staleness, same-tenant invalidation, coherent pack/rule pair, capacity eviction,
+  older slow read cannot overwrite a newer generation, no sender-specific cache.
+- Pinned legacy reference parity with independent stores and positive controls.
 
 ## Owner split
 
 | Piece | Owner |
 |---|---|
-| Feature flag, composition call, queue admission and deadline | `policy-` in Assessment composition, with `overview-` ruling |
-| `EffectivePolicy` resolver, evaluator input, `PackPolicyComposer`, record fields and tests | `policy-` |
-| `PolicyDecisionRecord` additions (`Applied`, `LegacyAction`, `ComposedAction`, `Authoritative`) | `policy-` with `overview-` approval (Core contract) |
-| Profiles ProjectReference and effective-property adapter | `policy-` (reads only; no writes) |
-| Host config, pack/rule cache, `IPolicyBindingReader` implementation, status route, contracts | **`policy-` for this slice** (ruling e), with `review-` verifying the Host code; hand back when `ingress-` returns |
-| Pack/binding lifecycle and review surface | already landed; Policy/Host owners as above |
-| Console pack/binding/review panels and the "action changed" explanation | `desktop-` |
+| Enablement flag, composition call, admission and deadlines | `policy-` in Assessment composition, with `overview-` ruling |
+| `EffectivePolicy`, resolver, evaluator input, composer, record/snapshot, tests | `policy-` |
+| Core record and snapshot types | `policy-` with `overview-` approval |
+| Profiles reference and property adapter | `policy-` (reads only) |
+| Host config, pack/rule cache, status route, `IPolicyBindingReader` | **`policy-` for this slice** (ruling e), with `review-` verifying the Host code; hand back when `ingress-` returns |
+| Review surface and queue | landed; unchanged |
+| Console panels and copy | `desktop-` |
 
-## What desktop needs
+## Desktop needs
 
-- Existing: pack list/detail, binding list/create/revoke, review list/detail/resolution, capability
-  descriptors.
-- New for authoritative mode: `PolicyDecisionRecord.Applied`, `LegacyAction`, `ComposedAction`,
-  `Authoritative`; the resolved effective levels; each property fact with its state/source/scope;
-  the binding ids that shaped the levels; and a status read (`GET /v1/policy/status`) saying whether
-  authoritative mode is on for the tenant, the effective pack, whether shadow is on, and whether the
-  review state is available.
-- Copy: "The pack changed the action from X to Y" when `Applied` is true; "The pack agreed with the
-  legacy action" when false; "Shadow only; no action was applied" when `Shadow` is true; "No policy
-  pack was active" when the record is null.
-- The capability strip must offer no Block and must show Review as WithheldForReview, not a
-  containment state.
+- `PolicyDecisionRecord`: `Source`, `Applied`, `LegacyAction`, `ComposedAction`, `Authoritative`,
+  `PackUnavailable`, `FallbackReason`, `AdmissionRefused`, `PropertyFactsUnavailable`,
+  `MissingPropertyKeys`, `EffectiveInput` and `EffectiveInputDigest`.
+- A status read: `GET /v1/policy/status` returns tenant, authoritative enabled, effective pack,
+  shadow enabled, review state available, cache age.
+- Copy: preserve the pack verdict; do not call `Applied=false` "agreement"; render `Source=Fallback`
+  as "Policy was unavailable; the action was withheld for review", not shadow or no-policy; render
+  `GlobalShadow` as "Global shadow mode prevented the pack from changing the action."
+- Action strip: no Block; Review is WithheldForReview; MonitorAllMail is observe-only.
 
-## Open questions for `overview-`
+## Rulings incorporated
 
-All five were ruled on 18 Oct 2026: record additions approved; per-tenant jurisdiction map approved;
-MonitorAllMail stays an operator capability; Policy -> Profiles approved; `policy-` owns the Host
-cache/status route for this slice with `review-` verification.
+All eight rulings of 18 Oct 2026 are incorporated: typed enablement; ordering and global shadow
+precedence; conditional Profiles uncertainty; bounded Hold/Review deadlines and admission refusal;
+post-binding floors and expired HoldForReview; self-contained replay snapshot and truthful Applied
+copy; 5-minute cache semantics with invalidation, bounds and generations; pinned legacy parity with
+independent stores and positive controls.
 
-The Profiles-outage refinement is incorporated: fact absence is named per decision and only rules
-that declare a missing key escalate. No further ruling is needed before implementation.
+Implementation remains blocked pending document review.
