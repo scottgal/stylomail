@@ -137,8 +137,14 @@ public sealed class ProxyElementScoreView
             ElementLabel = score.Element + " · " + score.VocabularyVersion,
             ScorerLabel = (isKnn ? "prototype kNN" : "linear probe") + " · " + score.ScorerVersion,
             ScoreLabel = scoreLabel,
-            AvailabilityLabel = available ? "Available." : "Not produced: " + score.AvailabilityReason + ".",
+            AvailabilityLabel = available ? "Available." : DescribeAvailability(score.AvailabilityReason),
             ExemplarLabel = string.IsNullOrWhiteSpace(score.NearestExemplarId) ? string.Empty : "Nearest exemplar (opaque id): " + ProxyConversationText.ShortToken(score.NearestExemplarId),
         };
     }
+
+    private static string DescribeAvailability(string reason) => reason switch
+    {
+        "insufficient_exemplars" => "Not produced: insufficient exemplars; this element is in the vocabulary but has too few positive exemplars to score.",
+        _ => "Not produced: " + reason + ".",
+    };
 }

@@ -493,6 +493,17 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
+    public void Insufficient_exemplars_is_explained_as_an_in_vocabulary_unscored_element()
+    {
+        var score = ProxyElementScoreView.From(Element("threat", "prototype_knn", null, null, availability: "not_produced", reason: "insufficient_exemplars"));
+
+        Assert.Contains("insufficient exemplars", score.AvailabilityLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("in the vocabulary", score.AvailabilityLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("too few positive exemplars", score.AvailabilityLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no numeric score", score.ScoreLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task An_elements2_response_with_a_retired_label_is_refused_without_showing_points()
     {
         var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "attachment_lure", vocabularyVersion: "elements/2")));
