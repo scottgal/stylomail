@@ -327,7 +327,7 @@ internal static class ByteRelay
                     _ = ObserveDetachedAsync(pending);
                 }
             }
-            catch (Exception exception) when (exception is OperationCanceledException or IOException or ObjectDisposedException) { }
+            catch (Exception) { /* Closed I/O may fault in a transport-specific way; it has settled. */ }
             if (expired) throw new AccessProxyTimeoutException("Relay made no I/O progress within its idle bound.");
             throw;
         }

@@ -91,10 +91,12 @@ public sealed class RelayOutputIdleTests
         finally { stop.Cancel(); await Drain(heartbeat); }
     }
 
-    [Fact]
-    public async Task Stalled_flush_is_closed_and_settled_before_relay_ownership_is_released()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stalled_flush_is_closed_and_settled_before_relay_ownership_is_released(bool faultOnClose)
     {
-        await using var fixture = await Fixture.Create(TimeSpan.FromMilliseconds(700), stallFlush: true);
+        await using var fixture = await Fixture.Create(TimeSpan.FromMilliseconds(700), stallFlush: true, faultOnClose: faultOnClose);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         var heartbeat = Heartbeat(fixture, stop.Token);
         try
@@ -156,7 +158,7 @@ public sealed class RelayOutputIdleTests
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TcpAccessProxyListener _listener = null!;
         private SessionLimiter _limiter = null!;
-        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false)
+        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false, bool faultOnClose = false)
         {
             var fixture = new Fixture();
             if (nonsettlingWrite) fixture.Buffers = new RecordingPool();
@@ -175,7 +177,7 @@ public sealed class RelayOutputIdleTests
             {
                 ((NetworkStream)raw.Input).Socket.SendBufferSize = 64 * 1024;
                 ((NetworkStream)raw.Input).Socket.NoDelay = true;
-                fixture.Output = new TrackedOutput(raw.Output, stallFlush, nonsettlingWrite);
+                fixture.Output = new TrackedOutput(raw.Output, stallFlush, nonsettlingWrite, faultOnClose);
                 await using var clientChannel = new StreamDuplexChannel(raw.Input, fixture.Output, "test-client");
                 await using var backendChannel = new StreamDuplexChannel(backend.GetStream(), backend.GetStream(), "test-backend");
                 fixture._started.TrySetResult();
@@ -227,7 +229,7 @@ public sealed class RelayOutputIdleTests
         public override void Return(byte[] array, bool clearArray = false) { if (clearArray) Array.Clear(array); Returned.Enqueue(array); }
     }
 
-    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite) : Stream
+    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite, bool faultOnClose) : Stream
     {
         public TaskCompletionSource WriteEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -269,7 +271,12 @@ public sealed class RelayOutputIdleTests
             if (!stallFlush) { await inner.FlushAsync(cancellationToken); return; }
             FlushEntered.TrySetResult();
             // Deliberately ignores cancellation and only settles on physical stream disposal.
-            try { await _closed.Task; } finally { FlushSettled = true; }
+            try
+            {
+                await _closed.Task;
+                if (faultOnClose) throw new InvalidOperationException("Closed transport has completed its reader.");
+            }
+            finally { FlushSettled = true; }
         }
         public override async ValueTask DisposeAsync()
         {
