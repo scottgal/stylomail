@@ -182,6 +182,26 @@ public sealed class RetrievalObserverTests
     }
 
     [Fact]
+    public async Task Fetch_literal_assembler_persists_markers_for_an_available_marked_message()
+    {
+        var sink = new CapturingWarningSink();
+        var finding = new ProxyWarningFinding { MarkerKind = ProxyWarningMarkerKind.LinkDomainMismatch, FindingId = "marked-link" };
+        var factory = new ProxyRetrievalWarningAssemblerFactory(sink,
+            new StaticWarningAnalyzer(findings: [finding]), TimeProvider.System);
+        await using var assembler = factory.Create("tenant", "account");
+
+        FeedFetchLiteral(assembler, "Subject: marked\r\n\r\nbody", splitAt: 9);
+
+        await assembler.DisposeAsync();
+        var outcome = Assert.Single(sink.Outcomes);
+        Assert.Equal(ProxyWarningAvailability.Available, outcome.Availability);
+        Assert.Equal(1, outcome.MarkerCount);
+        var marker = Assert.Single(sink.Markers);
+        Assert.Equal(finding.MarkerKind, marker.MarkerKind);
+        Assert.Equal(finding.FindingId, marker.FindingId);
+    }
+
+    [Fact]
     public async Task Session_factory_analyzes_a_complete_fetch_literal_after_authentication()
     {
         var harness = new ProxyHarness();
@@ -385,12 +405,13 @@ public sealed class RetrievalObserverTests
 
     private sealed class StaticWarningAnalyzer(
         ProxyWarningAvailability availability = ProxyWarningAvailability.Available,
-        ProxyWarningAvailabilityReason reason = ProxyWarningAvailabilityReason.None) : IProxyWarningAnalyzer
+        ProxyWarningAvailabilityReason reason = ProxyWarningAvailabilityReason.None,
+        IReadOnlyList<ProxyWarningFinding>? findings = null) : IProxyWarningAnalyzer
     {
         public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput input, CancellationToken cancellationToken) => ValueTask.FromResult(new ProxyWarningAnalysisResult
         {
             MessageToken = "message", ThreadToken = "thread", Availability = availability,
-            AvailabilityReason = reason, Findings = [],
+            AvailabilityReason = reason, Findings = findings ?? [],
         });
     }
 

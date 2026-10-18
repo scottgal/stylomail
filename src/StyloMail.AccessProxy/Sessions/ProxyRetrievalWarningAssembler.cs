@@ -214,7 +214,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
                 Availability = availability, AvailabilityReason = reason,
                 MarkerCount = availability == ProxyWarningAvailability.Available ? analysis.Findings.Count : 0,
             }, cancellationToken).ConfigureAwait(false);
-            if (availability != ProxyWarningAvailability.Available)
+            if (availability == ProxyWarningAvailability.Available)
             {
                 foreach (var finding in analysis.Findings)
                     await _sink.RecordMarkerAsync(new ProxyDeterministicWarningEvent
