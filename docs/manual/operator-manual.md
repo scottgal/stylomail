@@ -122,8 +122,20 @@ are three different states and the console does not render them as one.
 > does not stamp it. sha256
 > `20d6c5bd66cd1199101bc8aec42dee1141d7c6e5966c5226ecbaff26fba53c10`.
 >
-> **Figure M04 (pending capture).** Status **Connected, not accepting mail** with the failed-checks
-> list visible. Requested as M04. Run directory: pending.
+![Figure M04: connected, not accepting mail](images/m04-connected-not-accepting.png)
+
+> **Figure M04.** Status **Connected, not accepting mail** and an empty queue that explains itself.
+> The queue copy distinguishes the two reasons an empty list has: nothing was queued, or nothing
+> could be, and it names the check the Host failed (`assessor_unavailable`). The right pane says
+> **No decision open** rather than showing an empty decision. The `Why?` disclosure sits collapsed,
+> so the technical evidence stays one click away but out of the first read. The connection strip
+> repeats the state in plain words: the Host is running but cannot durably accept mail right now.
+> Captured at 1180x720 from
+> `ux-results/console-external-host/moderator-polish-20261018T142714Z-82031`, scenario
+> `moderator-polish` (success, one non-duplicated provenance-stamped frame), host build
+> `2a4cc41c7cfb`. This frame proves connection and an honest unavailable readiness state; it does
+> not prove mail service, because this Host has no assessor configured. sha256
+> `6ee609c0a80e65e31f2244935f435e74b1c21e1d733841d52a57a3fa6546d8ee`.
 
 ### 2.5 The live feed is a second question
 
@@ -910,7 +922,7 @@ signals, not message content, and its caption says that.
 | M01 | No API key set | pending | requested |
 | M02 | Connected and live | ux-results/console-smoke | captured; build 7e498edf538a reported, not stamped; sha256 20d6c5bd… |
 | M03 | Connection screen | pending | requested; 12-connection is partial (existing key, placeholder address) and not used |
-| M04 | Connected, not accepting mail | pending | requested |
+| M04 | Connected, not accepting mail | ux-results/console-external-host/moderator-polish-20261018T142714Z-82031 | captured; build 2a4cc41c7cfb; sha256 6ee609c0…; proves connection and unavailable readiness, not mail service |
 | M05 | Cannot reach the Host | pending | requested |
 | M06 | Not a StyloMail Host | pending | requested |
 | M07 | Live updates stopped | pending | requested |
@@ -936,15 +948,17 @@ signals, not message content, and its caption says that.
 | M25 | After release | pending | requested |
 | M26 | Element signals | ux-results/console-external-host/20261018T125450Z-68237 | captured; build 09bed8235ebd; sha256 b9d1acf5…; one urgency_pressure card, +0.001 weak evidence |
 
-Eleven frames in this table are captured, in five batches. M08 and M21a come from the first batch,
+Twelve frames in this table are captured, in six batches. M08 and M21a come from the first batch,
 whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
 not stamp it, and that gap is recorded rather than filled. M12 comes from the fourth, the
 `console-m26-m12-capture` run (13 of 13 actions passed), host build `f8c74d98f829`. M26 comes from
 the fifth, the `console-m26-elements3-capture` run (12 of 12 actions passed), host build
-`09bed8235ebd`. M13, M15 and M20 are covered by M08, M02 and M19. All images carry their run
-directory, scenario and sha256.
+`09bed8235ebd`. M04 comes from the sixth, the `moderator-polish` run (success, one accepted frame),
+host build `2a4cc41c7cfb`; it proves connection and unavailable readiness, not mail service, because
+that Host has no assessor. M13, M15 and M20 are covered by M08, M02 and M19. All images carry their
+run directory, scenario and sha256.
 
 The earlier M26 frame from the `m26-m12` run was captured under a superseded vocabulary and is not
 used; the M26 figure now comes from the `elements/3` run. The old frame stays in its run directory
