@@ -659,6 +659,10 @@ public sealed class ProxyRoutesTests
         Assert.True(draining.Draining);
         Assert.False(draining.Enabled);
 
+        // 202 means accepted and stopping, not that the drain worker has already run. Wait for
+        // StopAsync to be entered before asserting that a repeated disable did not start a second.
+        await factory.Last!.Started.WaitAsync(TimeSpan.FromSeconds(2));
+
         // A second disable while draining is idempotent; it must not start a competing drain.
         var secondDisable = await operatorClient.PostAsync("/v1/proxy/listeners/imap-main/disable", null);
         Assert.Equal(HttpStatusCode.Accepted, secondDisable.StatusCode);
@@ -1785,6 +1789,10 @@ public sealed class ProxyRoutesTests
     private sealed class FakeListenerHandle : IProxyListenerHandle
     {
         private readonly TaskCompletionSource _drain = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes when StopAsync has been entered, before it waits for the drain.</summary>
+        public Task Started => _started.Task;
 
         public int StopCount { get; private set; }
 
@@ -1797,6 +1805,7 @@ public sealed class ProxyRoutesTests
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             StopCount++;
+            _started.TrySetResult();
             await _drain.Task.WaitAsync(cancellationToken);
         }
 
