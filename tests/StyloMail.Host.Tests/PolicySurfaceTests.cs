@@ -6,6 +6,7 @@ using StyloMail.Core;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Policy;
 using StyloMail.Host.Serialization;
+using StyloMail.Host.Storage;
 using StyloMail.Policy;
 
 namespace StyloMail.Host.Tests;
@@ -198,6 +199,51 @@ public sealed class PolicySurfaceTests
 
         Assert.Equal(HttpStatusCode.BadRequest, activation.StatusCode);
         Assert.Contains("pack.rule_set_not_live", await activation.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_read_that_promotes_a_due_pack_records_a_scheduler_event()
+    {
+        using var host = new TestHost().WithClock();
+        using var client = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+        await SeedRuleSetAsync(host);
+
+        await DraftAsync(client, "1.0.0");
+        await ApproveAsync(client, "1.0.0");
+        await ActivateAsync(client, "1.0.0");
+
+        // A future pack is a schedule, not an activation. The read that promotes it is a state
+        // change on a Review read, so it must leave an audit row naming the system actor.
+        await DraftAsync(client, "2.0.0", effectiveFrom: Now.AddHours(1));
+        await ApproveAsync(client, "2.0.0");
+        var scheduled = await ActivateAsync(client, "2.0.0");
+        Assert.Equal(PolicyPackState.Approved, scheduled.State);
+
+        host.Clock.Advance(TimeSpan.FromHours(2));
+
+        var reader = host.Services.GetRequiredService<IPolicyPackReader>();
+        var effective = await reader.GetEffectiveAsync(
+            TestPrincipals.AcmeTenant, "GB", host.Clock.GetUtcNow());
+
+        Assert.NotNull(effective);
+        Assert.Equal("2.0.0", effective!.Version);
+        Assert.Equal(
+            ToleranceLevel.Strict,
+            effective.CategoryLevels[PolicyCategories.PaymentRedirection]);
+
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*) FROM host_policy_pack_event
+            WHERE tenant_id = $tenant AND pack_id = $pack AND version = '2.0.0'
+              AND event = 'activated' AND actor = 'policy-scheduler';
+            """;
+        command.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+        command.Parameters.AddWithValue("$pack", PackId);
+
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]

@@ -144,8 +144,10 @@ draft --approve--> approved --activate--> effective --supersede--> superseded
 
 An approved pack whose `effective_from` is in the future is a schedule. Several schedules may
 coexist; the lookup promotes the earliest due one in a transaction when it is observed, superseding
-the current effective pack. The partial unique index still permits exactly one effective pack per
-tenant and jurisdiction. A rule set is resolved by version through one tenant lineage, so a version
+the current effective pack. Promotion is a state change on a Review read, so it happens inside the
+same transaction as the supersession and writes an `activated` event naming the system actor
+`policy-scheduler`; a read that mutates without an audit row would be unacceptable. The partial
+unique index still permits exactly one effective pack per tenant and jurisdiction. A rule set is resolved by version through one tenant lineage, so a version
 must map to exactly one live row (`rule_set.ambiguous` otherwise).
 
 **v1 selects one pack per tenant and jurisdiction, from the deployment's declared jurisdiction.**

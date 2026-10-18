@@ -155,7 +155,7 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
             using var connection = _database.Open();
             using var transaction = connection.BeginTransaction();
 
-            var row = ReadEarliestDue(connection, transaction, tenantId, jurisdiction, now);
+            var row = ReadLatestDue(connection, transaction, tenantId, jurisdiction, now);
 
             if (row is null)
             {
@@ -510,12 +510,12 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
                 return row with { State = PolicyPackState.Approved };
             }
 
-            var earlier = ReadEarlierDue(connection, transaction, tenantId, pack.Context.Jurisdiction, pack.EffectiveFrom, now);
-            if (earlier is not null)
+            var later = ReadLaterDue(connection, transaction, tenantId, pack.Context.Jurisdiction, pack.EffectiveFrom, now);
+            if (later is not null)
             {
                 throw new PolicyLifecycleException(
-                    "pack.earlier_pack_pending",
-                    $"'{earlier.PackId}@{earlier.Version}' is approved and due earlier. Activate it first, or withdraw it.");
+                    "pack.later_pack_pending",
+                    $"'{later.PackId}@{later.Version}' is due later than this pack and already governs. Activating this version would move policy backwards.");
             }
 
             var current = ReadEffective(connection, transaction, tenantId, pack.Context.Jurisdiction);
@@ -761,7 +761,12 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
             : null;
     }
 
-    private static PackRow? ReadEarliestDue(
+    /// <summary>
+    /// The latest due pack. Ordering is descending because a pack takes effect in chronological
+    /// order: when a scheduled replacement becomes due it must supersede the pack it replaces, not
+    /// lose to it because the older pack's effective instant sorts first.
+    /// </summary>
+    private static PackRow? ReadLatestDue(
         SqliteConnection connection,
         SqliteTransaction transaction,
         string tenantId,
@@ -778,7 +783,7 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
             WHERE tenant_id = $tenant AND jurisdiction = $jurisdiction
               AND state IN ('effective', 'approved')
               AND effective_from IS NOT NULL AND effective_from <= $now
-            ORDER BY effective_from ASC, approved_at ASC
+            ORDER BY effective_from DESC, approved_at DESC
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$tenant", tenantId);
@@ -800,7 +805,7 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
             : null;
     }
 
-    private static PackRow? ReadEarlierDue(
+    private static PackRow? ReadLaterDue(
         SqliteConnection connection,
         SqliteTransaction transaction,
         string tenantId,
@@ -816,7 +821,7 @@ public sealed class SqlitePolicyPackStore : IPolicyPackReader
                    second_approver, effective_from, review_due, created_at, approved_at, superseded_by
             FROM host_policy_pack
             WHERE tenant_id = $tenant AND jurisdiction = $jurisdiction AND state = 'approved'
-              AND effective_from IS NOT NULL AND effective_from <= $now AND effective_from < $this
+              AND effective_from IS NOT NULL AND effective_from <= $now AND effective_from > $this
             ORDER BY effective_from ASC
             LIMIT 1;
             """;
