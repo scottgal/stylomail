@@ -493,6 +493,33 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
+    public async Task An_elements2_response_with_a_retired_label_is_refused_without_showing_points()
+    {
+        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson("thread-token", ElementPointJson("turn_token", "Retrieval", element: "attachment_lure", vocabularyVersion: "elements/2")));
+        var model = new ProxyConversationElementsViewModel(Client(handler));
+
+        await model.LoadAsync("thread-token");
+
+        Assert.Empty(model.Points);
+        Assert.Contains("cannot safely compare", model.StatusLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_elements1_point_is_rendered_as_historical_read_only_data()
+    {
+        var point = ProxyElementPointView.From(new ProxyElementPointResponse
+        {
+            ObservedAt = DateTimeOffset.Parse(WindowStart), TurnToken = "turn_safe", TrafficKind = "Retrieval", Ordinal = 0,
+            Elements = [Element("attachment_lure", "prototype_knn", -0.2, null, vocabularyVersion: "elements/1")],
+            Tone = new ProxyToneResponse { VocabularyVersion = "goemotions/1", ModelTag = null, Availability = "not_produced", AvailabilityReason = "tone_model_unavailable", Top = [] },
+        });
+
+        Assert.Contains("elements/1", point.VocabularyLabel, StringComparison.Ordinal);
+        Assert.Contains("historical read-only", point.VocabularyLabel, StringComparison.Ordinal);
+        Assert.Contains("not comparable", point.VocabularyLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_superseded_element_response_never_applies_to_the_new_selection()
     {
         var oldStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -599,15 +626,15 @@ public sealed class ProxyConversationTests
         {"tenantId":"tenant","threadToken":"{{threadToken}}","window":"last_24_hours","windowStart":"{{WindowStart}}","windowEnd":"{{WindowEnd}}","provenance":"proxy_element_classification","points":[{{points}}]}
         """;
 
-    private static string ElementPointJson(string turnToken, string trafficKind) =>
+    private static string ElementPointJson(string turnToken, string trafficKind, string element = "threat", string vocabularyVersion = "elements/2") =>
         "{\"observedAt\":\"" + WindowStart
         + "\",\"turnToken\":\"" + turnToken
         + "\",\"trafficKind\":\"" + trafficKind
-        + "\",\"ordinal\":0,\"elements\":[{\"element\":\"threat\",\"scorer\":\"prototype_knn\",\"scorerVersion\":\"prototype_knn/corpus-1\",\"vocabularyVersion\":\"elements/1\",\"modelTag\":\"model\",\"prefixVersion\":\"classification/1\",\"dimension\":256,\"score\":-0.2,\"nearestExemplarId\":\"seed-1:threat:0007\",\"availability\":\"available\",\"availabilityReason\":\"none\"}],\"tone\":{\"vocabularyVersion\":\"goemotions/1\",\"modelTag\":null,\"availability\":\"not_produced\",\"availabilityReason\":\"tone_model_unavailable\",\"top\":[]}}";
+        + "\",\"ordinal\":0,\"elements\":[{\"element\":\"" + element + "\",\"scorer\":\"prototype_knn\",\"scorerVersion\":\"prototype_knn/corpus-1\",\"vocabularyVersion\":\"" + vocabularyVersion + "\",\"modelTag\":\"model\",\"prefixVersion\":\"classification/1\",\"dimension\":256,\"score\":-0.2,\"nearestExemplarId\":\"seed-1:threat:0007\",\"availability\":\"available\",\"availabilityReason\":\"none\"}],\"tone\":{\"vocabularyVersion\":\"goemotions/1\",\"modelTag\":null,\"availability\":\"not_produced\",\"availabilityReason\":\"tone_model_unavailable\",\"top\":[]}}";
 
-    private static ProxyElementScoreResponse Element(string element, string scorer, double? score, string? exemplar, string availability = "available", string reason = "none") => new()
+    private static ProxyElementScoreResponse Element(string element, string scorer, double? score, string? exemplar, string availability = "available", string reason = "none", string vocabularyVersion = "elements/2") => new()
     {
-        Element = element, Scorer = scorer, ScorerVersion = scorer + "/corpus-1", VocabularyVersion = "elements/1",
+        Element = element, Scorer = scorer, ScorerVersion = scorer + "/corpus-1", VocabularyVersion = vocabularyVersion,
         ModelTag = "model", PrefixVersion = "classification/1", Dimension = 256, Score = score,
         NearestExemplarId = exemplar, Availability = availability, AvailabilityReason = reason,
     };

@@ -13,6 +13,7 @@
       <ItemsControl ItemsSource="{Binding Points}">
         <ItemsControl.ItemTemplate><DataTemplate><Border Classes="card"><StackPanel Spacing="5">
           <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Summary}" />
+          <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding VocabularyLabel}" />
           <TextBlock Classes="cardWarningText" TextWrapping="Wrap" Text="{Binding ToneLabel}" />
           <ItemsControl ItemsSource="{Binding Elements}"><ItemsControl.ItemTemplate><DataTemplate><Border BorderBrush="#D1D1D6" BorderThickness="1" CornerRadius="4" Padding="8"><StackPanel Spacing="2">
             <TextBlock Classes="rowSubtitle" Text="{Binding ElementLabel}" />

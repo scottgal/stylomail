@@ -9,6 +9,12 @@ namespace StyloMail.Desktop.ViewModels;
 /// <summary>Content-free, per-segment element measurements for the selected conversation.</summary>
 public sealed class ProxyConversationElementsViewModel : ObservableObject
 {
+    private static readonly HashSet<string> CurrentElements = new(StringComparer.Ordinal)
+    {
+        "credential_request",
+        "urgency_pressure",
+        "threat",
+    };
     private readonly ProxyConversationClient? _client;
     private long _generation;
     private CancellationTokenSource? _cancellation;
@@ -55,7 +61,13 @@ public sealed class ProxyConversationElementsViewModel : ObservableObject
                 StatusLabel = "The element read returned a non-opaque turn token. No points were shown.";
                 return;
             }
-            foreach (var point in response.Points.OrderBy(x => x.ObservedAt).ThenBy(x => x.TrafficKind, StringComparer.Ordinal).ThenBy(x => x.Ordinal)) Points.Add(ProxyElementPointView.From(point));
+            var orderedPoints = response.Points.OrderBy(x => x.ObservedAt).ThenBy(x => x.TrafficKind, StringComparer.Ordinal).ThenBy(x => x.Ordinal).ToArray();
+            if (!orderedPoints.All(ValidateVocabulary))
+            {
+                StatusLabel = "The element read contained a label or vocabulary version that this console cannot safely compare. No points were shown.";
+                return;
+            }
+            foreach (var point in orderedPoints) Points.Add(ProxyElementPointView.From(point));
             ProvenanceLine = ProxyConversationText.WindowLine(response.Window, response.WindowStart, response.WindowEnd) + " Source: " + response.Provenance + ".";
             StatusLabel = Points.Count == 0 ? "No element points were recorded for this thread in " + response.Window + "." : "Showing " + Points.Count.ToString(CultureInfo.InvariantCulture) + " separate segment point(s); retrieval and submission are never blended.";
         }
@@ -66,21 +78,41 @@ public sealed class ProxyConversationElementsViewModel : ObservableObject
     }
 
     private bool IsCurrent(long generation) => generation == Volatile.Read(ref _generation);
+
+    private static bool ValidateVocabulary(ProxyElementPointResponse point)
+        => point.Elements.All(score => score.VocabularyVersion switch
+        {
+            "elements/2" => CurrentElements.Contains(score.Element),
+            "elements/1" => true,
+            _ => false,
+        });
 }
 
 public sealed class ProxyElementPointView
 {
     public required string Summary { get; init; }
+    public required string VocabularyLabel { get; init; }
     public required string ToneLabel { get; init; }
     public required IReadOnlyList<ProxyElementScoreView> Elements { get; init; }
     public static ProxyElementPointView From(ProxyElementPointResponse point) => new()
     {
         Summary = point.TrafficKind + " · segment " + point.Ordinal.ToString(CultureInfo.InvariantCulture) + " · " + ProxyConversationText.Utc(point.ObservedAt) + " · turn " + ProxyConversationText.ShortToken(point.TurnToken),
+        VocabularyLabel = VocabularyLine(point.Elements),
         ToneLabel = ProxyConversationText.IsAvailable(point.Tone.Availability)
             ? "Tone is available from its separate scorer."
             : "Tone not produced: " + point.Tone.AvailabilityReason + ".",
         Elements = point.Elements.Select(ProxyElementScoreView.From).ToArray(),
     };
+
+    private static string VocabularyLine(IReadOnlyList<ProxyElementScoreResponse> elements)
+    {
+        var versions = elements.Select(score => score.VocabularyVersion).Distinct(StringComparer.Ordinal).ToArray();
+        if (versions.Length == 0) return "Vocabulary: no element scores were recorded.";
+        var version = string.Join(", ", versions);
+        return versions.All(value => string.Equals(value, "elements/1", StringComparison.Ordinal))
+            ? "Vocabulary: " + version + " · historical read-only data; not comparable with elements/2."
+            : "Vocabulary: " + version + ".";
+    }
 }
 
 public sealed class ProxyElementScoreView
@@ -102,7 +134,7 @@ public sealed class ProxyElementScoreView
                 : "Probe probability: " + score.Score.Value.ToString("0.###", CultureInfo.InvariantCulture) + ".";
         return new()
         {
-            ElementLabel = score.Element,
+            ElementLabel = score.Element + " · " + score.VocabularyVersion,
             ScorerLabel = (isKnn ? "prototype kNN" : "linear probe") + " · " + score.ScorerVersion,
             ScoreLabel = scoreLabel,
             AvailabilityLabel = available ? "Available." : "Not produced: " + score.AvailabilityReason + ".",
