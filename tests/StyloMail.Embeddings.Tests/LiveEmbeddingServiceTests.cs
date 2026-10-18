@@ -130,13 +130,22 @@ public sealed class LiveEmbeddingServiceTests
 
         var outcome = await provider.ClassifyAsync(
             Segments, new[] { ElementScorers.PrototypeKnn, ElementScorers.LinearProbe });
+        // No elements/2 artefact is seeded yet, so the live service is expected to refuse
+        // classification with a named reason. A Success must carry the pruned vocabulary.
+        if (outcome is ClassificationOutcome.Unavailable unavailable)
+        {
+            Assert.NotEqual(ClassificationUnavailableReason.None, unavailable.Reason);
+            _output.WriteLine("live classify unavailable: {0}", unavailable.Reason.ToWireName());
+            return;
+        }
+
         var classified = Assert.IsType<ClassificationOutcome.Success>(outcome).Classification;
         Assert.Equal(ElementVocabulary.Version, classified.VocabularyVersion);
         Assert.Equal(2, classified.Scorers.Count);
         foreach (var scorer in classified.Scorers)
         {
             Assert.Equal(2, scorer.Segments.Count);
-            Assert.All(scorer.Segments, row => Assert.Equal(5, row.Elements.Count));
+            Assert.All(scorer.Segments, row => Assert.Equal(ElementVocabulary.All.Count, row.Elements.Count));
             foreach (var point in scorer.Segments.SelectMany(row => row.Elements))
             {
                 Assert.Equal(ElementAvailability.Available, point.Availability);

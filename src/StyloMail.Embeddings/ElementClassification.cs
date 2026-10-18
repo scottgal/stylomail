@@ -11,13 +11,33 @@ namespace StyloMail.Embeddings;
 /// </remarks>
 public static class ElementVocabulary
 {
-    /// <summary>The version these names belong to. Elements change here, never in place.</summary>
-    public const string Version = "elements/1";
+    /// <summary>
+    /// The version these names belong to. Elements change here, never in place.
+    /// </summary>
+    /// <remarks>
+    /// <b>elements/2 removed two elements, and that is a vocabulary change rather than a tuning
+    /// change.</b> An independent 20-row check by a different model lineage found the teacher labelling
+    /// impersonated_greeting and attachment_lure on rows where the acts were not present: the quoted
+    /// phrases were real, but they did not contain the act. A label another lineage cannot reproduce is
+    /// not evidence, so both are out. credential_request stays PROVISIONAL: the teacher missed it on
+    /// three rows the independent check found, and it earns its place only if a 60-row check agrees.
+    /// </remarks>
+    public const string Version = "elements/2";
 
     public const string CredentialRequest = "credential_request";
     public const string UrgencyPressure = "urgency_pressure";
     public const string Threat = "threat";
+
+    /// <summary>
+    /// Not in elements/2. Retained so stored elements/1 rows remain readable and code that names the
+    /// old strings still compiles; nothing in <see cref="All"/> produces them.
+    /// </summary>
     public const string ImpersonatedGreeting = "impersonated_greeting";
+
+    /// <summary>
+    /// Not in elements/2. Retained so stored elements/1 rows remain readable and code that names the
+    /// old strings still compiles; nothing in <see cref="All"/> produces them.
+    /// </summary>
     public const string AttachmentLure = "attachment_lure";
 
     /// <summary>Every element, in the order a response reports them.</summary>
@@ -26,8 +46,6 @@ public static class ElementVocabulary
         CredentialRequest,
         UrgencyPressure,
         Threat,
-        ImpersonatedGreeting,
-        AttachmentLure,
     };
 
     /// <summary>True when a name is one of the five this version defines.</summary>

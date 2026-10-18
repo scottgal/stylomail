@@ -21,7 +21,7 @@ import re
 import shutil
 import subprocess
 
-ELEMENTS = ("credential_request", "urgency_pressure", "threat", "impersonated_greeting", "attachment_lure")
+ELEMENTS = ("credential_request", "urgency_pressure", "threat")
 
 DEFINITIONS = """credential_request: asks the reader to send, enter or confirm credentials. POSITIVE: "reply
 with your password and PIN today". NEGATIVE: "your password was reset successfully".
@@ -29,12 +29,8 @@ urgency_pressure: imposes a short deadline or threatens loss for not acting. POS
 hours or the account is closed". NEGATIVE: "please send the report by Friday".
 threat: threatens harm, exposure, legal action or retaliation. POSITIVE: "we will publish your files
 unless you pay". NEGATIVE: "unpaid invoices may incur a late fee".
-impersonated_greeting: claims an identity or authority the sender does not have, to move the reader to
-act. POSITIVE: "this is Microsoft Support, call this number". NEGATIVE: "Sincerely, PayPal Security"
-at the end of a notice reporting an action already taken.
-attachment_lure: asks the reader to open an attachment or enable macros/content to proceed.
-POSITIVE: "enable macros to view the payment details". NEGATIVE: "the attached minutes are for your
-records"."""
+credential_request is PROVISIONAL in elements/2: the teacher missed rows an independent check found,
+so label it only when the segment itself asks for a credential."""
 
 EXCLUSIONS = """A security notice that reports an action already taken is benign. A document that is
 merely attached and described as available is benign. A generic greeting or signature is not

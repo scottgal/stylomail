@@ -19,7 +19,7 @@ import hashlib
 import json
 import pathlib
 
-ELEMENTS = ("credential_request", "urgency_pressure", "threat", "impersonated_greeting", "attachment_lure")
+ELEMENTS = ("credential_request", "urgency_pressure", "threat")
 
 
 def digest(text: str) -> str:

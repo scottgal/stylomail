@@ -109,11 +109,16 @@ Turn:
 {turn_text}
 """
 
-BENIGN_VERIFY_TEMPLATE = """Does ANY turn below contain one of these elements?
+BENIGN_VERIFY_TEMPLATE = """Does ANY turn below commit one of these acts?
 {elements}
-credential_request asks for credentials; urgency_pressure imposes a short deadline or loss; threat
-threatens harm or legal action; impersonated_greeting claims a false identity or authority;
-attachment_lure asks to open an attachment or enable macros.
+credential_request: asks the reader to send or confirm credentials. urgency_pressure: imposes a short
+deadline or threatens loss for not acting. threat: threatens harm, exposure or legal action.
+impersonated_greeting: claims an identity or authority the sender does not have, to move the reader to
+act. attachment_lure: asks the reader to open an attachment or enable macros to proceed.
+
+EXCLUSIONS: a security notice reporting an action already taken is benign; a document merely attached
+and described as available is benign; a greeting or signature is not impersonation. Judge the act, not
+the topic.
 
 Answer ONLY JSON: {{"contains": true|false, "which":["..."]}}
 
@@ -213,8 +218,11 @@ def build_prompt(kind: str, controls: dict) -> str:
                 f'"{kind}" and that turn carries the label.')
         examples = "\n".join(FEW_SHOTS[kind])
     else:
-        task = ('This is a hard negative: no turn may contain any of these elements: '
-                f'{", ".join(ELEMENTS)}. It must look plausible and benign.')
+        task = ('This is a hard negative. It must report or transact, never ask: no turn may ask for '
+                'credentials, impose a short deadline or threaten loss, threaten harm, claim an '
+                'identity the sender does not have, or ask the reader to open an attachment or enable '
+                'macros. A security notice must state an action already taken. A document may be '
+                'described as available without asking anyone to open it.')
         examples = "Example: a real provider security notice that reports an action already taken and asks for nothing."
     return PLAN_TEMPLATE.format(task=task, examples=examples, **controls)
 

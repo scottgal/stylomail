@@ -371,7 +371,8 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
                 memory.Write(buffer, 0, read);
             }
 
-            return (response.StatusCode, Encoding.UTF8.GetString(memory.ToArray()));
+            // Decode only the written region; ToArray would allocate and copy the entire body.
+            return (response.StatusCode, Encoding.UTF8.GetString(memory.GetBuffer(), 0, checked((int)memory.Length)));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

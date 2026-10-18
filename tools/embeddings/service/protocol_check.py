@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from embed_app import create_app
+from embed_classify import VOCABULARY
 from embed_config import Config, ConfigError, SUPPORTED_DIMENSIONS
 from embed_encoder import EncodeResult, VectorContractError
 
@@ -186,7 +187,7 @@ class StubClassifier:
     def describe(self) -> dict[str, object]:
         return {
             "artefact_version": "seed-1",
-            "vocabulary_version": "elements/1",
+            "vocabulary_version": "elements/2",
             "scorers": [{"scorer": "prototype_knn", "scorer_version": "prototype_knn/seed-1"}],
         }
 
@@ -204,13 +205,7 @@ class StubClassifier:
                             "nearest_exemplar_id": f"seed-1:{element}:0001",
                             "reason": None,
                         }
-                        for element in (
-                            "credential_request",
-                            "urgency_pressure",
-                            "threat",
-                            "impersonated_greeting",
-                            "attachment_lure",
-                        )
+                        for element in VOCABULARY
                     ],
                 }
                 for ordinal in range(len(vectors))
@@ -233,10 +228,10 @@ def test_classify_returns_one_point_per_element_per_segment(tmp_path: pathlib.Pa
     response = TestClient(app).post("/classify", headers=auth(), json={"segments": [SEGMENT]})
     assert response.status_code == 200
     body = response.json()
-    assert body["vocabulary_version"] == "elements/1"
+    assert body["vocabulary_version"] == "elements/2"
     assert body["dimension"] == 256
     points = body["scorers"][0]["segments"][0]["elements"]
-    assert len(points) == 5
+    assert len(points) == len(VOCABULARY)
     assert all(point["availability"] == "available" for point in points)
     assert all(point["score"] == 0.25 for point in points)
 
@@ -258,26 +253,15 @@ def test_classify_requires_a_token(tmp_path: pathlib.Path) -> None:
     assert response.status_code == 401
 
 
-def test_the_committed_artefact_names_a_version_for_every_scorer() -> None:
-    import numpy as np
-    from embed_classify import ElementClassifier
+def test_an_elements1_artefact_is_refused_under_elements2() -> None:
+    from embed_classify import ArtefactError, ElementClassifier
 
+    # The committed corpus-1 artefact is elements/1. Under elements/2 it must be refused rather than
+    # served with two elements silently missing, which is the whole point of versioning the vocabulary.
     artefact = pathlib.Path(__file__).parent / "artefacts" / "elements-corpus-1.json"
     classifier = ElementClassifier(artefact, "google/embeddinggemma-2", 256, "classification/1")
-    classifier.load()
-
-    described = classifier.describe()
-    assert described["scorers"], "no scorers described"
-    for block in described["scorers"]:
-        assert isinstance(block["scorer_version"], str) and block["scorer_version"]
-        assert block["scorer_version"].startswith(block["scorer"] + "/")
-
-    unit = (np.ones((1, 256), dtype=np.float32) / 16.0)[0]
-    results = classifier.classify(np.asarray([unit]), ("prototype_knn", "linear_probe"))
-    assert len(results) == 2
-    for block in results:
-        assert block["scorer_version"], f"scorer_version missing for {block['scorer']}"
-        assert block["scorer_version"].split("/", 1)[0] == block["scorer"]
+    with pytest.raises(ArtefactError):
+        classifier.load()
 
 
 def test_health_is_unauthenticated_and_carries_no_content(tmp_path: pathlib.Path) -> None:

@@ -198,7 +198,7 @@ public sealed class ClassificationOutcomeTests : IDisposable
             prefix_version = "classification/1",
             dimension = Dimension,
             dtype = "bfloat16",
-            vocabulary_version = "elements/1",
+            vocabulary_version = ElementVocabulary.Version,
             scorers = new[]
             {
                 new

@@ -21,14 +21,15 @@ import pathlib
 
 import numpy as np
 
+# elements/2. impersonated_greeting and attachment_lure were removed after an independent 20-row
+# check by a different model lineage could not find the act on rows the teacher had labelled. An
+# elements/1 artefact is refused rather than served under an elements/2 label.
 VOCABULARY = (
     "credential_request",
     "urgency_pressure",
     "threat",
-    "impersonated_greeting",
-    "attachment_lure",
 )
-VOCABULARY_VERSION = "elements/1"
+VOCABULARY_VERSION = "elements/2"
 PROTOTYPE_KNN = "prototype_knn"
 LINEAR_PROBE = "linear_probe"
 SCORERS = (PROTOTYPE_KNN, LINEAR_PROBE)

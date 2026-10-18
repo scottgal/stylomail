@@ -41,7 +41,7 @@ public sealed class CapturedClassifyContractTests : IDisposable
     }
 
     [Fact]
-    public async Task A_classify_response_captured_from_the_service_is_accepted_end_to_end()
+    public async Task A_classify_response_captured_under_elements1_is_refused_under_elements2()
     {
         var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
         var classify = await File.ReadAllTextAsync(Fixture("service-classify.json"));
@@ -57,38 +57,34 @@ public sealed class CapturedClassifyContractTests : IDisposable
             new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
 
         var outcome = await provider.ClassifyAsync(Segments, Scorers);
+
+        // The capture is from the running elements/1 service with five elements. Under elements/2 it
+        // is a version mismatch, and refusing is the contract working, not the fixture rotting.
+        Assert.Equal(
+            ClassificationUnavailableReason.ContractViolation,
+            Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
+    }
+
+    [Fact]
+    public async Task An_elements2_response_with_three_elements_is_accepted()
+    {
+        var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
+        var elements = string.Join(",", ElementVocabulary.All.Select(element =>
+            $"{{\"element\":\"{element}\",\"scorer\":\"{ElementScorers.PrototypeKnn}\",\"availability\":\"available\",\"score\":0.1,\"nearest_exemplar_id\":\"ex:{element}:0001\",\"reason\":null}}"));
+        var classify = "{\"model_tag\":\"google/embeddinggemma-2\",\"prefix_version\":\"classification/1\"," +
+            "\"dimension\":256,\"dtype\":\"bfloat16\",\"vocabulary_version\":\"elements/2\"," +
+            "\"scorers\":[{\"scorer\":\"prototype_knn\",\"scorer_version\":\"prototype_knn/corpus-1\"," +
+            "\"segments\":[{\"ordinal\":0,\"elements\":[" + elements + "]}]}]}";
+
+        var options = new EmbeddingOptions { TokenFilePath = _tokenPath, Dimension = 256 };
+        var provider = new SegmentEmbeddingProvider(
+            new HttpClient(new CapturedHandler(metadata, classify)), options, TimeProvider.System);
+
+        var outcome = await provider.ClassifyAsync(Segments.Take(1).ToArray(), new[] { ElementScorers.PrototypeKnn });
         var success = Assert.IsType<ClassificationOutcome.Success>(outcome);
-        var result = success.Classification;
 
-        Assert.Equal(ElementVocabulary.Version, result.VocabularyVersion);
-        Assert.Equal(2, result.Scorers.Count);
-
-        foreach (var scorer in result.Scorers)
-        {
-            Assert.Equal(2, scorer.Segments.Count);
-            Assert.Equal(5, scorer.Segments[0].Elements.Count);
-            Assert.All(scorer.Segments, row => Assert.Equal(
-                ElementVocabulary.All, row.Elements.Select(point => point.Element).ToList()));
-
-            if (scorer.Scorer == ElementScorers.PrototypeKnn)
-            {
-                Assert.All(scorer.Segments.SelectMany(row => row.Elements), point =>
-                {
-                    Assert.Equal(ElementAvailability.Available, point.Availability);
-                    Assert.InRange(point.Score!.Value, -2.0, 2.0);
-                    Assert.False(string.IsNullOrEmpty(point.NearestExemplarId));
-                });
-            }
-            else
-            {
-                Assert.All(scorer.Segments.SelectMany(row => row.Elements), point =>
-                {
-                    Assert.Equal(ElementAvailability.Available, point.Availability);
-                    Assert.InRange(point.Score!.Value, 0.0, 1.0);
-                    Assert.Null(point.NearestExemplarId);
-                });
-            }
-        }
+        Assert.Equal(ElementVocabulary.Version, success.Classification.VocabularyVersion);
+        Assert.Equal(ElementVocabulary.All.Count, success.Classification.Scorers[0].Segments[0].Elements.Count);
     }
 
     [Fact]
