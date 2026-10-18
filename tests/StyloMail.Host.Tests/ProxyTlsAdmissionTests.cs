@@ -29,9 +29,9 @@ public sealed class ProxyTlsAdmissionTests
         await fixture.ProveSecureGreeting();
         using var client = new TcpClient(AddressFamily.InterNetwork);
         await client.ConnectAsync(IPAddress.Loopback, fixture.Port);
-        await fixture.WaitFor(() => fixture.Clients == 1);
+        await Listener.WaitFor(() => fixture.Clients == 1);
         Assert.True(await ClosedWithin(client, TimeSpan.FromMilliseconds(1500)), "No-ClientHello socket outlived handshake deadline plus tolerance.");
-        await fixture.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
+        await Listener.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
         // The expired connection must release admission so another real TLS session can start.
         await fixture.ProveSecureGreeting();
     }
@@ -48,7 +48,7 @@ public sealed class ProxyTlsAdmissionTests
         using (var first = new TcpClient(AddressFamily.InterNetwork))
         {
             await first.ConnectAsync(IPAddress.Loopback, fixture.Port);
-            await fixture.WaitFor(() => fixture.Clients == 1);
+            await Listener.WaitFor(() => fixture.Clients == 1);
             Assert.Equal(1, fixture.Limiter.ActiveSessions);
             using var excess = new TcpClient(AddressFamily.InterNetwork);
             await excess.ConnectAsync(IPAddress.Loopback, fixture.Port);
@@ -57,7 +57,7 @@ public sealed class ProxyTlsAdmissionTests
             Assert.Equal(1, fixture.Sessions);
             Assert.Equal(1, fixture.Limiter.ActiveSessions);
         }
-        await fixture.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
+        await Listener.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
         await fixture.ProveSecureGreeting();
     }
 
@@ -114,7 +114,7 @@ public sealed class ProxyTlsAdmissionTests
             await writer.WriteLineAsync("QUIT");
             Assert.StartsWith("221", await reader.ReadLineAsync(deadline.Token));
         }
-        await fixture.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
+        await Listener.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
     }
 
     private static async Task<bool> ClosedWithin(TcpClient client, TimeSpan timeout)
@@ -227,9 +227,9 @@ public sealed class ProxyTlsAdmissionTests
                 Assert.StartsWith(_protocol == ProxyListenerProtocol.Pop3 ? "+OK" : "* OK", greeting);
                 Assert.Equal(1, Limiter.ActiveSessions);
             }
-            await WaitFor(() => Clients == 0 && Sessions == 0 && Limiter.ActiveSessions == 0);
+            await Listener.WaitFor(() => Clients == 0 && Sessions == 0 && Limiter.ActiveSessions == 0);
         }
-        public async Task WaitFor(Func<bool> condition)
+        public static async Task WaitFor(Func<bool> condition)
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             while (!condition()) await Task.Delay(10, deadline.Token);
