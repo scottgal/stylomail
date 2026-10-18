@@ -15,6 +15,8 @@ import os
 import pathlib
 import stat
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -262,6 +264,55 @@ def test_an_elements1_artefact_is_refused_under_elements2() -> None:
     classifier = ElementClassifier(artefact, "google/embeddinggemma-2", 256, "classification/1")
     with pytest.raises(ArtefactError):
         classifier.load()
+
+
+def test_an_unscorable_element_is_served_as_insufficient_exemplars(tmp_path: pathlib.Path) -> None:
+    import numpy as np
+    from embed_classify import ElementClassifier
+
+    def vector(weight: float) -> list[float]:
+        values = [weight] * 256
+        norm = sum(value * value for value in values) ** 0.5
+        return [value / norm for value in values]
+
+    artefact = {
+        "artefact_version": "test-1",
+        "vocabulary_version": "elements/2",
+        "model_tag": "google/embeddinggemma-2",
+        "prefix_version": "classification/1",
+        "dimension": 256,
+        "knn_version": "prototype_knn/test-1",
+        "probe_version": "linear_probe/test-1",
+        "element_support": {
+            "credential_request": {"train_positives": 12, "min_train_positives": 10, "scorable": True},
+            "urgency_pressure": {"train_positives": 12, "min_train_positives": 10, "scorable": True},
+            "threat": {"train_positives": 8, "min_train_positives": 10, "scorable": False},
+        },
+        "exemplars": [
+            {"id": "ex:credential_request:1", "element": "credential_request", "label": 1,
+             "split": "train", "vector": vector(1.0)},
+            {"id": "ex:credential_request:2", "element": "credential_request", "label": 0,
+             "split": "train", "vector": vector(-1.0)},
+            {"id": "ex:urgency_pressure:1", "element": "urgency_pressure", "label": 1,
+             "split": "train", "vector": vector(1.0)},
+            {"id": "ex:urgency_pressure:2", "element": "urgency_pressure", "label": 0,
+             "split": "train", "vector": vector(-1.0)},
+            {"id": "ex:threat:1", "element": "threat", "label": 1, "split": "train", "vector": vector(1.0)},
+        ],
+    }
+    path = tmp_path / "elements-test.json"
+    path.write_text(json.dumps(artefact), encoding="utf-8")
+
+    classifier = ElementClassifier(path, "google/embeddinggemma-2", 256, "classification/1")
+    classifier.load()
+    results = classifier.classify(np.asarray([np.ones(256, dtype=np.float32) / 16.0]), ("prototype_knn",))
+
+    points = {point["element"]: point for point in results[0]["segments"][0]["elements"]}
+    assert points["threat"]["availability"] == "not_produced"
+    assert points["threat"]["reason"] == "insufficient_exemplars"
+    assert points["threat"]["score"] is None
+    assert points["threat"]["nearest_exemplar_id"] is None
+    assert points["credential_request"]["availability"] == "available"
 
 
 def test_health_is_unauthenticated_and_carries_no_content(tmp_path: pathlib.Path) -> None:

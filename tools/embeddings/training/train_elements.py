@@ -310,6 +310,7 @@ def main() -> int:
     probe_thresholds = {}
     metrics_block = {}
     operating_scorers = {}
+    element_support = {}
 
     for element in VOCABULARY:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
@@ -426,6 +427,12 @@ def main() -> int:
             "cleared_recall_floor": bool(eligible),
             "reference_scorer": next(name for name in block if name != operating),
         }
+        train_positives = sum(1 for row in fit_rows if row["label"] == 1)
+        element_support[element] = {
+            "train_positives": train_positives,
+            "min_train_positives": 10,
+            "scorable": train_positives >= 10,
+        }
         metrics_block[element] = block
         knn_thresholds[element] = round(float(knn_threshold), 6)
         probe_thresholds[element] = round(float(probe_threshold), 6)
@@ -475,6 +482,7 @@ def main() -> int:
             ),
         },
         "operating_scorers": operating_scorers,
+        "element_support": element_support,
         "metrics": metrics_block,
         "notes": (
             "Weak supervision: the corpus supplies the malicious or benign label; the cue rule only "

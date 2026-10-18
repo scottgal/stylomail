@@ -299,6 +299,7 @@ public sealed partial class SegmentEmbeddingProvider
         {
             "no_exemplars" => Absent(point.Element!, ElementNotProducedReason.NoExemplars),
             "probe_not_trained" => Absent(point.Element!, ElementNotProducedReason.ProbeNotTrained),
+            "insufficient_exemplars" => Absent(point.Element!, ElementNotProducedReason.InsufficientExemplars),
             "artefact_missing" => Absent(point.Element!, ElementNotProducedReason.ArtefactMissing),
             "unauthorized" => Absent(point.Element!, ElementNotProducedReason.Unauthorized),
             "service_unavailable" => Absent(point.Element!, ElementNotProducedReason.ServiceUnavailable),

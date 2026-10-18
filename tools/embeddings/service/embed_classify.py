@@ -60,6 +60,7 @@ class ElementClassifier:
             LINEAR_PROBE: "linear_probe/unknown",
         }
         self._operating = {}
+        self._scorable = {}
 
     @property
     def loaded(self) -> bool:
@@ -114,6 +115,10 @@ class ElementClassifier:
 
         self._artefact_version = str(document.get("artefact_version", "unknown"))
         self._operating = dict(document.get("operating_scorers") or {})
+        # An element below the training minimum is served as not_produced with its own reason, never
+        # as a zero and never omitted. The artefact states this; the service does not guess it.
+        for element, support in (document.get("element_support") or {}).items():
+            self._scorable[element] = bool(support.get("scorable", True))
         self._scorer_versions[PROTOTYPE_KNN] = str(
             document.get("knn_version") or f"prototype_knn/{self._artefact_version}"
         )
@@ -194,6 +199,8 @@ class ElementClassifier:
         return results
 
     def _score_knn(self, element: str, unit: np.ndarray) -> dict[str, object]:
+        if not self._scorable.get(element, True):
+            return _absent(element, "insufficient_exemplars")
         positive = self._positive.get(element)
         negative = self._negative.get(element)
         if positive is None or negative is None:
@@ -214,6 +221,8 @@ class ElementClassifier:
         }
 
     def _score_probe(self, element: str, unit: np.ndarray) -> dict[str, object]:
+        if not self._scorable.get(element, True):
+            return _absent(element, "insufficient_exemplars")
         model = self._probe.get(element)
         if model is None:
             return _absent(element, "probe_not_trained")

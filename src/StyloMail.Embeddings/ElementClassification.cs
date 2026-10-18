@@ -110,6 +110,13 @@ public enum ElementNotProducedReason
     /// <summary>The linear probe has no trained model for this element.</summary>
     ProbeNotTrained,
 
+    /// <summary>
+    /// The element is in the vocabulary but the artefact carries fewer than the training minimum of
+    /// positive exemplars, so no score can be produced. Distinct from <see cref="NoExemplars"/> (none
+    /// at all). The operator action differs: this one means enlarge the sample.
+    /// </summary>
+    InsufficientExemplars,
+
     /// <summary>The artefact does not carry this element or could not be read.</summary>
     ArtefactMissing,
 
@@ -135,6 +142,7 @@ public static class ElementReasons
         ElementNotProducedReason.None => "none",
         ElementNotProducedReason.NoExemplars => "no_exemplars",
         ElementNotProducedReason.ProbeNotTrained => "probe_not_trained",
+        ElementNotProducedReason.InsufficientExemplars => "insufficient_exemplars",
         ElementNotProducedReason.ArtefactMissing => "artefact_missing",
         ElementNotProducedReason.Unauthorized => "unauthorized",
         ElementNotProducedReason.ServiceUnavailable => "service_unavailable",
