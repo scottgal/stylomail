@@ -44,7 +44,8 @@ public sealed class ProxySessionRunnerFactory
     public static async Task<SessionOutcome> RunWithTlsAsync(ProxyListenerProtocol protocol,
         TlsServerOptions? tls, AccessProxyBounds bounds, TimeProvider clock,
         Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> sessions,
-        string tenantId, IDuplexChannel channel, CancellationToken cancellationToken)
+        string tenantId, IDuplexChannel channel, CancellationToken cancellationToken,
+        IProxyConnectionOutcomeSink? outcomes = null)
     {
         if (tls is null) return await sessions(tenantId, channel, cancellationToken).ConfigureAwait(false);
         if (protocol == ProxyListenerProtocol.Smtp)
@@ -64,6 +65,8 @@ public sealed class ProxySessionRunnerFactory
             }
             catch (OperationCanceledException) when (handshake.DeadlineElapsed && !cancellationToken.IsCancellationRequested)
             {
+                try { outcomes?.Count(tenantId, protocol, ProxyConnectionReason.TlsHandshakeTimeout); }
+                catch (Exception) { /* Optional counters never change connection outcomes. */ }
                 return SessionOutcome.Timeout;
             }
         }

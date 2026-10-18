@@ -14,13 +14,15 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
     private readonly AccessProxyBounds _bounds;
     private readonly SessionLimiter _limiter;
     private readonly bool _ownsLimiter;
+    private readonly IProxyConnectionOutcomeSink? _outcomes;
     private int _disposed;
     private TcpAccessProxyListener? _listener;
 
     public ProxyListenerHostedService(ProxyListenerOptions options, IProxyCertificateResolver certificates,
         IProxyListenerEventSink events,
         Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> sessions,
-        TimeProvider clock, AccessProxyBounds? bounds = null, SessionLimiter? limiter = null)
+        TimeProvider clock, AccessProxyBounds? bounds = null, SessionLimiter? limiter = null,
+        IProxyConnectionOutcomeSink? outcomes = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _certificates = certificates ?? throw new ArgumentNullException(nameof(certificates));
@@ -33,6 +35,7 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
             throw new ArgumentException("Listener and session limiter bounds must match.", nameof(limiter));
         _limiter = limiter ?? new SessionLimiter(_bounds);
         _ownsLimiter = limiter is null;
+        _outcomes = outcomes;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -54,7 +57,8 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
             _listener = new TcpAccessProxyListener(
                 new IPEndPoint(_options.BindAddress, _options.Port), _options.TenantId,
                 (tenant, channel, token) => ProxySessionRunnerFactory.RunWithTlsAsync(
-                    _options.Protocol, tls, _bounds, _clock, _sessions, tenant, channel, token), _limiter);
+                    _options.Protocol, tls, _bounds, _clock, _sessions, tenant, channel, token, _outcomes), _limiter,
+                () => _outcomes?.Count(_options.TenantId, _options.Protocol, ProxyConnectionReason.GlobalSessionLimitReached));
             await _listener.StartAsync(cancellationToken).ConfigureAwait(false);
             await _events.PublishAsync(new ProxyListenerEvent
             {

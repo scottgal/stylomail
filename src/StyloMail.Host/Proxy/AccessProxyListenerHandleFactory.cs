@@ -227,7 +227,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
 
         var run = ProxySessionRunnerFactory.Create(runnerOptions, dependencies);
 
-        return new AccessProxyListenerHandle(runnerOptions, run, tls, _events, _clock, _logger, _limiter, _bounds);
+        return new AccessProxyListenerHandle(runnerOptions, run, tls, _events, _clock, _logger, _limiter, _bounds,
+            _services.GetService<IProxyConnectionOutcomeSink>());
     }
 
     /// <summary>
@@ -249,6 +250,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         private readonly ILogger _logger;
         private readonly SessionLimiter _limiter;
         private readonly AccessProxyBounds _bounds;
+        private readonly IProxyConnectionOutcomeSink? _outcomes;
         private TcpAccessProxyListener? _listener;
         private int? _boundPort;
 
@@ -258,7 +260,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             TlsServerOptions? tls,
             IProxyListenerEventSink events,
             TimeProvider clock,
-            ILogger logger, SessionLimiter limiter, AccessProxyBounds bounds)
+            ILogger logger, SessionLimiter limiter, AccessProxyBounds bounds, IProxyConnectionOutcomeSink? outcomes)
         {
             _options = options;
             _run = run;
@@ -268,6 +270,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             _logger = logger;
             _limiter = limiter;
             _bounds = bounds;
+            _outcomes = outcomes;
         }
 
         public int? BoundPort => _boundPort;
@@ -279,7 +282,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             _listener = new TcpAccessProxyListener(
                 new IPEndPoint(_options.BindAddress, _options.Port),
                 _options.TenantId,
-                RunSessionAsync, _limiter);
+                RunSessionAsync, _limiter,
+                () => _outcomes?.Count(_options.TenantId, _options.Protocol, ProxyConnectionReason.GlobalSessionLimitReached));
 
             return StartCoreAsync(cancellationToken);
         }
@@ -299,7 +303,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             // Start the handshake deadline before optional telemetry can await storage. The TCP
             // listener already accounts for this pre-protocol connection's admission.
             return await ProxySessionRunnerFactory.RunWithTlsAsync(_options.Protocol, _tls, _bounds,
-                _clock, TrackedAsync, tenantId, channel, cancellationToken).ConfigureAwait(false);
+                _clock, TrackedAsync, tenantId, channel, cancellationToken, _outcomes).ConfigureAwait(false);
         }
 
         private async Task<SessionOutcome> TrackedAsync(

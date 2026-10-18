@@ -13,11 +13,46 @@ using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Sessions;
 using StyloMail.AccessProxy.Submission;
 using StyloMail.Host.Proxy;
+using StyloMail.Host.Storage;
 
 namespace StyloMail.Host.Tests;
 
 public sealed class ProxyTlsAdmissionTests
 {
+    [Theory]
+    [InlineData(false, ProxyListenerProtocol.Imap)]
+    [InlineData(true, ProxyListenerProtocol.Imap)]
+    [InlineData(false, ProxyListenerProtocol.Pop3)]
+    [InlineData(true, ProxyListenerProtocol.Pop3)]
+    public async Task Preprotocol_saturation_and_silent_timeout_persist_counts_without_session_identity(bool library, ProxyListenerProtocol protocol)
+    {
+        await using var fixture = await Listener.Create(library, protocol, 1, TimeSpan.FromMilliseconds(800));
+        using var silent = new TcpClient(AddressFamily.InterNetwork);
+        await silent.ConnectAsync(IPAddress.Loopback, fixture.Port);
+        await Listener.WaitFor(() => fixture.Clients == 1);
+        using var excess = new TcpClient(AddressFamily.InterNetwork);
+        await excess.ConnectAsync(IPAddress.Loopback, fixture.Port);
+        Assert.True(await ClosedWithin(excess, TimeSpan.FromMilliseconds(500)));
+        Assert.True(await ClosedWithin(silent, TimeSpan.FromSeconds(2)));
+        await Listener.WaitFor(() => fixture.Clients == 0 && fixture.Sessions == 0 && fixture.Limiter.ActiveSessions == 0);
+        await fixture.Counters.FlushAsync();
+        var now = DateTimeOffset.FromUnixTimeSeconds(ProxyConnectionOutcomes.Bucket(fixture.Clock.GetUtcNow()));
+        var rows = fixture.Counters.Read(TestPrincipals.AcmeTenant, now.AddMinutes(-5), now);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(1, Assert.Single(rows, r => r.Reason == "GlobalSessionLimitReached").Count);
+        Assert.Equal("AdmissionRejected", Assert.Single(rows, r => r.Reason == "GlobalSessionLimitReached").Outcome);
+        Assert.Equal(1, Assert.Single(rows, r => r.Reason == "TlsHandshakeTimeout").Count);
+        Assert.Equal("Timeout", Assert.Single(rows, r => r.Reason == "TlsHandshakeTimeout").Outcome);
+        Assert.Empty(fixture.Events.Sessions);
+        using var connection = fixture.Database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM proxy_session_event;";
+        Assert.Equal(0L, command.ExecuteScalar());
+        // Positive control: real protocol handoff creates session events on the Host path.
+        await fixture.ProveSecureGreeting();
+        if (!library) Assert.NotEmpty(fixture.Events.Sessions);
+    }
+
     [Theory]
     [InlineData(false, ProxyListenerProtocol.Imap)]
     [InlineData(true, ProxyListenerProtocol.Imap)]
@@ -137,6 +172,9 @@ public sealed class ProxyTlsAdmissionTests
         public int Port { get; }
         public SessionLimiter Limiter { get; }
         public Events Events { get; }
+        public ProxyConnectionOutcomes Counters => _host.Services.GetRequiredService<ProxyConnectionOutcomes>();
+        public HostDatabase Database => _host.Services.GetRequiredService<HostDatabase>();
+        public TimeProvider Clock => _host.Services.GetRequiredService<TimeProvider>();
         public int Clients => Count("_clients");
         public int Sessions => Count("_sessions");
         private int Count(string field)
@@ -207,7 +245,8 @@ public sealed class ProxyTlsAdmissionTests
                 var constructor = typeof(ProxyListenerHostedService).GetConstructors().Single();
                 object[] arguments = [runnerOptions, services.GetRequiredService<IProxyCertificateResolver>(),
                     events, ProxySessionRunnerFactory.Create(runnerOptions, dependencies), TimeProvider.System];
-                if (constructor.GetParameters().Length == 7) arguments = [.. arguments, bounds, dependencies.Limiter];
+                if (constructor.GetParameters().Length >= 7) arguments = [.. arguments, bounds, dependencies.Limiter];
+                if (constructor.GetParameters().Length == 8) arguments = [.. arguments, services.GetRequiredService<IProxyConnectionOutcomeSink>()];
                 var service = (ProxyListenerHostedService)constructor.Invoke(arguments);
                 await service.StartAsync(CancellationToken.None);
                 return new Listener(host, protocol, service, null, events, certificate);
@@ -258,8 +297,9 @@ public sealed class ProxyTlsAdmissionTests
     private sealed class Events : IProxyListenerEventSink
     {
         public List<ProxyListenerEvent> Listeners { get; } = [];
+        public System.Collections.Concurrent.ConcurrentQueue<ProxySessionEvent> Sessions { get; } = new();
         public ValueTask PublishAsync(ProxyListenerEvent e, CancellationToken token) { Listeners.Add(e); return ValueTask.CompletedTask; }
-        public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken token) => ValueTask.CompletedTask;
+        public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken token) { Sessions.Enqueue(e); return ValueTask.CompletedTask; }
     }
     private sealed class EphemeralSecrets : IProxySecretSource
     {

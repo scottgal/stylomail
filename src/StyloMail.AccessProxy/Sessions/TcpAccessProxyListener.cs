@@ -36,6 +36,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     private readonly Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> _runSession;
     private readonly SessionLimiter _limiter;
     private readonly bool _ownsLimiter;
+    private readonly Action? _onAdmissionRejected;
     private readonly CancellationTokenSource _acceptingStopping = new();
     private readonly CancellationTokenSource _sessionStopping = new();
     private readonly ConcurrentDictionary<long, TcpClient> _clients = new();
@@ -54,7 +55,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
         IPEndPoint endpoint,
         string tenantId,
         Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession,
-        SessionLimiter? limiter = null)
+        SessionLimiter? limiter = null, Action? onAdmissionRejected = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
@@ -66,6 +67,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
         _runSession = runSession;
         _limiter = limiter ?? new SessionLimiter(new AccessProxyBounds());
         _ownsLimiter = limiter is null;
+        _onAdmissionRejected = onAdmissionRejected;
     }
 
     /// <summary>The configured bind endpoint.</summary>
@@ -177,6 +179,9 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
             if (lease is null)
             {
                 client.Dispose();
+                // Socket closure precedes the optional nonblocking memory-only counter hook.
+                try { _onAdmissionRejected?.Invoke(); }
+                catch (Exception) { /* Optional telemetry cannot fault the accept loop. */ }
                 continue;
             }
             var admission = new SessionAdmission(_limiter, lease);

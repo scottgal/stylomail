@@ -32,6 +32,10 @@ public sealed class ProxyConnectionOutcomes : BackgroundService, IProxyConnectio
     private long _dropped;
     private long _retryDropped;
     private int _disposed;
+    private DateTimeOffset _pendingSince;
+    private DateTimeOffset _retrySince;
+    private DateTimeOffset _retryThrough;
+    internal sealed record FlushResult(long DroppedCount, DateTimeOffset IntervalStart, DateTimeOffset IntervalEnd);
     private readonly record struct Key(string Tenant, ProxyListenerProtocol Protocol, ProxyConnectionReason Reason, long Bucket);
 
     public ProxyConnectionOutcomes(HostDatabase database, TimeProvider clock, ILogger<ProxyConnectionOutcomes> logger)
@@ -42,6 +46,7 @@ public sealed class ProxyConnectionOutcomes : BackgroundService, IProxyConnectio
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLimit, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLimit, KeyLimit);
         _database = database; _clock = clock; _logger = logger; _keyLimit = keyLimit;
+        _pendingSince = clock.GetUtcNow();
     }
 
     public static long Bucket(DateTimeOffset time) => time.ToUnixTimeSeconds() / 300 * 300;
@@ -76,14 +81,18 @@ public sealed class ProxyConnectionOutcomes : BackgroundService, IProxyConnectio
         while (Interlocked.CompareExchange(ref _dropped, previous + 1, previous) != previous);
     }
 
-    internal async Task FlushAsync(CancellationToken cancellationToken = default)
+    internal async Task<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
         await _flush.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_retry is null)
             {
-                lock (_gate) { _retry = _pending; _pending = []; }
+                lock (_gate)
+                {
+                    _retry = _pending; _pending = [];
+                    _retrySince = _pendingSince; _retryThrough = _clock.GetUtcNow(); _pendingSince = _retryThrough;
+                }
                 _retryDropped = Interlocked.Exchange(ref _dropped, 0);
             }
             var now = Bucket(_clock.GetUtcNow());
@@ -121,6 +130,7 @@ public sealed class ProxyConnectionOutcomes : BackgroundService, IProxyConnectio
             }
             transaction.Commit();
             _retry = null; _retryDropped = 0;
+            return new FlushResult(dropped, _retrySince, _retryThrough);
         }
         finally { _flush.Release(); }
     }
@@ -150,9 +160,20 @@ public sealed class ProxyConnectionOutcomes : BackgroundService, IProxyConnectio
         {
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                try { await FlushAsync(stoppingToken).ConfigureAwait(false); }
+                try
+                {
+                    var result = await FlushAsync(stoppingToken).ConfigureAwait(false);
+                    if (result.DroppedCount > 0)
+                        _logger.LogWarning("Proxy connection outcomes dropped {DroppedCount} observations during {IntervalStart} to {IntervalEnd}; persisted host-wide, not attributed to a tenant.",
+                            result.DroppedCount, result.IntervalStart, result.IntervalEnd);
+                }
                 catch (Exception) when (!stoppingToken.IsCancellationRequested)
-                { _logger.LogWarning("Connection outcome flush failed; bounded pending counts retained for retry."); }
+                {
+                    var pendingDropped = Volatile.Read(ref _dropped);
+                    _logger.LogWarning("Connection outcome flush failed for {IntervalStart} to {IntervalEnd}; {RetainedKeys} keys retained for retry and {DroppedCount} overflow observations pending persistence.",
+                        _retrySince, _clock.GetUtcNow(), _retry?.Count ?? 0,
+                        _retryDropped > long.MaxValue - pendingDropped ? long.MaxValue : _retryDropped + pendingDropped);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
