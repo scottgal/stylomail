@@ -80,7 +80,8 @@ public sealed record ReferenceCitation(
     DateTimeOffset? ConfirmedAt,
     EvidenceAccessOutcome AccessOutcome,
     EvidenceRetention Retention,
-    DateTimeOffset? RetentionUntil);
+    DateTimeOffset? RetentionUntil,
+    DateTimeOffset? ObservedAt);
 
 /// <summary>Whether the cited row still exists in this tenant's ledger, and its metadata.</summary>
 public sealed record ReferenceSource(

@@ -144,6 +144,7 @@ public sealed class EvidenceDereferenceTests
         Assert.Equal(ReferenceOutcome.Resolved, evidence!.Outcome);
         Assert.Equal("asm-ref-1", evidence.LatestClaim.Id);
         Assert.Equal(EvidenceKind.Message, evidence.LatestClaim.Kind);
+        Assert.Equal(at, evidence.LatestClaim.ObservedAt);
         Assert.Equal("all", evidence.Selection);
         Assert.True(evidence.SourcePresent);
 
@@ -745,6 +746,62 @@ public sealed class EvidenceDereferenceTests
         Assert.Equal(1, evidence.InvalidCitationRows);
     }
 
+    [Fact]
+    public async Task Duplicate_references_are_rejected_at_write_in_either_order()
+    {
+        using var host = new TestHost();
+        using var operatorClient = host.ClientAs(TestPrincipals.AcmeOperatorKey);
+
+        var orders = new[]
+        {
+            new object[]
+            {
+                new { id = "dup", kind = "Message", accessOutcome = "Available" },
+                new { id = "dup", kind = "Message", accessOutcome = "Withheld" },
+            },
+            new object[]
+            {
+                new { id = "dup", kind = "Message", accessOutcome = "Withheld" },
+                new { id = "dup", kind = "Message", accessOutcome = "Available" },
+            },
+        };
+
+        foreach (var refs in orders)
+        {
+            var response = await operatorClient.PutAsJsonAsync(
+                $"/v1/properties/entity/{Principal}/role",
+                new { value = "vendor", evidenceRefs = refs });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("duplicate_evidence_ref", document.RootElement.GetProperty("error").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task A_claim_without_a_time_reports_null_not_an_epoch()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "no-time",
+            Kind = EvidenceKind.Message,
+            ObservedAt = null,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=no-time");
+
+        Assert.Null(evidence.LatestClaim.ObservedAt);
+        Assert.Null(Assert.Single(evidence.Citations).ObservedAt);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
@@ -815,6 +872,10 @@ public sealed class EvidenceDereferenceTests
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "DELETE FROM host_entity_property_evidence;";
+            command.ExecuteNonQuery();
+
+            command.CommandText = "DELETE FROM host_schema_migration WHERE name = $name;";
+            command.Parameters.AddWithValue("$name", HostDatabase.PropertyEvidenceMigrationName);
             command.ExecuteNonQuery();
         }
 

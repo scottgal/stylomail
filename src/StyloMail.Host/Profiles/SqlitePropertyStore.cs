@@ -229,12 +229,24 @@ public sealed class SqlitePropertyStore : IPropertyStore
             throw new ArgumentException(reason, nameof(write));
         }
 
-        if (write.EvidenceRefs.Any(reference =>
-                reference is null || string.IsNullOrWhiteSpace(reference.Id)))
+        var identities = new HashSet<(EvidenceKind Kind, string Id)>();
+
+        foreach (var reference in write.EvidenceRefs)
         {
-            throw new ArgumentException(
-                "An evidence reference must have a non-empty id.",
-                nameof(write));
+            if (reference is null || string.IsNullOrWhiteSpace(reference.Id))
+            {
+                throw new ArgumentException(
+                    "An evidence reference must have a non-empty id.",
+                    nameof(write));
+            }
+
+            if (!identities.Add((reference.Kind, reference.Id)))
+            {
+                throw new ArgumentException(
+                    "A property may cite the same (kind, id) only once; two claims about one "
+                    + "identity would be collapsed and one could be lost.",
+                    nameof(write));
+            }
         }
 
         var record = new PropertyRecord
@@ -715,10 +727,11 @@ public sealed class SqlitePropertyStore : IPropertyStore
             insert.Transaction = transaction;
             insert.CommandText =
                 """
-                INSERT OR IGNORE INTO host_entity_property_evidence
+                INSERT OR REPLACE INTO host_entity_property_evidence
                     (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id,
-                     access_outcome, retention, retention_until)
-                VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until);
+                     access_outcome, retention, retention_until, observed_at)
+                VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until,
+                        $observed);
                 """;
             insert.Parameters.AddWithValue("$tenant", tenantId);
             insert.Parameters.AddWithValue("$kind", record.Scope.Kind.ToString());
@@ -732,6 +745,10 @@ public sealed class SqlitePropertyStore : IPropertyStore
                 insert,
                 "$until",
                 reference.RetentionUntil is { } until ? Stamp(until) : null);
+            Bind(
+                insert,
+                "$observed",
+                reference.ObservedAt is { } observed ? Stamp(observed) : null);
             insert.ExecuteNonQuery();
         }
     }

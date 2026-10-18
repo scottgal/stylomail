@@ -1498,6 +1498,7 @@ public sealed class ProfileQueryStore
                     AccessOutcome = citations[0].Citation.AccessOutcome,
                     Retention = citations[0].Citation.Retention,
                     RetentionUntil = citations[0].Citation.RetentionUntil,
+                    ObservedAt = citations[0].Citation.ObservedAt,
                 }
                 : new EvidenceReference { Id = referenceId, Kind = requestedKind };
 
@@ -1628,7 +1629,7 @@ public sealed class ProfileQueryStore
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT e.access_outcome, e.retention, e.retention_until,
+            SELECT e.access_outcome, e.retention, e.retention_until, e.observed_at,
                    p.scope_kind, p.scope_id, p.property_key, p.value, p.source, p.set_by, p.set_at,
                    p.confirmed_by, p.confirmed_at
             FROM host_entity_property_evidence e
@@ -1649,31 +1650,33 @@ public sealed class ProfileQueryStore
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            if (!Enum.TryParse<PropertyScopeKind>(reader.GetString(3), out var scopeKind)
-                || !Enum.TryParse<PropertySource>(reader.GetString(7), out var source)
+            if (!Enum.TryParse<PropertyScopeKind>(reader.GetString(4), out var scopeKind)
+                || !Enum.TryParse<PropertySource>(reader.GetString(8), out var source)
                 || !Enum.TryParse<EvidenceAccessOutcome>(reader.GetString(0), out var access)
                 || !Enum.TryParse<EvidenceRetention>(reader.GetString(1), out var retention))
             {
                 continue;
             }
 
-            var confirmedBy = reader.IsDBNull(10) ? null : reader.GetString(10);
+            var confirmedBy = reader.IsDBNull(11) ? null : reader.GetString(11);
             DateTimeOffset? retentionUntil = reader.IsDBNull(2) ? null : ParseStamp(reader.GetString(2));
+            DateTimeOffset? observedAt = reader.IsDBNull(3) ? null : ParseStamp(reader.GetString(3));
 
             citations.Add((
                 new ReferenceCitation(
-                    new PropertyScope(scopeKind, reader.GetString(4)),
-                    reader.GetString(5),
+                    new PropertyScope(scopeKind, reader.GetString(5)),
                     reader.GetString(6),
+                    reader.GetString(7),
                     source,
                     PropertySurfaceStates.For(source, confirmedBy),
-                    reader.GetString(8),
-                    ParseStamp(reader.GetString(9)),
+                    reader.GetString(9),
+                    ParseStamp(reader.GetString(10)),
                     confirmedBy,
-                    reader.IsDBNull(11) ? null : ParseStamp(reader.GetString(11)),
+                    reader.IsDBNull(12) ? null : ParseStamp(reader.GetString(12)),
                     access,
                     retention,
-                    retentionUntil),
+                    retentionUntil,
+                    observedAt),
                 null));
         }
 

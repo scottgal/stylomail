@@ -187,6 +187,13 @@ internal static class PropertyEndpoints
                 stored,
                 PropertyResolver.Resolve(definition, [stored], now)));
         }
+        catch (ArgumentException ex)
+        {
+            // Defence in depth: the write rules reject these first, but a caller that reaches the
+            // store with an unusable reference (two claims for one identity, an empty id) must get
+            // a named refusal rather than a 500 from the exception.
+            return EndpointResults.Invalid("invalid_property_write", ex.Message);
+        }
         catch (StorageUnavailableException)
         {
             return EndpointResults.StorageUnavailable(
