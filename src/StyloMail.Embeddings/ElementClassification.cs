@@ -77,11 +77,12 @@ public static class ElementScorers
     /// <summary>
     /// The version the served artefact reports. It moves when the artefact moves, in the same
     /// commit: the store validates a point's version against these constants, so a mismatch is a
-    /// point that never lands. The service reports corpus-1 because that is the artefact it serves.
+    /// point that never lands. The service reports teacher-urgency-1 because that is the artefact it
+    /// serves (elements/3, urgency_pressure only).
     /// </summary>
-    public const string PrototypeKnnVersion = "prototype_knn/corpus-1";
+    public const string PrototypeKnnVersion = "prototype_knn/teacher-urgency-1";
 
-    public const string LinearProbeVersion = "linear_probe/corpus-1";
+    public const string LinearProbeVersion = "linear_probe/teacher-urgency-1";
 
     public static readonly IReadOnlyList<string> All = new[] { PrototypeKnn, LinearProbe };
 

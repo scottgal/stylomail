@@ -66,14 +66,14 @@ public sealed class CapturedClassifyContractTests : IDisposable
     }
 
     [Fact]
-    public async Task An_elements2_response_with_three_elements_is_accepted()
+    public async Task An_elements3_response_with_one_element_is_accepted()
     {
         var metadata = await File.ReadAllTextAsync(Fixture("service-metadata.json"));
         var elements = string.Join(",", ElementVocabulary.All.Select(element =>
             $"{{\"element\":\"{element}\",\"scorer\":\"{ElementScorers.PrototypeKnn}\",\"availability\":\"available\",\"score\":0.1,\"nearest_exemplar_id\":\"ex:{element}:0001\",\"reason\":null}}"));
         var classify = "{\"model_tag\":\"google/embeddinggemma-2\",\"prefix_version\":\"classification/1\"," +
-            "\"dimension\":256,\"dtype\":\"bfloat16\",\"vocabulary_version\":\"elements/2\"," +
-            "\"scorers\":[{\"scorer\":\"prototype_knn\",\"scorer_version\":\"prototype_knn/corpus-1\"," +
+            "\"dimension\":256,\"dtype\":\"bfloat16\",\"vocabulary_version\":\"elements/3\"," +
+            "\"scorers\":[{\"scorer\":\"prototype_knn\",\"scorer_version\":\"" + ElementScorers.PrototypeKnnVersion + "\"," +
             "\"segments\":[{\"ordinal\":0,\"elements\":[" + elements + "]}]}]}";
 
         var options = new EmbeddingOptions { TokenFilePath = _tokenPath, Dimension = 256 };

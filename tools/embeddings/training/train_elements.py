@@ -41,7 +41,7 @@ VOCABULARY = (
     "impersonated_greeting",
     "attachment_lure",
 )
-VOCABULARY_VERSION = "elements/1"
+VOCABULARY_VERSION = "elements/3"
 ARTEFACT_VERSION = "seed-1"
 DEFAULT_FPR_BUDGET = 0.01
 
@@ -270,6 +270,10 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--version", default=ARTEFACT_VERSION)
     parser.add_argument("--fpr-budget", type=float, default=DEFAULT_FPR_BUDGET)
+    parser.add_argument("--elements", default=None,
+                        help="comma-separated element names; defaults to the whole vocabulary")
+    parser.add_argument("--provenance", type=pathlib.Path, default=None,
+                        help="JSON file merged into the artefact as provenance")
     args = parser.parse_args()
 
     token = args.token_file.read_text(encoding="utf-8").strip()
@@ -281,11 +285,13 @@ def main() -> int:
     prefix_version = metadata["prefix_version"]
     model_tag = metadata["model_tag"]
 
+    elements = tuple(name.strip() for name in args.elements.split(",")) if args.elements else VOCABULARY
     rows = load_rows(args.labels)
+    rows = [row for row in rows if row["element"] in elements]
     calibration = calibration_set(rows)
 
     problems = []
-    for element in VOCABULARY:
+    for element in elements:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
                     and text_key(row) not in calibration]
         calibration_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
@@ -312,7 +318,7 @@ def main() -> int:
     operating_scorers = {}
     element_support = {}
 
-    for element in VOCABULARY:
+    for element in elements:
         fit_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
                     and text_key(row) not in calibration]
         calibration_rows = [row for row in rows if row["element"] == element and row["split"] == "train"
@@ -453,8 +459,8 @@ def main() -> int:
                 "label": row["label"],
                 "split": row["split"],
                 "text_digest": text_key(row),
-                "source": row["source"],
-                "licence": row["licence"],
+                "source": row.get("source", "unknown"),
+                "licence": row.get("licence", "project-owned"),
                 "vector": [round(float(value), 6) for value in row["vector"]],
             })
 
@@ -492,6 +498,8 @@ def main() -> int:
         "exemplars": artefact_rows,
     }
 
+    if args.provenance is not None:
+        document["provenance"] = json.loads(args.provenance.read_text(encoding="utf-8"))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 

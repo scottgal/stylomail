@@ -273,6 +273,39 @@ shorter. The "active labels" column is the honest caveat: on this sample most se
 gratitude, so a 28-label vocabulary does not mean 28 labels are exercised. Label coverage on real
 traffic is a property of the corpus, not of the model, and only two to three labels appear here.
 
+## Vocabulary and the seeded artefact
+
+The served vocabulary is **elements/3**, and it contains one element: `urgency_pressure`. The other
+four are named research items rather than live names, because each was removed by a measurement:
+
+| element | status | measured reason |
+| --- | --- | --- |
+| urgency_pressure | served | 0.983 agreement on its union in the 60-row independent check; 87 train / 39 held-out positives |
+| credential_request | research item | failed the pre-registered 150-row criterion on both limbs: union agreement 0.413 (Wilson 95% 0.309 to 0.526), 44 teacher-only against 0, directional difference 44 against a permitted 3 |
+| threat | research item | 5-row union in the 60-row check, teacher-heavy 11 to 2 in the same-model pair, 8 training positives |
+| impersonated_greeting | retired at elements/2 | a different lineage could not find the act on 6 teacher-labelled rows |
+| attachment_lure | retired at elements/2 | a different lineage could not find the act on 6 teacher-labelled rows |
+
+**Seeded artefact: `elements-teacher-urgency-1.json`**, vocabulary elements/3, model tag
+`google/embeddinggemma-2`, prefix `classification/1`, dimension 256. Scorer versions
+`prototype_knn/teacher-urgency-1` and `linear_probe/teacher-urgency-1`.
+
+Its provenance block records the teacher (gemma4:e4b), the same-model second prompt (labelled as
+such, never as independent), the label gate (0.9258 exact agreement over 364 segments), the
+credential criterion and its failure, the independent check's model (`sonnet`), CLI version
+(2.1.274), sample size (150) and the transport boundary, plus the two research items.
+
+Held-out metrics on the teacher labels (118 held-out negatives, 39 positives): kNN precision 0.88,
+recall 0.72, FPR 0.03, PR-AUC 0.89; probe precision 0.95, recall 0.49, FPR 0.01, PR-AUC 0.88. The
+teacher rows carry no hard-negative flag, so a hard-negative FPR is not measurable on this set; that
+is stated rather than inherited from the corpus table.
+
+**Emit path:** `POST /classify` against the loopback service returns one point for
+`urgency_pressure` per segment per requested scorer, with `vocabulary_version` elements/3 and the
+scorer versions above. `insufficient_exemplars` remains in the closed reason set for a future
+element that is retained but under the training minimum; no current element uses it, because no
+unscorable member remains in the vocabulary.
+
 ## Generated conversations
 
 `generate_corpus.py` writes labelled conversations for the five element types and four hard-negative

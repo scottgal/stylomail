@@ -111,7 +111,7 @@ public sealed class ClassificationOutcomeTests : IDisposable
         var handler = new ScriptedHandler();
         handler.EnqueueMetadata();
         var body = ClassifyBody();
-        body = body.Replace("\"credential_request\"", "\"magic_element\"", StringComparison.Ordinal);
+        body = body.Replace("\"urgency_pressure\"", "\"magic_element\"", StringComparison.Ordinal);
         handler.Enqueue(HttpStatusCode.OK, body, alreadyJson: true);
 
         Assert.Equal(
@@ -168,19 +168,17 @@ public sealed class ClassificationOutcomeTests : IDisposable
         var handler = new ScriptedHandler();
         handler.EnqueueMetadata();
         var elements = string.Join(",", ElementVocabulary.All.Select(element =>
-            element == ElementVocabulary.CredentialRequest
-                ? $"{{\"element\":\"{element}\",\"scorer\":\"{ElementScorers.PrototypeKnn}\",\"availability\":\"not_produced\",\"score\":null,\"nearest_exemplar_id\":null,\"reason\":\"insufficient_exemplars\"}}"
-                : $"{{\"element\":\"{element}\",\"scorer\":\"{ElementScorers.PrototypeKnn}\",\"availability\":\"available\",\"score\":0.1,\"nearest_exemplar_id\":\"ex:{element}:0001\",\"reason\":null}}"));
+            $"{{\"element\":\"{element}\",\"scorer\":\"{ElementScorers.PrototypeKnn}\",\"availability\":\"not_produced\",\"score\":null,\"nearest_exemplar_id\":null,\"reason\":\"insufficient_exemplars\"}}"));
         var body = "{\"model_tag\":\"google/embeddinggemma-2\",\"prefix_version\":\"classification/1\"," +
-            "\"dimension\":256,\"dtype\":\"bfloat16\",\"vocabulary_version\":\"elements/2\"," +
-            "\"scorers\":[{\"scorer\":\"prototype_knn\",\"scorer_version\":\"prototype_knn/corpus-1\"," +
+            "\"dimension\":256,\"dtype\":\"bfloat16\",\"vocabulary_version\":\"elements/3\"," +
+            "\"scorers\":[{\"scorer\":\"prototype_knn\",\"scorer_version\":\"" + ElementScorers.PrototypeKnnVersion + "\"," +
             "\"segments\":[{\"ordinal\":0,\"elements\":[" + elements + "]}]}]}";
         handler.Enqueue(HttpStatusCode.OK, body, alreadyJson: true);
 
         var outcome = await Provider(handler).ClassifyAsync(OneSegment);
         var success = Assert.IsType<ClassificationOutcome.Success>(outcome);
         var point = success.Classification.Scorers[0].Segments[0].Elements
-            .Single(candidate => candidate.Element == ElementVocabulary.CredentialRequest);
+            .Single(candidate => candidate.Element == ElementVocabulary.UrgencyPressure);
 
         Assert.Equal(ElementAvailability.NotProduced, point.Availability);
         Assert.Equal(ElementNotProducedReason.InsufficientExemplars, point.Reason);

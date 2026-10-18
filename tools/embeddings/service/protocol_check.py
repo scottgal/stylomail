@@ -189,7 +189,7 @@ class StubClassifier:
     def describe(self) -> dict[str, object]:
         return {
             "artefact_version": "seed-1",
-            "vocabulary_version": "elements/2",
+            "vocabulary_version": "elements/3",
             "scorers": [{"scorer": "prototype_knn", "scorer_version": "prototype_knn/seed-1"}],
         }
 
@@ -230,7 +230,7 @@ def test_classify_returns_one_point_per_element_per_segment(tmp_path: pathlib.Pa
     response = TestClient(app).post("/classify", headers=auth(), json={"segments": [SEGMENT]})
     assert response.status_code == 200
     body = response.json()
-    assert body["vocabulary_version"] == "elements/2"
+    assert body["vocabulary_version"] == "elements/3"
     assert body["dimension"] == 256
     points = body["scorers"][0]["segments"][0]["elements"]
     assert len(points) == len(VOCABULARY)
@@ -277,27 +277,20 @@ def test_an_unscorable_element_is_served_as_insufficient_exemplars(tmp_path: pat
 
     artefact = {
         "artefact_version": "test-1",
-        "vocabulary_version": "elements/2",
+        "vocabulary_version": "elements/3",
         "model_tag": "google/embeddinggemma-2",
         "prefix_version": "classification/1",
         "dimension": 256,
         "knn_version": "prototype_knn/test-1",
         "probe_version": "linear_probe/test-1",
         "element_support": {
-            "credential_request": {"train_positives": 12, "min_train_positives": 10, "scorable": True},
-            "urgency_pressure": {"train_positives": 12, "min_train_positives": 10, "scorable": True},
-            "threat": {"train_positives": 8, "min_train_positives": 10, "scorable": False},
+            "urgency_pressure": {"train_positives": 8, "min_train_positives": 10, "scorable": False},
         },
         "exemplars": [
-            {"id": "ex:credential_request:1", "element": "credential_request", "label": 1,
-             "split": "train", "vector": vector(1.0)},
-            {"id": "ex:credential_request:2", "element": "credential_request", "label": 0,
-             "split": "train", "vector": vector(-1.0)},
             {"id": "ex:urgency_pressure:1", "element": "urgency_pressure", "label": 1,
              "split": "train", "vector": vector(1.0)},
             {"id": "ex:urgency_pressure:2", "element": "urgency_pressure", "label": 0,
              "split": "train", "vector": vector(-1.0)},
-            {"id": "ex:threat:1", "element": "threat", "label": 1, "split": "train", "vector": vector(1.0)},
         ],
     }
     path = tmp_path / "elements-test.json"
@@ -308,11 +301,10 @@ def test_an_unscorable_element_is_served_as_insufficient_exemplars(tmp_path: pat
     results = classifier.classify(np.asarray([np.ones(256, dtype=np.float32) / 16.0]), ("prototype_knn",))
 
     points = {point["element"]: point for point in results[0]["segments"][0]["elements"]}
-    assert points["threat"]["availability"] == "not_produced"
-    assert points["threat"]["reason"] == "insufficient_exemplars"
-    assert points["threat"]["score"] is None
-    assert points["threat"]["nearest_exemplar_id"] is None
-    assert points["credential_request"]["availability"] == "available"
+    assert points["urgency_pressure"]["availability"] == "not_produced"
+    assert points["urgency_pressure"]["reason"] == "insufficient_exemplars"
+    assert points["urgency_pressure"]["score"] is None
+    assert points["urgency_pressure"]["nearest_exemplar_id"] is None
 
 
 def test_health_is_unauthenticated_and_carries_no_content(tmp_path: pathlib.Path) -> None:

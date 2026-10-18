@@ -33,15 +33,17 @@ def main() -> int:
     parser.add_argument("--report", type=pathlib.Path, required=True)
     parser.add_argument("--min-train-positives", type=int, default=10)
     parser.add_argument("--min-heldout-positives", type=int, default=3)
+    parser.add_argument("--elements", default=None, help="comma-separated filter")
     args = parser.parse_args()
 
+    elements = tuple(name.strip() for name in args.elements.split(",")) if args.elements else ELEMENTS
     rows = [json.loads(line) for line in args.input.read_text(encoding="utf-8").splitlines() if line.strip()]
-    seen: dict[str, set[str]] = {element: set() for element in ELEMENTS}
+    seen: dict[str, set[str]] = {element: set() for element in elements}
     output = []
     for row in rows:
         key = digest(row["text"])
         labels = set(row.get("labels") or [])
-        for element in ELEMENTS:
+        for element in elements:
             if key in seen[element]:
                 continue
             seen[element].add(key)
@@ -63,7 +65,7 @@ def main() -> int:
             "heldout_positive": sum(1 for row in output if row["element"] == element and row["label"] == 1 and row["split"] == "heldout"),
             "heldout_negative": sum(1 for row in output if row["element"] == element and row["label"] == 0 and row["split"] == "heldout"),
         }
-        for element in ELEMENTS
+        for element in elements
     }
 
     blockers = [
