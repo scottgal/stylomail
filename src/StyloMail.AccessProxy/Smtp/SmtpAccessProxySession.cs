@@ -440,6 +440,7 @@ public sealed class SmtpAccessProxySession
                 return SessionOutcome.ProtocolError;
             }
 
+            staged.Content.Position = 0;
             await backendWriter.WriteStreamAsync(staged.Content, cancellationToken).ConfigureAwait(false);
             await backendWriter.WriteLineAsync(".", cancellationToken).ConfigureAwait(false);
             var accepted = await backendReader.ReadLineAsync(_bounds.BackendAuthenticationTimeout, cancellationToken)

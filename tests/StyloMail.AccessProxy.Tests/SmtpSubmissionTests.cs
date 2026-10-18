@@ -109,6 +109,31 @@ public sealed class SmtpSubmissionTests
     }
 
     [Fact]
+    public async Task Warning_and_element_analysis_preserve_exact_backend_data_bytes()
+    {
+        var h = new ProxyHarness(); h.AddAccount();
+        var backend = new ScriptedSmtpConnector();
+        var warningSink = new CapturingWarningSink();
+        var elementSink = new CapturingElementSink();
+        var session = NewSession(h, backend, new AllowAssessment(), new InMemoryEphemeralSubmissionStager(), warningSink,
+            new StaticWarningAnalyzer([Finding(ProxyWarningMarkerKind.LinkDomainMismatch)]),
+            new ProxyElementOrchestrator(new CompleteElementClassifier(), elementSink));
+        var client = await AuthenticateAsync(session);
+        var expected = "Subject: data preservation\r\n\r\nfirst line\r\nsecond line\r\n"u8.ToArray();
+
+        await client.Pipe.SendAsync("MAIL FROM:<a@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+        await client.Pipe.SendAsync("RCPT TO:<b@example.com>\r\n"); await client.Pipe.ReadLineAsync();
+        await client.Pipe.SendAsync("DATA\r\nSubject: data preservation\r\n\r\nfirst line\r\nsecond line\r\n.\r\n");
+        Assert.StartsWith("354", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
+        Assert.StartsWith("250", await client.Pipe.ReadLineAsync(), StringComparison.Ordinal);
+
+        Assert.Equal(expected, backend.DataPayload.ToArray());
+        Assert.Single(warningSink.Markers);
+        Assert.NotEmpty(elementSink.Points);
+        await client.Pipe.ClosePeerWriteAsync();
+    }
+
+    [Fact]
     public async Task Throwing_element_sink_cannot_drop_a_submission_or_the_session()
     {
         var h = new ProxyHarness(); h.AddAccount();
@@ -164,10 +189,10 @@ public sealed class SmtpSubmissionTests
     private sealed class RefuseAssessment : IProxySubmissionAssessment { public ValueTask<ProxySubmissionAssessmentResult> AssessAsync(IStagedProxySubmission s, CancellationToken c) => ValueTask.FromResult(new ProxySubmissionAssessmentResult { Disposition = ProxySubmissionDisposition.Refuse, IsDeterministic = true }); }
     private sealed class ScriptedSmtpConnector : IBackendConnector
     {
-        public int ConnectCount; public BackendConnectionRequest? LastRequest; public List<string> Received { get; } = [];
+        public int ConnectCount; public BackendConnectionRequest? LastRequest; public List<string> Received { get; } = []; public List<byte> DataPayload { get; } = [];
         public string ProviderLabel => "test";
         public ValueTask<IDuplexChannel> ConnectAsync(BackendConnectionRequest request, CancellationToken cancellationToken) { ConnectCount++; LastRequest = request; var p = new PipeDuplex("smtp-backend"); _ = Serve(p); return ValueTask.FromResult<IDuplexChannel>(p); }
-        private async Task Serve(PipeDuplex p) { while (true) { var line = await p.ReadLineAsync(); if (line.Length == 0) return; Received.Add(line); if (line == "DATA") { await p.SendAsync("354 go\r\n"); while (await p.ReadLineAsync() != ".") { } await p.SendAsync("250 ok\r\n"); } else await p.SendAsync("250 ok\r\n"); } }
+        private async Task Serve(PipeDuplex p) { while (true) { var line = await p.ReadLineAsync(); if (line.Length == 0) return; Received.Add(line); if (line == "DATA") { await p.SendAsync("354 go\r\n"); while ((line = await p.ReadLineAsync()) != ".") DataPayload.AddRange(Encoding.UTF8.GetBytes(line + "\r\n")); await p.SendAsync("250 ok\r\n"); } else await p.SendAsync("250 ok\r\n"); } }
     }
     private sealed class WarningSink : IProxyWarningEventSink { public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) => ValueTask.CompletedTask; public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.Available, AvailabilityReason = ProxyWarningAvailabilityReason.None, Findings = [] }); }
@@ -182,6 +207,12 @@ public sealed class SmtpSubmissionTests
             PointAttempts++;
             throw new InvalidOperationException("sink failure");
         }
+    }
+    private sealed class CapturingElementSink : IProxyElementSink
+    {
+        public List<ProxyElementPoint> Points { get; } = [];
+        public ValueTask RecordOutcomeAsync(ProxySegmentationOutcome outcome, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask RecordPointAsync(ProxyElementPoint point, CancellationToken cancellationToken) { Points.Add(point); return ValueTask.CompletedTask; }
     }
     private sealed class CompleteElementClassifier : IElementClassifier
     {
