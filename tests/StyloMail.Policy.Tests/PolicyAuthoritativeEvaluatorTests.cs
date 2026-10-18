@@ -849,6 +849,147 @@ public sealed class PolicyAuthoritativeEvaluatorTests
         public void Dispose() => Release.Dispose();
     }
 
+    [Fact]
+    public async Task Effective_binding_reports_direct_inherited_and_scope_matched_bindings()
+    {
+        var company = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b") with
+        {
+            Id = "binding-company",
+            ScopeKind = BindingScope.Company,
+            ScopeValue = "company-1",
+        };
+        var entity = PolicyFixtures.Binding(
+            action: BindingAction.RaiseTolerance,
+            categoryId: PolicyCategories.CredentialRequest,
+            targetLevel: ToleranceLevel.Strict) with
+        {
+            Id = "binding-entity",
+        };
+        var other = entity with { Id = "binding-other", ScopeValue = "other-entity" };
+
+        var evaluator = NewBindingEvaluator(
+            new PackReader(PolicyFixtures.Pack(), throws: false),
+            new SuppliedBindings([company, entity, other]));
+
+        var descriptor = await evaluator.ResolveEffectiveBindingAsync(
+            PolicyFixtures.Tenant,
+            new PolicyPropertyScope("entity-1", "example.com", "company-1"),
+            Now);
+
+        Assert.Equal(EffectiveBindingState.Bound, descriptor.State);
+        Assert.Equal(PolicyFixtures.PackId, descriptor.PackId);
+        Assert.Equal("1.0.0", descriptor.PackVersion);
+        Assert.Contains("entity:entity-1", descriptor.AddressedChain);
+        Assert.Contains("company:company-1", descriptor.AddressedChain);
+        Assert.Equal(2, descriptor.Bindings.Count);
+
+        var inherited = Assert.Single(
+            descriptor.Bindings,
+            binding => binding.BindingId == "binding-company");
+        Assert.Equal("inherited", inherited.Source);
+        Assert.Equal(BindingScope.Company, inherited.ScopeKind);
+        Assert.Equal(ToleranceLevel.Observe, inherited.TargetLevel);
+        Assert.True(inherited.Selected);
+        Assert.Equal("operator-a", inherited.Author);
+        Assert.Equal(Now.AddDays(20), inherited.ReviewBy);
+
+        var direct = Assert.Single(
+            descriptor.Bindings,
+            binding => binding.BindingId == "binding-entity");
+        Assert.Equal("direct", direct.Source);
+        Assert.Equal(BindingScope.Entity, direct.ScopeKind);
+        Assert.Equal(ToleranceLevel.Strict, direct.TargetLevel);
+        Assert.True(direct.Selected);
+        Assert.DoesNotContain(descriptor.Bindings, binding => binding.BindingId == "binding-other");
+    }
+
+    [Fact]
+    public async Task Effective_binding_reports_an_expired_HoldForReview_as_withheld()
+    {
+        var expired = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b",
+            startsAt: Now.AddDays(-10),
+            expiresAt: Now.AddDays(-1),
+            reviewBy: Now.AddDays(-2)) with
+        {
+            OnExpiry = BindingOnExpiry.HoldForReview,
+        };
+
+        var evaluator = NewBindingEvaluator(
+            new PackReader(PolicyFixtures.Pack(), throws: false),
+            new SuppliedBindings([expired]));
+
+        var descriptor = await evaluator.ResolveEffectiveBindingAsync(
+            PolicyFixtures.Tenant,
+            new PolicyPropertyScope("entity-1"),
+            Now);
+
+        var binding = Assert.Single(descriptor.Bindings);
+        Assert.Equal(EffectiveBindingState.Bound, descriptor.State);
+        Assert.True(binding.Selected);
+        Assert.True(binding.Expired);
+        Assert.True(binding.Withheld);
+        Assert.Equal(BindingOnExpiry.HoldForReview, binding.OnExpiry);
+    }
+
+    [Fact]
+    public async Task Effective_binding_reports_no_pack_and_no_binding_states_clearly()
+    {
+        var noPack = await NewBindingEvaluator(new PackReader(null, throws: false), new SuppliedBindings([]))
+            .ResolveEffectiveBindingAsync(
+                PolicyFixtures.Tenant, new PolicyPropertyScope("entity-1"), Now);
+
+        Assert.Equal(EffectiveBindingState.NoPack, noPack.State);
+        Assert.Equal("no_effective_pack", noPack.Reason);
+        Assert.Empty(noPack.Bindings);
+
+        var noBinding = await NewBindingEvaluator(
+                new PackReader(PolicyFixtures.Pack(), throws: false),
+                new SuppliedBindings([]))
+            .ResolveEffectiveBindingAsync(
+                PolicyFixtures.Tenant, new PolicyPropertyScope("entity-1"), Now);
+
+        Assert.Equal(EffectiveBindingState.NoBinding, noBinding.State);
+        Assert.Equal("no_binding_for_scope", noBinding.Reason);
+        Assert.Equal(PolicyFixtures.PackId, noBinding.PackId);
+        Assert.Empty(noBinding.Bindings);
+    }
+
+    private static PolicyAuthoritativeEvaluator NewBindingEvaluator(
+        IPolicyPackReader packs,
+        IPolicyBindingReader bindings) => new(
+        packs,
+        new RuleReader(PolicyFixtures.RuleSet()),
+        new PropertyReader([], []),
+        bindings,
+        new PolicyAuthoritativeOptions
+        {
+            Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [PolicyFixtures.Tenant] = "GB",
+            },
+        });
+
+    private sealed class SuppliedBindings : IPolicyBindingReader
+    {
+        private readonly IReadOnlyList<PolicyBinding> _bindings;
+
+        public SuppliedBindings(IReadOnlyList<PolicyBinding> bindings) => _bindings = bindings;
+
+        public Task<IReadOnlyList<PolicyBinding>> ListForResolutionAsync(
+            string tenantId,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_bindings);
+    }
+
     private sealed class RacingPackReader : IPolicyPackReader
     {
         public TaskCompletionSource<PolicyPack?> First { get; } =

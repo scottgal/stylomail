@@ -485,6 +485,47 @@ internal static class PolicyEndpoints
     // Capabilities
     // ---------------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// <c>GET /v1/policy/effective-binding</c>, the bindings the resolver selects for a profile
+    /// scope. Read-only and reviewer-level; tenant comes from the principal, never the query.
+    /// </summary>
+    internal static async Task<IResult> EffectiveBindingAsync(
+        string? entity,
+        string? domain,
+        string? company,
+        string? conversation,
+        ClaimsPrincipal user,
+        PolicyAuthoritativeEvaluator policy,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var tenant = user.TenantId();
+        if (string.IsNullOrWhiteSpace(tenant))
+        {
+            return EndpointResults.Forbidden("tenant_required", "The principal is not bound to a tenant.");
+        }
+
+        if (string.IsNullOrWhiteSpace(entity)
+            && string.IsNullOrWhiteSpace(domain)
+            && string.IsNullOrWhiteSpace(company)
+            && string.IsNullOrWhiteSpace(conversation))
+        {
+            return EndpointResults.Invalid(
+                "scope_required",
+                "Supply at least one of entity, domain, company or conversation.");
+        }
+
+        var descriptor = await policy
+            .ResolveEffectiveBindingAsync(
+                tenant,
+                new PolicyPropertyScope(entity, domain, company, conversation),
+                clock.GetUtcNow(),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(PolicyEffectiveBindingResponse.From(descriptor));
+    }
+
     /// <summary><c>GET /v1/policy/status</c>, the tenant's authoritative and shadow state.</summary>
     internal static async Task<IResult> StatusAsync(
         ClaimsPrincipal user,

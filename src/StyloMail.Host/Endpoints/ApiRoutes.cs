@@ -123,6 +123,9 @@ public static class ApiRoutes
         v1.MapPost("/policy/bindings/{id}/revoke", PolicyEndpoints.RevokeBindingAsync)
             .RequireAuthorization(HostPolicies.Administer);
 
+        v1.MapGet("/policy/effective-binding", PolicyEndpoints.EffectiveBindingAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
         v1.MapGet("/policy/capabilities", PolicyEndpoints.Capabilities)
             .RequireAuthorization(HostPolicies.Review);
 

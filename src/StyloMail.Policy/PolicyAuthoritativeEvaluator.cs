@@ -161,6 +161,218 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     public TimeSpan? CacheAgeFor(string tenantId, DateTimeOffset now) =>
         _lastObserved.TryGetValue(tenantId, out var observed) ? now - observed : null;
 
+    /// <summary>
+    /// Resolves the bindings the evaluator would select for one profile scope. Read-only: no cache
+    /// publication, no admission and no write. The resolver is the same one the assessment path uses.
+    /// </summary>
+    public async Task<EffectiveBindingDescriptor> ResolveEffectiveBindingAsync(
+        string tenantId,
+        PolicyPropertyScope scope,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var chain = Chain(scope);
+
+        if (!_options.Tenants.TryGetValue(tenantId, out var jurisdiction))
+        {
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.NoPack,
+                Reason = "authoritative_disabled",
+                AddressedChain = chain,
+                Bindings = [],
+            };
+        }
+
+        PolicyPack? pack;
+        try
+        {
+            pack = await _packs
+                .GetEffectiveAsync(tenantId, jurisdiction, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.Unavailable,
+                Reason = PackStoreUnavailable,
+                AddressedChain = chain,
+                Bindings = [],
+            };
+        }
+
+        if (pack is null)
+        {
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.NoPack,
+                Reason = "no_effective_pack",
+                AddressedChain = chain,
+                Bindings = [],
+            };
+        }
+
+        PolicyRuleSet? ruleSet;
+        try
+        {
+            ruleSet = await _ruleSets
+                .FindLiveByVersionAsync(tenantId, pack.RuleSetVersion, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            ruleSet = null;
+        }
+
+        if (ruleSet is null)
+        {
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.NoPack,
+                Reason = RuleSetUnavailable,
+                PackId = pack.Id,
+                PackVersion = pack.Version,
+                AddressedChain = chain,
+                Bindings = [],
+            };
+        }
+
+        IReadOnlyList<PolicyBinding> bindings;
+        try
+        {
+            bindings = await _bindings
+                .ListForResolutionAsync(tenantId, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.Unavailable,
+                Reason = BindingStoreUnavailable,
+                PackId = pack.Id,
+                PackVersion = pack.Version,
+                AddressedChain = chain,
+                Bindings = [],
+            };
+        }
+
+        // Property facts do not participate in binding selection; an empty fact set is the same
+        // selection the assessment path makes, without inventing a measured property.
+        var effective = EffectivePolicyResolver.Resolve(
+            pack,
+            ruleSet,
+            bindings,
+            facts: [],
+            missingPropertyKeys: [],
+            addressedChain: chain,
+            now);
+
+        var records = bindings.ToDictionary(binding => binding.Id, StringComparer.Ordinal);
+        var narrowest = !string.IsNullOrWhiteSpace(scope.ConversationId)
+            ? BindingScope.Conversation
+            : !string.IsNullOrWhiteSpace(scope.EntityId)
+                ? BindingScope.Entity
+                : !string.IsNullOrWhiteSpace(scope.Domain)
+                    ? BindingScope.Domain
+                    : BindingScope.Company;
+
+        var selected = effective.Bindings
+            .Select(binding =>
+            {
+                records.TryGetValue(binding.BindingId, out var record);
+                var expired = now >= binding.ExpiresAt;
+                var onExpiry = Enum.Parse<BindingOnExpiry>(binding.OnExpiry, ignoreCase: false);
+                var scopeKind = Enum.Parse<BindingScope>(binding.ScopeKind, ignoreCase: false);
+
+                return new
+                {
+                    Binding = binding,
+                    Record = record,
+                    Expired = expired,
+                    OnExpiry = onExpiry,
+                    ScopeKind = scopeKind,
+                };
+            })
+            .Where(candidate => candidate.Record is null
+                || candidate.Record.IsActiveAt(now)
+                || (candidate.Expired && candidate.OnExpiry == BindingOnExpiry.HoldForReview))
+            .Select(candidate =>
+            {
+                var binding = candidate.Binding;
+                var record = candidate.Record;
+                var expired = candidate.Expired;
+                var onExpiry = candidate.OnExpiry;
+                var scopeKind = candidate.ScopeKind;
+
+                return new EffectiveBindingView
+                {
+                    BindingId = binding.BindingId,
+                    CategoryId = binding.CategoryId,
+                    Action = Enum.Parse<BindingAction>(binding.Action, ignoreCase: false),
+                    TargetLevel = string.IsNullOrWhiteSpace(binding.TargetLevel)
+                        ? null
+                        : Enum.Parse<ToleranceLevel>(binding.TargetLevel, ignoreCase: false),
+                    ScopeKind = scopeKind,
+                    ScopeValue = binding.ScopeValue,
+                    Precedence = (int)scopeKind,
+                    Source = scopeKind == BindingScope.Tenant
+                        ? "tenant"
+                        : scopeKind == narrowest
+                            ? "direct"
+                            : "inherited",
+                    StartsAt = binding.StartsAt,
+                    ExpiresAt = binding.ExpiresAt,
+                    ReviewBy = record?.ReviewBy ?? binding.ExpiresAt,
+                    OnExpiry = onExpiry,
+                    Selected = binding.Selected,
+                    Expired = expired,
+                    Withheld = expired && onExpiry == BindingOnExpiry.HoldForReview,
+                    PackId = pack.Id,
+                    PackVersion = pack.Version,
+                    Author = record?.Author ?? string.Empty,
+                    ApprovedBy = record?.ApprovedBy,
+                };
+            })
+            .OrderBy(binding => binding.CategoryId ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(binding => binding.BindingId, StringComparer.Ordinal)
+            .ToArray();
+
+        return new EffectiveBindingDescriptor
+        {
+            TenantId = tenantId,
+            State = selected.Length == 0
+                ? EffectiveBindingState.NoBinding
+                : EffectiveBindingState.Bound,
+            Reason = selected.Length == 0 ? "no_binding_for_scope" : null,
+            PackId = pack.Id,
+            PackVersion = pack.Version,
+            AddressedChain = chain,
+            Bindings = selected,
+        };
+    }
+
     /// <summary>Invalidates the tenant's cache after a pack or binding update.</summary>
     public void Invalidate(string tenantId)
     {
