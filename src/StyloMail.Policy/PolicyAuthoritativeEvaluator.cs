@@ -236,15 +236,28 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         }
         catch (Exception)
         {
-            ruleSet = null;
+            // A store failure is not a healthy absence. The descriptor says Unavailable, matching
+            // the evaluator's typed fallback for a pack whose rule set cannot be read.
+            return new EffectiveBindingDescriptor
+            {
+                TenantId = tenantId,
+                State = EffectiveBindingState.Unavailable,
+                Reason = RuleSetUnavailable,
+                PackId = pack.Id,
+                PackVersion = pack.Version,
+                AddressedChain = chain,
+                Bindings = [],
+            };
         }
 
         if (ruleSet is null)
         {
+            // The pack exists but cannot be used without its live rule set. That is an unusable
+            // effective pack, not a healthy no-pack answer.
             return new EffectiveBindingDescriptor
             {
                 TenantId = tenantId,
-                State = EffectiveBindingState.NoPack,
+                State = EffectiveBindingState.Unavailable,
                 Reason = RuleSetUnavailable,
                 PackId = pack.Id,
                 PackVersion = pack.Version,

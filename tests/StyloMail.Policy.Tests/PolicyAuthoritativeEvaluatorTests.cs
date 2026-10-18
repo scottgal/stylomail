@@ -940,6 +940,39 @@ public sealed class PolicyAuthoritativeEvaluatorTests
     }
 
     [Fact]
+    public async Task Effective_binding_reports_a_rule_set_outage_as_unavailable()
+    {
+        var evaluator = NewBindingEvaluator(
+            new PackReader(PolicyFixtures.Pack(), throws: false),
+            new SuppliedBindings([]),
+            new ThrowingRuleReader());
+
+        var descriptor = await evaluator.ResolveEffectiveBindingAsync(
+            PolicyFixtures.Tenant, new PolicyPropertyScope("entity-1"), Now);
+
+        Assert.Equal(EffectiveBindingState.Unavailable, descriptor.State);
+        Assert.Equal("policy.rule_set_unavailable", descriptor.Reason);
+        Assert.Equal(PolicyFixtures.PackId, descriptor.PackId);
+        Assert.Equal("1.0.0", descriptor.PackVersion);
+        Assert.Empty(descriptor.Bindings);
+    }
+
+    [Fact]
+    public async Task Effective_binding_reports_a_pack_store_outage_as_unavailable()
+    {
+        var evaluator = NewBindingEvaluator(
+            new PackReader(null, throws: true),
+            new SuppliedBindings([]));
+
+        var descriptor = await evaluator.ResolveEffectiveBindingAsync(
+            PolicyFixtures.Tenant, new PolicyPropertyScope("entity-1"), Now);
+
+        Assert.Equal(EffectiveBindingState.Unavailable, descriptor.State);
+        Assert.Equal("policy.pack_store_unavailable", descriptor.Reason);
+        Assert.Empty(descriptor.Bindings);
+    }
+
+    [Fact]
     public async Task Effective_binding_reports_no_pack_and_no_binding_states_clearly()
     {
         var noPack = await NewBindingEvaluator(new PackReader(null, throws: false), new SuppliedBindings([]))
@@ -964,9 +997,10 @@ public sealed class PolicyAuthoritativeEvaluatorTests
 
     private static PolicyAuthoritativeEvaluator NewBindingEvaluator(
         IPolicyPackReader packs,
-        IPolicyBindingReader bindings) => new(
+        IPolicyBindingReader bindings,
+        IPolicyRuleSetReader? rules = null) => new(
         packs,
-        new RuleReader(PolicyFixtures.RuleSet()),
+        rules ?? new RuleReader(PolicyFixtures.RuleSet()),
         new PropertyReader([], []),
         bindings,
         new PolicyAuthoritativeOptions
@@ -976,6 +1010,17 @@ public sealed class PolicyAuthoritativeEvaluatorTests
                 [PolicyFixtures.Tenant] = "GB",
             },
         });
+
+    private sealed class ThrowingRuleReader : IPolicyRuleSetReader
+    {
+        public Task<PolicyRuleSet?> GetAsync(
+            string tenantId, string ruleSetId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromException<PolicyRuleSet?>(new InvalidOperationException("rule store unavailable"));
+
+        public Task<PolicyRuleSet?> FindLiveByVersionAsync(
+            string tenantId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromException<PolicyRuleSet?>(new InvalidOperationException("rule store unavailable"));
+    }
 
     private sealed class SuppliedBindings : IPolicyBindingReader
     {
