@@ -8,6 +8,7 @@ public sealed class ImageInspectorTests
     {
         Content = content,
         DeclaredContentType = declaredType,
+        Extent = totalLength is null ? ImageContentExtent.Complete : ImageContentExtent.PrefixTotalKnown,
         TotalLength = totalLength,
     };
 

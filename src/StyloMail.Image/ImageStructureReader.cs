@@ -20,6 +20,9 @@ internal sealed class ImageStructure
     public bool DimensionLimitExceeded { get; set; }
 
     public bool PixelLimitExceeded { get; set; }
+
+    /// <summary>Header-level transparency declaration, when the format establishes one.</summary>
+    public bool? TransparencyDeclared { get; set; }
 }
 
 /// <summary>
@@ -64,6 +67,8 @@ internal static class ImageStructureReader
 
         var width = BinaryPrimitives.ReadUInt32BigEndian(bytes[16..]);
         var height = BinaryPrimitives.ReadUInt32BigEndian(bytes[20..]);
+        // IHDR byte 9 is the colour type: 4 = grey+alpha, 6 = truecolour+alpha.
+        structure.TransparencyDeclared = bytes[25] is 4 or 6;
         if (!TryDimensions(structure, width, height, limits) ||
             structure.DimensionLimitExceeded ||
             structure.PixelLimitExceeded)
@@ -92,6 +97,11 @@ internal static class ImageStructureReader
             if (chunkEnd > bytes.Length)
             {
                 return EndOfInput(structure, inputTruncated, ImageNotProducedReason.TruncatedHeader);
+            }
+
+            if (type.SequenceEqual("tRNS"u8))
+            {
+                structure.TransparencyDeclared = true;
             }
 
             if (type.SequenceEqual("IEND"u8))
@@ -193,6 +203,7 @@ internal static class ImageStructureReader
 
                 var height = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(offset + 3, 2));
                 var width = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(offset + 5, 2));
+                structure.TransparencyDeclared = false; // JPEG carries no alpha channel.
                 if (!TryDimensions(structure, width, height, limits) ||
                     structure.DimensionLimitExceeded ||
                     structure.PixelLimitExceeded)
@@ -279,16 +290,30 @@ internal static class ImageStructureReader
             switch (bytes[(int)offset])
             {
                 case 0x3B:
+                    structure.TransparencyDeclared ??= false;
                     structure.EndOffset = offset + 1;
                     structure.TerminatorFound = true;
                     return structure;
 
                 case 0x21:
                     // Extension introducer plus label, then data sub-blocks.
-                    offset += 2;
-                    if (offset > bytes.Length)
+                    if (offset + 2 > bytes.Length)
                     {
                         return EndOfInput(structure, inputTruncated, ImageNotProducedReason.TruncatedHeader);
+                    }
+
+                    var label = bytes[(int)offset + 1];
+                    offset += 2;
+
+                    // Graphic Control Extension: packed bit 0 declares a transparent colour.
+                    if (label == 0xF9 && offset < bytes.Length)
+                    {
+                        var blockSize = bytes[(int)offset];
+                        if (blockSize >= 4 && offset + 1 + blockSize <= bytes.Length &&
+                            (bytes[(int)offset + 1] & 0x01) != 0)
+                        {
+                            structure.TransparencyDeclared = true;
+                        }
                     }
 
                     if (!TrySkipSubBlocks(bytes, ref offset))
@@ -434,6 +459,7 @@ internal static class ImageStructureReader
 
             if (!found && fourCc.SequenceEqual("VP8X"u8) && size >= 10)
             {
+                structure.TransparencyDeclared = (bytes[(int)dataStart] & 0x10) != 0;
                 var width = 1 + ReadUInt24LittleEndian(bytes, dataStart + 4);
                 var height = 1 + ReadUInt24LittleEndian(bytes, dataStart + 7);
                 found = TryDimensions(structure, width, height, limits);

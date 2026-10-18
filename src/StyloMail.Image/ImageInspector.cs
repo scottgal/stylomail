@@ -42,21 +42,65 @@ public static class ImageInspector
         Validate(limits);
 
         var content = request.Content;
-        var total = request.TotalLength ?? content.Length;
-        if (total < content.Length)
+        var extent = request.Extent;
+        long? total;
+        switch (extent)
         {
-            throw new ArgumentException(
-                "TotalLength cannot be smaller than the content supplied.",
-                nameof(request));
+            case ImageContentExtent.Complete:
+                if (request.TotalLength is not null)
+                {
+                    throw new ArgumentException(
+                        "Complete content must not carry a TotalLength; use PrefixTotalKnown or PrefixTotalUnknown for a prefix.",
+                        nameof(request));
+                }
+
+                total = content.Length;
+                break;
+
+            case ImageContentExtent.PrefixTotalKnown:
+                if (request.TotalLength is not { } knownTotal)
+                {
+                    throw new ArgumentException(
+                        "PrefixTotalKnown requires a TotalLength.",
+                        nameof(request));
+                }
+
+                if (knownTotal < content.Length)
+                {
+                    throw new ArgumentException(
+                        "TotalLength cannot be smaller than the content supplied.",
+                        nameof(request));
+                }
+
+                total = knownTotal;
+                break;
+
+            case ImageContentExtent.PrefixTotalUnknown:
+                if (request.TotalLength is not null)
+                {
+                    throw new ArgumentException(
+                        "PrefixTotalUnknown must not carry a TotalLength; an unknown total cannot be encoded as the prefix length.",
+                        nameof(request));
+                }
+
+                total = null;
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(
+                    nameof(request),
+                    extent,
+                    "Unsupported image content extent.");
         }
 
         var inspectedBytes = Math.Min(content.Length, limits.MaxInspectedBytes);
         var bytes = content.Span[..inspectedBytes];
-        var truncated = total > inspectedBytes;
+        var truncated = total is null || total > inspectedBytes;
         var coverage = new ImageInspectionCoverage
         {
             InspectedBytes = inspectedBytes,
             TotalBytes = total,
+            TotalBytesKnown = total.HasValue,
             Truncated = truncated,
             HeaderParsed = false,
             TerminatorFound = false,
@@ -71,7 +115,9 @@ public static class ImageInspector
                 declared,
                 ImageFormat.Unknown,
                 mismatch: false,
-                ImageNotProducedReason.EmptyContent,
+                extent == ImageContentExtent.Complete
+                    ? ImageNotProducedReason.EmptyContent
+                    : ImageNotProducedReason.InsufficientDecodedLength,
                 EvidenceAvailability.Unavailable,
                 coverage,
                 []);
@@ -236,8 +282,24 @@ public static class ImageInspector
                 CapFindings(findings, limits.MaxFindings));
         }
 
-        var width = structure.Width!.Value;
-        var height = structure.Height!.Value;
+        if (structure.Width is null || structure.Height is null)
+        {
+            // The prefix ended before the header that carries dimensions (a JPEG SOF behind large
+            // EXIF, for example). This is a named absence, not an exception and not a truncation
+            // of the part itself when the extent is a prefix.
+            return NotProduced(
+                request,
+                declared,
+                detected,
+                mismatch: false,
+                ImageNotProducedReason.TruncatedHeader,
+                EvidenceAvailability.Unavailable,
+                coverage,
+                CapFindings(findings, limits.MaxFindings));
+        }
+
+        var width = structure.Width.Value;
+        var height = structure.Height.Value;
         var pixels = width > long.MaxValue / height ? long.MaxValue : width * height;
 
         if (structure.DimensionLimitExceeded || structure.PixelLimitExceeded)
@@ -256,28 +318,49 @@ public static class ImageInspector
                 PixelCount = pixels,
                 ImageEndOffset = structure.EndOffset,
                 TrailingByteCount = null,
+                TrailingBytesObserved = null,
                 TrailingScanComplete = false,
+                TransparencyDeclared = structure.TransparencyDeclared,
                 Findings = CapFindings(findings, limits.MaxFindings),
                 Coverage = coverage,
             };
         }
 
         long? trailing = null;
+        long? trailingObserved = null;
         var trailingScanComplete = false;
 
         if (structure.EndOffset is { } end)
         {
-            trailing = total - end;
-            trailingScanComplete = total <= inspectedBytes;
-
-            if (trailing > 0)
+            if (total is { } knownTotal)
             {
-                findings.Add(new ImageFinding
+                trailing = knownTotal - end;
+                trailingScanComplete = knownTotal <= inspectedBytes;
+
+                if (trailing > 0)
                 {
-                    Code = ImageFindingCode.TrailingData,
-                    Offset = end,
-                    Detail = $"bytes={trailing}",
-                });
+                    findings.Add(new ImageFinding
+                    {
+                        Code = ImageFindingCode.TrailingData,
+                        Offset = end,
+                        Detail = $"bytes={trailing}",
+                    });
+                }
+            }
+            else
+            {
+                // The total is unknown, so the bytes visible after the terminator are a lower
+                // bound and never a count. The prefix length must not be reported as the total.
+                trailingObserved = inspectedBytes - end;
+                if (trailingObserved > 0)
+                {
+                    findings.Add(new ImageFinding
+                    {
+                        Code = ImageFindingCode.TrailingData,
+                        Offset = end,
+                        Detail = $"observedBytes={trailingObserved};total=unknown",
+                    });
+                }
             }
 
             if (end < inspectedBytes)
@@ -300,7 +383,9 @@ public static class ImageInspector
             PixelCount = pixels,
             ImageEndOffset = structure.EndOffset,
             TrailingByteCount = trailing,
+            TrailingBytesObserved = trailingObserved,
             TrailingScanComplete = trailingScanComplete,
+            TransparencyDeclared = structure.TransparencyDeclared,
             Findings = CapFindings(findings, limits.MaxFindings),
             Coverage = coverage,
         };
@@ -445,7 +530,9 @@ public static class ImageInspector
             PixelCount = null,
             ImageEndOffset = null,
             TrailingByteCount = null,
+            TrailingBytesObserved = null,
             TrailingScanComplete = false,
+            TransparencyDeclared = null,
             Findings = findings,
             Coverage = coverage,
         };

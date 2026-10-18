@@ -49,6 +49,21 @@ internal static class ImageTestBytes
         return stream.ToArray();
     }
 
+    /// <summary>A GIF whose Graphic Control Extension declares a transparent colour.</summary>
+    public static byte[] GifTransparent(ushort width, ushort height)
+    {
+        using var stream = new MemoryStream();
+        stream.Write("GIF89a"u8);
+        WriteUInt16LittleEndian(stream, width);
+        WriteUInt16LittleEndian(stream, height);
+        stream.WriteByte(0x00);
+        stream.WriteByte(0x00);
+        stream.WriteByte(0x00);
+        stream.Write([0x21, 0xF9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00]); // GCE, transparency flag set
+        stream.WriteByte(0x3B);
+        return stream.ToArray();
+    }
+
     public static byte[] Bmp(int width, int height)
     {
         using var stream = new MemoryStream();

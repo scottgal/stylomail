@@ -92,6 +92,7 @@ public static class ImageEvidence
                     Of("terminatorFound", result.Coverage.TerminatorFound),
                     Of("inspectedBytes", result.Coverage.InspectedBytes),
                     Of("totalBytes", result.Coverage.TotalBytes),
+                    Of("totalBytesKnown", result.Coverage.TotalBytesKnown),
                     Of("truncated", result.Coverage.Truncated),
                 ]),
             builder.Build(
@@ -137,15 +138,7 @@ public static class ImageEvidence
                 Of("scanComplete", result.TrailingScanComplete),
             };
 
-            foreach (var finding in result.Findings)
-            {
-                if (finding.Code is not (ImageFindingCode.EmbeddedArchive or ImageFindingCode.EmbeddedExecutable))
-                {
-                    continue;
-                }
-
-                attributes.Add(Of("signature", $"{finding.Detail ?? finding.Code.ToWireName()}@{finding.Offset?.ToString() ?? "unknown"}"));
-            }
+            AddSignatures(attributes, result.Findings);
 
             inspected.Add(builder.Build(
                 ImageSignals.TrailingData,
@@ -153,8 +146,89 @@ public static class ImageEvidence
                 value: trailing,
                 attributes: attributes));
         }
+        else if (result.TrailingBytesObserved is { } observed)
+        {
+            // The total length is unknown, so only a lower bound is available. The value stays
+            // null: rendering the observed prefix as a count would turn a lower bound into a claim.
+            var attributes = new List<EvidenceAttribute>
+            {
+                Of("imageEndOffset", result.ImageEndOffset),
+                Of("trailingBytes", "unknown"),
+                Of("observedTrailingBytes", observed),
+                Of("scanComplete", false),
+            };
+
+            AddSignatures(attributes, result.Findings);
+
+            inspected.Add(builder.Build(
+                ImageSignals.TrailingData,
+                EvidenceAvailability.ReducedCoverage,
+                value: null,
+                attributes: attributes));
+        }
 
         return inspected;
+    }
+
+    /// <summary>
+    /// Emits the single per-message coverage row. It is produced whenever the message has image
+    /// parts, including when nothing was over budget, so the denominator and the chrome filter are
+    /// always visible.
+    /// </summary>
+    /// <remarks>
+    /// Attributes are capped at 9 with no truncation of the count fields: the invariants
+    /// <c>imageParts = imagesSkippedAsChrome + imagesAdmitted + imagesOverBudget</c> and
+    /// <c>imagesAdmitted = imagesProduced + imagesNotProduced</c> must survive into the ledger.
+    /// </remarks>
+    public static Evidence ExplainCoverage(
+        ImageCoverageSummary summary,
+        DateTimeOffset observedAt)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        summary.Validate();
+
+        var builder = new EvidenceBuilder(
+            observedAt,
+            ImageSignals.SourceVersion,
+            new EvidenceAttributeLimits { MaxEntries = 9, MaxValueLength = 128 });
+
+        var attributes = new List<EvidenceAttribute>
+        {
+            Of("imageParts", summary.ImageParts),
+            Of("imagesSkippedAsChrome", summary.ImagesSkippedAsChrome),
+            Of("imagesAdmitted", summary.ImagesAdmitted),
+            Of("imagesProduced", summary.ImagesProduced),
+            Of("imagesNotProduced", summary.ImagesNotProduced),
+            Of("imagesOverBudget", summary.ImagesOverBudget),
+            Of("firstOverBudgetOrdinal", summary.FirstOverBudgetOrdinal),
+            Of("lastOverBudgetOrdinal", summary.LastOverBudgetOrdinal),
+        };
+
+        if (summary.ImagesOverBudget > 0)
+        {
+            attributes.Add(Of(
+                "reason",
+                ImageNotProducedReason.InspectionBudgetExhausted.ToWireName()));
+        }
+
+        return builder.Build(
+            ImageSignals.InspectionCoverage,
+            EvidenceAvailability.Available,
+            value: summary.ImagesOverBudget,
+            attributes: attributes);
+    }
+
+    private static void AddSignatures(List<EvidenceAttribute> attributes, IReadOnlyList<ImageFinding> findings)
+    {
+        foreach (var finding in findings)
+        {
+            if (finding.Code is not (ImageFindingCode.EmbeddedArchive or ImageFindingCode.EmbeddedExecutable))
+            {
+                continue;
+            }
+
+            attributes.Add(Of("signature", $"{finding.Detail ?? finding.Code.ToWireName()}@{finding.Offset?.ToString() ?? "unknown"}"));
+        }
     }
 
     private static EvidenceAttribute Of(string name, string value) => new() { Name = name, Value = value };

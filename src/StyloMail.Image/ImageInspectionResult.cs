@@ -46,6 +46,18 @@ public enum ImageNotProducedReason
 
     /// <summary>The bytes are not consistent with the declared container's structure.</summary>
     InvalidStructure = 7,
+
+    /// <summary>
+    /// A prefix was supplied without enough decoded bytes to make even a structural claim. Distinct from
+    /// <see cref="EmptyContent"/>: the part may be non-empty, but the decoded prefix is not usable.
+    /// </summary>
+    InsufficientDecodedLength = 8,
+
+    /// <summary>
+    /// The image was not inspected because the per-message admission budget was exhausted. Used only on
+    /// the aggregate coverage row, never as a per-image result.
+    /// </summary>
+    InspectionBudgetExhausted = 9,
 }
 
 /// <summary>A closed vocabulary of structural findings. Findings are facts, not verdicts.</summary>
@@ -96,10 +108,13 @@ public sealed record ImageInspectionCoverage
     /// <summary>Bytes examined, bounded by <see cref="ImageInspectionLimits.MaxInspectedBytes"/>.</summary>
     public required long InspectedBytes { get; init; }
 
-    /// <summary>Full part size, as supplied by the caller.</summary>
-    public required long TotalBytes { get; init; }
+    /// <summary>Full part size, or null when <see cref="ImageContentExtent.PrefixTotalUnknown"/> was supplied.</summary>
+    public required long? TotalBytes { get; init; }
 
-    /// <summary>True when the part is larger than the inspected prefix.</summary>
+    /// <summary>True when <see cref="TotalBytes"/> is a real total rather than an unknown.</summary>
+    public required bool TotalBytesKnown { get; init; }
+
+    /// <summary>True when the part is larger than the inspected prefix, or its total is unknown.</summary>
     public required bool Truncated { get; init; }
 
     /// <summary>True when a dimension header was read.</summary>
@@ -146,12 +161,25 @@ public sealed record ImageInspectionResult
 
     /// <summary>
     /// Exact bytes after <see cref="ImageEndOffset"/>, when it is known. Null means no claim:
-    /// either no terminator was found, or the terminator fell outside the inspected prefix.
+    /// either no terminator was found, the terminator fell outside the inspected prefix, or the
+    /// part's total length is unknown.
     /// </summary>
     public long? TrailingByteCount { get; init; }
 
-    /// <summary>True only when the whole trailing region was inside the inspected prefix.</summary>
+    /// <summary>
+    /// Lower bound on trailing bytes observed inside the inspected prefix when the total length is
+    /// unknown. Null when no terminator was located or when <see cref="TrailingByteCount"/> is exact.
+    /// </summary>
+    public long? TrailingBytesObserved { get; init; }
+
+    /// <summary>True only when the whole trailing region was inside the inspected prefix and the total is known.</summary>
     public bool TrailingScanComplete { get; init; }
+
+    /// <summary>
+    /// Header-level transparency declaration: true for PNG alpha/tRNS, GIF transparency, WebP VP8X alpha.
+    /// False when the format says there is none. Null when the header did not establish it.
+    /// </summary>
+    public bool? TransparencyDeclared { get; init; }
 
     public required IReadOnlyList<ImageFinding> Findings { get; init; }
 
