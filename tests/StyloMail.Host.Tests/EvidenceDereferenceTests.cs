@@ -540,6 +540,8 @@ public sealed class EvidenceDereferenceTests
             command.ExecuteNonQuery();
         }
 
+        RebuildEvidenceIndex(host);
+
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
         var response = await reviewer.GetAsync("/v1/evidence/reference?kind=Message&id=broken");
         var body = await response.Content.ReadAsStringAsync();
@@ -576,6 +578,8 @@ public sealed class EvidenceDereferenceTests
             command.ExecuteNonQuery();
         }
 
+        RebuildEvidenceIndex(host);
+
         using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
         var asOther = await EvidenceAsync<ReferenceEvidenceResponse>(
@@ -590,6 +594,157 @@ public sealed class EvidenceDereferenceTests
             (await reviewer.GetAsync("/v1/evidence/reference?kind=Message&id=legacy-id")).StatusCode);
     }
 
+    [Fact]
+    public async Task Fifty_one_wrong_kind_claims_do_not_hide_a_message()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        // 51 newer Import claims with the same id, on 51 different entities.
+        for (var index = 0; index < 51; index++)
+        {
+            await SetReferenceAsync(
+                host,
+                at.AddSeconds(index),
+                new EvidenceReference
+                {
+                    Id = "hidden",
+                    Kind = EvidenceKind.Import,
+                    ObservedAt = at,
+                    AccessOutcome = EvidenceAccessOutcome.Available,
+                },
+                scopeId: $"entity-{index}");
+        }
+
+        // One older true Message claim, withheld.
+        await SetReferenceAsync(
+            host,
+            at.AddDays(-1),
+            new EvidenceReference
+            {
+                Id = "hidden",
+                Kind = EvidenceKind.Message,
+                ObservedAt = at,
+                AccessOutcome = EvidenceAccessOutcome.Withheld,
+            },
+            scopeId: "entity-true");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=hidden");
+
+        Assert.Equal(1, evidence.CitationCount);
+        Assert.Equal(1, evidence.ReturnedCount);
+        Assert.Equal(ReferenceOutcome.Withheld, evidence.Outcome);
+    }
+
+    [Fact]
+    public async Task A_restrictive_claim_beyond_the_page_still_governs()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        // A live Message source so the "50 available + ledger" path would resolve if the page were
+        // mistaken for the whole claim set.
+        await SeedAsync(host, Assessment(Acme, "paged", at, MailAction.Allow));
+
+        for (var index = 0; index < 51; index++)
+        {
+            await SetReferenceAsync(
+                host,
+                at.AddSeconds(index),
+                new EvidenceReference
+                {
+                    Id = "paged",
+                    Kind = EvidenceKind.Message,
+                    ObservedAt = at,
+                    // The oldest claim is restrictive; it is the one a newest-50 page drops.
+                    AccessOutcome = index == 0
+                        ? EvidenceAccessOutcome.Withheld
+                        : EvidenceAccessOutcome.Available,
+                },
+                scopeId: $"entity-{index}");
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=paged");
+
+        Assert.Equal(51, evidence.CitationCount);
+        Assert.Equal(50, evidence.ReturnedCount);
+        Assert.True(evidence.CitationsTruncated);
+        Assert.Equal("newest", evidence.Selection);
+        Assert.Equal(ReferenceOutcome.Withheld, evidence.Outcome);
+        Assert.True(evidence.SourcePresent);
+    }
+
+    [Fact]
+    public async Task An_escaped_json_id_is_matched_by_value()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        // JsonSerializer escapes '+' as \u002b, so a raw LIKE cannot find this id.
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "a+b",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        await SeedAsync(host, Assessment(Acme, "a+b", at, MailAction.Allow));
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=" + Uri.EscapeDataString("a+b"));
+
+        Assert.Equal(1, evidence.CitationCount);
+        Assert.Equal(ReferenceOutcome.Resolved, evidence.Outcome);
+        Assert.True(evidence.SourcePresent);
+    }
+
+    [Fact]
+    public async Task A_null_reference_element_is_named_invalid()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "nullref",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+        });
+
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "UPDATE host_entity_property SET evidence_refs = $refs "
+                + "WHERE tenant_id = $tenant;";
+            command.Parameters.AddWithValue(
+                "$refs",
+                "[{\"id\":\"nullref\",\"kind\":\"Message\"},null]");
+            command.Parameters.AddWithValue("$tenant", Acme);
+            command.ExecuteNonQuery();
+        }
+
+        RebuildEvidenceIndex(host);
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await reviewer.GetAsync("/v1/evidence/reference?kind=Message&id=nullref");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, $"Expected success, got {(int)response.StatusCode}: {body}");
+        var evidence = JsonSerializer.Deserialize<ReferenceEvidenceResponse>(body, HostJson.Options)!;
+        Assert.Equal(ReferenceOutcome.Invalid, evidence.Outcome);
+        Assert.Equal(1, evidence.InvalidCitationRows);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
@@ -599,13 +754,14 @@ public sealed class EvidenceDereferenceTests
         DateTimeOffset at,
         EvidenceReference reference,
         string key = PropertyKeys.Role,
-        string value = "vendor")
+        string value = "vendor",
+        string scopeId = Principal)
     {
         await host.Services.GetRequiredService<IPropertyStore>().SetAsync(
             Acme,
             new PropertyWrite
             {
-                Scope = new PropertyScope(PropertyScopeKind.Entity, Principal),
+                Scope = new PropertyScope(PropertyScopeKind.Entity, scopeId),
                 Key = key,
                 Value = value,
                 Source = PropertySource.Declared,
@@ -651,6 +807,18 @@ public sealed class EvidenceDereferenceTests
             CancellationToken.None);
 
         Assert.True(accepted.IsAccepted, accepted.Detail);
+    }
+
+    private static void RebuildEvidenceIndex(TestHost host)
+    {
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DELETE FROM host_entity_property_evidence;";
+            command.ExecuteNonQuery();
+        }
+
+        host.Services.GetRequiredService<HostDatabase>().EnsureCreated();
     }
 
     private static void CorruptPayload(TestHost host, string assessmentId)

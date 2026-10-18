@@ -105,6 +105,7 @@ public sealed record ReferenceEvidenceRead(
     string Selection,
     IReadOnlyList<ReferenceCitation> Citations,
     int CitationCount,
+    int ReturnedCount,
     bool CitationsTruncated,
     int InvalidCitationRows,
     ReferenceSource? Source,

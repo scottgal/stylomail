@@ -229,6 +229,14 @@ public sealed class SqlitePropertyStore : IPropertyStore
             throw new ArgumentException(reason, nameof(write));
         }
 
+        if (write.EvidenceRefs.Any(reference =>
+                reference is null || string.IsNullOrWhiteSpace(reference.Id)))
+        {
+            throw new ArgumentException(
+                "An evidence reference must have a non-empty id.",
+                nameof(write));
+        }
+
         var record = new PropertyRecord
         {
             Scope = write.Scope,
@@ -262,6 +270,7 @@ public sealed class SqlitePropertyStore : IPropertyStore
             }
 
             Upsert(connection, transaction, tenantId, record);
+            ReplaceEvidence(connection, transaction, tenantId, record);
             InsertEvent(
                 connection,
                 transaction,
@@ -448,6 +457,8 @@ public sealed class SqlitePropertyStore : IPropertyStore
                 delete.ExecuteNonQuery();
             }
 
+            DeleteEvidence(connection, transaction, tenantId, scope, key);
+
             InsertEvent(
                 connection,
                 transaction,
@@ -582,6 +593,7 @@ public sealed class SqlitePropertyStore : IPropertyStore
                 prompt_contract = $contract,
                 spans           = $spans,
                 evidence_refs   = $refs,
+                evidence_invalid = 0,
                 coverage_analysed          = $cAnalysed,
                 coverage_total             = $cTotal,
                 coverage_window_start      = $cStart,
@@ -684,6 +696,65 @@ public sealed class SqlitePropertyStore : IPropertyStore
         delete.Parameters.AddWithValue("$key", row.Key);
         delete.Parameters.AddWithValue("$expires", Stamp(expiresAt));
         delete.Parameters.AddWithValue("$value", row.Value);
+        delete.ExecuteNonQuery();
+
+        DeleteEvidence(connection, transaction, tenantId, row.Scope, row.Key);
+    }
+
+    private static void ReplaceEvidence(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tenantId,
+        PropertyRecord record)
+    {
+        DeleteEvidence(connection, transaction, tenantId, record.Scope, record.Key);
+
+        foreach (var reference in record.EvidenceRefs)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText =
+                """
+                INSERT OR IGNORE INTO host_entity_property_evidence
+                    (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id,
+                     access_outcome, retention, retention_until)
+                VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until);
+                """;
+            insert.Parameters.AddWithValue("$tenant", tenantId);
+            insert.Parameters.AddWithValue("$kind", record.Scope.Kind.ToString());
+            insert.Parameters.AddWithValue("$id", record.Scope.Id);
+            insert.Parameters.AddWithValue("$key", record.Key);
+            insert.Parameters.AddWithValue("$refKind", reference.Kind.ToString());
+            insert.Parameters.AddWithValue("$refId", reference.Id);
+            insert.Parameters.AddWithValue("$access", reference.AccessOutcome.ToString());
+            insert.Parameters.AddWithValue("$retention", reference.Retention.ToString());
+            Bind(
+                insert,
+                "$until",
+                reference.RetentionUntil is { } until ? Stamp(until) : null);
+            insert.ExecuteNonQuery();
+        }
+    }
+
+    private static void DeleteEvidence(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tenantId,
+        PropertyScope scope,
+        string key)
+    {
+        using var delete = connection.CreateCommand();
+        delete.Transaction = transaction;
+        delete.CommandText =
+            """
+            DELETE FROM host_entity_property_evidence
+            WHERE tenant_id = $tenant AND scope_kind = $kind AND scope_id = $id
+              AND property_key = $key;
+            """;
+        delete.Parameters.AddWithValue("$tenant", tenantId);
+        delete.Parameters.AddWithValue("$kind", scope.Kind.ToString());
+        delete.Parameters.AddWithValue("$id", scope.Id);
+        delete.Parameters.AddWithValue("$key", key);
         delete.ExecuteNonQuery();
     }
 

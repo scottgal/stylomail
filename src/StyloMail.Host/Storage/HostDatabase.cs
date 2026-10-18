@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using StyloMail.Core;
 using StyloMail.Host.Serialization;
+using StyloMail.Profiles.Properties;
 
 namespace StyloMail.Host.Storage;
 
@@ -139,6 +140,179 @@ public sealed class HostDatabase
         ApplyConversationHistoryMigration(connection);
         ApplyProxySessionAuthenticationMigration(connection);
         ApplyEntityPropertyCoverageMigration(connection);
+        ApplyPropertyEvidenceMigration(connection);
+    }
+
+    /// <summary>
+    /// Ensures the normalised evidence table exists and is populated from JSON rows written before
+    /// it was introduced.
+    /// </summary>
+    /// <remarks>
+    /// The backfill is one-time and only runs when the evidence table is empty. A row whose stored
+    /// array is malformed, or contains a null/empty element, is marked <c>evidence_invalid</c> and
+    /// contributes no citation; the evidence route names that state rather than failing a query.
+    /// </remarks>
+    private static void ApplyPropertyEvidenceMigration(SqliteConnection connection)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA table_info(host_entity_property);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        if (!columns.Contains("evidence_invalid"))
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText =
+                "ALTER TABLE host_entity_property ADD COLUMN evidence_invalid INTEGER NOT NULL DEFAULT 0;";
+            alter.ExecuteNonQuery();
+        }
+
+        using (var count = connection.CreateCommand())
+        {
+            count.CommandText = "SELECT COUNT(*) FROM host_entity_property_evidence;";
+            if (Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+            {
+                return;
+            }
+        }
+
+        var rows = new List<(string Tenant, string ScopeKind, string ScopeId, string Key, string? Refs, bool Invalid)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText =
+                "SELECT tenant_id, scope_kind, scope_id, property_key, evidence_refs, evidence_invalid "
+                + "FROM host_entity_property;";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.GetInt32(5) != 0));
+            }
+        }
+
+        foreach (var row in rows)
+        {
+            if (row.Invalid)
+            {
+                continue;
+            }
+
+            var references = ParseStoredEvidence(row.Refs);
+            if (references is null)
+            {
+                using var mark = connection.CreateCommand();
+                mark.CommandText =
+                    "UPDATE host_entity_property SET evidence_invalid = 1 "
+                    + "WHERE tenant_id = $tenant AND scope_kind = $kind AND scope_id = $id "
+                    + "AND property_key = $key;";
+                mark.Parameters.AddWithValue("$tenant", row.Tenant);
+                mark.Parameters.AddWithValue("$kind", row.ScopeKind);
+                mark.Parameters.AddWithValue("$id", row.ScopeId);
+                mark.Parameters.AddWithValue("$key", row.Key);
+                mark.ExecuteNonQuery();
+                continue;
+            }
+
+            foreach (var reference in references)
+            {
+                using var insert = connection.CreateCommand();
+                insert.CommandText =
+                    """
+                    INSERT OR IGNORE INTO host_entity_property_evidence
+                        (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id,
+                         access_outcome, retention, retention_until)
+                    VALUES ($tenant, $kind, $id, $key, $refKind, $refId, $access, $retention, $until);
+                    """;
+                insert.Parameters.AddWithValue("$tenant", row.Tenant);
+                insert.Parameters.AddWithValue("$kind", row.ScopeKind);
+                insert.Parameters.AddWithValue("$id", row.ScopeId);
+                insert.Parameters.AddWithValue("$key", row.Key);
+                insert.Parameters.AddWithValue("$refKind", reference.Kind.ToString());
+                insert.Parameters.AddWithValue("$refId", reference.Id);
+                insert.Parameters.AddWithValue("$access", reference.AccessOutcome.ToString());
+                insert.Parameters.AddWithValue("$retention", reference.Retention.ToString());
+                insert.Parameters.AddWithValue(
+                    "$until",
+                    reference.RetentionUntil is { } until
+                        ? until.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                        : DBNull.Value);
+                insert.ExecuteNonQuery();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses a stored evidence array. Null when malformed or when any element is null/empty.
+    /// </summary>
+    private static List<EvidenceReference>? ParseStoredEvidence(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            var structured = JsonSerializer.Deserialize<List<EvidenceReference?>>(json, HostJson.Options);
+            if (structured is not null)
+            {
+                var references = new List<EvidenceReference>(structured.Count);
+                foreach (var reference in structured)
+                {
+                    if (reference is null
+                        || string.IsNullOrWhiteSpace(reference.Id)
+                        || !Enum.IsDefined(reference.Kind))
+                    {
+                        return null;
+                    }
+
+                    references.Add(reference);
+                }
+
+                return references;
+            }
+        }
+        catch (JsonException)
+        {
+            // Legacy rows hold bare strings; fall through.
+        }
+
+        try
+        {
+            var legacy = JsonSerializer.Deserialize<List<string?>>(json);
+            if (legacy is null)
+            {
+                return null;
+            }
+
+            var references = new List<EvidenceReference>(legacy.Count);
+            foreach (var id in legacy)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return null;
+                }
+
+                references.Add(new EvidenceReference { Id = id, Kind = EvidenceKind.Other });
+            }
+
+            return references;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -466,6 +640,7 @@ public sealed class HostDatabase
             prompt_contract TEXT NULL,
             spans           TEXT NULL,
             evidence_refs   TEXT NULL,
+            evidence_invalid INTEGER NOT NULL DEFAULT 0,
             coverage_analysed          INTEGER NULL,
             coverage_total             INTEGER NULL,
             coverage_window_start      TEXT NULL,
@@ -510,6 +685,26 @@ public sealed class HostDatabase
         CREATE INDEX IF NOT EXISTS ix_host_entity_property_event_history
             ON host_entity_property_event
                (tenant_id, scope_kind, scope_id, property_key, recorded_at DESC, event_id DESC);
+
+        -- Normalised evidence identities. The JSON array on the property row is the contract, but
+        -- citations must be found by exact (kind, id), not by a substring scan: JSON escaping
+        -- (+ for +) makes the raw text an incomplete key, and a row cap over raw candidates
+        -- can hide a real claim. The writer maintains this in the same transaction as the row.
+        CREATE TABLE IF NOT EXISTS host_entity_property_evidence (
+            tenant_id       TEXT NOT NULL,
+            scope_kind      TEXT NOT NULL,
+            scope_id        TEXT NOT NULL,
+            property_key    TEXT NOT NULL,
+            ref_kind        TEXT NOT NULL,
+            ref_id          TEXT NOT NULL,
+            access_outcome  TEXT NOT NULL,
+            retention       TEXT NOT NULL,
+            retention_until TEXT NULL,
+            PRIMARY KEY (tenant_id, scope_kind, scope_id, property_key, ref_kind, ref_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_host_entity_property_evidence_lookup
+            ON host_entity_property_evidence (tenant_id, ref_kind, ref_id);
 
         -- Policy packs: the declared context, tolerance, ceiling and provenance that a decision is
         -- explained by. A pack is immutable once approved, and the content hash names the bytes the
