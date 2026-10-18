@@ -233,7 +233,7 @@ public PolicySource Source { get; init; }
 public bool PolicyContributed { get; init; }        // composed action differs from legacy
 public bool Applied { get; init; }                  // composed action actually applied
 public bool Durable { get; init; }                  // admission succeeded
-public AdmissionOutcome Admission { get; init; }    // Admitted | Refused | NotApplicableForAssessmentOnly
+public AdmissionOutcome Admission { get; init; }    // NotAttempted | Admitted | Refused | NotApplicableForAssessmentOnly
 public bool Authoritative { get; init; }            // true only when the tenant flag was on and a pack ran
 public bool Shadow { get; init; }
 public bool FallbackAttempted { get; init; }
@@ -268,7 +268,8 @@ opening_source = 'pack':
     pack_id, pack_version, rule_set_id, rule_set_version, reason, evidence_digest are NOT NULL
     unavailable_reason IS NULL
 opening_source = 'fallback':
-    pack_id, pack_version, rule_set_id, rule_set_version, rule_id, evidence_digest ARE NULL
+    pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+    evidence_digest ARE NULL
     unavailable_reason IS NOT NULL, fallback deadline IS NOT NULL
 ```
 
