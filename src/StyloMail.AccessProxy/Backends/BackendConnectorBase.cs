@@ -83,8 +83,16 @@ public abstract class BackendConnectorBase : IBackendConnector
                 var reader = new BoundedLineReader(channel.Input, Bounds, request.TimeProvider);
                 var writer = new ProtocolLineWriter(channel.Output);
 
-                await AuthenticateAsync(channel, reader, writer, authenticator, timeout.Token)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await AuthenticateAsync(channel, reader, writer, authenticator, timeout.Token).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is AccessProxyTimeoutException or TimeoutException
+                    || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    throw new AccessProxyTimeoutException("Backend authentication exceeded its configured bound.", exception)
+                    { DuringBackendAuthentication = true };
+                }
 
                 return channel;
             }

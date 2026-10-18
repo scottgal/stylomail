@@ -18,6 +18,26 @@ namespace StyloMail.AccessProxy.Tests;
 public sealed class SmtpStagingBoundsTests
 {
     [Fact]
+    public async Task Real_tcp_reset_during_DATA_is_a_named_disconnect_with_released_capacity()
+    {
+        await using var fixture = await Fixture.Create();
+        using var client = await fixture.Connect();
+        Assert.StartsWith("354", await client.BeginData());
+        await client.Line("partially staged body");
+        await Until(() => fixture.Stager.Last!.Length > 0);
+        client.Reset();
+        await Until(() => fixture.Outcomes.Contains(SessionOutcome.ClientDisconnected));
+        Assert.Equal(default, fixture.Budget.Counters);
+        Assert.Equal(0, fixture.Backend.DataCommands);
+        Assert.Empty(fixture.Errors);
+        var failure = Assert.Single(fixture.Diagnostics.Failures);
+        Assert.Equal("client_data_receipt", failure.Stage);
+        Assert.Equal(nameof(IOException), failure.Type);
+        Assert.Equal(SessionOutcome.ClientDisconnected, failure.Outcome);
+        await Until(() => fixture.Harness.Limiter.ActiveSessions == 0);
+    }
+
+    [Fact]
     public async Task Final_250_waits_for_actual_staging_disposal_and_capacity_release()
     {
         await using var fixture = await Fixture.Create(blockDisposal: true);
@@ -199,6 +219,9 @@ public sealed class SmtpStagingBoundsTests
         await client.Write("body\r\n.\r\n");
         Assert.Null(await client.Read());
         await Until(() => fixture.Errors.Count == 1);
+        var internalFailure = Assert.Single(fixture.Diagnostics.Failures);
+        Assert.Null(internalFailure.Outcome);
+        Assert.Equal(nameof(InvalidOperationException), internalFailure.Type);
         Assert.Equal(default, fixture.Budget.Counters);
         Assert.Equal(0, fixture.Backend.DataCommands);
     }
@@ -296,6 +319,7 @@ public sealed class SmtpStagingBoundsTests
         public async Task Write(string text)
         { using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5)); await _writer.WriteAsync(text.AsMemory(), stop.Token); await _writer.FlushAsync(stop.Token); }
         public void Dispose() => _tcp.Dispose();
+        public void Reset() { _tcp.Client.LingerState = new LingerOption(true, 0); _tcp.Dispose(); }
     }
     private sealed class Backend : IBackendConnector, IAsyncDisposable
     {
@@ -343,13 +367,15 @@ public sealed class SmtpStagingBoundsTests
         public ValueTask DisposeAsync() => new(_disposing ??= DisposeCore());
         private async Task DisposeCore() { entered(); await gate; await inner.DisposeAsync(); }
     }
-    private sealed class Diagnostics : IProxySessionContextSink, IProxySubmissionReceiptSink, IProxySessionBoundSink
+    private sealed class Diagnostics : IProxySessionContextSink, IProxySubmissionReceiptSink, IProxySessionBoundSink, IProxySessionFailureSink
     {
         public ConcurrentQueue<bool> Timeouts { get; } = new();
         public ConcurrentQueue<ProxyBoundReason> Bounds { get; } = new();
+        public ConcurrentQueue<(string Stage, string Type, SessionOutcome? Outcome)> Failures { get; } = new();
         public ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset at, CancellationToken ct) => ValueTask.CompletedTask;
         public void OnDataReceiptTimeout(bool absolute) => Timeouts.Enqueue(absolute);
         public void OnBound(ProxyBoundReason reason) => Bounds.Enqueue(reason);
+        public void OnFailure(string stage, string exceptionType, string? socketError, SessionOutcome? outcome) => Failures.Enqueue((stage, exceptionType, outcome));
     }
     private sealed class Assessment(bool fail, Task? gate, Action entered) : IProxySubmissionAssessment
     {

@@ -34,6 +34,7 @@ public sealed class AccessProxyProtocolException : Exception
 /// </remarks>
 public sealed class AccessProxyTimeoutException : Exception
 {
+    internal bool DuringBackendAuthentication { get; init; }
     public AccessProxyTimeoutException(string message)
         : base(message)
     {

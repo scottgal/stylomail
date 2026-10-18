@@ -68,6 +68,17 @@ public sealed class SmtpAccessProxySession
 
     public async Task<SessionOutcome> RunAsync(IDuplexChannel initialClient, CancellationToken cancellationToken)
     {
+        try { return await RunCoreAsync(initialClient, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            SessionFailureBoundary.Report(_contextSink, "smtp_session", exception, null);
+            throw;
+        }
+    }
+
+    private async Task<SessionOutcome> RunCoreAsync(IDuplexChannel initialClient, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(initialClient);
         using var globalSlot = await _limiter.AcquireSessionAsync(initialClient, cancellationToken).ConfigureAwait(false);
         var client = initialClient;
@@ -170,13 +181,15 @@ public sealed class SmtpAccessProxySession
                                 .ConfigureAwait(false);
                             return SessionOutcome.BackendUnavailable;
                         }
-                        catch (IOException)
+                        catch (Exception exception) when (SessionFailureBoundary.BackendOutcome(exception, cancellationToken) is not null)
                         {
-                            await writer.WriteLineAsync("454 4.7.0 Temporary authentication failure", cancellationToken)
-                                .ConfigureAwait(false);
-                            return SessionOutcome.BackendUnavailable;
+                            var outcome = SessionFailureBoundary.BackendOutcome(exception, cancellationToken)!.Value;
+                            SessionFailureBoundary.Report(_contextSink, "backend_open", exception, outcome);
+                            await writer.WriteLineAsync(outcome == SessionOutcome.Timeout
+                                ? "454 4.4.2 Backend connection timed out"
+                                : "454 4.7.0 Temporary authentication failure", cancellationToken).ConfigureAwait(false);
+                            return outcome;
                         }
-
                         await using (backend.ConfigureAwait(false))
                         {
                         await PublishAuthenticatedAsync(account).ConfigureAwait(false);
@@ -423,6 +436,12 @@ public sealed class SmtpAccessProxySession
                 }
                 catch (OperationCanceledException) when (receipt.DeadlineElapsed && !cancellationToken.IsCancellationRequested) { timedOut = true; }
                 catch (AccessProxyTimeoutException) { timedOut = false; }
+                catch (IOException exception)
+                {
+                    await staged.DisposeAsync().ConfigureAwait(false);
+                    SessionFailureBoundary.Report(_contextSink, "client_data_receipt", exception, SessionOutcome.ClientDisconnected);
+                    return SessionOutcome.ClientDisconnected;
+                }
             }
             if (timedOut is { } absolute)
             {

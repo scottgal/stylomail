@@ -94,6 +94,12 @@ public interface IProxySubmissionReceiptSink
     void OnDataReceiptTimeout(bool absolute);
 }
 
+/// <summary>Content-free transport classification; null outcome identifies an internal failure.</summary>
+public interface IProxySessionFailureSink
+{
+    void OnFailure(string stage, string exceptionType, string? socketError, SessionOutcome? outcome);
+}
+
 /// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>
 public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }

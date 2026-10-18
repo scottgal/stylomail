@@ -11,6 +11,28 @@ namespace StyloMail.Host.Tests;
 /// </summary>
 public sealed class ProxySessionContextSinkTests
 {
+    [Fact]
+    public void Known_transport_failure_logs_the_actual_stage_type_socket_code_and_outcome()
+    {
+        var logger = new RecordingLogger();
+        var sink = new ProxySessionContextSink(new RecordingAuthenticator(), logger);
+        ((IProxySessionFailureSink)sink).OnFailure("backend_open", "SocketException", "ConnectionRefused", StyloMail.AccessProxy.Sessions.SessionOutcome.BackendUnavailable);
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Equal("Proxy transport failure at backend_open: SocketException/ConnectionRefused; outcome BackendUnavailable.", line.Text);
+    }
+
+    [Fact]
+    public void Unexpected_failure_is_logged_as_internal_with_only_its_type()
+    {
+        var logger = new RecordingLogger();
+        var sink = new ProxySessionContextSink(new RecordingAuthenticator(), logger);
+        ((IProxySessionFailureSink)sink).OnFailure("smtp_session", "ApplicationException", null, null);
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal(LogLevel.Error, line.Level);
+        Assert.Equal("Internal proxy session failure at smtp_session: ApplicationException.", line.Text);
+    }
+
     [Theory]
     [InlineData(true, "SmtpDataAbsoluteTimeout")]
     [InlineData(false, "SmtpDataIdleTimeout")]

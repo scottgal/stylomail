@@ -91,6 +91,7 @@ public abstract class AccessProxySessionBase
     private readonly IRetrievalObserver? _observer;
     private readonly IProxyRetrievalWarningAssemblerFactory? _retrievalAssemblerFactory;
     private readonly IProxySessionContextSink? _contextSink;
+    private string _failureStage = "client_authentication";
     private readonly string _tenantId;
     private IDuplexChannel? _client;
     private ProtocolLineWriter? _writer;
@@ -240,10 +241,16 @@ public abstract class AccessProxySessionBase
         {
             return SessionOutcome.Timeout;
         }
-        catch (IOException)
+        catch (IOException) when (_failureStage != "backend_open")
         {
             // The client vanished. Routine on an internet-facing listener.
             return SessionOutcome.ClientDisconnected;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            SessionFailureBoundary.Report(_contextSink, _failureStage, exception, null);
+            throw;
         }
     }
 
@@ -252,6 +259,7 @@ public abstract class AccessProxySessionBase
         CancellationToken cancellationToken)
     {
         IDuplexChannel backend;
+        _failureStage = "backend_open";
         try
         {
             backend = await _backend.ConnectAsync(
@@ -269,15 +277,27 @@ public abstract class AccessProxySessionBase
             // Spec §9.5 risk 4: revoked, missing or unusable. Fail closed, tell the client its
             // authentication failed, and do not retry, a rejected credential presented again is a
             // failed login attempt against the user's own account.
+            _failureStage = "client_authentication";
             await WriteAuthenticationFailedAsync(cancellationToken).ConfigureAwait(false);
             return SessionOutcome.BackendUnavailable;
         }
         catch (BackendAuthenticationRejectedException)
         {
+            _failureStage = "client_authentication";
             await WriteAuthenticationFailedAsync(cancellationToken).ConfigureAwait(false);
             return SessionOutcome.BackendUnavailable;
         }
+        catch (Exception exception) when (SessionFailureBoundary.BackendOutcome(exception, cancellationToken) is not null)
+        {
+            var outcome = SessionFailureBoundary.BackendOutcome(exception, cancellationToken)!.Value;
+            SessionFailureBoundary.Report(_contextSink, "backend_open", exception, outcome);
+            _failureStage = "client_authentication";
+            if (outcome == SessionOutcome.BackendUnavailable)
+                await WriteAuthenticationFailedAsync(cancellationToken).ConfigureAwait(false);
+            return outcome;
+        }
 
+        _failureStage = "relay";
         await using (backend.ConfigureAwait(false))
         {
             await using var assembler = _retrievalAssemblerFactory?.Create(account.TenantId, account.AccountId);
