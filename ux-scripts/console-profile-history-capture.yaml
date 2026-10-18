@@ -29,27 +29,40 @@ actions:
     window_id: EntityProfileDialog
     matcher: ContainsText
     value: "Coverage:"
-  - type: Click
-    target: "testid=profile-kpi-responsiveness-address-reciprocity-tile"
-    window_id: EntityProfileDialog
   - type: Expect
-    target: "text=Observed:"
+    target: "testid=profile-kpi-responsiveness-address-reciprocity-observation"
     window_id: EntityProfileDialog
-    matcher: IsVisible
+    matcher: ContainsText
+    value: "Observed: 80%"
   - type: Expect
     target: "testid=profile-kpi-responsiveness-address-reciprocity-trend"
     window_id: EntityProfileDialog
     matcher: ContainsText
-    value: "Trend: up"
-  - type: Click
-    target: "testid=profile-kpi-responsiveness-address-reciprocity-evidence-drawer"
-    window_id: EntityProfileDialog
+    value: "Trend: up (+60 percentage points)"
   - type: Expect
     target: "testid=profile-kpi-responsiveness-address-reciprocity-evidence"
     window_id: EntityProfileDialog
     matcher: ContainsText
     value: "Definition v1.1.0"
+  - type: Expect
+    target: "testid=profile-kpi-sensitive-requests-model-prevalence-observation"
+    window_id: EntityProfileDialog
+    matcher: ContainsText
+    value: "Not produced: signal_not_produced"
   - type: Screenshot
-    value: "01-governed-profile-history"
+    value: "01-governed-profile-produced"
     window_id: EntityProfileDialog
     description: "Governed harness data — real Host and routes: profile header, produced trend, and KPI evidence drawer."
+  - type: Scroll
+    value: down
+    window_id: EntityProfileDialog
+  - type: Scroll
+    value: down
+    window_id: EntityProfileDialog
+  - type: Wait
+    value: "250"
+    window_id: EntityProfileDialog
+  - type: Screenshot
+    value: "02-governed-profile-not-produced"
+    window_id: EntityProfileDialog
+    description: "Governed harness data — real Host and routes: named non-produced KPI state."

@@ -68,7 +68,7 @@ public sealed class KpiTileView
             (string.IsNullOrWhiteSpace(value.Coverage.Reason) ? string.Empty : $" {value.Coverage.Reason}");
         Trend = value.Trend switch
         {
-            { State: KpiTrendState.Produced, Movement: { } movement } trend => $"Trend: {movement.ToString().ToLowerInvariant()} ({Format(trend.Delta ?? 0, value.Definition.Unit)} change).",
+            { State: KpiTrendState.Produced, Movement: { } movement } trend => $"Trend: {movement.ToString().ToLowerInvariant()} ({FormatDelta(trend.Delta ?? 0, value.Definition.Unit)}).",
             { } trend => $"Trend not produced: {trend.Reason ?? trend.Detail ?? trend.State.ToString()}.",
             null => "Trend not produced: profile did not return a comparison.",
         };
@@ -82,7 +82,11 @@ public sealed class KpiTileView
     public string Coverage { get; }
     public string Evidence { get; }
     public string AutomationStem { get; }
+    /// <summary>Open the most decision-useful measures rather than leaving a dialog of closed headers.</summary>
+    public bool IsInitiallyExpanded => Label is "Responded from the same address within 7 days" or "Sensitive request prevalence (model evidence)";
+    public bool IsEvidenceInitiallyExpanded => Label is "Responded from the same address within 7 days";
     public string TileAutomationId => AutomationStem + "-tile";
+    public string ObservationAutomationId => AutomationStem + "-observation";
     public string TrendAutomationId => AutomationStem + "-trend";
     public string EvidenceDrawerAutomationId => AutomationStem + "-evidence-drawer";
     public string EvidenceAutomationId => AutomationStem + "-evidence";
@@ -92,5 +96,12 @@ public sealed class KpiTileView
         KpiUnit.Hours => value.ToString("0.##", CultureInfo.CurrentCulture) + " hours",
         KpiUnit.Milliseconds => value.ToString("0", CultureInfo.CurrentCulture) + " ms",
         _ => value.ToString("0.##", CultureInfo.CurrentCulture),
+    };
+    private static string FormatDelta(double value, KpiUnit unit) => unit switch
+    {
+        // A ratio delta is an absolute fraction, not a relative percent. Calling
+        // +0.6 "60% change" silently substitutes a different denominator.
+        KpiUnit.Ratio => $"{value * 100:+0.#;-0.#;0} percentage points",
+        _ => $"{value:+0.##;-0.##;0} {unit.ToString().ToLowerInvariant()}",
     };
 }

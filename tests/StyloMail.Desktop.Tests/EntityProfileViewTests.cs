@@ -33,6 +33,19 @@ public sealed class EntityProfileViewTests
         Assert.Contains("reply_candidates_incomplete", tile.Observation);
     }
 
+    [Fact]
+    public void Ratio_trend_delta_is_rendered_as_percentage_points_not_a_relative_percent()
+    {
+        var profile = Profile() with { Kpis = [new KpiValueResponse
+        {
+            Definition = new() { Id = "responsiveness.address_reciprocity", Label = "Responded from the same address within 7 days", Question = "Q", MinimumSample = 5, Unit = KpiUnit.Ratio, Version = "1.1.0" },
+            State = KpiState.Produced, Value = .8, Coverage = new() { Analysed = 5, Total = 5, Truncated = false },
+            Trend = new() { State = KpiTrendState.Produced, Movement = KpiTrendMovement.Up, Delta = .6, PriorTruncated = false }
+        }] };
+
+        Assert.Equal("Trend: up (+60 percentage points).", new EntityProfileView(profile).Tiles.Single().Trend);
+    }
+
     private static ProfileResponse Profile() => new()
     {
         TenantId = "tenant", Scope = new() { Kind = "entity", Id = "entity-identifier-long" },
