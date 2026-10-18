@@ -1207,6 +1207,35 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnOpenEntityProfileClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: SidebarItem item })
+        {
+            await OpenEntityProfileAsync(item).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Opens the read-only evidence profile for this sender's opaque entity id.</summary>
+    public async Task OpenEntityProfileAsync(SidebarItem sender, CancellationToken cancellationToken = default)
+    {
+        if (_services is null || string.IsNullOrWhiteSpace(sender.PrincipalId)) return;
+        try
+        {
+            var profile = await _services.Client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var dialog = new EntityProfileDialog(new EntityProfileView(profile));
+                await dialog.ShowDialog(this);
+            }).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            await OnUiThreadAsync(() => _model.CompleteAction(
+                $"Could not read this entity profile. {failure.Detail ?? failure.Code}", failed: true)).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>
     /// Opens a sender's profile, and saves it if the operator confirms.
     /// </summary>

@@ -87,6 +87,21 @@ public sealed class StyloMailApiClient
             body: null,
             cancellationToken);
 
+    /// <summary>Reads a tenant-scoped, evidence-only profile for one opaque entity.</summary>
+    public Task<ProfileResponse> GetProfileAsync(
+        string kind,
+        string id,
+        int windowDays = 90,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (windowDays is < 7 or > 365) throw new ArgumentOutOfRangeException(nameof(windowDays));
+        return SendAsync<ProfileResponse>(HttpMethod.Get,
+            $"/v1/profiles/{Uri.EscapeDataString(kind)}/{Uri.EscapeDataString(id)}?windowDays={windowDays}",
+            body: null, cancellationToken);
+    }
+
     /// <summary>
     /// Reads a page of original assessed records for a Slack workspace/channel.
     /// Tenant identity comes only from the Host's authenticated Review key.

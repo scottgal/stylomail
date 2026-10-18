@@ -1,0 +1,16 @@
+namespace StyloMail.Desktop.Api.Contracts;
+
+public enum KpiState { Produced, NotEnoughHistory, NotProduced }
+public enum KpiUnit { Ratio, Multiple, Milliseconds, Hours, Count }
+public enum KpiTrendState { Produced, NotEnoughHistory, NotProduced, NotApplicable }
+public enum KpiTrendMovement { Up, Down, Flat }
+
+public sealed record ProfileScopeResponse { public required string Kind { get; init; } public required string Id { get; init; } }
+public sealed record ProfileCoverageResponse { public required int Messages { get; init; } public required int TenantMessages { get; init; } public required bool Truncated { get; init; } public required int Unparsable { get; init; } public required DateTimeOffset WindowStart { get; init; } public required DateTimeOffset WindowEnd { get; init; } public string? Reason { get; init; } }
+public sealed record ProfileRelationshipResponse { public DateTimeOffset? FirstSeenAt { get; init; } public DateTimeOffset? LastSeenAt { get; init; } }
+public sealed record KpiDefinitionResponse { public required string Id { get; init; } public required string Label { get; init; } public required string Question { get; init; } public required int MinimumSample { get; init; } public required KpiUnit Unit { get; init; } public required string Version { get; init; } }
+public sealed record KpiCoverageResponse { public required int Analysed { get; init; } public required int Total { get; init; } public required bool Truncated { get; init; } public string? Reason { get; init; } }
+public sealed record KpiTrendResponse { public required KpiTrendState State { get; init; } public double? PriorValue { get; init; } public double? Delta { get; init; } public KpiTrendMovement? Movement { get; init; } public required bool PriorTruncated { get; init; } public string? Reason { get; init; } public string? Detail { get; init; } }
+public sealed record KpiValueResponse { public required KpiDefinitionResponse Definition { get; init; } public required KpiState State { get; init; } public double? Value { get; init; } public int? Numerator { get; init; } public int? Denominator { get; init; } public required KpiCoverageResponse Coverage { get; init; } public string? Reason { get; init; } public string? Detail { get; init; } public KpiTrendResponse? Trend { get; init; } }
+public sealed record ProfileNotMeasuredResponse { public required string Id { get; init; } public required string Label { get; init; } public required string Reason { get; init; } }
+public sealed record ProfileResponse { public required string TenantId { get; init; } public required ProfileScopeResponse Scope { get; init; } public string? DisplayLabel { get; init; } public required bool DisplayLabelAvailable { get; init; } public string? DisplayLabelSource { get; init; } public string? DisplayLabelReason { get; init; } public required ProfileCoverageResponse Coverage { get; init; } public required ProfileRelationshipResponse Relationship { get; init; } public required IReadOnlyList<KpiValueResponse> Kpis { get; init; } public IReadOnlyList<ProfileNotMeasuredResponse> NotMeasured { get; init; } = []; }

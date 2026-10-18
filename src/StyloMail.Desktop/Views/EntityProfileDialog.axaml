@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StyloMail.Desktop.Views.EntityProfileDialog" Title="Entity profile" Width="900" Height="720" MinWidth="700" MinHeight="500">
+  <ScrollViewer><StackPanel Margin="24" Spacing="12">
+    <TextBlock x:Name="EntityProfileTitle" Classes="paneTitle" Text="{Binding Title}" />
+    <TextBlock Classes="paneDetail" Text="{Binding LabelDetail}" />
+    <TextBlock x:Name="RelationshipAgeText" Classes="cardBody" Text="{Binding RelationshipAge}" />
+    <TextBlock x:Name="LastContactText" Classes="cardBody" Text="{Binding LastContact}" />
+    <TextBlock x:Name="ProfileCoverageText" Classes="cardBody" TextWrapping="Wrap" Text="{Binding Coverage}" />
+    <Border Classes="cardWarning"><TextBlock x:Name="PolicyBindingPendingText" Classes="cardBody" Text="{Binding PolicyBinding}" /></Border>
+    <TextBlock Classes="sectionLabel" Text="Observed relationship measures" />
+    <ItemsControl x:Name="KpiTiles" ItemsSource="{Binding Tiles}"><ItemsControl.ItemTemplate><DataTemplate>
+      <Expander Header="{Binding Label}" Margin="0,0,0,8"><Border Classes="card"><StackPanel Spacing="4">
+        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Question}" />
+        <TextBlock Classes="cardTitle" TextWrapping="Wrap" Text="{Binding Observation}" />
+        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Trend}" />
+        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Coverage}" />
+        <Expander Header="Why? View definition and evidence"><TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Evidence}" /></Expander>
+      </StackPanel></Border></Expander>
+    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    <TextBlock Classes="sectionLabel" Text="Not measured" />
+    <ItemsControl ItemsSource="{Binding NotMeasured}"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Classes="emptyDetail" TextWrapping="Wrap" Text="{Binding}" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    <Button HorizontalAlignment="Right" Content="Close" Click="OnCloseClick" />
+  </StackPanel></ScrollViewer>
+</Window>
