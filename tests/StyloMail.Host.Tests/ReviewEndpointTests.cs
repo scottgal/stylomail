@@ -8,6 +8,7 @@ using StyloMail.Host.Auth;
 using StyloMail.Host.Contracts;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Serialization;
+using StyloMail.Host.Storage;
 using StyloMail.Queue;
 
 namespace StyloMail.Host.Tests;
@@ -159,6 +160,43 @@ public sealed class ReviewEndpointTests
         Assert.Equal(DeliveryState.Quarantined, after.Item.Recipients[0].State);
         var expired = Assert.Single(after.Events, @event => @event.Event == "review.expired");
         Assert.Equal("policy-scheduler", expired.Actor);
+        Assert.NotNull(after.Item.Opening);
+        Assert.Equal("pack-commerce", after.Item.Opening!.PackId);
+        Assert.Equal("rule-payment-redirection", after.Item.Opening.RuleId);
+    }
+
+    [Fact]
+    public async Task A_pruned_ledger_row_leaves_the_opening_reference_readable()
+    {
+        using var host = new TestHost().WithClock();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var queueId = await SeedAsync(host, policy: true);
+
+        var queue = host.Services.GetRequiredService<QueueStore>();
+        var opening = await queue.GetReviewOpeningAsync(TestPrincipals.AcmeTenant, queueId);
+        Assert.NotNull(opening);
+
+        var database = host.Services.GetRequiredService<HostDatabase>();
+        using (var connection = database.Open())
+        {
+            using var delete = connection.CreateCommand();
+            delete.CommandText =
+                "DELETE FROM host_decision_ledger WHERE tenant_id = $tenant AND assessment_id = $assessment;";
+            delete.Parameters.AddWithValue("$tenant", TestPrincipals.AcmeTenant);
+            delete.Parameters.AddWithValue("$assessment", opening!.Opening.AssessmentId);
+            Assert.Equal(1, delete.ExecuteNonQuery());
+        }
+
+        var detail = await ReadAsync<ReviewDetailResponse>(
+            await reviewer.GetAsync($"/v1/policy/reviews/{queueId}"));
+
+        Assert.Null(detail.Item.Policy);
+        Assert.True(detail.Item.PolicyRecordMissing);
+        Assert.False(detail.Item.LegacyReviewOpeningMissing);
+        Assert.NotNull(detail.Item.Opening);
+        Assert.Equal("pack-commerce", detail.Item.Opening!.PackId);
+        Assert.Equal("rule-payment-redirection", detail.Item.Opening.RuleId);
+        Assert.Equal("gray zone", detail.Item.Opening.Reason);
     }
 
     [Fact]
