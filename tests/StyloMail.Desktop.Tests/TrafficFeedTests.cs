@@ -553,10 +553,12 @@ public sealed class TrafficFeedTests
 
         var whileRunning = Volatile.Read(ref attempts);
 
-        var second = await feed.StartWithRetryAsync(CancellationToken.None);
+        _ = await feed.StartWithRetryAsync(CancellationToken.None);
 
-        // Returned where the running sequence stands, having started nothing.
-        Assert.Equal(TrafficFeedState.Unreachable, second);
+        // Do not assert the transient state here. The retry delay can expire
+        // between observing Retrying and this call, so it may honestly be
+        // Connecting. The invariant is that this call starts no new attempt;
+        // the attempt count below proves that without reading a wall-time race.
         Assert.Equal(whileRunning, Volatile.Read(ref attempts));
 
         await running;
