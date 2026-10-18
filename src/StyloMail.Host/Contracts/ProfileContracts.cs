@@ -567,7 +567,11 @@ public sealed record ReferenceEvidenceResponse
 
     public IReadOnlyList<ReferenceCitationResponse> Citations { get; init; } = [];
 
+    /// <summary>Total matching citations, independent of the returned page.</summary>
     public required int CitationCount { get; init; }
+
+    /// <summary>Rows returned in this page.</summary>
+    public required int ReturnedCount { get; init; }
 
     public required bool CitationsTruncated { get; init; }
 
@@ -590,6 +594,7 @@ public sealed record ReferenceEvidenceResponse
         OutcomeReason = evidence.OutcomeReason,
         Citations = [.. evidence.Citations.Select(ReferenceCitationResponse.From)],
         CitationCount = evidence.CitationCount,
+        ReturnedCount = evidence.ReturnedCount,
         CitationsTruncated = evidence.CitationsTruncated,
         InvalidCitationRows = evidence.InvalidCitationRows,
         Source = evidence.Source is null ? null : ReferenceSourceResponse.From(evidence.Source),
