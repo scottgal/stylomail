@@ -850,10 +850,9 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
     /// The closed element not-produced reason vocabulary, derived from the Embeddings enum.
     /// </summary>
     /// <remarks>
-    /// One approved additive value is included ahead of the enum carrying it, so a producer that
-    /// emits <c>insufficient_exemplars</c> is not rejected in the change window. Remove the literal
-    /// once <see cref="ElementNotProducedReason"/> defines it; a reason outside this set is refused
-    /// rather than stored as an unknown string.
+    /// The vocabulary is derived rather than copied, so an additive reason reaches the store with
+    /// the enum that defines it. A reason outside this set is refused rather than stored as an
+    /// unknown string.
     /// </remarks>
     private static readonly HashSet<string> ElementReasonWireNames = BuildElementReasonWireNames();
 
@@ -865,7 +864,6 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             names.Add(reason.ToWireName());
         }
 
-        names.Add("insufficient_exemplars");
         return names;
     }
 
