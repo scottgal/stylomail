@@ -3,7 +3,7 @@
 Draft of 17 October 2026.
 
 This manual is written for the person who runs StyloMail and its client access proxy. It walks
-through the Avalonia console screen by screen. It is a draft: eleven figures are captured from
+through the Avalonia console screen by screen. It is a draft: ten figures are captured from
 verified runs, three more are covered by a frame already used, and the rest name the state they must
 show and stay pending until a verified run produces them. No figure is a mockup, and no screen is described as available unless it is in the build.
 
@@ -600,25 +600,34 @@ says so rather than offering a guessed conversation.
 ### 4.6 Element signals
 
 The element layer is a second, content-free view of a proxied submission. It is designed to split
-the message into bounded segments and score five named elements per segment at a loopback embedding
-service. The console renders it as the **Element signals** tab of the conversation view; Figure M26 is
-pending a retained capture. The Host route is
+the message into bounded segments and score the measured element, `urgency_pressure`, per segment at
+a loopback embedding service. The console renders it as the **Element signals** tab of the
+conversation view; Figure M26 is pending a retained capture. The Host route is
 `GET /v1/proxy/conversations/{threadToken}/elements?window=last_24_hours`, with provenance
 `proxy_element_classification`. It is a sibling of the tone and warning series, not a replacement
 for either.
 
 #### What is scored
 
+The measured vocabulary is `elements/3`, and it contains one element:
+
 | Element | What the name means |
 | --- | --- |
-| `credential_request` | A segment that asks the reader to supply or confirm a credential. |
 | `urgency_pressure` | A segment that presses for immediate action or a deadline. |
-| `threat` | A segment that threatens a consequence. |
-| `impersonated_greeting` | A greeting that claims an identity or relationship the sender does not have. |
-| `attachment_lure` | A segment that invites the reader to open an attachment. |
 
-The vocabulary is versioned `elements/1`. Adding or renaming an element is a version bump, not a
-quiet sixth name. Every score carries the vocabulary version it was produced under. The element
+The other names are not part of the measured vocabulary. They are recorded here so a reader who
+meets an older stored row or an older report knows what it was, not so they can be read as current
+measurements.
+
+| Name | Status | Reason |
+| --- | --- | --- |
+| `credential_request` | Research item, not in `elements/3` | Failed the pre-registered 150-row check: union agreement 0.413, with 44 teacher-only labels against 0 in the other direction. The failure is one-sided, not a threshold question. It needs a definition and reviewed, quote-verified positives. |
+| `threat` | Research item, not in `elements/3` | Cannot be labelled reproducibly: a 5-row union in the 60-row check with a teacher-heavy direction, 11 teacher-only against 2 verifier-only on the same-model pair, and 8 training positives. It needs a reviewed, quote-verified positive set before it can re-enter. |
+| `impersonated_greeting` | Removed at `elements/2` | The teacher labelled the act on rows where it was not present; a different lineage could not reproduce those labels. |
+| `attachment_lure` | Removed at `elements/2` | Removed for the same reproducibility failure as `impersonated_greeting`. |
+
+The vocabulary is versioned `elements/3`. Adding or renaming an element is a version bump, not a
+quiet extra name. Every score carries the vocabulary version it was produced under. The element
 vocabulary is not the warning-marker vocabulary: `link_domain_mismatch` and the other MIME findings
 are warning markers in a separate closed set, and moving a name from one set to the other is a
 version bump rather than an edit.
@@ -633,15 +642,16 @@ version bump rather than an edit.
 The scorer and its version travel with every score, because the two numbers answer different
 questions and must never be blended. A kNN margin must not be clamped into [0, 1] or read as a
 percentage. A negative margin is a measurement toward the benign exemplars, not a missing value. A
-`NearestExemplarId` is an opaque identifier such as `seed-1:credential_request:0007`; it is not a
+`NearestExemplarId` is an opaque identifier such as `ex:urgency_pressure:0007`; it is not a
 message fragment, an address or a subject. The console panel prints a signed kNN margin with its
 direction, never a percentage.
 
 #### Availability is per element
 
 Each element on each segment is either available with a score, or not produced with a reason. The
-reason is per element, so one segment can carry a score for `credential_request` and no score for
-`threat`.
+reason is per element, so one element can be not produced while another on the same segment is
+scored. In `elements/3` only `urgency_pressure` is measured, so in practice the reason describes
+that element.
 
 | Reason group | Wire names | What it means |
 | --- | --- | --- |
@@ -666,8 +676,10 @@ design; see the provisional evidence note below.
 Element points have been recorded in both directions in a single harness run, not production.
 `.styloagent/artifacts/proxy-e2e-20261017T234655Z` contains `retrieval-analysis.json` and
 `submission-analysis.json`; each reports availability Available, reason None, `segmentCount: 1`
-and `elementPointCount: 5`, with one point for each of the five elements under
-`prototype_knn/corpus-1`. The same run's `client-transcript.txt` records the IMAP client fetching
+and `elementPointCount: 5`, produced under the vocabulary that was current at the time. The measured
+vocabulary is now `elements/3` with one element, so a current run returns `urgency_pressure` only;
+the direction proof stands, while the point count is historical. The same
+run's `client-transcript.txt` records the IMAP client fetching
 one 168-byte body, the SMTP client completing STARTTLS, authenticating and submitting one message,
 and `IMAP+SMTP PASS`. `sessions-smtp-live.json` records authenticated Imap and Smtp sessions on the
 same opaque account `pa_f1cd145597b34ed4bec9c2a37866a978`. Host build `cf6faa6d7f69`.
@@ -676,20 +688,17 @@ same opaque account `pa_f1cd145597b34ed4bec9c2a37866a978`. Host build `cf6faa6d7
 > implementation. The orchestrator decodes the entire raw wire message as UTF-8, headers and
 > transfer encoding included, and splits only on LF LF, so a normal CRLF message becomes one
 > 6000-byte fragment and later body text is never analysed while segment coverage is still
-> reported. The five points in the run above were produced, but they describe the analysed
-> segments, not yet the whole message; the analysed fragment may be header-laden rather than the
-> body. Treat this evidence as provisional until the segmenter is repaired and a new harness run
-> exists.
+> reported. The points in the run above were produced, but they describe the analysed segments, not
+> yet the whole message; the analysed fragment may be header-laden rather than the body. Treat this
+> evidence as provisional until the segmenter is repaired and a new harness run exists.
 
 #### Calibration and the false-positive budget
 
 The scorer aims at a one percent false-positive rate among scorers whose recall is at least 0.85.
-That budget is **not met and cannot yet be resolved**. Held-out negatives number 51 to 70 per
-element, and resolving a one percent rate needs at least 100, so the scoring artefact marks every
-element `fpr_budget_resolvable: false`. Two elements, `threat` and `attachment_lure`, do not clear
-the 0.85 recall floor, so their operating scorer is the fallback arm. An element score is evidence,
-not a calibrated alarm. A quoted false-positive rate must name the element and its hard-negative
-count.
+That budget is **not met and cannot yet be resolved**. Held-out negatives for the measured element
+are below the 100 needed to resolve a one percent rate, so the scoring artefact marks the element
+`fpr_budget_resolvable: false`. An element score is evidence, not a calibrated alarm. A quoted
+false-positive rate must name the element and its hard-negative count.
 
 #### Tone is a separate series
 
@@ -722,22 +731,11 @@ leave the machine.
   (segmentation).
 - Do not read the element series as a transcript. It is vocabulary names per segment, never text.
 
-![Figure M26: element signals for a selected thread](images/m26-element-signals.png)
-
-> **Figure M26.** The **Element signals** tab for a selected conversation. The window is
-> `last_24_hours` with its UTC bounds and source `proxy_element_classification`. The single point is
-> **Retrieval · segment 0** with its UTC time and opaque turn token. Four element cards are fully
-> visible: `attachment_lure` at 0.007 toward threatening exemplars, `credential_request` at -0.008
-> toward benign exemplars, `impersonated_greeting` at 0.002 toward threatening, and `threat` at 0.032
-> toward threatening. Each carries the scorer `prototype kNN · prototype_knn/corpus-1`,
-> **Available**, and a shortened opaque exemplar id. The fifth card, `urgency_pressure`, begins
-> below the captured fold, so this frame does not show all five scores. The sibling tone line reads
-> **Tone not produced: tone_model_unavailable**. Only Retrieval was served in this window: no
-> Submission point and no not-produced element appears. These are analysed segments, not
-> whole-message analysis; the provisional note above still applies. Captured from
-> `ux-results/console-external-host/m26-m12-20261018T112425Z-32636`, scenario
-> `ux-scripts/console-m26-m12-capture.yaml` (13 of 13 actions passed), host build `f8c74d98f829`,
-> sha256 `830c562d2cb47f2fa698480d65d59a6553d917654037bdc7e2245935376d70ab`.
+> **Figure M26 (pending capture).** The **Element signals** tab for the current `elements/3`
+> vocabulary: one `urgency_pressure` entry with its scorer and version, a signed margin with its
+> direction, availability or the not-produced reason, and a shortened opaque exemplar id where one
+> exists, plus the sibling tone gap. An earlier frame was captured under a superseded vocabulary and
+> is not used. Run directory: pending.
 
 ### 4.7 Quarantine and release
 
@@ -926,15 +924,19 @@ signals, not message content, and its caption says that.
 | M23 | Quarantined listing | pending | requested |
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
-| M26 | Element signals | ux-results/console-external-host/m26-m12-20261018T112425Z-32636 | captured; build f8c74d98f829; sha256 830c562d…; Retrieval only, fifth card below fold, no not-produced element |
+| M26 | Element signals | pending | blocked: earlier frame predates elements/3; re-capture needed |
 
-Eleven frames in this table are captured, in four batches. M08 and M21a come from the first batch,
+Ten frames in this table are captured, in three batches. M08 and M21a come from the first batch,
 whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
-not stamp it, and that gap is recorded rather than filled. M12 and M26 come from the fourth, the
+not stamp it, and that gap is recorded rather than filled. M12 comes from the fourth, the
 `console-m26-m12-capture` run (13 of 13 actions passed), host build `f8c74d98f829`. M13, M15 and M20
 are covered by M08, M02 and M19. All images carry their run directory, scenario and sha256.
+
+The M26 frame from the fourth run was captured under a superseded vocabulary and is not used; M26 is
+pending a re-capture under `elements/3`. The frame stays in the run directory and is not deleted, but
+it is not evidence for the current chapter.
 
 **The four files M08-M11 in the first run are byte-identical** (sha256
 `ced0c85c684e8f1132efc84b30e9087566f2bccb6b8207089360d2a92ca500a2`): one unique settings frame,
