@@ -66,6 +66,36 @@ public sealed class ProfileKpiTests
     }
 
     [Fact]
+    public async Task Definition_versions_move_with_their_computation()
+    {
+        using var host = new TestHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var catalogue = await ReadAsync<KpiCatalogueResponse>(await reviewer.GetAsync("/v1/kpis"));
+        var byId = catalogue.Definitions.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
+
+        // These four changed denominator, window or coverage semantics in the coverage fix.
+        Assert.Equal("1.1.0", byId[KpiDefinitions.Responsiveness].Version);
+        Assert.Equal("1.1.0", byId[KpiDefinitions.Pressure].Version);
+        Assert.Equal("1.1.0", byId[KpiDefinitions.SensitiveRequests].Version);
+        Assert.Equal("1.1.0", byId[KpiDefinitions.Consistency].Version);
+
+        // These two are unchanged and must not borrow a bump.
+        Assert.Equal("1.0.0", byId[KpiDefinitions.Momentum].Version);
+        Assert.Equal("1.0.0", byId[KpiDefinitions.Handling].Version);
+
+        // The prose names the state the implementation actually returns.
+        Assert.Contains(
+            "ReducedCoverage",
+            byId[KpiDefinitions.Responsiveness].Window,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "NotProduced rather than undercounted",
+            byId[KpiDefinitions.Responsiveness].Window,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task An_empty_profile_names_every_absence_instead_of_zero()
     {
         using var host = new TestHost();

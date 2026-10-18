@@ -18,7 +18,16 @@ namespace StyloMail.Profiles.Kpis;
 /// </remarks>
 public static class KpiDefinitions
 {
+    /// <summary>The base version for definitions whose computation is unchanged since v1.</summary>
     public const string Version = "1.0.0";
+
+    /// <summary>
+    /// Bumped when the denominator, window or coverage semantics change. Responsiveness gained
+    /// censoring, a self-contained candidate window and ReducedCoverage; pressure, sensitive
+    /// requests and consistency now exclude valueless answered rows from their denominators.
+    /// Momentum and handling are unchanged and stay at <see cref="Version"/>.
+    /// </summary>
+    public const string VersionWithCoverageFixes = "1.1.0";
 
     public const string Responsiveness = "responsiveness.address_reciprocity";
     public const string Momentum = "momentum.volume_change";
@@ -45,10 +54,12 @@ public static class KpiDefinitions
                 + "reply window has fully elapsed.",
             Window = "Inbound messages in the profile window whose 7-day reply window has fully "
                 + "elapsed; each is searched forward up to 7 days for an outbound match. Recent "
-                + "inbound messages are excluded and counted, not treated as unanswered. The "
-                + "outbound candidate set is capped; when it is capped or unreadable the value is "
-                + "NotProduced rather than undercounted. Matches are by address reciprocity only: "
-                + "true In-Reply-To or thread linkage is NOT produced.",
+                + "inbound messages are excluded and counted, not treated as unanswered. When the "
+                + "outbound candidate set is capped or unreadable, inbound messages whose reply "
+                + "could lie in the missing band are excluded, and the KPI is ReducedCoverage with "
+                + "the reason reply_candidates_incomplete rather than undercounting them as "
+                + "negatives. Matches are by address reciprocity only: true In-Reply-To or thread "
+                + "linkage is NOT produced.",
             MinimumSample = 5,
             Direction = KpiDirection.HigherIsBetter,
             Unit = KpiUnit.Ratio,
@@ -62,7 +73,7 @@ public static class KpiDefinitions
                 KpiReasons.ReplyCandidatesIncomplete,
                 KpiReasons.NoFullyObservedInbound,
             ],
-            Version = Version,
+            Version = VersionWithCoverageFixes,
         },
         new()
         {
@@ -104,7 +115,7 @@ public static class KpiDefinitions
                 KpiReasons.SignalNotProduced,
                 KpiReasons.NotEnoughHistory,
             ],
-            Version = Version,
+            Version = VersionWithCoverageFixes,
         },
         new()
         {
@@ -128,7 +139,7 @@ public static class KpiDefinitions
                 KpiReasons.SignalNotProduced,
                 KpiReasons.NotEnoughHistory,
             ],
-            Version = Version,
+            Version = VersionWithCoverageFixes,
         },
         new()
         {
@@ -153,7 +164,7 @@ public static class KpiDefinitions
                 KpiReasons.SignalNotProduced,
                 KpiReasons.NotEnoughHistory,
             ],
-            Version = Version,
+            Version = VersionWithCoverageFixes,
         },
         new()
         {
