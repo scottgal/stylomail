@@ -376,7 +376,8 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             Authentication = request.Authentication ?? IncompleteProvenance(),
             Channel = ChannelContext.Email,
             Subject = message.Subject,
-            BodyText = quoted.NewText.Length > 0 ? quoted.NewText : effectivePlain,
+            // Empty new text after an identified quote must not restore the quoted history.
+            BodyText = quoted.Marker == "none" ? effectivePlain : quoted.NewText,
             QuotedText = quoted.QuotedText.Length > 0 ? quoted.QuotedText : null,
             Links = [.. links.Select(l => new LinkObservation
             {
