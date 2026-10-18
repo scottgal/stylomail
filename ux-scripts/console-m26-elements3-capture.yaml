@@ -1,0 +1,49 @@
+name: console-m26-elements3-capture
+description: Captures the single elements/3 urgency-pressure card from an already-running external Host.
+default_delay: 500
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Click
+    target: "type=Button:has-text(Conversations)"
+  - type: Wait
+    value: "1000"
+  - type: Click
+    target: "type=Button:has-text(Open signals)"
+    window_id: ConversationsDialog
+  - type: Expect
+    target: "text='Thread signals'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Click
+    target: "text='Element signals'"
+    window_id: ConversationsDialog
+  - type: Expect
+    target: "text='urgency_pressure · elements/3'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+    timeout: 15000
+  - type: Expect
+    target: "text='Vocabulary: elements/3.'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+  - type: Expect
+    target: "text='prototype kNN · prototype_knn/teacher-urgency-1'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+  - type: Expect
+    target: "text='Available.'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+  - type: Expect
+    target: "text='Tone not produced: tone_model_unavailable.'"
+    window_id: ConversationsDialog
+    matcher: IsVisible
+  - type: Screenshot
+    value: "M26-elements3-urgency-pressure"
+    composite: true
+    description: "Selected opaque thread with one elements/3 urgency-pressure card, signed kNN margin, availability and sibling tone gap"
