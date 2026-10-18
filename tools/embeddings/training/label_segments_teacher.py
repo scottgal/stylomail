@@ -21,6 +21,8 @@ import json
 import pathlib
 import random
 import re
+import urllib.error
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -63,12 +65,28 @@ def prompt_hash(template: str) -> str:
 def call(model: str, prompt: str, seed: int) -> str:
     body = json.dumps({
         "model": model, "prompt": prompt, "stream": False, "format": "json",
-        "options": {"temperature": 0.1, "seed": seed, "num_predict": 120},
+        "think": False,
+        "options": {"temperature": 0.1, "seed": seed, "num_predict": 300},
     }).encode("utf-8")
     request = urllib.request.Request(OLLAMA + "/api/generate", data=body,
                                      headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=300) as response:
-        return json.loads(response.read()).get("response", "")
+    # An empty response is retryable. A whole 198-segment teacher run produced zero kept rows because
+    # every call returned empty after a runner wedge; the same call answers in 0.2 s once the runner is
+    # healthy, so an empty answer is treated as a transport fault rather than as "no labels".
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                text = json.loads(response.read()).get("response", "")
+            if text.strip():
+                return text
+            last_error = RuntimeError("empty response")
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == 2:
+                raise
+            last_error = error
+        time.sleep(2 * (attempt + 1))
+    raise last_error if last_error else RuntimeError("teacher returned nothing")
 
 
 def labels_of(raw: str) -> list[str] | None:
