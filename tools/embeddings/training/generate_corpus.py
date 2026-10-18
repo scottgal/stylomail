@@ -31,6 +31,7 @@ import pathlib
 import random
 import re
 import time
+import urllib.error
 import urllib.request
 
 OLLAMA = os.environ.get("EMB_OLLAMA", "http://127.0.0.1:11434")
@@ -133,9 +134,20 @@ def call(model: str, prompt: str, seed: int, budget: int = 1200) -> tuple[str, f
     request = urllib.request.Request(OLLAMA + "/api/generate", data=body,
                                      headers={"Content-Type": "application/json"})
     started = time.perf_counter()
-    with urllib.request.urlopen(request, timeout=600) as response:
-        payload = json.loads(response.read())
-    return payload.get("response", ""), (time.perf_counter() - started) * 1000.0
+    # Transient 500s from the runner are real: one killed a 50-conversation run at the first call
+    # after a model swap. Three attempts with a short backoff, then the error is allowed through.
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=600) as response:
+                payload = json.loads(response.read())
+            return payload.get("response", ""), (time.perf_counter() - started) * 1000.0
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == 2:
+                raise
+            last_error = error
+            time.sleep(5 * (attempt + 1))
+    raise last_error if last_error else RuntimeError("generation failed without an error")
 
 
 def redact(text: str) -> str:
@@ -267,6 +279,10 @@ def generate(output: pathlib.Path, manifest_path: pathlib.Path, kinds: tuple[str
                 discarded += 1
                 continue
             verified[kind] += 1
+            # Flush every verified conversation. The first benign run lost all progress to a single
+            # HTTP 500 because rows were only written at the end.
+            checkpoint = [json.dumps(row) for row in rows]
+            output.write_text("\n".join(checkpoint) + "\n", encoding="utf-8")
             conversation_id = f"gen:{kind}:{hashlib.sha256(str(conversation_seed).encode()).hexdigest()[:10]}"
             split = "heldout" if index % 5 == 4 else "train"
             for number, turn in enumerate(parsed["turns"]):
