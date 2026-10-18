@@ -417,6 +417,38 @@ public sealed class ProfileKpiTests
     }
 
     [Fact]
+    public async Task A_complete_candidate_set_with_no_matches_is_a_real_zero()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(Key);
+        var now = host.Clock.GetUtcNow();
+
+        // Five mature inbound messages, a complete candidate set, and genuinely no reply. The
+        // honest answer is 0.0, not NotProduced: the absence was observed, not missing.
+        for (var index = 0; index < 5; index++)
+        {
+            await SeedAsync(
+                host,
+                Assessment(Acme, $"in{index}", now.AddDays(-20).AddHours(index), MailAction.Allow),
+                mailFrom: $"person{index}@example.test",
+                direction: MailDirection.Inbound,
+                recipients: "owner@acme.test");
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var kpi = Kpi(
+            await ProfileAsync(reviewer, "entity", PrincipalA),
+            KpiDefinitions.Responsiveness);
+
+        Assert.Equal(KpiState.Produced, kpi.State);
+        Assert.Equal(0, kpi.Numerator);
+        Assert.Equal(5, kpi.Denominator);
+        Assert.Equal(0.0, kpi.Value!.Value, 3);
+        Assert.Equal(0, kpi.Coverage.Censored);
+        Assert.False(kpi.Coverage.CandidatesTruncated);
+        Assert.Equal(0, kpi.Coverage.CandidateUnparsable);
+    }
+
+    [Fact]
     public async Task A_domain_profile_is_inbound_only_and_says_so()
     {
         using var host = new TestHost().WithClock().WithProfileMasterKey(Key);
