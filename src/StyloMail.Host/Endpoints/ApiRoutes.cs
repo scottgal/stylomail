@@ -90,6 +90,14 @@ public static class ApiRoutes
         v1.MapGet("/profiles/{kind}/{id}", ProfileEndpoints.GetProfileAsync)
             .RequireAuthorization(HostPolicies.Review);
 
+        // The evidence drawer. Reviewer-level and content-free: what a KPI was computed from, and
+        // what a stored evidence reference resolves to. No body, address, filename or subject.
+        v1.MapGet("/evidence/kpi/{definitionId}/{kind}/{id}", EvidenceEndpoints.GetKpiEvidenceAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/evidence/reference", EvidenceEndpoints.GetReferenceAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
         // Policy administration. Reading a pack, its versions or a binding is reviewer visibility;
         // drafting, approving, activating, withdrawing, binding and revoking change what policy
         // will do and are administrative. The capability catalogue is static and reads no pack.

@@ -1,4 +1,6 @@
+using StyloMail.Core;
 using StyloMail.Profiles.Kpis;
+using StyloMail.Profiles.Properties;
 
 namespace StyloMail.Host.Contracts;
 
@@ -352,5 +354,185 @@ public sealed record ProfileResponse
         Relationship = ProfileRelationshipResponse.From(snapshot.Relationship),
         Kpis = [.. snapshot.Kpis.Select(KpiValueResponse.From)],
         NotMeasured = [.. snapshot.NotMeasured.Select(ProfileNotMeasuredResponse.From)],
+    };
+}
+
+/// <summary>How one underlying signal behaved in the evidence window.</summary>
+public sealed record KpiSignalEvidenceResponse
+{
+    public required string SignalId { get; init; }
+
+    public required string Label { get; init; }
+
+    public required int Answered { get; init; }
+
+    public required int Confirming { get; init; }
+
+    public required int Unavailable { get; init; }
+
+    public required int NotApplicable { get; init; }
+
+    public required int Missing { get; init; }
+
+    public string? Reason { get; init; }
+
+    public static KpiSignalEvidenceResponse From(Profiles.KpiSignalEvidence signal) => new()
+    {
+        SignalId = signal.SignalId,
+        Label = signal.Label,
+        Answered = signal.Answered,
+        Confirming = signal.Confirming,
+        Unavailable = signal.Unavailable,
+        NotApplicable = signal.NotApplicable,
+        Missing = signal.Missing,
+        Reason = signal.Reason,
+    };
+}
+
+/// <summary>An opaque source row behind a KPI, with metadata and no content.</summary>
+public sealed record EvidenceSourceRowResponse
+{
+    public required string AssessmentId { get; init; }
+
+    public required DateTimeOffset ObservedAt { get; init; }
+
+    public MailDirection? Direction { get; init; }
+
+    public required MailAction Action { get; init; }
+
+    public IReadOnlyList<string> MeasuredSignalIds { get; init; } = [];
+
+    public static EvidenceSourceRowResponse From(Profiles.EvidenceSourceRow source) => new()
+    {
+        AssessmentId = source.AssessmentId,
+        ObservedAt = source.ObservedAt,
+        Direction = source.Direction,
+        Action = source.Action,
+        MeasuredSignalIds = source.MeasuredSignalIds,
+    };
+}
+
+/// <summary>The evidence behind one KPI: definition, value, prior value, signals and sources.</summary>
+public sealed record KpiEvidenceResponse
+{
+    public required string TenantId { get; init; }
+
+    public required PropertyScopeResponse Scope { get; init; }
+
+    public required DateTimeOffset ResolvedAt { get; init; }
+
+    public required KpiDefinitionResponse Definition { get; init; }
+
+    public required KpiValueResponse Value { get; init; }
+
+    public required KpiValueResponse PriorValue { get; init; }
+
+    public IReadOnlyList<KpiSignalEvidenceResponse> Signals { get; init; } = [];
+
+    public IReadOnlyList<EvidenceSourceRowResponse> Sources { get; init; } = [];
+
+    public required int SourceCount { get; init; }
+
+    public required bool SourcesTruncated { get; init; }
+
+    public static KpiEvidenceResponse From(
+        string tenantId,
+        PropertyScopeResponse scope,
+        DateTimeOffset resolvedAt,
+        Profiles.KpiEvidenceRead evidence) => new()
+    {
+        TenantId = tenantId,
+        Scope = scope,
+        ResolvedAt = resolvedAt,
+        Definition = KpiDefinitionResponse.From(evidence.Current.Definition),
+        Value = KpiValueResponse.From(evidence.Current),
+        PriorValue = KpiValueResponse.From(evidence.Prior),
+        Signals = [.. evidence.Signals.Select(KpiSignalEvidenceResponse.From)],
+        Sources = [.. evidence.Sources.Select(EvidenceSourceRowResponse.From)],
+        SourceCount = evidence.SourceCount,
+        SourcesTruncated = evidence.SourcesTruncated,
+    };
+}
+
+/// <summary>One property row that cites an evidence reference.</summary>
+public sealed record ReferenceCitationResponse
+{
+    public required PropertyScopeResponse Scope { get; init; }
+
+    public required string Key { get; init; }
+
+    public required string Value { get; init; }
+
+    public required PropertySource Source { get; init; }
+
+    public required PropertySurfaceState State { get; init; }
+
+    public required string SetBy { get; init; }
+
+    public required DateTimeOffset SetAt { get; init; }
+
+    public string? ConfirmedBy { get; init; }
+
+    public DateTimeOffset? ConfirmedAt { get; init; }
+
+    public static ReferenceCitationResponse From(Profiles.ReferenceCitation citation) => new()
+    {
+        Scope = PropertyScopeResponse.From(citation.Scope),
+        Key = citation.Key,
+        Value = citation.Value,
+        Source = citation.Source,
+        State = citation.State,
+        SetBy = citation.SetBy,
+        SetAt = citation.SetAt,
+        ConfirmedBy = citation.ConfirmedBy,
+        ConfirmedAt = citation.ConfirmedAt,
+    };
+}
+
+/// <summary>Whether the cited source row still exists in this tenant's ledger.</summary>
+public sealed record ReferenceSourceResponse
+{
+    public required string AssessmentId { get; init; }
+
+    public required DateTimeOffset ObservedAt { get; init; }
+
+    public MailAction? Action { get; init; }
+
+    public static ReferenceSourceResponse From(Profiles.ReferenceSource source) => new()
+    {
+        AssessmentId = source.AssessmentId,
+        ObservedAt = source.ObservedAt,
+        Action = source.Action,
+    };
+}
+
+/// <summary>The resolved property evidence reference: metadata, citations and source existence.</summary>
+public sealed record ReferenceEvidenceResponse
+{
+    public required string TenantId { get; init; }
+
+    public required PropertyEvidenceRefResponse Reference { get; init; }
+
+    public required Profiles.ReferenceOutcome Outcome { get; init; }
+
+    public IReadOnlyList<ReferenceCitationResponse> Citations { get; init; } = [];
+
+    public required int CitationCount { get; init; }
+
+    public required bool CitationsTruncated { get; init; }
+
+    public ReferenceSourceResponse? Source { get; init; }
+
+    public static ReferenceEvidenceResponse From(
+        string tenantId,
+        Profiles.ReferenceEvidenceRead evidence) => new()
+    {
+        TenantId = tenantId,
+        Reference = PropertyEvidenceRefResponse.From(evidence.Reference),
+        Outcome = evidence.Outcome,
+        Citations = [.. evidence.Citations.Select(ReferenceCitationResponse.From)],
+        CitationCount = evidence.CitationCount,
+        CitationsTruncated = evidence.CitationsTruncated,
+        Source = evidence.Source is null ? null : ReferenceSourceResponse.From(evidence.Source),
     };
 }
