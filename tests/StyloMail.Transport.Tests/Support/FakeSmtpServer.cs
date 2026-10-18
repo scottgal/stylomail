@@ -152,6 +152,7 @@ internal sealed class FakeSmtpServer : IAsyncDisposable
     private readonly List<RecordedCommand> _commands = [];
     private readonly List<ReceivedMessage> _messages = [];
     private int _completedMessages;
+    private int _acceptedConnections;
     private bool _disposed;
 
     private FakeSmtpServer(FakeSmtpBehaviour behaviour)
@@ -206,7 +207,34 @@ internal sealed class FakeSmtpServer : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// How many TCP connections the server has accepted, including those it is still serving.
+    /// </summary>
+    /// <remarks>
+    /// The only way to prove a caller owns a connection slot: a silent server sends no greeting and
+    /// records no command, so without this a test would have to sleep and hope the dial had landed.
+    /// </remarks>
+    public int AcceptedCount => Volatile.Read(ref _acceptedConnections);
+
     public static FakeSmtpServer Start(FakeSmtpBehaviour? behaviour = null) => new(behaviour ?? new FakeSmtpBehaviour());
+
+    /// <summary>Waits until at least <paramref name="count"/> connections have been accepted.</summary>
+    public async Task WaitForConnectionsAsync(int count, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (AcceptedCount >= count)
+            {
+                return;
+            }
+
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"The fake server did not accept {count} connection(s) in time.");
+    }
 
     /// <summary>Waits until at least <paramref name="count"/> messages have been received.</summary>
     public async Task WaitForMessagesAsync(int count, TimeSpan? timeout = null)
@@ -297,6 +325,7 @@ internal sealed class FakeSmtpServer : IAsyncDisposable
                 return;
             }
 
+            Interlocked.Increment(ref _acceptedConnections);
             var task = HandleConnectionAsync(client, cancellationToken);
             lock (_gate)
             {

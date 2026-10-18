@@ -163,18 +163,25 @@ public sealed class SmtpDeliveryPort : IDeliveryPort, IAsyncDisposable
 
         try
         {
-            await _connectionLimit.WaitAsync(cancellationToken).ConfigureAwait(false);
+            // The attempt's own token, not just the caller's: queuing for a slot is part of the
+            // attempt, so it must end when the message's lifetime does. Waiting on the caller token
+            // alone left an expired message parked behind active connections until one happened to
+            // free, which the queue may already have stopped caring about.
+            await _connectionLimit.WaitAsync(attemptToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // Cancelled while queued for a connection slot. Nothing was attempted, so nothing is
+            // Cancelled while queued for a connection slot, either by the caller or by the message's
+            // lifetime elapsing behind an active connection. Nothing was attempted, so nothing is
             // ambiguous, but the caller still gets one outcome per recipient rather than an
             // exception, because the port's contract is that a caller always learns what happened to
             // each recipient, and "we never got to it" is something it can act on.
             return AllFor(
                 request,
                 DeliveryAttemptOutcome.TemporaryFailure,
-                "The attempt was cancelled before it began.");
+                budgetSource?.IsCancellationRequested == true
+                    ? "The message's lifetime elapsed while waiting for a connection slot, so no attempt was made."
+                    : "The attempt was cancelled before it began.");
         }
 
         try

@@ -398,6 +398,66 @@ public sealed class SmtpDeliveryPortTests
     }
 
     [Fact]
+    public async Task AMessageThatExpiresWhileQueuedForAConnectionSlotIsNotAttempted()
+    {
+        // The one slot is held by a session whose peer never sends a greeting, so it stays occupied
+        // for as long as the holder wants. The second message's own lifetime then elapses while it
+        // is still queued for a slot.
+        //
+        // Waiting on the caller's token alone makes this unbounded rather than slow: the waiter only
+        // wakes when the caller cancels or a slot frees, and no slot frees until the holder's
+        // greeting timeout. The queue has given the message up long before either.
+        await using var server = FakeSmtpServer.Start(new FakeSmtpBehaviour { Silent = true });
+
+        // The floor is lowered so the second message starts waiting for a slot instead of being
+        // refused up front for having too little lifetime left to attempt.
+        await using var port = new SmtpDeliveryPort(
+            SmtpTestRig.PlainUpstream(server),
+            TimeProvider.System,
+            new SmtpBounds { MaxConcurrentConnections = 1 },
+            minimumAttemptBudget: TimeSpan.FromMilliseconds(1),
+            certificateValidation: SmtpTestRig.TrustAnyCertificate);
+
+        using var holderToken = new CancellationTokenSource();
+
+        // No deadline, so only the caller token can stop the holder.
+        var holder = port.DeliverAsync(Request(["holder@example.test"]), holderToken.Token).AsTask();
+
+        try
+        {
+            // An accepted connection proves the holder owns the one slot, rather than leaving the
+            // ordering of the two calls to a sleep.
+            await server.WaitForConnectionsAsync(1);
+
+            var queued = port.DeliverAsync(
+                Request(["queued@example.test"], expiresAt: DateTimeOffset.UtcNow.AddMilliseconds(300)),
+                CancellationToken.None).AsTask();
+
+            // Five seconds is far longer than the 300ms deadline and far shorter than the 30s
+            // greeting timeout that would free the slot if the lifetime were ignored.
+            var result = await queued.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var recipient = Assert.Single(result.Recipients);
+            Assert.Equal(DeliveryAttemptOutcome.TemporaryFailure, recipient.Outcome);
+            Assert.Contains("lifetime", recipient.Detail!, StringComparison.OrdinalIgnoreCase);
+
+            // The expired message never reached the upstream: the holder's is the only connection.
+            Assert.Equal(1, server.AcceptedCount);
+            Assert.Empty(server.Messages);
+        }
+        finally
+        {
+            await holderToken.CancelAsync();
+        }
+
+        // The holder's own contract still holds: cancelling it yields an outcome, not an exception.
+        var held = await holder;
+        Assert.Equal(
+            DeliveryAttemptOutcome.TemporaryFailure,
+            Assert.Single(held.Recipients).Outcome);
+    }
+
+    [Fact]
     public async Task AMessageWithNoDeadlineIsNotClamped()
     {
         await using var server = FakeSmtpServer.Start();
