@@ -1,0 +1,979 @@
+{
+  "status": "accepted with disclosed scan-scope residuals",
+  "ruling": "overview- review-priority1-accepted-with-disclosed-residual, 2026-10-18T20:40:29+01:00",
+  "seedHead": "0f52d7bcd27659a461026fdfb314c160a56c4392",
+  "runtime": ".NET 10.0.5",
+  "sdk": "10.0.201",
+  "warmupPerArm": 10,
+  "samplesPerArm": 10,
+  "medianDefinition": "average of the two central order statistics for ten samples",
+  "scope": "SMTP full-message B warning/HMAC/MIME and C MIME/segmentation/points, fixture classifier tasks preallocated and scalar counting sink. Input creation/hash/semantic controls outside measurement. No network/model/provider/SQLite/queue. Real SMTP stage-read copies excluded. No numeric budget, no parse sharing or skeleton change.",
+  "semanticParity": {
+    "completeMimeResultIncludingSkeletonAndPlaceholderCounts": true,
+    "warningAvailabilityReasonFindings": true,
+    "elementOutcomeAndAllPoints": true,
+    "opaqueHmacTokensComparedAcrossProcesses": false,
+    "explanation": "Fresh in-memory fixture keys per process; compare warning findings, not random opaque tokens. Complete direct MIME uses fixed request clock; emitted C points use fixed identity observation time."
+  },
+  "semantics": [
+    {
+      "shape": "plain",
+      "inputBytes": 1048576,
+      "inputSha256": "66DC2799F1C92F6E64299506858E910E3CD4AFB99BA5BA321045EC11F7196D42",
+      "mimeSha256": "03FA79263B0B666DD3299ACDA8E6CAF26CA92C86D53CA86AECA1088B9FFEB52A",
+      "warningSha256": "8700D881F6EE5DDA4A45FA5351D8840769F5EB035B6F928C0EB9856DA900E755",
+      "elementSha256": "D6FA27E93D9E1A7257AA30BD800AD67619D950E8E1BBFC7771826E710CD2FE6A",
+      "newBodyCharacters": 1031960,
+      "coverage": {
+        "BodyParsed": true,
+        "HtmlPresent": false,
+        "HasAttachments": false,
+        "HtmlTextDisagreement": false,
+        "ParserLimitExceeded": false,
+        "OversizeRejected": false,
+        "ContentEncrypted": false,
+        "Truncated": false,
+        "ConversationContextMissing": true
+      }
+    },
+    {
+      "shape": "html",
+      "inputBytes": 1048576,
+      "inputSha256": "2B57C820B079953FB9641CAD28FDFB6E647D2CF69BCCE454A87F6A50EAF7D85A",
+      "mimeSha256": "C3BA89F1BB4EE53C592ACE9AE54E50225CA2091A2922A5B0499F1C5770C9C8A5",
+      "warningSha256": "8700D881F6EE5DDA4A45FA5351D8840769F5EB035B6F928C0EB9856DA900E755",
+      "elementSha256": "D6FA27E93D9E1A7257AA30BD800AD67619D950E8E1BBFC7771826E710CD2FE6A",
+      "newBodyCharacters": 1031928,
+      "coverage": {
+        "BodyParsed": true,
+        "HtmlPresent": true,
+        "HasAttachments": false,
+        "HtmlTextDisagreement": false,
+        "ParserLimitExceeded": false,
+        "OversizeRejected": false,
+        "ContentEncrypted": false,
+        "Truncated": false,
+        "ConversationContextMissing": true
+      }
+    },
+    {
+      "shape": "quoted-history",
+      "inputBytes": 1048576,
+      "inputSha256": "B35EF50E925A796B3777352114882343979B7D1039DCABD41F00ADAF5A6D4201",
+      "mimeSha256": "BF0D7B97394D17111633135E7046808AB7A4E5ADAF20C8E48EF242A8DADFE81D",
+      "warningSha256": "8700D881F6EE5DDA4A45FA5351D8840769F5EB035B6F928C0EB9856DA900E755",
+      "elementSha256": "D960DB861F761F937D8C21ED857C9DF50098733B2315638C3E43F9513EEE313B",
+      "newBodyCharacters": 37,
+      "coverage": {
+        "BodyParsed": true,
+        "HtmlPresent": false,
+        "HasAttachments": false,
+        "HtmlTextDisagreement": false,
+        "ParserLimitExceeded": false,
+        "OversizeRejected": false,
+        "ContentEncrypted": false,
+        "Truncated": false,
+        "ConversationContextMissing": true
+      }
+    }
+  ],
+  "measurements": [
+    {
+      "shape": "plain",
+      "arm": "B",
+      "oldAllocatedBytesPerOperation": [
+        187381440,
+        187381496,
+        187381496,
+        187388920,
+        187381424,
+        187381480,
+        187381432,
+        187382072,
+        187384024,
+        187381440
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        39563840,
+        39563840,
+        39571832,
+        39563840,
+        39563848,
+        39563840,
+        39563864,
+        39563848,
+        39563840,
+        39563840
+      ],
+      "oldMedian": 187381488.0,
+      "candidateMedian": 39563840.0,
+      "reductionBytes": 147817648.0,
+      "reductionPercent": 78.88593989604779,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 147421,
+          "medianInclusiveAllocatedBytes": 10223416.0,
+          "medianStringAndListAllocatedBytes": 10222584.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 0,
+          "semanticTokens": 0,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 64.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 147421,
+          "medianInclusiveAllocatedBytes": 10222616.0,
+          "medianStringAndListAllocatedBytes": 10222584.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "shape": "plain",
+      "arm": "C",
+      "oldAllocatedBytesPerOperation": [
+        187710768,
+        187702768,
+        187702800,
+        187702752,
+        187708136,
+        187702816,
+        187704888,
+        187702720,
+        187702744,
+        187705104
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        39885152,
+        39885152,
+        39887040,
+        39885152,
+        39885152,
+        39885152,
+        39885152,
+        39885152,
+        39893144,
+        39885152
+      ],
+      "oldMedian": 187702808.0,
+      "candidateMedian": 39885152.0,
+      "reductionBytes": 147817656.0,
+      "reductionPercent": 78.7509028634244,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 147421,
+          "medianInclusiveAllocatedBytes": 10223416.0,
+          "medianStringAndListAllocatedBytes": 10222584.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 0,
+          "semanticTokens": 0,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 64.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 147421,
+          "semanticTokens": 147421,
+          "materializedTokens": 147421,
+          "medianInclusiveAllocatedBytes": 10222616.0,
+          "medianStringAndListAllocatedBytes": 10222584.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "shape": "html",
+      "arm": "B",
+      "oldAllocatedBytesPerOperation": [
+        234420464,
+        234418920,
+        234427368,
+        234419120,
+        234418944,
+        234418960,
+        234418944,
+        234422512,
+        234419024,
+        234420328
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        56078928,
+        56078904,
+        56078904,
+        56078920,
+        56078928,
+        56078928,
+        56078904,
+        56078904,
+        56078904,
+        56082472
+      ],
+      "oldMedian": 234419072.0,
+      "candidateMedian": 56078912.0,
+      "reductionBytes": 178340160.0,
+      "reductionPercent": 76.07749594708744,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567952.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567952.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567152.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "shape": "html",
+      "arm": "C",
+      "oldAllocatedBytesPerOperation": [
+        234742192,
+        234740152,
+        234740208,
+        234740208,
+        234740152,
+        234740240,
+        234740160,
+        234740304,
+        234747688,
+        234740208
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        56400080,
+        56400080,
+        56400080,
+        56400080,
+        56400080,
+        56400080,
+        56400104,
+        56400080,
+        56400112,
+        56400080
+      ],
+      "oldMedian": 234740208.0,
+      "candidateMedian": 56400080.0,
+      "reductionBytes": 178340128.0,
+      "reductionPercent": 75.97340460736066,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567952.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567952.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2496,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 147412,
+          "semanticTokens": 147412,
+          "materializedTokens": 147412,
+          "medianInclusiveAllocatedBytes": 9567152.0,
+          "medianStringAndListAllocatedBytes": 9567120.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "shape": "quoted-history",
+      "arm": "B",
+      "oldAllocatedBytesPerOperation": [
+        53723616,
+        53724512,
+        53723640,
+        53723616,
+        53727144,
+        53723688,
+        53723616,
+        53724384,
+        53723672,
+        53723616
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        10486848,
+        10488616,
+        10488104,
+        10487072,
+        10486848,
+        10486848,
+        10493664,
+        10487072,
+        10487880,
+        10487072
+      ],
+      "oldMedian": 53723656.0,
+      "candidateMedian": 10487072.0,
+      "reductionBytes": 43236584.0,
+      "reductionPercent": 80.47960101598447,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 5,
+          "medianInclusiveAllocatedBytes": 816.0,
+          "medianStringAndListAllocatedBytes": 376.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 0,
+          "semanticTokens": 0,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 64.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 152486,
+          "semanticTokens": 152486,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1360,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 5,
+          "medianInclusiveAllocatedBytes": 408.0,
+          "medianStringAndListAllocatedBytes": 376.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "shape": "quoted-history",
+      "arm": "C",
+      "oldAllocatedBytesPerOperation": [
+        53644696,
+        53644744,
+        53644720,
+        53644696,
+        53644704,
+        53644752,
+        53644696,
+        53649120,
+        53644720,
+        53644696
+      ],
+      "candidateAllocatedBytesPerOperation": [
+        10408152,
+        10409184,
+        10413616,
+        10408152,
+        10408152,
+        10415624,
+        10408152,
+        10408152,
+        10414200,
+        10408152
+      ],
+      "oldMedian": 53644712.0,
+      "candidateMedian": 10408152.0,
+      "reductionBytes": 43236560.0,
+      "reductionPercent": 80.59799072087478,
+      "remainingPasses": [
+        {
+          "pass": "PlainPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 5,
+          "medianInclusiveAllocatedBytes": 816.0,
+          "medianStringAndListAllocatedBytes": 376.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "HtmlPass",
+          "matches": 0,
+          "semanticTokens": 0,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 64.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "TotalPass",
+          "matches": 152486,
+          "semanticTokens": 152486,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "NewPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 0,
+          "medianInclusiveAllocatedBytes": 0.0,
+          "medianStringAndListAllocatedBytes": 0.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "pass": "FingerprintPass",
+          "matches": 5,
+          "semanticTokens": 5,
+          "materializedTokens": 5,
+          "medianInclusiveAllocatedBytes": 408.0,
+          "medianStringAndListAllocatedBytes": 376.0,
+          "scanExclusiveAllocatedBytes": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "allocationControls": {
+    "originalGuardOldFailed": 2,
+    "originalGuardOldSemanticPasses": 9,
+    "candidateMimePassed": 105,
+    "finalGuard": {
+      "old": {
+        "passed": 9,
+        "failed": [
+          "StyloMail.Mime.Tests.TokenScanTests.Count_only_scan_avoids_per_token_materialization",
+          "StyloMail.Mime.Tests.TokenScanTests.Ordered_token_scan_avoids_the_materializing_reference_allocation"
+        ],
+        "total": 11
+      },
+      "candidate": {
+        "passed": 105,
+        "failed": [],
+        "total": 105
+      }
+    },
+    "all60TracedOperationsReconciled": true,
+    "all120CountOnlyPassesMaterializedTokensAndTokenStringBytesZero": true,
+    "nested100ScopeControlAllocatedBytes": 0
+  },
+  "residuals": [
+    {
+      "shape": "html",
+      "arm": "C",
+      "sampleZeroBased": 8,
+      "pass": "TotalPass",
+      "allocatedBytes": 2496,
+      "matches": 147412,
+      "materializedTokens": 0,
+      "tokenStringAllocatedBytes": 0,
+      "cause": "unknown; scope counters do not identify object types"
+    },
+    {
+      "shape": "quoted-history",
+      "arm": "B",
+      "sampleZeroBased": 5,
+      "pass": "TotalPass",
+      "allocatedBytes": 1360,
+      "matches": 152486,
+      "materializedTokens": 0,
+      "tokenStringAllocatedBytes": 0,
+      "cause": "unknown; scope counters do not identify object types"
+    }
+  ],
+  "residualIssue": "small-unattributed-allocations-inside-two-count",
+  "disclosures": [
+    "First candidate take in review-priority1-18oct was invalid: copy2 timestamps caused incremental reuse of old binary; candidate source had EnumerateMatches while binary metadata had zero references. It is retained, not used as candidate evidence.",
+    "Corrected take uses fresh source copies and removes every shadow bin/obj before every build; assembly hashes and API-presence checks prove old metadata zero and candidate greater than zero.",
+    "Corrected driver stopped after completed measurements because its additional assertion required every regex-scan scope allocation to be zero. That assertion was stronger than the product claim. Overview accepted the retained data with both residuals disclosed; no rerun discarded them.",
+    "Cause of the two scan-scope residuals is unknown. The counter measures all allocations inside a scope, not specifically match objects. No universal zero-allocation claim is made.",
+    "Final count-only regression guard compares to the same-input materializing reference (<1%), avoiding a universal zero-byte requirement; this is a regression discriminator, not a product budget.",
+    "Tokenize retains required string values and uses a growing List in one pass. Its capacity-growth overhead remains; Total/New only count and produce no lists or lowercase strings."
+  ],
+  "productionSourceSha256": {
+    "src/StyloMail.Mime/TextTools.cs": "f20c5838b36b96d1363f29116bd8ce6936d8bf6ffb64dce98243c7720054c26d",
+    "src/StyloMail.Mime/BoundedMimeMessageAnalyzer.cs": "210fcec7b75de1fa45ec152fcc5cec87bfcd875481796c6612a76cc500db4250"
+  },
+  "finalTestSha256": "d3218a01118eef2ff487463e486fa18737a9ede030c7f960169d4df72f19a7b9",
+  "builtAssemblyEvidence": {
+    "candidate-measurement-build-binary.json": {
+      "sha256": "1345351442fce502aafbaaddc2c2d9c5228774c5c40f8f9fca473776ae092f23",
+      "EnumerateMatchesMetadataOccurrences": 1,
+      "mtime": 1792352272.1405618
+    },
+    "candidate-mime-suite-build-binary.json": {
+      "sha256": "1345351442fce502aafbaaddc2c2d9c5228774c5c40f8f9fca473776ae092f23",
+      "EnumerateMatchesMetadataOccurrences": 1,
+      "mtime": 1792352265.6322892
+    },
+    "candidate-traced-build-binary.json": {
+      "sha256": "2d78e242d9e097999d606c85d23f40aeb2387db6e11b4a3c12d7b9e009411b2c",
+      "EnumerateMatchesMetadataOccurrences": 1,
+      "mtime": 1792352300.6592965
+    },
+    "old-allocation-control-build-binary.json": {
+      "sha256": "467e67cff4a3940d42905bbd60d237d8aced1b21ab0fd75cf25c58f343b523be",
+      "EnumerateMatchesMetadataOccurrences": 0,
+      "mtime": 1792352216.572687
+    },
+    "old-measurement-build-binary.json": {
+      "sha256": "467e67cff4a3940d42905bbd60d237d8aced1b21ab0fd75cf25c58f343b523be",
+      "EnumerateMatchesMetadataOccurrences": 0,
+      "mtime": 1792352222.8785987
+    }
+  },
+  "rawArtifactSha256": {
+    "old-measurement/report.json": "3cc06650728fa0feb6e351459c86aedf71c58d31c2ad6240e0e409c06ddbabee",
+    "candidate-measurement/report.json": "95c5811e0639dd821aa6beb8f23fbd4b7e25cba8bb55e38ba820e29d21e38c06",
+    "candidate-traced/report.json": "4730863dfc55df86df48e5395f055d3a56ec3b7a771283429637e3153f317a0b"
+  }
+}

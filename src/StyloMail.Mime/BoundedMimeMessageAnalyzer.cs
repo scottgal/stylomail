@@ -325,8 +325,8 @@ public sealed class BoundedMimeMessageAnalyzer : IMimeMessageAnalyzer
             ]));
 
         // --- text shape ---------------------------------------------------------------------
-        var totalTokens = TextTools.Tokenize(effectivePlain).Count;
-        var newTokens = TextTools.Tokenize(quoted.NewText).Count;
+        var totalTokens = TextTools.CountTokens(effectivePlain);
+        var newTokens = TextTools.CountTokens(quoted.NewText);
         evidence.Add(builder.Build(
             MimeSignals.QuotedHistory,
             EvidenceAvailability.Available,

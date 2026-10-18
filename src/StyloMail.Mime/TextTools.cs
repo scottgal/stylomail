@@ -89,14 +89,25 @@ internal static partial class TextTools
             return [];
         }
 
-        var matches = WordToken().Matches(value);
-        var tokens = new List<string>(matches.Count);
-        foreach (Match match in matches)
+        var tokens = new List<string>();
+        foreach (var match in WordToken().EnumerateMatches(value.AsSpan()))
         {
-            tokens.Add(match.Value.ToLowerInvariant());
+            tokens.Add(value.AsSpan(match.Index, match.Length).ToString().ToLowerInvariant());
         }
 
         return tokens;
+    }
+
+    /// <summary>Counts the same word tokens without allocating their values or a collection.</summary>
+    public static int CountTokens(string value)
+    {
+        var count = 0;
+        foreach (var match in WordToken().EnumerateMatches(value.AsSpan()))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     public static HashSet<string> TokenSet(string value) => [.. Tokenize(value)];
