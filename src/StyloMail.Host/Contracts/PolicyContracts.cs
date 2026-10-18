@@ -398,3 +398,139 @@ public sealed record PolicyEffectiveBindingItem
         ApprovedBy = view.ApprovedBy,
     };
 }
+
+/// <summary>
+/// The read-only policy decision readback carried on a decision. Every member is projected from
+/// <see cref="PolicyDecisionRecord"/> unchanged; null provenance stays null and is never rendered
+/// as an empty pack, rule or digest. This is a contract, not a second computation.
+/// </summary>
+public sealed record PolicyDecisionReadbackResponse
+{
+    public required PolicySource Source { get; init; }
+
+    public string? PackId { get; init; }
+
+    public string? PackVersion { get; init; }
+
+    public string? RuleSetId { get; init; }
+
+    public string? RuleSetVersion { get; init; }
+
+    public string? ScorerVersion { get; init; }
+
+    public required string EvaluatorVersion { get; init; }
+
+    public required PolicyVerdict Verdict { get; init; }
+
+    public required bool RequiresHumanReview { get; init; }
+
+    public string? DecidingRuleId { get; init; }
+
+    public int? DecidingRuleVersion { get; init; }
+
+    public double? DecidingThreshold { get; init; }
+
+    public required string DecidingReasonCode { get; init; }
+
+    public required string DecidingReason { get; init; }
+
+    public required IReadOnlyList<string> MissingDimensions { get; init; }
+
+    public required double Coverage { get; init; }
+
+    public required IReadOnlyList<string> BindingIds { get; init; }
+
+    public required IReadOnlyList<PolicyPropertyFact> PropertyFacts { get; init; }
+
+    public string? EvidenceSnapshotDigest { get; init; }
+
+    public PolicyEffectiveInputSnapshot? EffectiveInput { get; init; }
+
+    public string? EffectiveInputDigest { get; init; }
+
+    public required DateTimeOffset EvaluatedAt { get; init; }
+
+    public DateTimeOffset? ReviewDeadline { get; init; }
+
+    public required bool Shadow { get; init; }
+
+    public required bool Authoritative { get; init; }
+
+    public required bool PolicyContributed { get; init; }
+
+    /// <summary>True only when the composed intervention actually applied to the served action.</summary>
+    public required bool Applied { get; init; }
+
+    public required bool Durable { get; init; }
+
+    public required AdmissionOutcome Admission { get; init; }
+
+    public required bool FallbackAttempted { get; init; }
+
+    public required bool PackUnavailable { get; init; }
+
+    public required bool PackFromCache { get; init; }
+
+    public TimeSpan? CacheAge { get; init; }
+
+    public string? FallbackReason { get; init; }
+
+    public required bool ReviewStateUnavailable { get; init; }
+
+    public required bool ReviewAdmissionRefused { get; init; }
+
+    public required bool PropertyFactsUnavailable { get; init; }
+
+    public required IReadOnlyList<string> MissingPropertyKeys { get; init; }
+
+    public MailAction? LegacyAction { get; init; }
+
+    public MailAction? ComposedAction { get; init; }
+
+    public MailAction? FinalAction { get; init; }
+
+    public static PolicyDecisionReadbackResponse From(PolicyDecisionRecord record) => new()
+    {
+        Source = record.Source,
+        PackId = record.PackId,
+        PackVersion = record.PackVersion,
+        RuleSetId = record.RuleSetId,
+        RuleSetVersion = record.RuleSetVersion,
+        ScorerVersion = record.ScorerVersion,
+        EvaluatorVersion = record.EvaluatorVersion,
+        Verdict = record.Verdict,
+        RequiresHumanReview = record.RequiresHumanReview,
+        DecidingRuleId = record.DecidingRuleId,
+        DecidingRuleVersion = record.DecidingRuleVersion,
+        DecidingThreshold = record.DecidingThreshold,
+        DecidingReasonCode = record.DecidingReasonCode,
+        DecidingReason = record.DecidingReason,
+        MissingDimensions = record.MissingDimensions,
+        Coverage = record.Coverage,
+        BindingIds = record.BindingIds,
+        PropertyFacts = record.PropertyFacts,
+        EvidenceSnapshotDigest = record.EvidenceSnapshotDigest,
+        EffectiveInput = record.EffectiveInput,
+        EffectiveInputDigest = record.EffectiveInputDigest,
+        EvaluatedAt = record.EvaluatedAt,
+        ReviewDeadline = record.ReviewDeadline,
+        Shadow = record.Shadow,
+        Authoritative = record.Authoritative,
+        PolicyContributed = record.PolicyContributed,
+        Applied = record.Applied,
+        Durable = record.Durable,
+        Admission = record.Admission,
+        FallbackAttempted = record.FallbackAttempted,
+        PackUnavailable = record.PackUnavailable,
+        PackFromCache = record.PackFromCache,
+        CacheAge = record.CacheAge,
+        FallbackReason = record.FallbackReason,
+        ReviewStateUnavailable = record.ReviewStateUnavailable,
+        ReviewAdmissionRefused = record.ReviewAdmissionRefused,
+        PropertyFactsUnavailable = record.PropertyFactsUnavailable,
+        MissingPropertyKeys = record.MissingPropertyKeys,
+        LegacyAction = record.LegacyAction,
+        ComposedAction = record.ComposedAction,
+        FinalAction = record.FinalAction,
+    };
+}
