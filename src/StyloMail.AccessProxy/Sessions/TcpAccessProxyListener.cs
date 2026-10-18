@@ -34,6 +34,8 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     private readonly TcpListener _listener;
     private readonly string _tenantId;
     private readonly Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> _runSession;
+    private readonly SessionLimiter _limiter;
+    private readonly bool _ownsLimiter;
     private readonly CancellationTokenSource _acceptingStopping = new();
     private readonly CancellationTokenSource _sessionStopping = new();
     private readonly ConcurrentDictionary<long, TcpClient> _clients = new();
@@ -43,6 +45,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     private Task? _acceptStopBegun;
     private long _nextSessionId;
     private bool _started;
+    private int? _boundPort;
     private int _state = (int)TcpAccessProxyListenerState.NotStarted;
     private int _disposed;
 
@@ -50,7 +53,8 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     public TcpAccessProxyListener(
         IPEndPoint endpoint,
         string tenantId,
-        Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession)
+        Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> runSession,
+        SessionLimiter? limiter = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrEmpty(tenantId);
@@ -60,6 +64,8 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
         _tenantId = tenantId;
         _listener = new TcpListener(_endpoint);
         _runSession = runSession;
+        _limiter = limiter ?? new SessionLimiter(new AccessProxyBounds());
+        _ownsLimiter = limiter is null;
     }
 
     /// <summary>The configured bind endpoint.</summary>
@@ -74,11 +80,10 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
     /// </remarks>
     public string TenantId => _tenantId;
 
-    /// <summary>The port actually bound, including an operating-system-assigned port for zero.</summary>
+    /// <summary>The actual bound port, retained after stop/disposal, including when configured as zero.</summary>
     /// <exception cref="InvalidOperationException">The listener has not started.</exception>
     public int BoundPort
-        => _started ? ((IPEndPoint)_listener.LocalEndpoint).Port
-            : throw new InvalidOperationException("The listener has not started.");
+        => _boundPort ?? throw new InvalidOperationException("The listener has not started.");
 
     /// <summary>
     /// The accept-loop state for Host readiness and fault reporting.
@@ -109,6 +114,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
             }
 
             _listener.Start();
+            _boundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
             _started = true;
             Volatile.Write(ref _state, (int)TcpAccessProxyListenerState.Running);
             _accepting = AcceptAsync();
@@ -165,22 +171,32 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
                 return;
             }
 
+            // Refuse excess accepted sockets before TLS, stream construction or task tracking.
+            // The accept loop holds at most one additional transient socket while deciding.
+            var lease = _limiter.TryAcquireGlobal();
+            if (lease is null)
+            {
+                client.Dispose();
+                continue;
+            }
+            var admission = new SessionAdmission(_limiter, lease);
             var sessionId = Interlocked.Increment(ref _nextSessionId);
             _clients[sessionId] = client;
             var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _sessions[sessionId] = completion.Task;
-            _ = RunTrackedSessionAsync(sessionId, client, completion);
+            _ = RunTrackedSessionAsync(sessionId, client, admission, completion);
         }
     }
 
     private async Task RunTrackedSessionAsync(
         long sessionId,
         TcpClient client,
+        SessionAdmission admission,
         TaskCompletionSource<bool> completion)
     {
         try
         {
-            await ServeAsync(sessionId, client).ConfigureAwait(false);
+            await ServeAsync(sessionId, client, admission).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -191,11 +207,12 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
         {
             _sessions.TryRemove(sessionId, out _);
             _clients.TryRemove(sessionId, out _);
+            admission.Dispose();
             completion.TrySetResult(true);
         }
     }
 
-    private async Task ServeAsync(long sessionId, TcpClient client)
+    private async Task ServeAsync(long sessionId, TcpClient client, SessionAdmission admission)
     {
         using (client)
         {
@@ -205,7 +222,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
             var description = $"client-session:{Guid.NewGuid():N}";
 
             await using var channel = new StreamDuplexChannel(stream, stream, description);
-            await _runSession(_tenantId, channel, _sessionStopping.Token).ConfigureAwait(false);
+            await _runSession(_tenantId, AdmittedDuplexChannel.Wrap(channel, admission), _sessionStopping.Token).ConfigureAwait(false);
         }
     }
 
@@ -290,6 +307,7 @@ public sealed class TcpAccessProxyListener : IAsyncDisposable
         await Task.WhenAll(_sessions.Values).ConfigureAwait(false);
         _acceptingStopping.Dispose();
         _sessionStopping.Dispose();
+        if (_ownsLimiter) _limiter.Dispose();
     }
 
     private void ThrowIfDisposed()

@@ -69,7 +69,7 @@ public sealed class SmtpAccessProxySession
     public async Task<SessionOutcome> RunAsync(IDuplexChannel initialClient, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(initialClient);
-        using var globalSlot = await _limiter.AcquireGlobalAsync(cancellationToken).ConfigureAwait(false);
+        using var globalSlot = await _limiter.AcquireSessionAsync(initialClient, cancellationToken).ConfigureAwait(false);
         var client = initialClient;
         var reader = new BoundedLineReader(client.Input, _bounds, _timeProvider);
         var writer = new ProtocolLineWriter(client.Output);

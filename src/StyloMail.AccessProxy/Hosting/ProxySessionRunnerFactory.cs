@@ -40,6 +40,37 @@ public sealed record ProxySessionRunnerDependencies
 /// <summary>Builds the listener session delegate from one tenant-bound listener options record.</summary>
 public sealed class ProxySessionRunnerFactory
 {
+    /// <summary>Applies listener TLS policy with a bounded eager handshake and preserves socket admission.</summary>
+    public static async Task<SessionOutcome> RunWithTlsAsync(ProxyListenerProtocol protocol,
+        TlsServerOptions? tls, AccessProxyBounds bounds, TimeProvider clock,
+        Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> sessions,
+        string tenantId, IDuplexChannel channel, CancellationToken cancellationToken)
+    {
+        if (tls is null) return await sessions(tenantId, channel, cancellationToken).ConfigureAwait(false);
+        if (protocol == ProxyListenerProtocol.Smtp)
+        {
+            // SMTP owns its existing authentication/STARTTLS deadline inside the protocol session.
+            await using var startTls = new StartTlsServerDuplexChannel(channel.Input, tls, channel.Description);
+            return await sessions(tenantId, AdmittedDuplexChannel.Inherit(channel, startTls), cancellationToken).ConfigureAwait(false);
+        }
+
+        TlsServerDuplexChannel secure;
+        using (var handshake = new TimeoutScope(bounds.AuthenticationTimeout, clock, cancellationToken))
+        {
+            try
+            {
+                secure = await TlsServerDuplexChannel.AuthenticateAsync(channel.Input, tls, channel.Description,
+                    handshake.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (handshake.DeadlineElapsed && !cancellationToken.IsCancellationRequested)
+            {
+                return SessionOutcome.Timeout;
+            }
+        }
+        await using (secure)
+            return await sessions(tenantId, AdmittedDuplexChannel.Inherit(channel, secure), cancellationToken).ConfigureAwait(false);
+    }
+
     public static Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> Create(
         ProxyListenerOptions options,
         ProxySessionRunnerDependencies dependencies)

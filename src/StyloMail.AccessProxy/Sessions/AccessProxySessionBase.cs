@@ -172,7 +172,7 @@ public abstract class AccessProxySessionBase
         _client = client;
         _writer = new ProtocolLineWriter(client.Output);
 
-        using var globalSlot = await _limiter.AcquireGlobalAsync(cancellationToken).ConfigureAwait(false);
+        using var globalSlot = await _limiter.AcquireSessionAsync(client, cancellationToken).ConfigureAwait(false);
 
         var reader = new BoundedLineReader(client.Input, Bounds, TimeProvider);
 

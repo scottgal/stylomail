@@ -11,18 +11,28 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
     private readonly IProxyListenerEventSink _events;
     private readonly Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> _sessions;
     private readonly TimeProvider _clock;
+    private readonly AccessProxyBounds _bounds;
+    private readonly SessionLimiter _limiter;
+    private readonly bool _ownsLimiter;
+    private int _disposed;
     private TcpAccessProxyListener? _listener;
 
     public ProxyListenerHostedService(ProxyListenerOptions options, IProxyCertificateResolver certificates,
         IProxyListenerEventSink events,
         Func<string, IDuplexChannel, CancellationToken, Task<SessionOutcome>> sessions,
-        TimeProvider clock)
+        TimeProvider clock, AccessProxyBounds? bounds = null, SessionLimiter? limiter = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _certificates = certificates ?? throw new ArgumentNullException(nameof(certificates));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _bounds = bounds ?? limiter?.Bounds ?? new AccessProxyBounds();
+        _bounds.Validate();
+        if (limiter is not null && limiter.Bounds != _bounds)
+            throw new ArgumentException("Listener and session limiter bounds must match.", nameof(limiter));
+        _limiter = limiter ?? new SessionLimiter(_bounds);
+        _ownsLimiter = limiter is null;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -43,19 +53,8 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
 
             _listener = new TcpAccessProxyListener(
                 new IPEndPoint(_options.BindAddress, _options.Port), _options.TenantId,
-                async (tenant, channel, token) =>
-                {
-                    if (tls is null) return await _sessions(tenant, channel, token).ConfigureAwait(false);
-                    if (_options.Protocol == ProxyListenerProtocol.Smtp)
-                    {
-                        await using var startTls = new StartTlsServerDuplexChannel(channel.Input, tls, channel.Description);
-                        return await _sessions(tenant, startTls, token).ConfigureAwait(false);
-                    }
-
-                    await using var secure = await TlsServerDuplexChannel
-                        .AuthenticateAsync(channel.Input, tls, channel.Description, token).ConfigureAwait(false);
-                    return await _sessions(tenant, secure, token).ConfigureAwait(false);
-                });
+                (tenant, channel, token) => ProxySessionRunnerFactory.RunWithTlsAsync(
+                    _options.Protocol, tls, _bounds, _clock, _sessions, tenant, channel, token), _limiter);
             await _listener.StartAsync(cancellationToken).ConfigureAwait(false);
             await _events.PublishAsync(new ProxyListenerEvent
             {
@@ -97,6 +96,8 @@ public sealed class ProxyListenerHostedService : IProxyListenerHostedService, IA
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         if (_listener is not null) await _listener.DisposeAsync().ConfigureAwait(false);
+        if (_ownsLimiter) _limiter.Dispose();
     }
 }

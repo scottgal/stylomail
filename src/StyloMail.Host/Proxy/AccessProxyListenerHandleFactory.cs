@@ -227,7 +227,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
 
         var run = ProxySessionRunnerFactory.Create(runnerOptions, dependencies);
 
-        return new AccessProxyListenerHandle(runnerOptions, run, tls, _events, _clock, _logger);
+        return new AccessProxyListenerHandle(runnerOptions, run, tls, _events, _clock, _logger, _limiter, _bounds);
     }
 
     /// <summary>
@@ -247,6 +247,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         private readonly IProxyListenerEventSink _events;
         private readonly TimeProvider _clock;
         private readonly ILogger _logger;
+        private readonly SessionLimiter _limiter;
+        private readonly AccessProxyBounds _bounds;
         private TcpAccessProxyListener? _listener;
         private int? _boundPort;
 
@@ -256,7 +258,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             TlsServerOptions? tls,
             IProxyListenerEventSink events,
             TimeProvider clock,
-            ILogger logger)
+            ILogger logger, SessionLimiter limiter, AccessProxyBounds bounds)
         {
             _options = options;
             _run = run;
@@ -264,6 +266,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             _events = events;
             _clock = clock;
             _logger = logger;
+            _limiter = limiter;
+            _bounds = bounds;
         }
 
         public int? BoundPort => _boundPort;
@@ -275,7 +279,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             _listener = new TcpAccessProxyListener(
                 new IPEndPoint(_options.BindAddress, _options.Port),
                 _options.TenantId,
-                RunSessionAsync);
+                RunSessionAsync, _limiter);
 
             return StartCoreAsync(cancellationToken);
         }
@@ -283,9 +287,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
         private async Task StartCoreAsync(CancellationToken cancellationToken)
         {
             await _listener!.StartAsync(cancellationToken).ConfigureAwait(false);
-            // Cache the actual port while the socket is bound. The access listener's BoundPort
-            // reads its local endpoint and throws once stopped, so a management read during or
-            // after a drain must not call it.
+            // Preserve readback across stop without querying a live socket endpoint.
             _boundPort = _listener.BoundPort;
         }
 
@@ -294,28 +296,10 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             IDuplexChannel channel,
             CancellationToken cancellationToken)
         {
-            if (_tls is null)
-            {
-                return await TrackedAsync(tenantId, channel, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (_options.Protocol == ProxyListenerProtocol.Smtp)
-            {
-                // SMTP has STARTTLS as a protocol step; the session drives the upgrade before AUTH.
-                await using var startTls = new StartTlsServerDuplexChannel(channel.Input, _tls, channel.Description);
-                return await TrackedAsync(tenantId, startTls, cancellationToken).ConfigureAwait(false);
-            }
-
-            // IMAP and POP3 have no STARTTLS command in these sessions: they reject it. A deferred
-            // channel would therefore serve retrieval in plaintext and accept LOGIN. Establish TLS
-            // eagerly, before any greeting or authentication command is read.
-            var secure = await TlsServerDuplexChannel.AuthenticateAsync(
-                channel.Input, _tls, channel.Description, cancellationToken).ConfigureAwait(false);
-
-            await using (secure)
-            {
-                return await TrackedAsync(tenantId, secure, cancellationToken).ConfigureAwait(false);
-            }
+            // Start the handshake deadline before optional telemetry can await storage. The TCP
+            // listener already accounts for this pre-protocol connection's admission.
+            return await ProxySessionRunnerFactory.RunWithTlsAsync(_options.Protocol, _tls, _bounds,
+                _clock, TrackedAsync, tenantId, channel, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<SessionOutcome> TrackedAsync(

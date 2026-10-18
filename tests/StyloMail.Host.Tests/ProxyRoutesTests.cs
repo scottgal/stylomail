@@ -913,7 +913,7 @@ public sealed class ProxyRoutesTests
         var sink = host.Services.GetRequiredService<IProxyElementSink>();
         var orchestrator = new StyloMail.AccessProxy.Submission.ProxyElementOrchestrator(
             configuration.Classifier!, sink);
-        var bytes = "para one\r\n\r\npara two"u8.ToArray();
+        var bytes = "Subject: unavailable classifier control\r\n\r\npara one\r\n\r\npara two"u8.ToArray();
 
         await orchestrator.EmitAsync(
             new ProxyWarningAnalysisInput

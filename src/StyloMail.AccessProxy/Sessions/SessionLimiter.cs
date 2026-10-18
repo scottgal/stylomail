@@ -39,11 +39,14 @@ public sealed class SessionLease : IDisposable
 ///
 /// <para>
 /// The caps behave differently on saturation, and the difference is deliberate. Hitting the
-/// <em>global</em> cap waits, a burst queues rather than failing, which is what the transport does
+/// <em>global</em> cap waits for direct protocol-session callers, which is what the transport does
 /// for the same reason (<c>SmtpBounds.MaxConcurrentConnections</c>). Hitting the <em>per-account</em>
 /// cap refuses immediately, because an account at its session limit is not a burst to absorb but a
 /// signal to stop: queueing there would only build a backlog of sessions all aimed at one mailbox,
 /// and the client would sit waiting for a session the backend could not have served anyway.
+/// TCP listeners instead refuse excess accepted sockets immediately, before TLS or task tracking;
+/// queueing those sockets would make the wait itself an unbounded resource. A protocol session
+/// borrows its listener's existing admission once rather than acquiring a second slot.
 /// </para>
 ///
 /// <para>
@@ -70,12 +73,32 @@ public sealed class SessionLimiter : IDisposable
     /// <summary>Sessions currently held, across all accounts. For health reporting.</summary>
     public int ActiveSessions => Volatile.Read(ref _active);
 
+    internal AccessProxyBounds Bounds => _bounds;
+
+    internal SessionLease? TryAcquireGlobal()
+    {
+        if (!_global.Wait(0)) return null;
+        return HoldGlobal();
+    }
+
+    internal ValueTask<SessionLease> AcquireSessionAsync(IDuplexChannel client, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var admitted = (client as AdmittedDuplexChannel)?.Admission.Borrow(this);
+        return admitted is not null ? ValueTask.FromResult(admitted) : AcquireGlobalAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Claims a global session slot, waiting if the instance is at capacity.
     /// </summary>
     public async ValueTask<SessionLease> AcquireGlobalAsync(CancellationToken cancellationToken)
     {
         await _global.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return HoldGlobal();
+    }
+
+    private SessionLease HoldGlobal()
+    {
         Interlocked.Increment(ref _active);
         return new SessionLease(() =>
         {
