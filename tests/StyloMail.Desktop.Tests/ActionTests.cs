@@ -160,6 +160,11 @@ public sealed class ActionTests
 
         Assert.True(model.HasPendingAction);
         var pending = model.PendingAction!;
+        Assert.Equal(ActionKind.ReleaseQuarantine, pending.Kind);
+
+        // The copy is intentionally plain language for the administrator, so
+        // assert the stated consequence rather than pinning an old transport
+        // verb such as "delivered".
         Assert.Contains("sent to its listed recipients", pending.Consequence, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Release to delivery", pending.ConfirmLabel);
         Assert.Contains("cannot be undone", pending.Consequence, StringComparison.OrdinalIgnoreCase);
@@ -264,7 +269,13 @@ public sealed class ActionTests
 
         model.RequestResume(paused);
 
-        Assert.Contains("allow outgoing", model.PendingAction!.Title, StringComparison.OrdinalIgnoreCase);
+        var pending = model.PendingAction!;
+        Assert.Equal(ActionKind.ResumeSender, pending.Kind);
+
+        // Assert the user-facing outcome, not the old internal verb "resume":
+        // this copy is deliberately being polished for email administrators.
+        Assert.Equal("Allow outgoing mail", pending.ConfirmLabel);
+        Assert.Contains("allow outgoing", pending.Title, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
