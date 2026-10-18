@@ -72,6 +72,7 @@ public sealed class KpiTileView
             null => "Trend not produced: profile did not return a comparison.",
         };
         Evidence = $"Definition v{value.Definition.Version}. {value.Definition.Question}";
+        AutomationStem = "profile-kpi-" + value.Definition.Id.Replace('.', '-').Replace('_', '-');
     }
     public string Label { get; }
     public string Question { get; }
@@ -79,6 +80,11 @@ public sealed class KpiTileView
     public string Trend { get; }
     public string Coverage { get; }
     public string Evidence { get; }
+    public string AutomationStem { get; }
+    public string TileAutomationId => AutomationStem + "-tile";
+    public string TrendAutomationId => AutomationStem + "-trend";
+    public string EvidenceDrawerAutomationId => AutomationStem + "-evidence-drawer";
+    public string EvidenceAutomationId => AutomationStem + "-evidence";
     private static string Format(double value, KpiUnit unit) => unit switch
     {
         KpiUnit.Ratio => value.ToString("P0", CultureInfo.CurrentCulture),

@@ -1,0 +1,55 @@
+name: console-profile-history-capture
+description: Governed harness data through the real Host and normal console routes.
+default_delay: 250
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: ContainsText
+    value: "Connected"
+    timeout: 15000
+  - type: Expect
+    target: "testid=profile-sender-harness"
+    matcher: IsVisible
+    timeout: 20000
+  - type: Click
+    target: "testid=profile-sender-harness"
+  - type: Expect
+    target: "name=EntityProfileTitle"
+    window_id: EntityProfileDialog
+    matcher: HasText
+    value: "Harness Billing"
+    timeout: 15000
+  - type: Expect
+    target: "name=RelationshipAgeText"
+    window_id: EntityProfileDialog
+    matcher: ContainsText
+    value: "Relationship observed since"
+  - type: Expect
+    target: "name=ProfileCoverageText"
+    window_id: EntityProfileDialog
+    matcher: ContainsText
+    value: "Coverage:"
+  - type: Click
+    target: "testid=profile-kpi-responsiveness-address-reciprocity-tile"
+    window_id: EntityProfileDialog
+  - type: Expect
+    target: "text=Observed:"
+    window_id: EntityProfileDialog
+    matcher: IsVisible
+  - type: Expect
+    target: "testid=profile-kpi-responsiveness-address-reciprocity-trend"
+    window_id: EntityProfileDialog
+    matcher: ContainsText
+    value: "Trend: up"
+  - type: Click
+    target: "testid=profile-kpi-responsiveness-address-reciprocity-evidence-drawer"
+    window_id: EntityProfileDialog
+  - type: Expect
+    target: "testid=profile-kpi-responsiveness-address-reciprocity-evidence"
+    window_id: EntityProfileDialog
+    matcher: ContainsText
+    value: "Definition v1.1.0"
+  - type: Screenshot
+    value: "01-governed-profile-history"
+    window_id: EntityProfileDialog
+    description: "Governed harness data — real Host and routes: profile header, produced trend, and KPI evidence drawer."

@@ -9,12 +9,12 @@
     <Border Classes="cardWarning"><TextBlock x:Name="PolicyBindingPendingText" Classes="cardBody" Text="{Binding PolicyBinding}" /></Border>
     <TextBlock Classes="sectionLabel" Text="Observed relationship measures" />
     <ItemsControl x:Name="KpiTiles" ItemsSource="{Binding Tiles}"><ItemsControl.ItemTemplate><DataTemplate>
-      <Expander Header="{Binding Label}" Margin="0,0,0,8"><Border Classes="card"><StackPanel Spacing="4">
+      <Expander Header="{Binding Label}" AutomationProperties.AutomationId="{Binding TileAutomationId}" Margin="0,0,0,8"><Border Classes="card"><StackPanel Spacing="4">
         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Question}" />
         <TextBlock Classes="cardTitle" TextWrapping="Wrap" Text="{Binding Observation}" />
-        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Trend}" />
+        <TextBlock Classes="cardBody" AutomationProperties.AutomationId="{Binding TrendAutomationId}" TextWrapping="Wrap" Text="{Binding Trend}" />
         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Coverage}" />
-        <Expander Header="Why? View definition and evidence"><TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Evidence}" /></Expander>
+        <Expander Header="Why? View definition and evidence" AutomationProperties.AutomationId="{Binding EvidenceDrawerAutomationId}"><TextBlock Classes="cardBody" AutomationProperties.AutomationId="{Binding EvidenceAutomationId}" TextWrapping="Wrap" Text="{Binding Evidence}" /></Expander>
       </StackPanel></Border></Expander>
     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
     <TextBlock Classes="sectionLabel" Text="Not measured" />

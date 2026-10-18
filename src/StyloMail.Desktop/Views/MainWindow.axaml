@@ -231,11 +231,11 @@
                                                                     Click="OnResumeSenderClick" />
                                                             <Button Classes="rowButton"
                                                                     Content="Edit"
-                                                                    AutomationProperties.AutomationId="{Binding ProfileAutomationId}"
                                                                     IsVisible="{Binding IsSender}"
                                                                     Click="OnEditSenderClick" />
                                                             <Button Classes="rowButton"
                                                                     Content="Profile"
+                                                                    AutomationProperties.AutomationId="{Binding ProfileAutomationId}"
                                                                     IsVisible="{Binding IsSender}"
                                                                     Click="OnOpenEntityProfileClick" />
                                                         </StackPanel>
