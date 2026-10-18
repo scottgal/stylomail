@@ -3,7 +3,7 @@
 Draft of 17 October 2026.
 
 This manual is written for the person who runs StyloMail and its client access proxy. It walks
-through the Avalonia console screen by screen. It is a draft: nine figures are captured from
+through the Avalonia console screen by screen. It is a draft: eleven figures are captured from
 verified runs, three more are covered by a frame already used, and the rest name the state they must
 show and stay pending until a verified run produces them. No figure is a mockup, and no screen is described as available unless it is in the build.
 
@@ -175,10 +175,10 @@ The accounts surface is built against a frozen contract. It creates, enables, di
 observed state, and any fault. It does not reconfigure a listener's bind address, port, TLS policy or
 certificate.
 
-The Host maps routes behind this surface. Three settings frames are now captured: M08 (operations,
-accounts and the start of the listener list), M10 (a draining listener) and M09 (live sessions). The
-not-produced operations state is still pending verified capture (M11), so no figure claims it. The
-create-account form is not in the client yet; it is marked not available below.
+The Host maps routes behind this surface. Four settings frames are now captured: M08 (operations,
+accounts and the start of the listener list), M10 (a draining listener), M09 (live sessions) and M12
+(the create-account form). The not-produced operations state is still pending verified capture
+(M11), so no figure claims it.
 
 That boundary is deliberate. Those values are deployment configuration. Changing a live listener's
 binding at runtime can strand connected clients, and the API cannot undo it. The operator can see
@@ -189,7 +189,7 @@ a restart, with the clients' connections in view.
 | --- | --- |
 | Account enabled or disabled | Console |
 | Account credential revoked | Console |
-| Account created | Console (form not built yet) |
+| Account created | Console |
 | Listener enabled or disabled | Console |
 | Listener bind address | Deployment |
 | Listener port | Deployment |
@@ -199,8 +199,8 @@ a restart, with the clients' connections in view.
 The table says where each setting belongs, not what is clickable today. Bind address, port, TLS
 policy and certificate are shown as state and are not editable from the console.
 
-> **Figures captured, one pending.** M08, M10 and M09 are captured and appear below. M11 remains
-> pending: the operations block in the available frames shows an available window, not the
+> **Figures captured, one pending.** M08, M10, M09 and M12 are captured and appear below. M11
+> remains pending: the operations block in the available frames shows an available window, not the
 > not-produced state. If a read fails, section 3.6 says what that looks like and why it is not an
 > empty account list.
 
@@ -217,9 +217,21 @@ An account is one proxied mailbox for one tenant. It is stored with:
 Enable and disable are operator states. They are not inferences about backend health: an enabled
 account can still fail at the backend, and a disabled account is a decision you made.
 
-> **Not available in this build.** The create-account form (M12) is not in the client yet. The route
-> is mapped; the screen does not offer the form. The manual will document the exact form and the
-> fields it accepts when the capture lands. It will not describe fields nobody can see.
+The create form takes a login, a client password, a backend account id, a provider, a credential
+discriminator, an optional backend username, optional scopes and the backend secret. Passwords and
+backend credentials are write-only: they are cleared immediately after submission and are never
+shown again.
+
+![Figure M12: create proxy account form](images/m12-create-account-form.png)
+
+> **Figure M12.** The **Create proxy account** form, unsubmitted, with its fields empty and the
+> write-only note visible. Login, Client password, Backend account id, Provider, Credential
+> discriminator, Backend username, Optional scopes and Backend secret are present, with Cancel and
+> Create account. No account was created for this frame, so no returned id is shown and the account
+> set was not mutated. Captured from
+> `ux-results/console-external-host/m26-m12-20261018T112425Z-32636`, scenario
+> `ux-scripts/console-m26-m12-capture.yaml` (13 of 13 actions passed), host build `f8c74d98f829`,
+> sha256 `3282f6165beb888965dd3f9d30f075444e6d62f81852eece7e5c96a22bf060bc`.
 >
 ![Figure M08: Proxy management, accounts and the management boundary](images/m08-proxy-management.png)
 
@@ -710,11 +722,22 @@ leave the machine.
   (segmentation).
 - Do not read the element series as a transcript. It is vocabulary names per segment, never text.
 
-> **Figure M26 (pending capture).** The **Element signals** tab of the conversation view: one point
-> per segment with its traffic kind, ordinal, time and turn token; one entry per element name with
-> the scorer and version, the score (a signed kNN margin shown with its direction, or a probe
-> probability), the availability and reason, and a shortened opaque exemplar id where one exists.
-> The sibling tone line states the gap (`tone_model_unavailable`). Run directory: pending.
+![Figure M26: element signals for a selected thread](images/m26-element-signals.png)
+
+> **Figure M26.** The **Element signals** tab for a selected conversation. The window is
+> `last_24_hours` with its UTC bounds and source `proxy_element_classification`. The single point is
+> **Retrieval · segment 0** with its UTC time and opaque turn token. Four element cards are fully
+> visible: `attachment_lure` at 0.007 toward threatening exemplars, `credential_request` at -0.008
+> toward benign exemplars, `impersonated_greeting` at 0.002 toward threatening, and `threat` at 0.032
+> toward threatening. Each carries the scorer `prototype kNN · prototype_knn/corpus-1`,
+> **Available**, and a shortened opaque exemplar id. The fifth card, `urgency_pressure`, begins
+> below the captured fold, so this frame does not show all five scores. The sibling tone line reads
+> **Tone not produced: tone_model_unavailable**. Only Retrieval was served in this window: no
+> Submission point and no not-produced element appears. These are analysed segments, not
+> whole-message analysis; the provisional note above still applies. Captured from
+> `ux-results/console-external-host/m26-m12-20261018T112425Z-32636`, scenario
+> `ux-scripts/console-m26-m12-capture.yaml` (13 of 13 actions passed), host build `f8c74d98f829`,
+> sha256 `830c562d2cb47f2fa698480d65d59a6553d917654037bdc7e2245935376d70ab`.
 
 ### 4.7 Quarantine and release
 
@@ -887,7 +910,7 @@ signals, not message content, and its caption says that.
 | M09 | Live IMAP and SMTP sessions | ux-results/console-external-host/20261017T221548Z-47299 | captured; build 60716c32c85a; sha256 7b272ae…; IMAP row clipped, same account in the artifact |
 | M10 | Listener draining | ux-results/console-external-host/20261017T221638Z-47600 | captured; build 60716c32c85a; sha256 439d879…; drain shown in the operations summary |
 | M11 | Operations not produced | pending | blocked: only an available operations window was captured |
-| M12 | Create account form | pending | not built |
+| M12 | Create account form | ux-results/console-external-host/m26-m12-20261018T112425Z-32636 | captured; build f8c74d98f829; sha256 3282f616…; unsubmitted, no account created |
 | M13 | Listener enable and disable | covered by M08 | captured within M08: Disable (drain) and notice visible; Enable state not shown |
 | M14 | Listener fault detail | pending | requested |
 | M15 | Senders grouped by company | ux-results/console-smoke | covered by M02 (same frame) |
@@ -903,14 +926,15 @@ signals, not message content, and its caption says that.
 | M23 | Quarantined listing | pending | requested |
 | M24 | Release confirmation | pending | requested |
 | M25 | After release | pending | requested |
-| M26 | Element signals | pending | capture requested; panel committed fa671c7 |
+| M26 | Element signals | ux-results/console-external-host/m26-m12-20261018T112425Z-32636 | captured; build f8c74d98f829; sha256 830c562d…; Retrieval only, fifth card below fold, no not-produced element |
 
-Nine frames in this table are captured, in three batches. M08 and M21a come from the first batch,
+Eleven frames in this table are captured, in four batches. M08 and M21a come from the first batch,
 whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
-not stamp it, and that gap is recorded rather than filled. M13, M15 and M20 are covered by M08, M02
-and M19. All images carry their run directory, scenario and sha256.
+not stamp it, and that gap is recorded rather than filled. M12 and M26 come from the fourth, the
+`console-m26-m12-capture` run (13 of 13 actions passed), host build `f8c74d98f829`. M13, M15 and M20
+are covered by M08, M02 and M19. All images carry their run directory, scenario and sha256.
 
 **The four files M08-M11 in the first run are byte-identical** (sha256
 `ced0c85c684e8f1132efc84b30e9087566f2bccb6b8207089360d2a92ca500a2`): one unique settings frame,
