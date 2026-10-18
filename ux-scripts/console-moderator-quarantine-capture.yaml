@@ -1,0 +1,66 @@
+name: console-moderator-quarantine-capture
+description: >
+  Captures the polished moderator flow over a real quarantined submission. Run
+  only through the dedicated throwaway Host harness; it opens, but cancels, the
+  release confirmation so this capture never changes delivery state.
+
+default_delay: 250
+
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 15000
+
+  - type: Click
+    target: "type=Button:has-text(Review before delivery)"
+    description: "Show the quarantined review queue in moderator language"
+  - type: Expect
+    target: "type=Button:has-text(View email status)"
+    matcher: IsVisible
+    timeout: 20000
+  - type: Expect
+    target: "name=EmptyListBlock"
+    matcher: Not.IsVisible
+  - type: Screenshot
+    value: "01-quarantined-review"
+    description: "A quarantined row with its explicit no-specific-reason wording"
+
+  - type: Click
+    target: "type=Button:has-text(View email status)"
+    description: "Open the quarantined message's recorded decision"
+  - type: Expect
+    target: "name=PlainLanguageDecisionSummary"
+    matcher: IsVisible
+    timeout: 20000
+  - type: Expect
+    target: "name=ReleaseMessageButton"
+    matcher: IsVisible
+  - type: Screenshot
+    value: "02-decision-summary"
+    description: "The real decision's plain-language first screen"
+
+  - type: Click
+    target: "name=ReleaseMessageButton"
+    description: "Open the release confirmation without performing a release"
+  - type: Expect
+    target: "name=ActionConfirmBar"
+    matcher: IsVisible
+    timeout: 5000
+  - type: Expect
+    target: "name=PendingActionConsequence"
+    matcher: ContainsText
+    value: "sent to its listed recipients"
+  - type: Screenshot
+    value: "03-release-consequence"
+    description: "The release consequence and affected recipients before confirmation"
+  - type: Click
+    target: "name=CancelActionButton"
+    description: "Cancel rather than mutate delivery"
+  - type: Expect
+    target: "name=ActionConfirmBar"
+    matcher: Not.IsVisible
+  - type: Expect
+    target: "name=MessageList"
+    matcher: IsVisible

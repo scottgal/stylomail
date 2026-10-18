@@ -635,8 +635,15 @@ console_start_host() {
         return 1
     fi
 
-    console_port_is_taken
-    local probe_status=$?
+    # A free port deliberately answers 1. Capture that expected non-zero value
+    # in an `if`, because callers run with `set -e` and a bare invocation would
+    # otherwise exit before the classification below could start the Host.
+    local probe_status
+    if console_port_is_taken; then
+        probe_status=0
+    else
+        probe_status=$?
+    fi
     if (( probe_status == 0 )); then
         echo "Port $CONSOLE_PORT is already in use, so this run would talk to" >&2
         echo "whatever is listening there rather than to its own Host." >&2
