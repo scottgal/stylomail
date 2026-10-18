@@ -680,29 +680,33 @@ The intended design splits a submission into zero-based contiguous ordinals, at 
 and at most 6000 bytes each. The layer records the applied bounds, the ordinals actually analysed,
 and whether any segment was dropped. The element series groups scores by turn token and ordinal, so
 available and not-produced entries for one segment sit in one list; it does not invent an entry the
-Host did not record. The independent review found that the current implementation does not meet this
-design; see the provisional evidence note below.
+Host did not record. The independent review found that the earlier implementation did not meet this
+design; it was repaired in commit `a632ce6`, and the evidence below records the repaired behaviour.
 
 #### Both directions in one harness run
 
 Element points have been recorded in both directions in a single harness run, not production.
-`.styloagent/artifacts/proxy-e2e-20261017T234655Z` contains `retrieval-analysis.json` and
+`.styloagent/artifacts/proxy-e2e-20261018T145227Z` contains `retrieval-analysis.json` and
 `submission-analysis.json`; each reports availability Available, reason None, `segmentCount: 1`
-and `elementPointCount: 5`, produced under the vocabulary that was current at the time. The measured
-vocabulary is now `elements/3` with one element, so a current run returns `urgency_pressure` only;
-the direction proof stands, while the point count is historical. The same
-run's `client-transcript.txt` records the IMAP client fetching
-one 168-byte body, the SMTP client completing STARTTLS, authenticating and submitting one message,
-and `IMAP+SMTP PASS`. `sessions-smtp-live.json` records authenticated Imap and Smtp sessions on the
-same opaque account `pa_f1cd145597b34ed4bec9c2a37866a978`. Host build `cf6faa6d7f69`.
+and `elementPointCount: 1` under `elements/3`. The same run's `client-transcript.txt` records the
+IMAP client fetching one 168-byte body, the SMTP client completing STARTTLS, authenticating and
+submitting one message, and `IMAP+SMTP PASS`. `sessions-smtp-live.json` records authenticated Imap
+and Smtp sessions on the same opaque account `pa_feba61d210304192b6c12f9c49fb2754`. Host build
+`973b0fa4a1a5`. An earlier run (`proxy-e2e-20261017T234655Z`, build `cf6faa6d7f69`) recorded five
+points under the vocabulary that was current then; the direction proof stands and the point count
+is historical.
 
-> **Provisional evidence.** The independent review found a segmentation defect in the current
-> implementation. The orchestrator decodes the entire raw wire message as UTF-8, headers and
-> transfer encoding included, and splits only on LF LF, so a normal CRLF message becomes one
-> 6000-byte fragment and later body text is never analysed while segment coverage is still
-> reported. The points in the run above were produced, but they describe the analysed segments, not
-> yet the whole message; the analysed fragment may be header-laden rather than the body. Treat this
-> evidence as provisional until the segmenter is repaired and a new harness run exists.
+> **Segmentation evidence after repair.** The earlier implementation decoded the entire raw wire
+> message as UTF-8, headers and transfer encoding included, and split only on LF LF, so a normal
+> CRLF message became one 6000-byte fragment. That defect was repaired in commit `a632ce6`: the
+> orchestrator now parses the message through the bounded first-party MIME parser, segments the
+> decoded new body text, normalises CRLF and lone CR, keeps whole paragraphs up to the segment cap,
+> and moves a multi-byte character to the next chunk rather than cutting it. A message that cannot
+> be parsed is recorded as not produced and is not sent to the classifier. The four red-before
+> controls in `ProxyElementSegmentationTests` fail against the old orchestrator (11 of 11
+> assertions) and pass against the repaired one, and the fresh harness run above reports Available
+> with no truncation for both directions. The older points remain historical, and a card still
+> describes one analysed segment rather than the whole message by design.
 
 #### Calibration and the false-positive budget
 
@@ -753,8 +757,10 @@ leave the machine.
 > scorer `prototype kNN · prototype_knn/teacher-urgency-1`, **Available**, a signed margin of
 > **+0.001 (toward threatening exemplars)**, and a shortened opaque exemplar. A margin of +0.001 is
 > near zero and is weak evidence on this message. The sibling tone line reads **Tone not produced:
-> tone_model_unavailable**, with no zero implied. Segmentation remains provisional: the card
-> describes the analysed segment, not whole-message analysis. Captured from
+> tone_model_unavailable**, with no zero implied. The card describes one analysed segment rather
+> than the whole message, by design. This frame predates the segmentation repair in `a632ce6`, so
+> it documents the card and the vocabulary, not the text that was analysed; current builds segment
+> the decoded new body text. Captured from
 > `ux-results/console-external-host/20261018T125450Z-68237`, scenario
 > `console-m26-elements3-capture` (12 of 12 actions passed), host build `09bed8235ebd`, sha256
 > `b9d1acf5fe15911c6b2fc12a1ad999643677e65cacec08ab024ea4ff1a199448`.
