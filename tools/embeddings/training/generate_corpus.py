@@ -110,7 +110,13 @@ def redact(text: str) -> str:
     return text
 
 
-def parse_turns(raw: str) -> list[dict] | None:
+def parse_turns(raw: str) -> dict | None:
+    """Parse the generator's document and keep the turn it says carries the element.
+
+    The first version of this function dropped element_turn and the benchmark then verified the LAST
+    turn regardless, which measured the placement rule rather than the label. The index is now read
+    and range checked here, and callers verify that turn.
+    """
     try:
         document = json.loads(raw)
     except json.JSONDecodeError:
@@ -124,7 +130,11 @@ def parse_turns(raw: str) -> list[dict] | None:
         if len(text.split()) < 10:
             return None
         cleaned.append({"role": str(turn.get("role", "sender")), "text": redact(text)})
-    return cleaned
+    element_turn = document.get("element_turn")
+    if element_turn is not None:
+        if not isinstance(element_turn, int) or not (0 <= element_turn < len(cleaned)):
+            return None
+    return {"turns": cleaned, "element_turn": element_turn}
 
 
 def verify(model: str, element: str, turn_text: str, turn_index: int, seed: int) -> bool:
@@ -169,13 +179,16 @@ def benchmark(output: pathlib.Path, generations: int, seed: int) -> int:
             raw, latency = call(model, prompt, attempt_seed)
             latencies.append(latency)
             attempts += 1
-            turns = parse_turns(raw)
-            if turns is None:
+            parsed = parse_turns(raw)
+            if parsed is None:
                 continue
             valid += 1
             element = ELEMENTS[_ % len(ELEMENTS)]
+            index = parsed["element_turn"]
+            if index is None:
+                continue
             if verify("gemma4:26b" if model != "gemma4:26b" else "qwen3.8:latest",
-                      element, turns[-1]["text"], len(turns) - 1, attempt_seed):
+                      element, parsed["turns"][index]["text"], index, attempt_seed):
                 verified += 1
         results[model] = {
             "generations": attempts,
@@ -200,12 +213,16 @@ def generate(output: pathlib.Path, manifest_path: pathlib.Path, model: str, per_
             conversation_seed = rng.randrange(1, 2**31)
             prompt, controls = build_prompt(kind, random.Random(conversation_seed))
             raw, _latency = call(model, prompt, conversation_seed)
-            turns = parse_turns(raw)
-            if turns is None:
+            parsed = parse_turns(raw)
+            if parsed is None:
                 discarded += 1
                 continue
+            turns = parsed["turns"]
             element = kind if kind in ELEMENTS else None
-            turn_index = len(turns) - 1 if element else None
+            turn_index = parsed["element_turn"] if element else None
+            if element and turn_index is None:
+                discarded += 1
+                continue
             if element:
                 verifier = "gemma4:26b" if model != "gemma4:26b" else "qwen3.8:latest"
                 if not verify(verifier, element, turns[turn_index]["text"], turn_index, conversation_seed):

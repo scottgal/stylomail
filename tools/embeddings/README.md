@@ -273,6 +273,35 @@ shorter. The "active labels" column is the honest caveat: on this sample most se
 gratitude, so a 28-label vocabulary does not mean 28 labels are exercised. Label coverage on real
 traffic is a property of the corpus, not of the model, and only two to three labels appear here.
 
+## Generated conversations
+
+`generate_corpus.py` writes labelled conversations for the five element types and four hard-negative
+types (provider security notice, transactional receipt, invoice reminder, urgent legitimate thread).
+Each conversation is 2 to 5 turns, the element is confined to one turn, and labels are per
+(conversation, turn). Diversity controls (topic, persona, formality, length, channel, obfuscation) are
+sampled and recorded beside the seed, so any conversation can be regenerated exactly. Every labelled
+turn is checked by a second model; disagreements are discarded and the pass rate is reported.
+
+The model was chosen on measured numbers on the A4000, five generations each:
+
+| model | JSON valid | label verified | latency median |
+| --- | --- | --- | --- |
+| gemma4:e4b | 5/5 | 2/5 (0.40) | 12,243 ms |
+| gemma4:26b | 0/5 | 0/5 | 31,460 ms |
+| qwen3.8:latest | 1/5 | 1/5 (0.20) | 134,542 ms |
+
+Chosen: **gemma4:e4b**. It is the only candidate that reliably produced the required JSON, it is the
+fastest, and it had the highest verified rate. qwen3.8 is excluded on this host: 17.7 GB on a 15.4 GB
+card is spilling, and 134 s per conversation is not a teacher. gemma4:26b's five JSON failures are
+being tested against Ollama structured outputs before the model is dismissed.
+
+**The verification rate is the pilot's result, not an obstacle.** Three of five generations placed the
+element where an independent verifier disagreed, so most generated rows will be discarded by design.
+The number that matters is the verified yield per type, and only that number justifies scaling.
+
+The first benchmark pass verified the last turn instead of the turn carrying `element_turn`. That pass
+rate was withdrawn; the instrument now reads and range checks the index and verifies that turn.
+
 ## The operator dataset, as a generation-artifact probe
 
 `ingest_operator_dataset.py` reads only `subject`, `email_body` and `label` from the operator CSV.
