@@ -64,6 +64,15 @@ public sealed class EntityProfileViewTests
         Assert.False(tile.IsEvidenceExpanded);
     }
 
+    [Fact]
+    public void Definition_drawer_contains_the_served_definition_without_promising_evidence()
+    {
+        var tile = new EntityProfileView(Profile()).Tiles.Single();
+
+        Assert.Equal("Definition v1. Was pressure language observed?", tile.Evidence);
+        Assert.DoesNotContain("evidence", tile.Evidence, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ProfileResponse Profile() => new()
     {
         TenantId = "tenant", Scope = new() { Kind = "entity", Id = "entity-identifier-long" },

@@ -52,7 +52,7 @@ actions:
   - type: Screenshot
     value: "01-governed-profile-produced"
     window_id: EntityProfileDialog
-    description: "Governed harness data — real Host and routes: profile header, produced trend, and KPI evidence drawer."
+    description: "Governed harness data — real Host and routes: profile header, produced trend, and served KPI definition."
   - type: Scroll
     value: down
     window_id: EntityProfileDialog
