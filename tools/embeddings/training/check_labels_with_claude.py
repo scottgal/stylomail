@@ -138,7 +138,7 @@ def main() -> int:
         "labelled_rows": sum(1 for row in results if row["teacher"]),
         "unlabelled_rows": sum(1 for row in results if not row["teacher"]),
         "agreement": round(agreements / len(results), 4) if results else None,
-        "transport": "headless Claude CLI, 20 sample segments only; no other corpus text left the machine",
+        "transport": f"headless Claude CLI, {len(results)} sample segments only; no other corpus text left the machine",
         "claude_cli_version": version,
         "claude_model": args.model,
         "prompt_hash": hashlib.sha256(TEMPLATE.encode("utf-8")).hexdigest()[:16],
