@@ -340,10 +340,6 @@ if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   assert_live_session "$smtp_sessions" Imap
   assert_live_session "$smtp_sessions" Smtp
   await_element_analysis Submission "$submission_analysis"
-  stop_driver "$client_pid"
-  client_pid=''
-  stop_driver "$smtp_client_pid"
-  smtp_client_pid=''
 fi
 
 # Fail closed if any run artifact emitted a supplied or generated secret. Python receives values only via env.
@@ -382,5 +378,11 @@ fi
   sleep "$PROXY_E2E_KEEP_ALIVE_SECONDS" &
   keepalive_timer=$!
   wait "$keepalive_timer"
+fi
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
+  stop_driver "$client_pid"
+  client_pid=''
+  stop_driver "$smtp_client_pid"
+  smtp_client_pid=''
 fi
 stop_host
