@@ -707,6 +707,12 @@ is historical.
 > assertions) and pass against the repaired one, and the fresh harness run above reports Available
 > with no truncation for both directions. The older points remain historical, and a card still
 > describes one analysed segment rather than the whole message by design.
+>
+> Only a complete message is eligible for analysis. A fetch of a body part, a header block or a
+> byte range (`BODY[TEXT]`, `BODY[HEADER]`, `BODY[1]`, `BODY[]<0.512>`) is recorded as not produced
+> with reason `unsupported_content`, with no segments and no classifier call. Such a fragment has no
+> new-body contract even when its bytes happen to resemble a message, so it never becomes an element
+> point. A complete message that cannot be parsed is recorded as `unreadable_message` instead.
 
 #### Calibration and the false-positive budget
 
