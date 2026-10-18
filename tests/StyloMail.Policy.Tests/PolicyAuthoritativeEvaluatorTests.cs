@@ -287,6 +287,184 @@ public sealed class PolicyAuthoritativeEvaluatorTests
             Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cache_publication_is_atomic_with_the_generation_fence(bool explicitInvalidation)
+    {
+        var reader = new ImmediateVersions();
+        var evaluator = NewControlledEvaluator(reader);
+        using var comparer = new PauseFirstHash();
+        var field = typeof(PolicyAuthoritativeEvaluator).GetField(
+            "_cache",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        Assert.NotNull(field);
+        field.SetValue(evaluator, Activator.CreateInstance(field.FieldType, [comparer]));
+
+        var old = Task.Run(() => evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now));
+        try
+        {
+            await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            if (explicitInvalidation)
+            {
+                evaluator.Invalidate(PolicyFixtures.Tenant);
+            }
+            else
+            {
+                var newer = await evaluator.EvaluateAsync(
+                    PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+                Assert.Equal("2.0.0", newer.Record!.PackVersion);
+            }
+
+            reader.Fail = true;
+        }
+        finally
+        {
+            comparer.Release.Set();
+        }
+
+        await old.WaitAsync(TimeSpan.FromSeconds(15));
+        var cached = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+
+        Assert.True(
+            explicitInvalidation
+                ? cached.Kind == PolicyAuthoritativeKind.Unavailable
+                : cached.Kind == PolicyAuthoritativeKind.Pack && cached.Record?.PackVersion == "2.0.0",
+            $"explicitInvalidation={explicitInvalidation}; kind={cached.Kind}; "
+                + $"version={cached.Record?.PackVersion ?? "NULL"}");
+    }
+
+    [Fact]
+    public async Task Cache_publication_after_a_healthy_Absent_clear_does_not_resurrect_the_old_pack()
+    {
+        var reader = new ImmediateVersions();
+        var evaluator = NewControlledEvaluator(reader);
+        using var comparer = new PauseFirstHash();
+        var field = typeof(PolicyAuthoritativeEvaluator).GetField(
+            "_cache",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        field.SetValue(evaluator, Activator.CreateInstance(field.FieldType, [comparer]));
+
+        var old = Task.Run(() => evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now));
+        try
+        {
+            await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            reader.ReturnAbsent = true;
+            var absent = await evaluator.EvaluateAsync(
+                PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+            Assert.Equal(PolicyAuthoritativeKind.Absent, absent.Kind);
+            reader.ReturnAbsent = false;
+            reader.Fail = true;
+        }
+        finally
+        {
+            comparer.Release.Set();
+        }
+
+        await old.WaitAsync(TimeSpan.FromSeconds(15));
+        var cached = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+
+        Assert.Equal(PolicyAuthoritativeKind.Unavailable, cached.Kind);
+    }
+
+    [Fact]
+    public async Task An_empty_rule_set_is_an_unavailable_fallback_not_a_pack_decision()
+    {
+        var evaluator = new PolicyAuthoritativeEvaluator(
+            new PackReader(PolicyFixtures.Pack(), throws: false),
+            new RuleReader(PolicyFixtures.RuleSet() with { Rules = [] }),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions
+            {
+                Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [PolicyFixtures.Tenant] = "GB",
+                },
+            });
+
+        var result = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+
+        Assert.Equal(PolicyAuthoritativeKind.Unavailable, result.Kind);
+        Assert.NotNull(result.Record);
+        Assert.Equal(PolicySource.Fallback, result.Record!.Source);
+        Assert.Null(result.Record.DecidingRuleId);
+    }
+
+    private sealed class ImmediateVersions : IPolicyPackReader
+    {
+        private int _calls;
+
+        public bool Fail { get; set; }
+
+        public bool ReturnAbsent { get; set; }
+
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            if (Fail)
+            {
+                return Task.FromException<PolicyPack?>(new InvalidOperationException("controlled outage"));
+            }
+
+            if (ReturnAbsent)
+            {
+                return Task.FromResult<PolicyPack?>(null);
+            }
+
+            return Task.FromResult<PolicyPack?>(
+                PolicyFixtures.Pack(version: Interlocked.Increment(ref _calls) == 1 ? "1.0.0" : "2.0.0"));
+        }
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
+    private sealed class PauseFirstHash : IEqualityComparer<string>, IDisposable
+    {
+        private int _calls;
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ManualResetEventSlim Release { get; } = new(false);
+
+        public bool Equals(string? x, string? y) => StringComparer.Ordinal.Equals(x, y);
+
+        public int GetHashCode(string key)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Started.SetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(15)))
+                {
+                    throw new TimeoutException("instrument gate timed out");
+                }
+            }
+
+            return StringComparer.Ordinal.GetHashCode(key);
+        }
+
+        public void Dispose() => Release.Dispose();
+    }
+
     private sealed class RacingPackReader : IPolicyPackReader
     {
         public TaskCompletionSource<PolicyPack?> First { get; } =

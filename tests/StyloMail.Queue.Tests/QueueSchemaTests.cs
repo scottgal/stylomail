@@ -199,6 +199,34 @@ public class QueueSchemaTests
     }
 
     [Fact]
+    public async Task A_stored_pack_opening_without_a_deciding_rule_is_rejected_on_read()
+    {
+        using var h = new QueueHarness();
+        await h.Store.InitializeAsync();
+
+        await using (var connection = h.Connections.Open())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO queue_review_opening
+                    (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
+                     pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
+                     reason_code, reason, evidence_digest, legacy_digest_absent,
+                     unavailable_reason, fallback_deadline, decided_at)
+                VALUES ('acme', 'q-null-rule', 'evt-null-rule', 'asm-null-rule', 'pack',
+                        'pack-commerce', '1.0.0', 'rules-commerce', 'rules/1',
+                        NULL, NULL, 'policy.review', 'no deciding rule', 'digest', 0,
+                        NULL, NULL, '2026-01-01T00:00:00.0000000+00:00');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => h.Store.GetReviewOpeningAsync("acme", "q-null-rule"));
+    }
+
+    [Fact]
     public async Task The_opening_table_rejects_a_pack_row_with_fallback_fields()
     {
         using var h = new QueueHarness();

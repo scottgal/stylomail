@@ -467,6 +467,13 @@ public sealed record PolicyEvaluation
 
     public required DateTimeOffset EvaluatedAt { get; init; }
 
+    /// <summary>
+    /// True when the engine refused to evaluate a configuration failure (cross-tenant pack,
+    /// invalid pack or rule set, or no rules). A refusal is not a policy verdict and must be
+    /// surfaced as Unavailable by an authoritative caller, never admitted as a pack decision.
+    /// </summary>
+    public bool Refused { get; init; }
+
     /// <summary>Named so a decision can never be attributed to a model: this is the rules engine.</summary>
     public required string DecidedBy { get; init; }
 }
@@ -1065,6 +1072,7 @@ public sealed class DeterministicPolicyEvaluator
             EvidenceSnapshot = snapshot,
             EvidenceSnapshotDigest = digest,
             EvaluatedAt = _time.GetUtcNow(),
+            Refused = true,
             DecidedBy = DecidedBy,
         };
 }

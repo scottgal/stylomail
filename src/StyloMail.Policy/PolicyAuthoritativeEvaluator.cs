@@ -100,7 +100,6 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     private readonly PolicyAuthoritativeOptions _options;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, long> _sequence = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, long> _installed = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastObserved = new(StringComparer.Ordinal);
 
     public PolicyAuthoritativeEvaluator(
@@ -132,9 +131,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     /// <summary>Invalidates the tenant's cache after a pack or binding update.</summary>
     public void Invalidate(string tenantId)
     {
-        // Fence every read already in flight, then clear what was installed before the update.
-        TryAdvanceInstalled(tenantId, NextGeneration(tenantId));
-        ClearCache(tenantId);
+        // Fence every read already in flight by publishing a tombstone at a newer generation. The
+        // tombstone is the whole clear: an older read's later AddOrUpdate cannot replace it.
+        PublishAbsence(tenantId, NextGeneration(tenantId));
     }
 
     public async Task<PolicyAuthoritativeResult> EvaluateAsync(
@@ -179,13 +178,15 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
 
         if (!packReadFailed && pack is null)
         {
-            // A healthy no-pack answer clears the tenant's cache and is legacy, not a fallback, but
-            // only if this read is not older than a pack another read already installed.
-            InvalidateIfCurrent(tenantId, generation);
+            // A healthy no-pack answer publishes an absence at this read's generation. It clears a
+            // cache an older read installed, but cannot clear a newer pack another read published.
+            PublishAbsence(tenantId, generation);
             return new PolicyAuthoritativeResult { Kind = PolicyAuthoritativeKind.Absent };
         }
 
-        if (pack is null && _cache.TryGetValue(cacheKey, out var cached))
+        if (pack is null
+            && _cache.TryGetValue(cacheKey, out var cached)
+            && !cached.IsTombstone)
         {
             var age = now - cached.ObservedAt;
             if (age <= TimeSpan.FromMinutes(5))
@@ -283,6 +284,14 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
             Evidence = evidence,
             Effective = effective,
         });
+
+        if (evaluation.Refused)
+        {
+            // An invalid or empty rule set cannot name a deciding rule. Returning it as a Pack
+            // verdict would hand the queue a Review with no provenance, so it is a named fallback.
+            return Fallback(now, RuleSetUnavailable,
+                $"The pack could not produce a replayable decision: {evaluation.DecidingReason}");
+        }
 
         if (!packFromCache)
         {
@@ -398,63 +407,60 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         PolicyRuleSet ruleSet,
         DateTimeOffset now)
     {
-        // The newest-starting successful read wins. An older read that completes later does not
-        // install, and a newer read that completes after an older one still does.
-        if (!TryAdvanceInstalled(tenantId, generation))
+        // The candidate carries its generation, and AddOrUpdate publishes decision and value in one
+        // atomic dictionary operation. An older read that resumes after a newer install therefore
+        // sees the newer entry and keeps it rather than overwriting it.
+        var candidate = new CacheEntry(pack, ruleSet, now, generation);
+        var published = _cache.AddOrUpdate(
+            cacheKey,
+            candidate,
+            (_, existing) => generation > existing.Generation ? candidate : existing);
+
+        if (!ReferenceEquals(published, candidate))
         {
             return;
         }
 
-        if (_cache.Count >= CacheCapacity)
+        while (_cache.Count > CacheCapacity)
         {
-            var oldest = _cache.OrderBy(entry => entry.Value.ObservedAt).FirstOrDefault();
-            if (!string.IsNullOrEmpty(oldest.Key))
+            var oldest = _cache
+                .Where(entry => !entry.Value.IsTombstone)
+                .OrderBy(entry => entry.Value.ObservedAt)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(oldest.Key)
+                || !_cache.TryRemove(oldest.Key, out var removed)
+                || ReferenceEquals(removed, candidate))
             {
-                _cache.TryRemove(oldest.Key, out _);
+                break;
             }
         }
 
-        _cache[cacheKey] = new CacheEntry(pack, ruleSet, now);
         _lastObserved[tenantId] = now;
+    }
+
+    private void PublishAbsence(string tenantId, long generation)
+    {
+        var tombstone = new CacheEntry(null, null, DateTimeOffset.MinValue, generation);
+        foreach (var key in _cache.Keys
+                     .Where(key => key.StartsWith(tenantId + "|", StringComparison.Ordinal))
+                     .Append($"{tenantId}|{(_options.Tenants.TryGetValue(tenantId, out var jurisdiction) ? jurisdiction : string.Empty)}")
+                     .Distinct(StringComparer.Ordinal))
+        {
+            var published = _cache.AddOrUpdate(
+                key,
+                tombstone,
+                (_, existing) => generation > existing.Generation ? tombstone : existing);
+
+            if (ReferenceEquals(published, tombstone))
+            {
+                _lastObserved.TryRemove(tenantId, out _);
+            }
+        }
     }
 
     private long NextGeneration(string tenantId) =>
         _sequence.AddOrUpdate(tenantId, 1, (_, current) => current + 1);
-
-    private bool TryAdvanceInstalled(string tenantId, long generation)
-    {
-        while (true)
-        {
-            var current = _installed.GetOrAdd(tenantId, 0);
-            if (generation <= current)
-            {
-                return false;
-            }
-
-            if (_installed.TryUpdate(tenantId, generation, current))
-            {
-                return true;
-            }
-        }
-    }
-
-    private void InvalidateIfCurrent(string tenantId, long generation)
-    {
-        if (TryAdvanceInstalled(tenantId, generation))
-        {
-            ClearCache(tenantId);
-        }
-    }
-
-    private void ClearCache(string tenantId)
-    {
-        foreach (var key in _cache.Keys.Where(key => key.StartsWith(tenantId + "|", StringComparison.Ordinal)))
-        {
-            _cache.TryRemove(key, out _);
-        }
-
-        _lastObserved.TryRemove(tenantId, out _);
-    }
 
     private static string[] Chain(PolicyPropertyScope scope)
     {
@@ -467,7 +473,11 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     }
 
     private sealed record CacheEntry(
-        PolicyPack Pack,
-        PolicyRuleSet RuleSet,
-        DateTimeOffset ObservedAt);
+        PolicyPack? Pack,
+        PolicyRuleSet? RuleSet,
+        DateTimeOffset ObservedAt,
+        long Generation)
+    {
+        public bool IsTombstone => Pack is null || RuleSet is null;
+    }
 }

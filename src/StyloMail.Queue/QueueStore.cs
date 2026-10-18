@@ -1323,6 +1323,8 @@ public sealed partial class QueueStore
                 || string.IsNullOrWhiteSpace(opening.PackVersion)
                 || string.IsNullOrWhiteSpace(opening.RuleSetId)
                 || string.IsNullOrWhiteSpace(opening.RuleSetVersion)
+                || string.IsNullOrWhiteSpace(opening.RuleId)
+                || opening.RuleVersion is null
                 || opening.UnavailableReason is not null
                 || opening.FallbackDeadline is not null
                 || (opening.EvidenceSnapshotDigest is null) != opening.LegacyDigestAbsent)

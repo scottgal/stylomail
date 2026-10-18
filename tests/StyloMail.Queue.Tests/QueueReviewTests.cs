@@ -345,6 +345,23 @@ public sealed class QueueReviewTests
     }
 
     [Fact]
+    public async Task A_pack_opening_without_a_deciding_rule_is_refused()
+    {
+        using var h = new QueueHarness();
+        var opening = QueueHarness.DefaultReviewOpening() with
+        {
+            RuleId = null,
+            RuleVersion = null,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => h.Store.AcceptAsync(
+            QueueHarness.Submission(
+                state: DeliveryState.Review,
+                reviewDeadline: QueueHarness.Start.AddHours(1),
+                reviewOpening: opening)));
+    }
+
+    [Fact]
     public async Task A_fallback_opening_without_a_reason_or_deadline_is_refused()
     {
         using var h = new QueueHarness();
