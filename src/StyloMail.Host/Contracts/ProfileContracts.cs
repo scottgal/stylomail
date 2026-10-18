@@ -81,6 +81,9 @@ public sealed record KpiCoverageResponse
     /// <summary>Candidate rows whose payload could not be read.</summary>
     public int? CandidateUnparsable { get; init; }
 
+    /// <summary>Fully observed messages excluded because the candidate set was incomplete.</summary>
+    public int? IncompleteExclusions { get; init; }
+
     public static KpiCoverageResponse From(KpiCoverage coverage) => new()
     {
         Analysed = coverage.Analysed,
@@ -93,6 +96,7 @@ public sealed record KpiCoverageResponse
         CandidateCount = coverage.CandidateCount,
         CandidatesTruncated = coverage.CandidatesTruncated,
         CandidateUnparsable = coverage.CandidateUnparsable,
+        IncompleteExclusions = coverage.IncompleteExclusions,
     };
 }
 
@@ -368,9 +372,9 @@ public sealed record KpiSignalEvidenceResponse
 
     public required int Confirming { get; init; }
 
-    public required int Unavailable { get; init; }
+    public int? Unavailable { get; init; }
 
-    public required int NotApplicable { get; init; }
+    public int? NotApplicable { get; init; }
 
     public required int Missing { get; init; }
 
@@ -475,6 +479,12 @@ public sealed record ReferenceCitationResponse
 
     public DateTimeOffset? ConfirmedAt { get; init; }
 
+    public required EvidenceAccessOutcome AccessOutcome { get; init; }
+
+    public required EvidenceRetention Retention { get; init; }
+
+    public DateTimeOffset? RetentionUntil { get; init; }
+
     public static ReferenceCitationResponse From(Profiles.ReferenceCitation citation) => new()
     {
         Scope = PropertyScopeResponse.From(citation.Scope),
@@ -486,6 +496,9 @@ public sealed record ReferenceCitationResponse
         SetAt = citation.SetAt,
         ConfirmedBy = citation.ConfirmedBy,
         ConfirmedAt = citation.ConfirmedAt,
+        AccessOutcome = citation.AccessOutcome,
+        Retention = citation.Retention,
+        RetentionUntil = citation.RetentionUntil,
     };
 }
 
@@ -507,13 +520,50 @@ public sealed record ReferenceSourceResponse
 }
 
 /// <summary>The resolved property evidence reference: metadata, citations and source existence.</summary>
+public sealed record ReferenceMetadataResponse
+{
+    public required string Id { get; init; }
+
+    public required EvidenceKind Kind { get; init; }
+
+    public required DateTimeOffset ObservedAt { get; init; }
+
+    public required EvidenceRetention Retention { get; init; }
+
+    public DateTimeOffset? RetentionUntil { get; init; }
+
+    public required EvidenceAccessOutcome AccessOutcome { get; init; }
+
+    /// <remarks>
+    /// <b>The writer-supplied <c>label</c> is deliberately not projected here.</b> A label is freeform
+    /// text a writer controls, so it could carry an address, a subject or a filename; this route's
+    /// content-free guarantee cannot be enforced over it. The property drawer still shows its own
+    /// labels against the property row, where the writer's context is explicit.
+    /// </remarks>
+    public static ReferenceMetadataResponse From(EvidenceReference reference) => new()
+    {
+        Id = reference.Id,
+        Kind = reference.Kind,
+        ObservedAt = reference.ObservedAt ?? DateTimeOffset.UnixEpoch,
+        Retention = reference.Retention,
+        RetentionUntil = reference.RetentionUntil,
+        AccessOutcome = reference.AccessOutcome,
+    };
+}
+
 public sealed record ReferenceEvidenceResponse
 {
     public required string TenantId { get; init; }
 
-    public required PropertyEvidenceRefResponse Reference { get; init; }
+    /// <summary>The newest citation's claim. Explicitly a claim, not "the" reference.</summary>
+    public required ReferenceMetadataResponse LatestClaim { get; init; }
+
+    /// <summary>Always <c>all</c>: every matched citation was returned, up to the bound.</summary>
+    public required string Selection { get; init; }
 
     public required Profiles.ReferenceOutcome Outcome { get; init; }
+
+    public required string? OutcomeReason { get; init; }
 
     public IReadOnlyList<ReferenceCitationResponse> Citations { get; init; } = [];
 
@@ -521,18 +571,28 @@ public sealed record ReferenceEvidenceResponse
 
     public required bool CitationsTruncated { get; init; }
 
+    /// <summary>Rows whose stored evidence array could not be parsed. Named, never a SQL failure.</summary>
+    public required int InvalidCitationRows { get; init; }
+
     public ReferenceSourceResponse? Source { get; init; }
+
+    /// <summary>Whether the cited source row exists. False is not the same as "not checked".</summary>
+    public required bool SourcePresent { get; init; }
 
     public static ReferenceEvidenceResponse From(
         string tenantId,
         Profiles.ReferenceEvidenceRead evidence) => new()
     {
         TenantId = tenantId,
-        Reference = PropertyEvidenceRefResponse.From(evidence.Reference),
+        LatestClaim = ReferenceMetadataResponse.From(evidence.LatestClaim),
+        Selection = evidence.Selection,
         Outcome = evidence.Outcome,
+        OutcomeReason = evidence.OutcomeReason,
         Citations = [.. evidence.Citations.Select(ReferenceCitationResponse.From)],
         CitationCount = evidence.CitationCount,
         CitationsTruncated = evidence.CitationsTruncated,
+        InvalidCitationRows = evidence.InvalidCitationRows,
         Source = evidence.Source is null ? null : ReferenceSourceResponse.From(evidence.Source),
+        SourcePresent = evidence.SourcePresent,
     };
 }

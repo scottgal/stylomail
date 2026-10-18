@@ -142,9 +142,10 @@ public sealed class EvidenceDereferenceTests
 
         Assert.NotNull(evidence);
         Assert.Equal(ReferenceOutcome.Resolved, evidence!.Outcome);
-        Assert.Equal("asm-ref-1", evidence.Reference.Id);
-        Assert.Equal(EvidenceKind.Message, evidence.Reference.Kind);
-        Assert.Equal("Submission asm-ref-1", evidence.Reference.Label);
+        Assert.Equal("asm-ref-1", evidence.LatestClaim.Id);
+        Assert.Equal(EvidenceKind.Message, evidence.LatestClaim.Kind);
+        Assert.Equal("all", evidence.Selection);
+        Assert.True(evidence.SourcePresent);
 
         var citation = Assert.Single(evidence.Citations);
         Assert.Equal(PropertyScopeKind.Entity, citation.Scope.Kind);
@@ -153,6 +154,7 @@ public sealed class EvidenceDereferenceTests
 
         Assert.NotNull(evidence.Source);
         Assert.Equal("asm-ref-1", evidence.Source!.AssessmentId);
+        Assert.True(evidence.SourcePresent);
         Assert.Equal(MailAction.Hold, evidence.Source.Action);
 
         Assert.DoesNotContain("@", body);
@@ -280,6 +282,314 @@ public sealed class EvidenceDereferenceTests
             (await reviewer.GetAsync("/v1/evidence/reference?kind=Message")).StatusCode);
     }
 
+    [Fact]
+    public async Task Reference_kind_is_part_of_the_identity()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SeedAsync(host, Assessment(Acme, "shared", at, MailAction.Allow));
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "shared",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        await SetReferenceAsync(
+            host,
+            at,
+            new EvidenceReference
+            {
+                Id = "shared",
+                Kind = EvidenceKind.Import,
+                ObservedAt = at,
+                AccessOutcome = EvidenceAccessOutcome.Available,
+            },
+            key: PropertyKeys.Language,
+            value: "en");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var asMessage = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=shared");
+        Assert.Single(asMessage.Citations);
+        Assert.Equal(PropertyKeys.Role, asMessage.Citations[0].Key);
+        Assert.NotNull(asMessage.Source);
+
+        var asImport = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Import&id=shared");
+        Assert.Single(asImport.Citations);
+        Assert.Equal(PropertyKeys.Language, asImport.Citations[0].Key);
+        Assert.Null(asImport.Source);
+        Assert.Equal(ReferenceOutcome.Unverified, asImport.Outcome);
+    }
+
+    [Fact]
+    public async Task An_undefined_or_numeric_evidence_kind_is_refused()
+    {
+        using var host = new TestHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var numeric = await reviewer.GetAsync("/v1/evidence/reference?kind=99&id=x");
+        Assert.Equal(HttpStatusCode.BadRequest, numeric.StatusCode);
+        using (var document = JsonDocument.Parse(await numeric.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("unknown_evidence_kind", document.RootElement.GetProperty("error").GetString());
+        }
+
+        var named = await reviewer.GetAsync("/v1/evidence/reference?kind=Nonsense&id=x");
+        Assert.Equal(HttpStatusCode.BadRequest, named.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_freeform_label_is_not_echoed()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "asm-label",
+            Kind = EvidenceKind.Message,
+            Label = "Subject: password reset for person@example.test",
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var body = await ReferenceJsonAsync(reviewer, "Message", "asm-label");
+
+        Assert.DoesNotContain("Subject:", body);
+        Assert.DoesNotContain("@example.test", body);
+        Assert.DoesNotContain("password reset", body);
+    }
+
+    [Fact]
+    public async Task Mixed_reference_claims_are_conservative_and_per_citation()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        // Withheld is the older claim; Available is newer. A newest-wins implementation would
+        // wrongly resolve this as available.
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "asm-mixed",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Withheld,
+        });
+
+        await SetReferenceAsync(
+            host,
+            at.AddMinutes(1),
+            new EvidenceReference
+            {
+                Id = "asm-mixed",
+                Kind = EvidenceKind.Message,
+                ObservedAt = at,
+                AccessOutcome = EvidenceAccessOutcome.Available,
+            },
+            key: PropertyKeys.Language,
+            value: "en");
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=asm-mixed");
+
+        // The most restrictive claim governs regardless of which citation is newest.
+        Assert.Equal(ReferenceOutcome.Withheld, evidence.Outcome);
+        Assert.Equal(2, evidence.CitationCount);
+        Assert.Contains(evidence.Citations, citation => citation.AccessOutcome == EvidenceAccessOutcome.Withheld);
+        Assert.Contains(evidence.Citations, citation => citation.AccessOutcome == EvidenceAccessOutcome.Available);
+    }
+
+    [Fact]
+    public async Task A_missing_ledger_row_makes_a_message_reference_source_missing()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "asm-vanished",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Message&id=asm-vanished");
+
+        Assert.Equal(ReferenceOutcome.SourceMissing, evidence.Outcome);
+        Assert.Null(evidence.Source);
+    }
+
+    [Fact]
+    public async Task A_conversation_turn_does_not_borrow_a_message_source()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SeedAsync(host, Assessment(Acme, "shared-source", at, MailAction.Allow));
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "shared-source",
+            Kind = EvidenceKind.ConversationTurn,
+            ObservedAt = at,
+            AccessOutcome = EvidenceAccessOutcome.Available,
+        });
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=ConversationTurn&id=shared-source");
+
+        Assert.Null(evidence.Source);
+        Assert.False(evidence.SourcePresent);
+        Assert.Equal(ReferenceOutcome.Unverified, evidence.Outcome);
+    }
+
+    [Fact]
+    public async Task Known_exclusions_survive_a_thin_responsiveness_window()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(
+            "0123456789abcdef0123456789abcdef");
+        var now = host.Clock.GetUtcNow();
+        var start = now.AddDays(-30);
+
+        for (var index = 0; index < 6; index++)
+        {
+            var inboundAt = start.AddDays(index);
+            await SeedMessageAsync(
+                host,
+                Assessment(Acme, $"in{index}", inboundAt, MailAction.Allow),
+                MailDirection.Inbound,
+                $"person{index}@example.test",
+                "owner@acme.test");
+
+            await SeedMessageAsync(
+                host,
+                Assessment(
+                    Acme,
+                    $"reply{index}",
+                    inboundAt.AddHours(2),
+                    MailAction.Allow) with
+                {
+                    RecipientDispositions =
+                    [
+                        new RecipientDisposition
+                        {
+                            Recipient = $"person{index}@example.test",
+                            RecipientRisk = 0,
+                            Action = MailAction.Allow,
+                            DeliveryState = DeliveryState.Queued,
+                        },
+                    ],
+                },
+                MailDirection.Outbound,
+                "owner@acme.test",
+                $"person{index}@example.test");
+
+            if (index < 5)
+            {
+                CorruptPayload(host, $"reply{index}");
+            }
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var evidence = await EvidenceAsync(
+            reviewer,
+            "/v1/evidence/kpi/responsiveness.address_reciprocity/entity/" + Principal);
+
+        Assert.Equal(KpiState.NotEnoughHistory, evidence.Value.State);
+        Assert.Equal(5, evidence.Value.Coverage.IncompleteExclusions);
+        Assert.Equal(5, evidence.Signals.Single().Unavailable);
+        Assert.Equal(1, evidence.Signals.Single().Answered);
+    }
+
+    [Fact]
+    public async Task A_malformed_stored_array_is_named_invalid_not_a_storage_error()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "broken",
+            Kind = EvidenceKind.Message,
+            ObservedAt = at,
+        });
+
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "UPDATE host_entity_property SET evidence_refs = $refs "
+                + "WHERE tenant_id = $tenant;";
+            command.Parameters.AddWithValue("$refs", "[{\"id\":\"broken\", \"kind\":}]");
+            command.Parameters.AddWithValue("$tenant", Acme);
+            command.ExecuteNonQuery();
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await reviewer.GetAsync("/v1/evidence/reference?kind=Message&id=broken");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, $"Expected success, got {(int)response.StatusCode}: {body}");
+        Assert.Equal(1, JsonDocument.Parse(body).RootElement.GetProperty("invalidCitationRows").GetInt32());
+        Assert.Equal(
+            ReferenceOutcome.Invalid,
+            JsonSerializer.Deserialize<ReferenceEvidenceResponse>(body, HostJson.Options)!.Outcome);
+    }
+
+    [Fact]
+    public async Task A_legacy_string_reference_is_other_and_not_a_message()
+    {
+        using var host = new TestHost().WithClock();
+        var at = host.Clock.GetUtcNow().AddDays(-10);
+
+        await SeedAsync(host, Assessment(Acme, "legacy-source", at, MailAction.Allow));
+        await SetReferenceAsync(host, at, new EvidenceReference
+        {
+            Id = "legacy-id",
+            Kind = EvidenceKind.Other,
+            ObservedAt = at,
+        });
+
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "UPDATE host_entity_property SET evidence_refs = $refs "
+                + "WHERE tenant_id = $tenant;";
+            command.Parameters.AddWithValue("$refs", "[\"legacy-id\"]");
+            command.Parameters.AddWithValue("$tenant", Acme);
+            command.ExecuteNonQuery();
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+
+        var asOther = await EvidenceAsync<ReferenceEvidenceResponse>(
+            reviewer,
+            "/v1/evidence/reference?kind=Other&id=legacy-id");
+        Assert.Single(asOther.Citations);
+        Assert.Equal(ReferenceOutcome.Unverified, asOther.Outcome);
+
+        // A legacy row records no kind, so a Message query cannot claim it.
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await reviewer.GetAsync("/v1/evidence/reference?kind=Message&id=legacy-id")).StatusCode);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
@@ -287,15 +597,17 @@ public sealed class EvidenceDereferenceTests
     private static async Task SetReferenceAsync(
         TestHost host,
         DateTimeOffset at,
-        EvidenceReference reference)
+        EvidenceReference reference,
+        string key = PropertyKeys.Role,
+        string value = "vendor")
     {
         await host.Services.GetRequiredService<IPropertyStore>().SetAsync(
             Acme,
             new PropertyWrite
             {
                 Scope = new PropertyScope(PropertyScopeKind.Entity, Principal),
-                Key = PropertyKeys.Role,
-                Value = "vendor",
+                Key = key,
+                Value = value,
                 Source = PropertySource.Declared,
                 Actor = "test",
                 EvidenceRefs = [reference],
@@ -305,6 +617,19 @@ public sealed class EvidenceDereferenceTests
     }
 
     private static async Task SeedAsync(TestHost host, MailAssessment assessment)
+        => await SeedMessageAsync(
+            host,
+            assessment,
+            MailDirection.Inbound,
+            "sender@example.test",
+            "owner@acme.test");
+
+    private static async Task SeedMessageAsync(
+        TestHost host,
+        MailAssessment assessment,
+        MailDirection direction,
+        string mailFrom,
+        params string[] recipients)
     {
         await host.Services.GetRequiredService<IDecisionLedger>()
             .RecordAsync(assessment, CancellationToken.None);
@@ -315,17 +640,29 @@ public sealed class EvidenceDereferenceTests
             {
                 TenantId = assessment.TenantId,
                 InternalMessageId = assessment.InternalMessageId,
-                Direction = MailDirection.Inbound,
+                Direction = direction,
                 TrustedPrincipalId = Principal,
-                MailFrom = "sender@example.test",
+                MailFrom = mailFrom,
                 MimeDigest = "digest-" + Guid.NewGuid().ToString("N"),
                 Payload = Encoding.UTF8.GetBytes("Subject: evidence\r\n\r\nbody"),
-                Recipients = [new RecipientAdmission { Recipient = "owner@acme.test" }],
+                Recipients = [.. recipients.Select(recipient => new RecipientAdmission { Recipient = recipient })],
                 HopCount = 0,
             },
             CancellationToken.None);
 
         Assert.True(accepted.IsAccepted, accepted.Detail);
+    }
+
+    private static void CorruptPayload(TestHost host, string assessmentId)
+    {
+        using var connection = host.Services.GetRequiredService<HostDatabase>().Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE host_decision_ledger SET payload = '{not-json' "
+            + "WHERE tenant_id = $tenant AND assessment_id = $id;";
+        command.Parameters.AddWithValue("$tenant", Acme);
+        command.Parameters.AddWithValue("$id", assessmentId);
+        command.ExecuteNonQuery();
     }
 
     private static MailAssessment Assessment(

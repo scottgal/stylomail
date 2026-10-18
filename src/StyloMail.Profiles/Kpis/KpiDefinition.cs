@@ -202,6 +202,13 @@ public sealed record KpiCoverage
 
     /// <summary>Candidate rows whose payload could not be read.</summary>
     public int? CandidateUnparsable { get; init; }
+
+    /// <summary>
+    /// Fully observed messages excluded because the candidate set was incomplete. Typed here rather
+    /// than only as a measurement, so the evidence read can report the exclusions even when the KPI
+    /// returned NotEnoughHistory before measurements were built.
+    /// </summary>
+    public int? IncompleteExclusions { get; init; }
 }
 
 /// <summary>A secondary observation served with a KPI, such as the median reply gap.</summary>

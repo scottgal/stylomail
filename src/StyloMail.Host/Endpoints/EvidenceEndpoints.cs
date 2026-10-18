@@ -117,18 +117,30 @@ internal static class EvidenceEndpoints
     /// <c>GET /v1/evidence/reference?kind=Message&amp;id=...</c>, one stored evidence reference.
     /// </summary>
     internal static async Task<IResult> GetReferenceAsync(
-        EvidenceKind? kind,
+        string? kind,
         string? id,
         ClaimsPrincipal user,
         ProfileQueryStore profiles,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        if (kind is null)
+        if (string.IsNullOrWhiteSpace(kind))
         {
             return EndpointResults.Invalid(
                 "kind_required",
                 "An evidence kind is required, e.g. Message, ConversationTurn, Import or ModelTrace.");
+        }
+
+        // Numeric spellings are refused: an enum bound from "99" is an undefined member that only
+        // reads as valid because of declaration order, and an evidence kind decides which backend
+        // resolves the reference.
+        if (int.TryParse(kind, out _)
+            || !Enum.TryParse<EvidenceKind>(kind, ignoreCase: true, out var parsedKind)
+            || !Enum.IsDefined(parsedKind))
+        {
+            return EndpointResults.Invalid(
+                "unknown_evidence_kind",
+                $"'{kind}' is not an evidence kind this build understands.");
         }
 
         if (string.IsNullOrWhiteSpace(id))
@@ -149,7 +161,7 @@ internal static class EvidenceEndpoints
             var evidence = await profiles
                 .ReadReferenceAsync(
                     user.TenantId()!,
-                    kind.Value,
+                    parsedKind,
                     referenceId,
                     clock.GetUtcNow(),
                     cancellationToken)
