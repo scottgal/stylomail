@@ -248,6 +248,40 @@ public sealed class SegmentEmbeddingProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task A_server_that_sends_headers_then_stalls_is_timed_out_rather_than_hung()
+    {
+        // The control for review finding 5: with ResponseHeadersRead, headers completing does not
+        // mean the exchange completed. A body that never arrives must be cut by the same deadline.
+        var handler = new StubHandler();
+        handler.EnqueueMetadata();
+        handler.EnqueueStallingBody();
+
+        var options = Options();
+        options.Timeout = TimeSpan.FromMilliseconds(200);
+
+        var started = TimeProvider.System.GetTimestamp();
+        var batch = await Provider(handler, options).EmbedAsync(OneSegment);
+        var elapsed = TimeProvider.System.GetElapsedTime(started);
+
+        Assert.False(batch.AnyProduced);
+        Assert.All(batch.Segments, row => Assert.Equal(EmbeddingNotProducedReason.TimedOut, row.Reason));
+        Assert.True(elapsed < TimeSpan.FromSeconds(5), $"the call took {elapsed}, so the deadline did not cover the body");
+    }
+
+    [Fact]
+    public async Task A_declared_body_larger_than_the_cap_is_refused_before_reading()
+    {
+        var handler = new StubHandler();
+        handler.EnqueueMetadata();
+        handler.EnqueueOversizedBody();
+
+        var batch = await Provider(handler).EmbedAsync(OneSegment);
+
+        Assert.False(batch.AnyProduced);
+        Assert.All(batch.Segments, row => Assert.Equal(EmbeddingNotProducedReason.ContractViolation, row.Reason));
+    }
+
+    [Fact]
     public async Task A_refusing_service_opens_the_circuit_and_the_next_call_makes_no_request()
     {
         var handler = new StubHandler();
@@ -435,6 +469,22 @@ public sealed class SegmentEmbeddingProviderTests : IDisposable
             });
         }
 
+        public void EnqueueStallingBody() =>
+            _responses.Enqueue(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StallingContent(),
+            }));
+
+        public void EnqueueOversizedBody()
+        {
+            var content = new StringContent("{}", Encoding.UTF8, "application/json");
+            content.Headers.ContentLength = 16 * 1024 * 1024;
+            _responses.Enqueue(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = content,
+            }));
+        }
+
         public void EnqueueHanging() =>
             _responses.Enqueue(async cancellationToken =>
             {
@@ -457,6 +507,41 @@ public sealed class SegmentEmbeddingProviderTests : IDisposable
             }
 
             return await _responses.Dequeue()(cancellationToken);
+        }
+    }
+
+    private sealed class StallingContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
+            Task.Delay(TimeSpan.FromMinutes(5));
+
+        protected override Task<Stream> CreateContentReadStreamAsync() =>
+            Task.FromResult<Stream>(new StallingStream());
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private sealed class StallingStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
+            return 0;
         }
     }
 

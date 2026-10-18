@@ -452,6 +452,56 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
         }
     }
 
+    private const int MaxResponseBytes = 4 * 1024 * 1024;
+
+    /// <summary>
+    /// Read a response body under the caller's deadline, refusing anything past the cap.
+    /// </summary>
+    /// <remarks>
+    /// Returns null on cancellation or an oversized body. Both mean "no answer", which this adapter
+    /// already reports as Unavailable rather than as a negative result. Content-Length is not required
+    /// to be present, so the cap is enforced while streaming rather than trusted from a header.
+    /// </remarks>
+    private static async Task<string?> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (content.Headers.ContentLength is > MaxResponseBytes)
+            {
+                return null;
+            }
+
+            await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var buffer = new byte[16 * 1024];
+            using var memory = new MemoryStream();
+            while (true)
+            {
+                var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (memory.Length + read > MaxResponseBytes)
+                {
+                    return null;
+                }
+
+                memory.Write(buffer, 0, read);
+            }
+
+            return Encoding.UTF8.GetString(memory.ToArray());
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     private async Task<NimbleSystemOneResponse?> SendWithRetryAsync(
         NimbleSystemOneRequest request,
         CancellationToken cancellationToken)
@@ -491,9 +541,13 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
             {
                 if (response.IsSuccessStatusCode)
                 {
-                    return await response.Content
-                        .ReadFromJsonAsync<NimbleSystemOneResponse>(WireJson, cancellationToken)
-                        .ConfigureAwait(false);
+                    // Read the body under the SAME deadline and with a bound. Headers completing
+                    // does not mean the exchange finished, and a server that sends headers then
+                    // stalls would otherwise pin this call indefinitely.
+                    var json = await ReadBoundedAsync(response.Content, timeout.Token).ConfigureAwait(false);
+                    return json is null
+                        ? null
+                        : JsonSerializer.Deserialize<NimbleSystemOneResponse>(json, WireJson);
                 }
 
                 var status = (int)response.StatusCode;
@@ -514,7 +568,8 @@ public sealed class NimbleSemanticMailClassifier : ISemanticMailClassifier
 
                 if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
                 {
-                    var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    var body = await ReadBoundedAsync(response.Content, timeout.Token).ConfigureAwait(false)
+                        ?? string.Empty;
                     // A 404 now has two causes and the status cannot tell them apart, which is new with
                     // this path. The old endpoint answered 404 only for an unknown model. This one also
                     // answers 404 for an unknown ROUTE, measured: the probe posted the same body to the

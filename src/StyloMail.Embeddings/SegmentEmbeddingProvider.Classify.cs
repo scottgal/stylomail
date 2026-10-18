@@ -58,10 +58,10 @@ public sealed partial class SegmentEmbeddingProvider
 
         for (var attempt = 0; ; attempt++)
         {
-            HttpResponseMessage response;
+            (HttpStatusCode Status, string Body) response;
             try
             {
-                response = await SendAsync(
+                response = await SendAndReadAsync(
                     () => BuildClassifyRequest(segments, requested, token),
                     cancellationToken).ConfigureAwait(false);
             }
@@ -70,16 +70,15 @@ public sealed partial class SegmentEmbeddingProvider
                 return Unavailable(ToUnavailableReason(fault.Reason));
             }
 
-            using (response)
             {
-                if (response.StatusCode == HttpStatusCode.ServiceUnavailable && attempt < _options.MaxRetries)
+                if (response.Status == HttpStatusCode.ServiceUnavailable && attempt < _options.MaxRetries)
                 {
                     await Task.Delay(_options.RetryBaseDelay, _time, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                return await InterpretClassifyAsync(response, segments.Count, requested, cancellationToken)
-                    .ConfigureAwait(false);
+                return await InterpretClassifyAsync(response.Status, response.Body, segments.Count, requested,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -115,28 +114,29 @@ public sealed partial class SegmentEmbeddingProvider
         token);
 
     private async Task<ClassificationOutcome> InterpretClassifyAsync(
-        HttpResponseMessage response,
+        HttpStatusCode status,
+        string body,
         int count,
         IReadOnlyList<string> requested,
         CancellationToken cancellationToken)
     {
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        if (status == HttpStatusCode.Unauthorized)
         {
             return Unavailable(ClassificationUnavailableReason.Unauthorized);
         }
 
-        if (response.StatusCode is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnprocessableEntity)
+        if (status is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnprocessableEntity)
         {
             return Unavailable(ClassificationUnavailableReason.ContractViolation);
         }
 
-        if (!response.IsSuccessStatusCode)
+        if (!IsSuccess(status))
         {
             _breaker.RecordFailure();
             return Unavailable(ClassificationUnavailableReason.ServiceUnavailable);
         }
 
-        var document = await ReadDocumentAsync<ClassifyResponse>(response, cancellationToken).ConfigureAwait(false);
+        var document = ReadDocument<ClassifyResponse>(body);
         if (document is null)
         {
             _breaker.RecordFailure();

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -122,10 +123,10 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
 
         for (var attempt = 0; ; attempt++)
         {
-            HttpResponseMessage response;
+            (HttpStatusCode Status, string Body) response;
             try
             {
-                response = await SendAsync(
+                response = await SendAndReadAsync(
                     () => BuildEmbedRequest(segments, token),
                     cancellationToken).ConfigureAwait(false);
             }
@@ -134,15 +135,15 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
                 return Absent(segments.Count, fault.Reason);
             }
 
-            using (response)
             {
-                if (response.StatusCode == HttpStatusCode.ServiceUnavailable && attempt < _options.MaxRetries)
+                if (response.Status == HttpStatusCode.ServiceUnavailable && attempt < _options.MaxRetries)
                 {
                     await Task.Delay(_options.RetryBaseDelay, _time, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                return await InterpretAsync(response, segments.Count, cancellationToken).ConfigureAwait(false);
+                return await InterpretAsync(response.Status, response.Body, segments.Count, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
     }
@@ -187,7 +188,7 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
                 return _metadata;
             }
 
-            HttpResponseMessage response;
+            (HttpStatusCode Status, string Body) response;
             try
             {
                 var (metadataToken, tokenReason) = await ReadTokenAsync(cancellationToken).ConfigureAwait(false);
@@ -196,7 +197,7 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
                     return MetadataRefused(tokenReason);
                 }
 
-                response = await SendAsync(() => BuildMetadataRequest(metadataToken), cancellationToken)
+                response = await SendAndReadAsync(() => BuildMetadataRequest(metadataToken), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (EmbeddingCallFault fault)
@@ -204,21 +205,19 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
                 return MetadataRefused(fault.Reason);
             }
 
-            using (response)
             {
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                if (response.Status == HttpStatusCode.Unauthorized)
                 {
                     return MetadataRefused(EmbeddingNotProducedReason.Unauthorized);
                 }
 
-                if (!response.IsSuccessStatusCode)
+                if (!IsSuccess(response.Status))
                 {
                     _breaker.RecordFailure();
                     return MetadataRefused(EmbeddingNotProducedReason.MetadataUnavailable);
                 }
 
-                var document = await ReadDocumentAsync<MetadataResponse>(response, cancellationToken)
-                    .ConfigureAwait(false);
+                var document = ReadDocument<MetadataResponse>(response.Body);
                 if (document is null)
                 {
                     return MetadataRefused(EmbeddingNotProducedReason.MetadataUnavailable);
@@ -331,16 +330,48 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
     private Uri Combine(string relative) =>
         new(new Uri(_options.Endpoint.TrimEnd('/') + "/", UriKind.Absolute), relative);
 
-    private async Task<HttpResponseMessage> SendAsync(
+    private async Task<(HttpStatusCode Status, string Body)> SendAndReadAsync(
         Func<HttpRequestMessage> requestFactory,
         CancellationToken cancellationToken)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_options.Timeout);
+        // One deadline for the whole exchange. The previous version created it inside the send and
+        // disposed it when SendAsync returned, so the body read ran under the caller's token only:
+        // a server could send headers and then stall forever, pinning the analysis path. The read is
+        // also bounded as it streams, because Content-Length is optional and absent means unlimited.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_options.Timeout);
         try
         {
-            return await _http.SendAsync(requestFactory(), HttpCompletionOption.ResponseHeadersRead, timeout.Token)
+            using var response = await _http
+                .SendAsync(requestFactory(), HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                 .ConfigureAwait(false);
+
+            if (response.Content.Headers.ContentLength is > MaxResponseBytes)
+            {
+                throw new EmbeddingCallFault(EmbeddingNotProducedReason.ContractViolation);
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token)
+                .ConfigureAwait(false);
+            var buffer = new byte[16 * 1024];
+            using var memory = new MemoryStream();
+            while (true)
+            {
+                var read = await stream.ReadAsync(buffer, deadline.Token).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (memory.Length + read > MaxResponseBytes)
+                {
+                    throw new EmbeddingCallFault(EmbeddingNotProducedReason.ContractViolation);
+                }
+
+                memory.Write(buffer, 0, read);
+            }
+
+            return (response.StatusCode, Encoding.UTF8.GetString(memory.ToArray()));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -355,27 +386,28 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
     }
 
     private async Task<SegmentEmbeddingBatch> InterpretAsync(
-        HttpResponseMessage response,
+        HttpStatusCode status,
+        string body,
         int count,
         CancellationToken cancellationToken)
     {
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        if (status == HttpStatusCode.Unauthorized)
         {
             return Absent(count, EmbeddingNotProducedReason.Unauthorized);
         }
 
-        if (response.StatusCode is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnprocessableEntity)
+        if (status is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnprocessableEntity)
         {
             return Absent(count, EmbeddingNotProducedReason.RequestRejected);
         }
 
-        if (!response.IsSuccessStatusCode)
+        if (!IsSuccess(status))
         {
             _breaker.RecordFailure();
             return Absent(count, EmbeddingNotProducedReason.ServiceUnavailable);
         }
 
-        var document = await ReadDocumentAsync<EmbedResponse>(response, cancellationToken).ConfigureAwait(false);
+        var document = ReadDocument<EmbedResponse>(body);
         if (document is null)
         {
             _breaker.RecordFailure();
@@ -448,17 +480,10 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
         return new SegmentEmbeddingBatch(rows, _metadata);
     }
 
-    private static async Task<T?> ReadDocumentAsync<T>(
-        HttpResponseMessage response,
-        CancellationToken cancellationToken)
-        where T : class
-    {
-        if (response.Content.Headers.ContentLength is > MaxResponseBytes)
-        {
-            return null;
-        }
+    private static bool IsSuccess(HttpStatusCode status) => (int)status is >= 200 and < 300;
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+    private static T? ReadDocument<T>(string body) where T : class
+    {
         if (body.Length > MaxResponseBytes)
         {
             return null;
