@@ -762,8 +762,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
     }
 
     private static void Validate(ProxyElementPoint point)
-    {
-        if (point.Ordinal < 0)
+    {        if (point.Ordinal < 0)
         {
             throw new ArgumentException("Element ordinal must be zero or greater.", nameof(point));
         }
@@ -810,6 +809,13 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
                 throw new ArgumentException("An available element point must carry a score.", nameof(point));
             }
 
+            if (!string.Equals(point.AvailabilityReason, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"An available element point must use reason 'none', not '{point.AvailabilityReason}'.",
+                    nameof(point));
+            }
+
             var requiresExemplar = string.Equals(
                 point.Scorer, ElementScorers.PrototypeKnn, StringComparison.Ordinal);
             if (requiresExemplar != (point.NearestExemplarId is not null))
@@ -830,7 +836,37 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
             {
                 throw new ArgumentException("A not-produced element point must name a reason.", nameof(point));
             }
+
+            if (!ElementReasonWireNames.Contains(point.AvailabilityReason))
+            {
+                throw new ArgumentException(
+                    $"Element point reason '{point.AvailabilityReason}' is not in the closed reason vocabulary.",
+                    nameof(point));
+            }
         }
+    }
+
+    /// <summary>
+    /// The closed element not-produced reason vocabulary, derived from the Embeddings enum.
+    /// </summary>
+    /// <remarks>
+    /// One approved additive value is included ahead of the enum carrying it, so a producer that
+    /// emits <c>insufficient_exemplars</c> is not rejected in the change window. Remove the literal
+    /// once <see cref="ElementNotProducedReason"/> defines it; a reason outside this set is refused
+    /// rather than stored as an unknown string.
+    /// </remarks>
+    private static readonly HashSet<string> ElementReasonWireNames = BuildElementReasonWireNames();
+
+    private static HashSet<string> BuildElementReasonWireNames()
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal) { "none" };
+        foreach (var reason in Enum.GetValues<ElementNotProducedReason>())
+        {
+            names.Add(reason.ToWireName());
+        }
+
+        names.Add("insufficient_exemplars");
+        return names;
     }
 
     private bool Exists(string table, string tenantId)

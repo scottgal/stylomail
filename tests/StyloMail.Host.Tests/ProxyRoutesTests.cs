@@ -1335,6 +1335,75 @@ public sealed class ProxyRoutesTests
         command.ExecuteNonQuery();
     }
 
+    [Fact]
+    public async Task Element_reason_vocabulary_accepts_insufficient_exemplars_and_refuses_unknown()
+    {
+        using var host = ProxyHost();
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var sink = host.Services.GetRequiredService<IProxyElementSink>();
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        const string thread = "thread-reasonsABCD";
+
+        await sink.RecordOutcomeAsync(BatchOutcome("m-reason", thread, at), CancellationToken.None);
+
+        await sink.RecordPointAsync(
+            NotProducedElement("m-reason", thread, 0, "insufficient_exemplars", at),
+            CancellationToken.None);
+
+        var series = await ReadAsync<ProxyElementSeriesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{thread}/elements?window=last_24_hours"));
+        var point = Assert.Single(series.Points);
+        var element = Assert.Single(point.Elements);
+        Assert.Equal("not_produced", element.Availability);
+        Assert.Equal("insufficient_exemplars", element.AvailabilityReason);
+        Assert.Null(element.Score);
+
+        // An unknown reason is refused rather than stored as an opaque string.
+        var unknown = await Assert.ThrowsAsync<ArgumentException>(() => sink.RecordPointAsync(
+            NotProducedElement("m-reason", thread, 1, "made_up_reason", at),
+            CancellationToken.None).AsTask());
+        Assert.Contains("made_up_reason", unknown.Message);
+
+        // An available point cannot carry a not-produced reason.
+        var badAvailable = NotProducedElement("m-reason", thread, 2, "no_exemplars", at);
+        badAvailable = badAvailable with
+        {
+            Availability = ProxyWarningAvailability.Available,
+            Score = 0.5,
+            NearestExemplarId = "seed-1:threat:0001",
+        };
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => sink.RecordPointAsync(badAvailable, CancellationToken.None).AsTask());
+    }
+
+    private static ProxyElementPoint NotProducedElement(
+        string message,
+        string thread,
+        int ordinal,
+        string reason,
+        DateTimeOffset at)
+        => new()
+        {
+            TenantId = TestPrincipals.AcmeTenant,
+            AccountId = "pa_account",
+            TrafficKind = MessageTrafficKind.Retrieval,
+            MessageToken = message,
+            ThreadToken = thread,
+            Ordinal = ordinal,
+            Element = ElementVocabulary.Threat,
+            Scorer = ElementScorers.PrototypeKnn,
+            ScorerVersion = ElementScorers.PrototypeKnnVersion,
+            Score = null,
+            NearestExemplarId = null,
+            Availability = ProxyWarningAvailability.NotProduced,
+            AvailabilityReason = reason,
+            ModelTag = "google/embeddinggemma-2",
+            PrefixVersion = "classification/1",
+            Dimension = 256,
+            VocabularyVersion = ElementVocabulary.Version,
+            ObservedAt = at,
+        };
+
     private static ProxySegmentationOutcome BatchOutcome(
         string message,
         string thread,
