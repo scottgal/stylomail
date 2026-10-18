@@ -653,6 +653,50 @@ public sealed class PolicyAuthoritativeEvaluatorTests
     }
 
     [Fact]
+    public async Task Older_absence_must_not_advance_the_fence_after_a_newer_successful_read()
+    {
+        var evaluator = NewControlledEvaluator(new FirstAbsentThenPack());
+        using var comparer = new PauseThirdFenceHash();
+        var field = typeof(PolicyAuthoritativeEvaluator).GetField(
+            "_fences",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var original = (System.Collections.IDictionary)field.GetValue(evaluator)!;
+        var instrumented = (System.Collections.IDictionary)Activator.CreateInstance(
+            field.FieldType,
+            [comparer])!;
+        var iterator = original.GetEnumerator();
+        while (iterator.MoveNext())
+        {
+            instrumented.Add(iterator.Key, iterator.Value);
+        }
+
+        comparer.Reset();
+        field.SetValue(evaluator, instrumented);
+
+        var old = Task.Run(() => evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now));
+        try
+        {
+            await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            var newer = await evaluator.EvaluateAsync(
+                PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+            Assert.Equal(PolicyAuthoritativeKind.Pack, newer.Kind);
+            Assert.Equal("2.0.0", newer.Record!.PackVersion);
+        }
+        finally
+        {
+            comparer.Release.Set();
+        }
+
+        Assert.Equal(PolicyAuthoritativeKind.Absent, (await old.WaitAsync(TimeSpan.FromSeconds(15))).Kind);
+        var cached = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+        Assert.True(
+            cached.Kind == PolicyAuthoritativeKind.Pack && cached.Record?.PackVersion == "2.0.0",
+            $"afterDelayedAbsent kind={cached.Kind}; version={cached.Record?.PackVersion ?? "NULL"}");
+    }
+
+    [Fact]
     public async Task An_empty_rule_set_is_an_unavailable_fallback_not_a_pack_decision()
     {
         var evaluator = new PolicyAuthoritativeEvaluator(
@@ -704,6 +748,65 @@ public sealed class PolicyAuthoritativeEvaluatorTests
             return Task.FromResult<PolicyPack?>(
                 PolicyFixtures.Pack(version: Interlocked.Increment(ref _calls) == 1 ? "1.0.0" : "2.0.0"));
         }
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
+    private sealed class PauseThirdFenceHash : IEqualityComparer<string>, IDisposable
+    {
+        private int _calls;
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ManualResetEventSlim Release { get; } = new(false);
+
+        public void Reset() => Interlocked.Exchange(ref _calls, 0);
+
+        public bool Equals(string? x, string? y) => StringComparer.Ordinal.Equals(x, y);
+
+        public int GetHashCode(string key)
+        {
+            if (Interlocked.Increment(ref _calls) == 3)
+            {
+                Started.SetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(15)))
+                {
+                    throw new TimeoutException("fence gate timed out");
+                }
+            }
+
+            return StringComparer.Ordinal.GetHashCode(key);
+        }
+
+        public void Dispose() => Release.Dispose();
+    }
+
+    private sealed class FirstAbsentThenPack : IPolicyPackReader
+    {
+        private int _calls;
+
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            Interlocked.Increment(ref _calls) switch
+            {
+                1 => Task.FromResult<PolicyPack?>(null),
+                2 => Task.FromResult<PolicyPack?>(PolicyFixtures.Pack(version: "2.0.0")),
+                _ => Task.FromException<PolicyPack?>(new InvalidOperationException("controlled outage")),
+            };
 
         public Task<PolicyPack?> GetVersionAsync(
             string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>

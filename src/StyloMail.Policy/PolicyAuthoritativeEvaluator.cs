@@ -121,7 +121,10 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
     /// </summary>
     private readonly ConcurrentDictionary<string, Fence> _fences = new(StringComparer.Ordinal);
 
-    /// <summary>Read-start ordinals, separate from the fence epoch. Completion order is not order.</summary>
+    /// <summary>
+    /// Read-start ordinals, mirrored for observability. Correctness uses the ordinal and mutation
+    /// version carried by the immutable fence entry, not this separate dictionary.
+    /// </summary>
     private readonly ConcurrentDictionary<string, long> _sequence = new(StringComparer.Ordinal);
 
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastObserved = new(StringComparer.Ordinal);
@@ -143,7 +146,7 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         {
             // Startup constructs exactly one fence per configured tenant/jurisdiction. A tenant
             // removed from config is absent on the next start; no assessment-path removal.
-            _fences[CacheKey(tenant, jurisdiction)] = new Fence(0, Absent: false);
+            _fences[CacheKey(tenant, jurisdiction)] = new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0);
         }
     }
 
@@ -167,10 +170,11 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         }
 
         var cacheKey = CacheKey(tenantId, jurisdiction);
-        _fences.AddOrUpdate(
-            cacheKey,
-            _ => new Fence(1, Absent: true),
-            (_, fence) => new Fence(fence.Generation + 1, Absent: true));
+        UpdateFence(cacheKey, fence => new Fence(
+            fence.Epoch + 1,
+            Absent: true,
+            fence.ReadOrdinal,
+            fence.Version + 1));
         _cache.TryRemove(cacheKey, out _);
         _lastObserved.TryRemove(tenantId, out _);
     }
@@ -195,8 +199,7 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         // A read ordinal is issued in start order, not install order. The fence epoch changes only
         // on invalidation or healthy absence. The newest-starting read wins even when an older one
         // completes first, and a delayed older read cannot overwrite it.
-        var epoch = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false)).Generation;
-        var generation = NextReadGeneration(cacheKey);
+        var (epoch, generation) = NextRead(cacheKey);
 
         PolicyPack? pack = null;
         PolicyRuleSet? ruleSet = null;
@@ -451,8 +454,8 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         PolicyRuleSet ruleSet,
         DateTimeOffset now)
     {
-        var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
-        if (fence.Generation != epoch)
+        var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+        if (fence.Epoch != epoch)
         {
             return;
         }
@@ -466,14 +469,16 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
             candidate,
             (_, existing) => generation > existing.ReadGeneration ? candidate : existing);
 
-        var publishedFence = _fences.AddOrUpdate(
+        var cleared = UpdateFenceIf(
             cacheKey,
-            _ => new Fence(epoch, Absent: false),
-            (_, current) => current.Generation == epoch
-                ? new Fence(epoch, Absent: false)
-                : current);
+            current => current.Epoch == epoch,
+            current => new Fence(
+                current.Epoch,
+                Absent: false,
+                current.ReadOrdinal,
+                current.Version + 1));
 
-        if (publishedFence.Generation != epoch || publishedFence.Absent)
+        if (cleared is null || cleared.Epoch != epoch || cleared.Absent)
         {
             // A newer epoch won while this read was publishing; the stale entry is not live.
             ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(
@@ -503,37 +508,94 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         long epoch,
         long generation)
     {
-        if (_sequence.GetOrAdd(cacheKey, 0) != generation)
+        var observed = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+        if (observed.Epoch != epoch || observed.ReadOrdinal != generation)
         {
             // A newer read has started; an older absence may not clear what it may publish.
             return;
         }
 
-        while (true)
+        if (!_fences.TryUpdate(
+                cacheKey,
+                new Fence(
+                    epoch + 1,
+                    Absent: true,
+                    observed.ReadOrdinal,
+                    observed.Version + 1),
+                observed))
         {
-            var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
-            if (fence.Generation != epoch)
-            {
-                return;
-            }
-
-            if (_fences.TryUpdate(cacheKey, new Fence(epoch + 1, Absent: true), fence))
-            {
-                break;
-            }
+            // Any newer fence mutation, including a same-epoch install, invalidates this absence.
+            return;
         }
 
         _cache.TryRemove(cacheKey, out _);
         _lastObserved.TryRemove(tenantId, out _);
     }
 
-    private long NextReadGeneration(string cacheKey) =>
-        _sequence.AddOrUpdate(cacheKey, 1, (_, current) => current + 1);
+    private (long Epoch, long Generation) NextRead(string cacheKey)
+    {
+        while (true)
+        {
+            var current = _fences.GetOrAdd(
+                cacheKey,
+                _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+            var next = current with
+            {
+                ReadOrdinal = current.ReadOrdinal + 1,
+                Version = current.Version + 1,
+            };
+
+            if (_fences.TryUpdate(cacheKey, next, current))
+            {
+                _sequence.AddOrUpdate(cacheKey, next.ReadOrdinal, (_, _) => next.ReadOrdinal);
+                return (next.Epoch, next.ReadOrdinal);
+            }
+        }
+    }
+
+    private Fence? UpdateFenceIf(
+        string cacheKey,
+        Func<Fence, bool> predicate,
+        Func<Fence, Fence> update)
+    {
+        while (true)
+        {
+            var current = _fences.GetOrAdd(
+                cacheKey,
+                _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+            if (!predicate(current))
+            {
+                return null;
+            }
+
+            var next = update(current);
+            if (_fences.TryUpdate(cacheKey, next, current))
+            {
+                return next;
+            }
+        }
+    }
+
+    private void UpdateFence(string cacheKey, Func<Fence, Fence> update)
+    {
+        while (true)
+        {
+            var current = _fences.GetOrAdd(
+                cacheKey,
+                _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+            if (_fences.TryUpdate(cacheKey, update(current), current))
+            {
+                return;
+            }
+        }
+    }
 
     private bool IsLive(string cacheKey, CacheEntry entry)
     {
-        var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
-        return !fence.Absent && fence.Generation == entry.Epoch;
+        var fence = _fences.GetOrAdd(
+            cacheKey,
+            _ => new Fence(0, Absent: false, ReadOrdinal: 0, Version: 0));
+        return !fence.Absent && fence.Epoch == entry.Epoch;
     }
 
     private static string CacheKey(string tenantId, string jurisdiction) => $"{tenantId}|{jurisdiction}";
@@ -556,5 +618,9 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         long Epoch,
         long ReadGeneration);
 
-    private sealed record Fence(long Generation, bool Absent);
+    private sealed record Fence(
+        long Epoch,
+        bool Absent,
+        long ReadOrdinal,
+        long Version);
 }
