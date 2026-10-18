@@ -189,15 +189,13 @@ Support in Phase 3:
   never legacy.
 - If the Review state is unavailable, the fallback candidate becomes Quarantine with
   `policy.review_state_unavailable`.
-- `PolicyContributed = ComposedAction != LegacyAction`. A fallback candidate can contribute when
-  legacy is Allow and cannot when legacy Reject/Quarantine/Defer wins; it is never hard-coded.
-- `Applied = PolicyContributed && Durable && !Shadow && Source != GlobalShadow &&
-  FinalAction != LegacyAction`. A fallback with legacy Allow and a durable Review applies; a
-  fallback overridden by legacy Reject/Defer/Quarantine does not. The console must not render a
-  fallback as shadow or no-policy; it renders the admission and action fields.
+- Fallback contribution and application follow the one canonical record definition in section 8.
+  A fallback with legacy Allow and a durable Review can apply; one overridden by legacy
+  Reject/Defer/Quarantine cannot. There is no fallback-specific `Applied` rule here.
 - Admission refusal: if acceptance was attempted and refused, the final action is Defer,
   `Admission = Refused`, `Durable = false`, `Applied = false`; policy evaluation never claims
-  durability it did not get. Pre-acceptance decisions have `Admission = NotAttempted`.
+  durability it did not get. Pre-acceptance decisions have `Admission = NotAttempted`. The full
+  field semantics are stated once, in section 8.
 
 ## 7. Cache
 
