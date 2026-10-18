@@ -286,7 +286,10 @@ public abstract class AccessProxySessionBase
                 .RunAsync(Client, backend, Bounds, TimeProvider, assembler ?? _observer, cancellationToken)
                 .ConfigureAwait(false);
 
-            return bounded ? SessionOutcome.Timeout : SessionOutcome.Relayed;
+            if (bounded == ProxyBoundReason.None) return SessionOutcome.Relayed;
+            try { (_contextSink as IProxySessionBoundSink)?.OnBound(bounded); }
+            catch (Exception) { /* Observational context cannot alter a relay outcome. */ }
+            return SessionOutcome.Timeout;
         }
     }
 

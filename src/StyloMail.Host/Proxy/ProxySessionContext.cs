@@ -6,7 +6,10 @@ namespace StyloMail.Host.Proxy;
 internal sealed record ProxySessionBinding(
     string SessionId,
     string TenantId,
-    ProxyListenerProtocol Protocol);
+    ProxyListenerProtocol Protocol)
+{
+    public ProxyBoundReason BoundReason { get; set; }
+}
 
 /// <summary>
 /// Ambient binding for the session currently executing.

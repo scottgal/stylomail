@@ -1,4 +1,5 @@
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Tests.Support;
 
 namespace StyloMail.AccessProxy.Tests;
@@ -115,7 +116,8 @@ public sealed class BoundsTests
         await harness.EnrolAppPasswordAccountAsync();
 
         var client = new PipeDuplex("client");
-        var run = harness.NewImapSession().RunAsync(client, CancellationToken.None);
+        var bound = new BoundRecorder();
+        var run = harness.NewImapSession(contextSink: bound).RunAsync(client, CancellationToken.None);
 
         await client.ReadLineAsync();
         await client.SendAsync($"a1 LOGIN {ProxyHarness.Login} {ProxyHarness.ClientPassword}\r\n");
@@ -125,6 +127,7 @@ public sealed class BoundsTests
         harness.Clock.Advance(TimeSpan.FromMinutes(6));
 
         Assert.Equal(SessionOutcome.Timeout, await run);
+        Assert.Equal(ProxyBoundReason.IdleTimeout, bound.Reason);
     }
 
     [Fact]
@@ -212,5 +215,12 @@ public sealed class BoundsTests
         }
 
         Assert.Equal(0, harness.Limiter.ActiveSessions);
+    }
+    private sealed class BoundRecorder : IProxySessionContextSink, IProxySessionBoundSink
+    {
+        public ProxyBoundReason Reason { get; private set; }
+        public void OnBound(ProxyBoundReason reason) => Reason = reason;
+        public ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset authenticatedAt, CancellationToken cancellationToken)
+            => ValueTask.CompletedTask;
     }
 }

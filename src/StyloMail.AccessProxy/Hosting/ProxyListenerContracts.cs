@@ -75,6 +75,12 @@ public interface IProxySessionContextSink
     ValueTask OnAuthenticatedAsync(string accountId, DateTimeOffset authenticatedAt, CancellationToken cancellationToken);
 }
 
+/// <summary>Optional in-memory notification of an actually observed session bound.</summary>
+public interface IProxySessionBoundSink
+{
+    void OnBound(ProxyBoundReason reason);
+}
+
 /// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>
 public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }

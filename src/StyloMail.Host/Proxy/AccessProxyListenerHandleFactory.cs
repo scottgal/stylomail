@@ -312,8 +312,8 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
             CancellationToken cancellationToken)
         {
             var sessionId = "ps_" + Guid.NewGuid().ToString("N");
-            ProxySessionContext.Current.Value =
-                new ProxySessionBinding(sessionId, tenantId, _options.Protocol);
+            var binding = new ProxySessionBinding(sessionId, tenantId, _options.Protocol);
+            ProxySessionContext.Current.Value = binding;
             await PublishAsync(new ProxySessionEvent
             {
                 Kind = ProxySessionEventKind.Opened,
@@ -362,7 +362,7 @@ public sealed class AccessProxyListenerHandleFactory : IProxyListenerHandleFacto
                     Direction = ProxySessionDirection.ClientToProxy,
                     Timestamp = _clock.GetUtcNow(),
                     Outcome = outcome,
-                    BoundReason = ProxyBoundReason.None,
+                    BoundReason = binding.BoundReason,
                 }).ConfigureAwait(false);
             }
         }

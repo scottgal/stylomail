@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Text;
+using StyloMail.AccessProxy.Hosting;
 
 namespace StyloMail.AccessProxy.Sessions;
 
@@ -200,7 +201,7 @@ internal sealed class ProtocolLineWriter
 internal static class ByteRelay
 {
     /// <returns>
-    /// True when the session ended because a bound fired rather than because a peer closed it.
+    /// The actual bound that fired, or None when a peer closed the relay.
     /// </returns>
     /// <remarks>
     /// The distinction is reported rather than swallowed because the two mean opposite things to an
@@ -208,7 +209,7 @@ internal static class ByteRelay
     /// had to be reclaimed, a client left open, or a provider that stopped answering. Collapsing
     /// them into "relayed" would hide the second inside the first.
     /// </remarks>
-    internal static async Task<bool> RunAsync(
+    internal static async Task<ProxyBoundReason> RunAsync(
         IDuplexChannel client,
         IDuplexChannel backend,
         AccessProxyBounds bounds,
@@ -217,16 +218,17 @@ internal static class ByteRelay
         CancellationToken cancellationToken)
     {
         using var session = new TimeoutScope(bounds.MaxSessionDuration, timeProvider, cancellationToken);
+        var close = new RelayClose(client, backend, session);
 
         var upstream = PumpAsync(
-            client.Input, backend.Output, bounds, timeProvider, observer: null, session.Token);
+            client.Input, backend.Output, bounds, timeProvider, observer: null, session.Token, close);
         var downstream = PumpAsync(
-            backend.Input, client.Output, bounds, timeProvider, observer, session.Token);
+            backend.Input, client.Output, bounds, timeProvider, observer, session.Token, close);
 
-        // Whichever direction finishes first ends the session; the other is cancelled rather than
-        // awaited, because a peer that has gone away will never close its own half.
+        // Whichever direction finishes first ends the session. Cancel and close both channels,
+        // then await both pumps so no asynchronous I/O can outlive its pooled buffer.
         await Task.WhenAny(upstream, downstream).ConfigureAwait(false);
-        session.Cancel();
+        await close.CloseAsync().ConfigureAwait(false);
 
         var upstreamBounded = await Observe(upstream).ConfigureAwait(false);
         var downstreamBounded = await Observe(downstream).ConfigureAwait(false);
@@ -235,7 +237,8 @@ internal static class ByteRelay
         // as cancellation rather than as a timeout exception. Note this asks whether the *deadline*
         // elapsed, not whether the linked token is cancelled, the latter is also true when we
         // cancelled deliberately because a peer closed, which is not a bound firing at all.
-        return upstreamBounded || downstreamBounded || session.DeadlineElapsed;
+        return upstreamBounded || downstreamBounded ? ProxyBoundReason.IdleTimeout
+            : session.DeadlineElapsed ? ProxyBoundReason.MaximumDuration : ProxyBoundReason.None;
     }
 
     private static async Task PumpAsync(
@@ -244,7 +247,7 @@ internal static class ByteRelay
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, RelayClose close)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(bounds.RelayBufferBytes);
         try
@@ -254,10 +257,8 @@ internal static class ByteRelay
                 int read;
                 try
                 {
-                    read = await from
-                        .ReadAsync(buffer.AsMemory(0, bounds.RelayBufferBytes), cancellationToken)
-                        .AsTask()
-                        .WaitAsync(bounds.IdleTimeout, timeProvider, cancellationToken)
+                    read = await WithIdleAsync(token => from.ReadAsync(buffer.AsMemory(0, bounds.RelayBufferBytes), token).AsTask(),
+                        bounds, timeProvider, cancellationToken, close)
                         .ConfigureAwait(false);
                 }
                 catch (TimeoutException ex)
@@ -276,8 +277,18 @@ internal static class ByteRelay
                 // wants to keep. Called synchronously, see IRetrievalObserver for why.
                 Observe(bytes: buffer.AsSpan(0, read), observer: observer);
 
-                await to.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                await to.FlushAsync(cancellationToken).ConfigureAwait(false);
+                // Each completed bounded write is progress. Reset for the next write/flush,
+                // rather than timing the entire transfer, which may legitimately be much longer.
+                await WithIdleAsync(async token =>
+                {
+                    await to.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                    return true;
+                }, bounds, timeProvider, cancellationToken, close).ConfigureAwait(false);
+                await WithIdleAsync(async token =>
+                {
+                    await to.FlushAsync(token).ConfigureAwait(false);
+                    return true;
+                }, bounds, timeProvider, cancellationToken, close).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -286,7 +297,59 @@ internal static class ByteRelay
         }
         finally
         {
+            await close.CloseAsync().ConfigureAwait(false);
             ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+        }
+    }
+
+    private static async Task<T> WithIdleAsync<T>(Func<CancellationToken, Task<T>> operation,
+        AccessProxyBounds bounds, TimeProvider clock, CancellationToken cancellationToken, RelayClose close)
+    {
+        using var idle = new TimeoutScope(bounds.IdleTimeout, clock, cancellationToken);
+        var pending = operation(idle.Token);
+        try { return await pending.WaitAsync(idle.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            var expired = idle.DeadlineElapsed && !cancellationToken.IsCancellationRequested;
+            await close.CloseAsync().ConfigureAwait(false);
+            // Cancellation of a wait is not cancellation of its I/O. Close the real streams and
+            // observe actual settlement before the pump can return the array to the pool.
+            try { await pending.ConfigureAwait(false); }
+            catch (Exception exception) when (exception is OperationCanceledException or IOException or ObjectDisposedException) { }
+            if (expired) throw new AccessProxyTimeoutException("Relay made no I/O progress within its idle bound.");
+            throw;
+        }
+    }
+
+    private sealed class RelayClose(IDuplexChannel client, IDuplexChannel backend, TimeoutScope session)
+    {
+        private readonly object _gate = new();
+        private Task? _closing;
+        public Task CloseAsync()
+        {
+            TaskCompletionSource completion;
+            lock (_gate)
+            {
+                if (_closing is not null) return _closing;
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _closing = completion.Task;
+            }
+            _ = CloseCoreAsync(completion);
+            return completion.Task;
+        }
+        private async Task CloseCoreAsync(TaskCompletionSource completion)
+        {
+            try
+            {
+                try { session.Cancel(); } catch (Exception) { }
+                await Task.WhenAll(DisposeAsync(client), DisposeAsync(backend)).ConfigureAwait(false);
+            }
+            finally { completion.TrySetResult(); }
+        }
+        private static async Task DisposeAsync(IDuplexChannel channel)
+        {
+            try { await channel.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception) { /* Both channels must be closed even if one close fails. */ }
         }
     }
 
@@ -349,5 +412,6 @@ internal static class ByteRelay
             // A peer that vanished mid-write. The session is over either way.
             return false;
         }
+        catch (ObjectDisposedException) { return false; }
     }
 }
