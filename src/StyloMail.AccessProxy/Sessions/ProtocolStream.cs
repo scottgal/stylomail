@@ -215,18 +215,20 @@ internal static class ByteRelay
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action? onBufferAbandoned = null, ArrayPool<byte>? buffers = null)
     {
         using var session = new TimeoutScope(bounds.MaxSessionDuration, timeProvider, cancellationToken);
-        var close = new RelayClose(client, backend, session);
+        var close = new RelayClose(client, backend, session, onBufferAbandoned);
+        buffers ??= ArrayPool<byte>.Shared;
 
         var upstream = PumpAsync(
-            client.Input, backend.Output, bounds, timeProvider, observer: null, session.Token, close);
+            client.Input, backend.Output, bounds, timeProvider, observer: null, session.Token, close, buffers);
         var downstream = PumpAsync(
-            backend.Input, client.Output, bounds, timeProvider, observer, session.Token, close);
+            backend.Input, client.Output, bounds, timeProvider, observer, session.Token, close, buffers);
 
         // Whichever direction finishes first ends the session. Cancel and close both channels,
-        // then await both pumps so no asynchronous I/O can outlive its pooled buffer.
+        // then settle both pumps. Non-settling I/O keeps its array out of the pool.
         await Task.WhenAny(upstream, downstream).ConfigureAwait(false);
         await close.CloseAsync().ConfigureAwait(false);
 
@@ -247,9 +249,10 @@ internal static class ByteRelay
         AccessProxyBounds bounds,
         TimeProvider timeProvider,
         IRetrievalObserver? observer,
-        CancellationToken cancellationToken, RelayClose close)
+        CancellationToken cancellationToken, RelayClose close, ArrayPool<byte> buffers)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(bounds.RelayBufferBytes);
+        var buffer = buffers.Rent(bounds.RelayBufferBytes);
+        var ownership = new BufferOwnership();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -258,7 +261,7 @@ internal static class ByteRelay
                 try
                 {
                     read = await WithIdleAsync(token => from.ReadAsync(buffer.AsMemory(0, bounds.RelayBufferBytes), token).AsTask(),
-                        bounds, timeProvider, cancellationToken, close)
+                        bounds, timeProvider, cancellationToken, close, ownership)
                         .ConfigureAwait(false);
                 }
                 catch (TimeoutException ex)
@@ -283,12 +286,12 @@ internal static class ByteRelay
                 {
                     await to.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
                     return true;
-                }, bounds, timeProvider, cancellationToken, close).ConfigureAwait(false);
+                }, bounds, timeProvider, cancellationToken, close, ownership).ConfigureAwait(false);
                 await WithIdleAsync(async token =>
                 {
                     await to.FlushAsync(token).ConfigureAwait(false);
                     return true;
-                }, bounds, timeProvider, cancellationToken, close).ConfigureAwait(false);
+                }, bounds, timeProvider, cancellationToken, close, ownership).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -298,12 +301,12 @@ internal static class ByteRelay
         finally
         {
             await close.CloseAsync().ConfigureAwait(false);
-            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+            if (ownership.Returnable) buffers.Return(buffer, clearArray: true);
         }
     }
 
     private static async Task<T> WithIdleAsync<T>(Func<CancellationToken, Task<T>> operation,
-        AccessProxyBounds bounds, TimeProvider clock, CancellationToken cancellationToken, RelayClose close)
+        AccessProxyBounds bounds, TimeProvider clock, CancellationToken cancellationToken, RelayClose close, BufferOwnership ownership)
     {
         using var idle = new TimeoutScope(bounds.IdleTimeout, clock, cancellationToken);
         var pending = operation(idle.Token);
@@ -313,18 +316,42 @@ internal static class ByteRelay
             var expired = idle.DeadlineElapsed && !cancellationToken.IsCancellationRequested;
             await close.CloseAsync().ConfigureAwait(false);
             // Cancellation of a wait is not cancellation of its I/O. Close the real streams and
-            // observe actual settlement before the pump can return the array to the pool.
-            try { await pending.ConfigureAwait(false); }
+            // bound actual settlement too. A live owner keeps the array; no clear or pool return.
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+            catch (TimeoutException)
+            {
+                if (!pending.IsCompleted)
+                {
+                    ownership.Returnable = false;
+                    close.ReportAbandonment();
+                    _ = ObserveDetachedAsync(pending);
+                }
+            }
             catch (Exception exception) when (exception is OperationCanceledException or IOException or ObjectDisposedException) { }
             if (expired) throw new AccessProxyTimeoutException("Relay made no I/O progress within its idle bound.");
             throw;
         }
     }
 
-    private sealed class RelayClose(IDuplexChannel client, IDuplexChannel backend, TimeoutScope session)
+    private sealed class BufferOwnership { public bool Returnable { get; set; } = true; }
+
+    private static async Task ObserveDetachedAsync(Task pending)
+    {
+        try { await pending.ConfigureAwait(false); }
+        catch (Exception) { /* The ended session no longer owns this operation or its array. */ }
+    }
+
+    private sealed class RelayClose(IDuplexChannel client, IDuplexChannel backend, TimeoutScope session, Action? onBufferAbandoned)
     {
         private readonly object _gate = new();
         private Task? _closing;
+        private int _abandonmentReported;
+        public void ReportAbandonment()
+        {
+            if (Interlocked.Exchange(ref _abandonmentReported, 1) != 0) return;
+            try { onBufferAbandoned?.Invoke(); }
+            catch (Exception) { /* Diagnostics cannot keep an ended session alive. */ }
+        }
         public Task CloseAsync()
         {
             TaskCompletionSource completion;

@@ -81,6 +81,12 @@ public interface IProxySessionBoundSink
     void OnBound(ProxyBoundReason reason);
 }
 
+/// <summary>Optional content-free diagnostic when closed I/O retains a relay buffer.</summary>
+public interface IProxyRelayBufferSink
+{
+    void OnRelayBufferAbandoned();
+}
+
 /// <summary>Message traffic category, distinct from <see cref="ProxySessionDirection"/> transport flow.</summary>
 public enum MessageTrafficKind { Retrieval, Submission }
 public enum ProxyWarningMarkerKind { AuthenticationFailed, LinkDomainMismatch, DisplayNameMismatch, AttachmentTypeMismatch }

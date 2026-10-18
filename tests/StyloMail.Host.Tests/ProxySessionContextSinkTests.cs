@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.Host.Proxy;
 
@@ -10,6 +11,25 @@ namespace StyloMail.Host.Tests;
 /// </summary>
 public sealed class ProxySessionContextSinkTests
 {
+    [Fact]
+    public void An_abandoned_relay_buffer_emits_one_content_free_warning()
+    {
+        var logger = new RecordingLogger();
+        var sink = new ProxySessionContextSink(new RecordingAuthenticator(), logger);
+        ((IProxyRelayBufferSink)sink).OnRelayBufferAbandoned();
+        Assert.Equal(LogLevel.Warning, Assert.Single(logger.Lines).Level);
+        Assert.Equal("Closed relay I/O did not settle within one second; its buffer was abandoned without clearing or pooling.", logger.Lines.Single().Text);
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<(LogLevel Level, string Text)> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Lines.Add((logLevel, formatter(state, exception)));
+    }
+
     [Fact]
     public async Task The_sink_attributes_the_account_to_the_ambient_session()
     {

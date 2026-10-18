@@ -1,4 +1,6 @@
 using System.Net;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Reflection;
 using StyloMail.AccessProxy.Hosting;
@@ -8,6 +10,36 @@ namespace StyloMail.AccessProxy.Tests;
 
 public sealed class RelayOutputIdleTests
 {
+    [Fact]
+    public async Task Dispose_that_does_not_settle_a_write_releases_the_slot_without_clearing_or_pooling_its_array()
+    {
+        await using var fixture = await Fixture.Create(TimeSpan.FromMilliseconds(200), nonsettlingWrite: true);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var heartbeat = Heartbeat(fixture, stop.Token);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var expected = new byte[] { 41 };
+        try
+        {
+            await fixture.BackendPeer.GetStream().WriteAsync(expected, stop.Token);
+            await fixture.Output.WriteEntered.Task.WaitAsync(stop.Token);
+            Assert.Equal(ProxyBoundReason.IdleTimeout, await fixture.Finished.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+            Assert.InRange(watch.Elapsed, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3));
+            await fixture.AssertReleased();
+            Assert.True(fixture.Output.Disposed);
+            Assert.Equal(1, fixture.Output.Pending);
+            Assert.Equal(expected, fixture.Output.CapturedWrite.ToArray());
+            Assert.Equal(1, fixture.AbandonmentLogs);
+            Assert.Equal(2, fixture.Buffers!.Rented.Count);
+            Assert.Single(fixture.Buffers.Returned);
+            Assert.True(System.Runtime.InteropServices.MemoryMarshal.TryGetArray(fixture.Output.CapturedWrite, out var memory));
+            Assert.DoesNotContain(memory.Array!, fixture.Buffers.Returned);
+        }
+        finally { fixture.Output.ReleaseWrite.TrySetResult(); stop.Cancel(); await Drain(heartbeat); }
+        await Until(() => fixture.Output.Pending == 0);
+        Assert.Single(fixture.Buffers!.Returned);
+        Assert.Equal(expected, fixture.Output.CapturedWrite.ToArray());
+    }
+
     [Fact]
     public async Task Nonreading_real_tcp_peer_times_out_a_pending_write_and_releases_socket_owners()
     {
@@ -119,12 +151,15 @@ public sealed class RelayOutputIdleTests
         public TcpClient BackendPeer { get; } = new(AddressFamily.InterNetwork) { NoDelay = true };
         public TaskCompletionSource<ProxyBoundReason> Finished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TrackedOutput Output { get; private set; } = null!;
+        public RecordingPool? Buffers { get; private set; }
+        public int AbandonmentLogs;
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TcpAccessProxyListener _listener = null!;
         private SessionLimiter _limiter = null!;
-        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false)
+        public static async Task<Fixture> Create(TimeSpan idle, bool stallFlush = false, bool nonsettlingWrite = false)
         {
             var fixture = new Fixture();
+            if (nonsettlingWrite) fixture.Buffers = new RecordingPool();
             var bounds = new AccessProxyBounds { IdleTimeout = idle, MaxSessionDuration = TimeSpan.FromSeconds(20), MaxConcurrentSessions = 1, MaxSessionsPerAccount = 1, RelayBufferBytes = 4096 };
             fixture._limiter = new SessionLimiter(bounds);
             var backendListener = new TcpListener(IPAddress.Loopback, 0);
@@ -140,13 +175,14 @@ public sealed class RelayOutputIdleTests
             {
                 ((NetworkStream)raw.Input).Socket.SendBufferSize = 64 * 1024;
                 ((NetworkStream)raw.Input).Socket.NoDelay = true;
-                fixture.Output = new TrackedOutput(raw.Output, stallFlush);
+                fixture.Output = new TrackedOutput(raw.Output, stallFlush, nonsettlingWrite);
                 await using var clientChannel = new StreamDuplexChannel(raw.Input, fixture.Output, "test-client");
                 await using var backendChannel = new StreamDuplexChannel(backend.GetStream(), backend.GetStream(), "test-backend");
                 fixture._started.TrySetResult();
                 try
                 {
-                    var reason = await ByteRelay.RunAsync(clientChannel, backendChannel, bounds, TimeProvider.System, null, token);
+                    var reason = await ByteRelay.RunAsync(clientChannel, backendChannel, bounds, TimeProvider.System, null, token,
+                        () => Interlocked.Increment(ref fixture.AbandonmentLogs), fixture.Buffers);
                     fixture.Finished.TrySetResult(reason);
                     return reason == ProxyBoundReason.None ? SessionOutcome.Relayed : SessionOutcome.Timeout;
                 }
@@ -183,8 +219,19 @@ public sealed class RelayOutputIdleTests
         }
     }
 
-    private sealed class TrackedOutput(Stream inner, bool stallFlush) : Stream
+    private sealed class RecordingPool : ArrayPool<byte>
     {
+        public ConcurrentQueue<byte[]> Rented { get; } = new();
+        public ConcurrentQueue<byte[]> Returned { get; } = new();
+        public override byte[] Rent(int minimumLength) { var buffer = new byte[minimumLength]; Rented.Enqueue(buffer); return buffer; }
+        public override void Return(byte[] array, bool clearArray = false) { if (clearArray) Array.Clear(array); Returned.Enqueue(array); }
+    }
+
+    private sealed class TrackedOutput(Stream inner, bool stallFlush, bool nonsettlingWrite) : Stream
+    {
+        public TaskCompletionSource WriteEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ReadOnlyMemory<byte> CapturedWrite { get; private set; }
         private int _pending, _disposed, _writes, _completed, _canceled;
         public int Writes => Volatile.Read(ref _writes);
         public int Completed => Volatile.Read(ref _completed);
@@ -205,7 +252,13 @@ public sealed class RelayOutputIdleTests
             using var registration = cancellationToken.Register(() => Interlocked.Increment(ref _canceled));
             try
             {
-                await inner.WriteAsync(buffer, cancellationToken);
+                if (nonsettlingWrite)
+                {
+                    CapturedWrite = buffer;
+                    WriteEntered.TrySetResult();
+                    await ReleaseWrite.Task; // Neither cancellation nor Dispose settles this public seam.
+                }
+                else await inner.WriteAsync(buffer, cancellationToken);
                 Interlocked.Exchange(ref _lastCompleted, System.Diagnostics.Stopwatch.GetTimestamp());
                 Interlocked.Increment(ref _completed);
             }

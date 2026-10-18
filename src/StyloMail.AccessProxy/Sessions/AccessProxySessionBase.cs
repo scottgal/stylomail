@@ -283,7 +283,8 @@ public abstract class AccessProxySessionBase
             await WriteAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
 
             var bounded = await ByteRelay
-                .RunAsync(Client, backend, Bounds, TimeProvider, assembler ?? _observer, cancellationToken)
+                .RunAsync(Client, backend, Bounds, TimeProvider, assembler ?? _observer, cancellationToken,
+                    _contextSink is IProxyRelayBufferSink bufferSink ? bufferSink.OnRelayBufferAbandoned : null)
                 .ConfigureAwait(false);
 
             if (bounded == ProxyBoundReason.None) return SessionOutcome.Relayed;
