@@ -20,8 +20,16 @@ StyloMail:
 ```
 
 - Absence of the tenant key, or an empty map, means authoritative mode is **off** for that tenant.
-  A flag-off tenant is gated **before** any pack, rule-set, Profiles, cache or status access. A
-  throwing dependency is never called for it.
+  **No pack work happens only when both pack paths are off.** The dependency gate is a matrix:
+  - Authoritative off and shadow off: no pack, rule-set, Profiles, cache, binding or status access.
+  - Authoritative off and shadow on: the existing separate shadow evaluator still reads the pack and
+    rule set and records its `Shadow` result. Authoritative-only dependencies (Profiles, bindings,
+    effective resolver, status/cache writes) are not touched.
+  - Authoritative on for the tenant: the authoritative path runs. The separate shadow evaluator is
+    not run for that assessment; one pack evaluation produces one record. If both flags are on,
+    the authoritative record supersedes the shadow record for that tenant rather than emitting two.
+  - `AssessmentContext.ShadowMode` is a third, independent switch and wins over both (section 2).
+  A flag-off tenant with both paths off never calls a throwing dependency.
 - A present tenant with a blank jurisdiction is a startup fault, not silent legacy.
 - The resolution is typed, not nullable:
 
@@ -89,9 +97,16 @@ and are not capped.
   legacy and pack deadlines governs; a pack Hold never extends a legacy hold.
 - **MonitorAllMail is not a pack verdict.** It remains an operator capability, observe-only.
 - **Block is not executable in v1.** The evaluator and composer cannot produce it.
-- **No executable mapping fails closed.** A Review that cannot be admitted becomes Quarantine with
-  `policy.review_state_unavailable`; any other unmappable composed action becomes Quarantine. It is
-  never Allow and never Defer in the policy layer.
+- **Review unsupported is decided before admission.** If the durable Review capability or schema is
+  unavailable, do not attempt a Review admission: compose Quarantine instead with
+  `policy.review_state_unavailable`. That is a capability decision, not a failed write.
+- **A Review admission that is actually refused is a Defer, not a phantom Quarantine.** If Review was
+  selected and `AcceptAsync` fails on spool, storage or another acceptance condition, the final
+  action is Defer with `policy.review_admission_refused`, `AdmissionOutcome = Refused`,
+  `Durable = false`, and no durable review or quarantine claimed. The queue's acceptance contract
+  guarantees no queue id on refusal; no retry-as-Quarantine is attempted for a typed admission
+  failure.
+- Any other unmappable composed action becomes Quarantine. It is never Allow in the policy layer.
 
 ## 4. Profiles: conditional uncertainty, not a global outage
 
@@ -198,15 +213,22 @@ The cache owns an immutable **pack + live rule-set version pair**, keyed by
 
 ```csharp
 public PolicySource Source { get; init; }          // Pack | Shadow | Fallback | GlobalShadow
-public bool Applied { get; init; }                  // final action changed and admission succeeded
-public MailAction? LegacyAction { get; init; }
-public MailAction? ComposedAction { get; init; }
+public bool PolicyContributed { get; init; }        // composed action differs from legacy
+public bool Applied { get; init; }                  // composed action actually applied
+public bool Durable { get; init; }                  // admission succeeded
+public AdmissionOutcome Admission { get; init; }    // Admitted | Refused | NotApplicableForAssessmentOnly
 public bool Authoritative { get; init; }            // true only when the tenant flag was on and a pack ran
+public bool Shadow { get; init; }
+public bool FallbackAttempted { get; init; }
 public bool PackUnavailable { get; init; }
 public string? FallbackReason { get; init; }
-public bool AdmissionRefused { get; init; }
+public bool ReviewStateUnavailable { get; init; }
+public bool ReviewAdmissionRefused { get; init; }
 public bool PropertyFactsUnavailable { get; init; }
 public IReadOnlyList<string> MissingPropertyKeys { get; init; }
+public MailAction? LegacyAction { get; init; }
+public MailAction? ComposedAction { get; init; }
+public MailAction? FinalAction { get; init; }
 public PolicyEffectiveInputSnapshot? EffectiveInput { get; init; }
 public string? EffectiveInputDigest { get; init; }
 ```
@@ -220,22 +242,50 @@ produce the same effective-input digest.
 
 For a fallback record, `PackId`, `PackVersion`, `RuleSetId`, `RuleSetVersion`, `ScorerVersion`,
 `DecidingRuleId` and `DecidingRuleVersion` are null. Null means unavailable, never an empty value;
-the existing record fields that are `required` strings become nullable in this slice. The queue
-opening row likewise gains nullable pack provenance and `OpeningSource` (`pack` or `fallback`), with
-a migration; it does not store empty strings as if they were versions.
+the existing record fields that are `required` strings become nullable in this slice.
 
-- `Source = Pack`, `Authoritative = true`, `Shadow = false` on the normal path.
-- `Source = Shadow`, `Applied = false`, `Authoritative = false` on the pack shadow path.
-- `Source = GlobalShadow`, `Applied = false`, `Shadow = true`, `Authoritative = true` when the
-  global shadow mode wins.
-- `Source = Fallback`, `Applied` per the final action, `Authoritative = false`, `Shadow = false`,
-  null pack provenance as in section 6.
+The queue opening row gains `opening_source` and a tagged invariant:
+
+```
+opening_source = 'pack':
+    pack_id, pack_version, rule_set_id, rule_set_version, reason, evidence_digest are NOT NULL
+    unavailable_reason IS NULL
+opening_source = 'fallback':
+    pack_id, pack_version, rule_set_id, rule_set_version, rule_id, evidence_digest ARE NULL
+    unavailable_reason IS NOT NULL, fallback deadline IS NOT NULL
+```
+
+No mixed row is legal: a CHECK (or the application-level equivalent with the same predicate)
+enforces it. Existing rows that have an opening event migrate to `opening_source = 'pack'`; rows with
+no opening remain `legacy_review_opening_missing` and are never reclassified as fallback. A populated
+pre-migration fixture proves the backfill and the CHECK, and a failed event insertion rolls the
+opening and state back atomically.
+
+- `PolicyContributed = composedAction != legacyAction`. A fallback candidate overridden by a legacy
+  Reject/Defer/Quarantine has `FallbackAttempted = true` but `PolicyContributed = false`.
+- `Applied = PolicyContributed && Durable`. It is computed after composition and admission, never
+  from `Source`.
+- `Durable = AdmissionOutcome == Admitted`. On a refused submission it is false and `Applied` is
+  false even if the composed action was more protective.
+- `AssessmentOnly`: `Admission = NotApplicableForAssessmentOnly`, `Durable = false`, `Applied =
+  false`; the assessment's action is still the composed action for explanation, but nothing was
+  applied to delivery.
+- `Source = Pack`, `Authoritative = true`, `Shadow = false`, `FallbackAttempted = false` on the
+  normal path.
+- `Source = Shadow`, `Authoritative = false`, `Shadow = true`, `Applied = false` on the pack shadow
+  path.
+- `Source = GlobalShadow`, `Authoritative = true`, `Shadow = true`, `Applied = false`,
+  `PolicyContributed` computed from the composed/legacy pair but never applied.
+- `Source = Fallback`, `Authoritative = false`, `Shadow = false`, `FallbackAttempted = true`,
+  null pack provenance as in section 6; `PolicyContributed` and `Applied` are computed, not
+  hard-coded.
 - Null `Policy` still means no pack was active **or the path was not entered**; it is never Permit.
-  `Source` is the discriminator, not the booleans alone.
-- `Applied = false` means the action did not change, not "the pack agreed": a pack Permit beside a
-  legacy Reject, or a pack Review overridden by legacy Quarantine, is not agreement. Console copy
-  preserves the recorded verdict: "Pack verdict Quarantine; legacy Quarantine preserved; action
-  unchanged."
+  `Source` plus the flags is the discriminator.
+- `Applied = false` means no policy intervention took effect. It does not mean "the pack agreed":
+  a pack Permit beside a legacy Reject, a pack Review overridden by legacy Quarantine, an
+  assessment-only run, or a refused admission all read false for different reasons. The record's
+  `LegacyAction`, `ComposedAction`, `FinalAction` and `Admission` state which. Console copy preserves
+  the recorded verdict and says which case it is.
 - The record travels in the existing assessment JSON; no new table.
 
 ## 9. Legacy parity
@@ -255,7 +305,11 @@ Parity is against a **pinned legacy reference**, not two calls through the new p
 ## 10. Tests
 
 Enablement/absence:
-- Flag off with throwing Profiles/cache/status fakes: legacy baseline, zero dependency calls.
+- Full authoritative/shadow matrix with dependency-call counters: both off makes no calls; shadow
+  only runs the shadow evaluator and changes only `Policy`; authoritative only runs the
+  authoritative path; both on emits one authoritative record.
+- Flag off with both paths off and throwing Profiles/cache/status fakes: legacy baseline, zero
+  dependency calls.
 - Flag on, healthy no pack: legacy decision.
 - Flag on, pack/rule exception/timeout/malformed: fallback Review, never legacy; missing rule set is
   Unavailable, not Absent.
@@ -277,13 +331,25 @@ Profiles:
 Deadlines/admission:
 - Pack Hold sets the deadline from `HoldWindow`; legacy Hold deadline is never extended.
 - No-cache fallback has a 24h Review deadline, null pack provenance, `OpeningSource=fallback`.
-- Successful admission after a pack Review; refused admission ends in Defer with `Applied=false`,
-  `AdmissionRefused=true`.
+- Fallback against every legacy outcome: legacy Reject/Defer/Quarantine win and
+  `PolicyContributed=false`; fallback Review against Allow contributes and applies only when
+  admitted.
+- Successful admission after a pack Review: `Applied=true`, `Durable=true`, `Admission=Admitted`.
+- Refused admission ends in Defer with `Applied=false`, `Durable=false`, `Admission=Refused`; actual
+  queue state shows zero admissions.
+- AssessmentOnly: `Applied=false`, `Durable=false`, `Admission=NotApplicableForAssessmentOnly`.
+- Review capability unsupported before admission composes Quarantine with
+  `policy.review_state_unavailable`; a Review admission refused on spool storage ends in Defer with
+  `policy.review_admission_refused`, never a claimed durable review or quarantine.
 - Absolute deadlines are identical across record, opening, queue and readback.
 
 Bindings:
 - Minor + less protective binding: property floor survives.
 - Two equal-specificity bindings in reversed enumeration order resolve identically.
+- Tagged opening migration: populated pre-migration pack openings remain pack; old rows without an
+  opening read `legacy_review_opening_missing`; a valid fallback opening has null pack/rule/digest and
+  a named reason and deadline; a pack opening with null versions is refused; a failed event insert
+  rolls back the opening and state atomically.
 - Deadline just before/at expiry for `RevertToPack` and `HoldForReview`; expired HoldForReview still
   withholds.
 - Revoked binding, wrong tenant, wrong pack version.
@@ -305,7 +371,7 @@ Replay/cache/parity:
 | Core record and snapshot types | `policy-` with `overview-` approval |
 | Profiles reference and property adapter | `policy-` (reads only) |
 | Host config, pack/rule cache, status route, `IPolicyBindingReader` | **`policy-` for this slice** (ruling e), with `review-` verifying the Host code; hand back when `ingress-` returns |
-| Review surface and queue | landed; unchanged |
+| Review surface and queue | landed; **this revision extends the queue only with the tagged fallback opening** (`opening_source`, nullable fallback provenance) under `policy-` temporary ownership (overview ruling), with `review-` verification |
 | Console panels and copy | `desktop-` |
 
 ## Desktop needs
