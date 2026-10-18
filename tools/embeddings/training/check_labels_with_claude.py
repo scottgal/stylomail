@@ -102,7 +102,17 @@ def main() -> int:
         raise SystemExit("REFUSING: no claude CLI on PATH")
     version = subprocess.run([claude, "--version"], capture_output=True, text=True).stdout.strip()
 
-    rows = [json.loads(line) for line in args.labels.read_text(encoding="utf-8").splitlines() if line.strip()][: args.rows]
+    all_rows = [json.loads(line) for line in args.labels.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # Stratified: alternate labelled and unlabelled rows so an agreement figure is not dominated by
+    # the easier empty case. The caller sees n and the split in the output.
+    labelled = [row for row in all_rows if row.get("labels")]
+    unlabelled = [row for row in all_rows if not row.get("labels")]
+    rows = []
+    while len(rows) < args.rows and (labelled or unlabelled):
+        if labelled:
+            rows.append(labelled.pop(0))
+        if unlabelled and len(rows) < args.rows:
+            rows.append(unlabelled.pop(0))
     results = []
     for row in rows:
         prompt = TEMPLATE.format(definitions=DEFINITIONS, exclusions=EXCLUSIONS, segment=row["text"])
@@ -125,6 +135,8 @@ def main() -> int:
     agreements = sum(1 for row in results if row["agree"])
     document = {
         "rows": len(results),
+        "labelled_rows": sum(1 for row in results if row["teacher"]),
+        "unlabelled_rows": sum(1 for row in results if not row["teacher"]),
         "agreement": round(agreements / len(results), 4) if results else None,
         "transport": "headless Claude CLI, 20 sample segments only; no other corpus text left the machine",
         "claude_cli_version": version,
