@@ -55,27 +55,29 @@ public sealed class HostingAndThreadingTests
     {
         using var certificate = CreateCertificate();
         var sessions = 0;
+        var events = new Events();
         await using var service = new ProxyListenerHostedService(new ProxyListenerOptions
         {
             TenantId = "tenant", BindAddress = IPAddress.Loopback, Port = 0,
             Protocol = ProxyListenerProtocol.Imap, TlsPolicy = ProxyTlsPolicy.Required,
             CertificateReference = "test-certificate", Enabled = true,
-        }, new FixedCertificateResolver(certificate), new Events(), async (_, channel, _) =>
+        }, new FixedCertificateResolver(certificate), events, async (_, channel, _) =>
         {
             Interlocked.Increment(ref sessions);
-            await channel.Output.WriteAsync("* OK secure retrieval\r\n"u8, CancellationToken.None);
+            await channel.Output.WriteAsync("* OK secure retrieval\r\n"u8.ToArray(), CancellationToken.None);
             await channel.Output.FlushAsync(CancellationToken.None);
             return SessionOutcome.ClientDisconnected;
         }, TimeProvider.System);
         await service.StartAsync(CancellationToken.None);
-        var port = service.BoundPort;
+        var port = Assert.Single(events.ListenerEvents).BoundPort
+            ?? throw new InvalidOperationException("Started listener event omitted its bound port.");
 
         try
         {
             using (var plaintext = new TcpClient())
             {
                 await plaintext.ConnectAsync(IPAddress.Loopback, port);
-                await plaintext.GetStream().WriteAsync("a1 LOGIN user password\r\n"u8);
+                await plaintext.GetStream().WriteAsync("a1 LOGIN user password\r\n"u8.ToArray());
                 using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
                 try
                 {
@@ -93,7 +95,10 @@ public sealed class HostingAndThreadingTests
             await tlsClient.ConnectAsync(IPAddress.Loopback, port);
             await using var tls = new SslStream(tlsClient.GetStream(), leaveInnerStreamOpen: false,
                 (_, _, _, _) => true);
-            await tls.AuthenticateAsClientAsync("localhost", CancellationToken.None);
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "localhost",
+            }, CancellationToken.None);
             var greeting = new byte[32];
             var greetingLength = await tls.ReadAsync(greeting, CancellationToken.None);
             Assert.StartsWith("* OK", System.Text.Encoding.UTF8.GetString(greeting, 0, greetingLength), StringComparison.Ordinal);
@@ -115,7 +120,12 @@ public sealed class HostingAndThreadingTests
     private sealed class Tokens : IThreadTokenDeriver { public string Derive(string tenantId, string value) => "token:" + value; }
     private sealed class Certificates : IProxyCertificateResolver { public ValueTask<X509Certificate2?> ResolveAsync(string r, CancellationToken c) => ValueTask.FromResult<X509Certificate2?>(null); }
     private sealed class FixedCertificateResolver(X509Certificate2 certificate) : IProxyCertificateResolver { public ValueTask<X509Certificate2?> ResolveAsync(string r, CancellationToken c) => ValueTask.FromResult<X509Certificate2?>(certificate); }
-    private sealed class Events : IProxyListenerEventSink { public ValueTask PublishAsync(ProxyListenerEvent e, CancellationToken c) => ValueTask.CompletedTask; public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken c) => ValueTask.CompletedTask; }
+    private sealed class Events : IProxyListenerEventSink
+    {
+        public List<ProxyListenerEvent> ListenerEvents { get; } = [];
+        public ValueTask PublishAsync(ProxyListenerEvent e, CancellationToken c) { ListenerEvents.Add(e); return ValueTask.CompletedTask; }
+        public ValueTask PublishAsync(ProxySessionEvent e, CancellationToken c) => ValueTask.CompletedTask;
+    }
     private sealed class ContextSink : IProxySessionContextSink { public ValueTask OnAuthenticatedAsync(string a, DateTimeOffset t, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class WarningSink : IProxyWarningEventSink { public ValueTask RecordOutcomeAsync(ProxyWarningAnalysisOutcome o, CancellationToken c) => ValueTask.CompletedTask; public ValueTask RecordMarkerAsync(ProxyDeterministicWarningEvent m, CancellationToken c) => ValueTask.CompletedTask; }
     private sealed class WarningAnalyzer : IProxyWarningAnalyzer { public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(ProxyWarningAnalysisInput i, CancellationToken c) => ValueTask.FromResult(new ProxyWarningAnalysisResult { MessageToken = "message", ThreadToken = "thread", Availability = ProxyWarningAvailability.NotProduced, AvailabilityReason = ProxyWarningAvailabilityReason.NoAnalyserConfigured, Findings = [] }); }
