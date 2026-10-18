@@ -64,6 +64,24 @@ public static class ApiRoutes
         v1.MapPut("/companies/{id}", ManagementEndpoints.UpdateCompanyAsync)
             .RequireAuthorization(HostPolicies.Administer);
 
+        // Entity properties. Reading the effective binding is reviewer-level visibility; setting,
+        // confirming or clearing it changes what policy will do and is an administrative act.
+        // Confirmation sits on the write side deliberately: it is a recorded human assertion.
+        v1.MapGet("/properties/{kind}/{id}", PropertyEndpoints.GetEffectiveAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/properties/{kind}/{id}/{key}/history", PropertyEndpoints.GetHistoryAsync)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapPut("/properties/{kind}/{id}/{key}", PropertyEndpoints.SetAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapPost("/properties/{kind}/{id}/{key}/confirm", PropertyEndpoints.ConfirmAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
+        v1.MapDelete("/properties/{kind}/{id}/{key}", PropertyEndpoints.ClearAsync)
+            .RequireAuthorization(HostPolicies.Administer);
+
         v1.MapPost("/feedback", FeedbackEndpoints.SubmitAsync)
             .RequireAuthorization(HostPolicies.Feedback);
 

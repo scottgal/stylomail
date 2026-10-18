@@ -20,8 +20,10 @@ using StyloMail.Host.Controls;
 using StyloMail.Host.Decisions;
 using StyloMail.Host.Feedback;
 using StyloMail.Host.Observability;
+using StyloMail.Host.Profiles;
 using StyloMail.Host.Proxy;
 using StyloMail.Host.Storage;
+using StyloMail.Profiles.Properties;
 using StyloMail.Host.Submissions;
 using StyloMail.Host.Traffic;
 using StyloMail.Adaptive.Profiles;
@@ -68,6 +70,12 @@ public static class HostServices
         services.AddSingleton<ISenderControlStore, SqliteSenderControlStore>();
         services.AddSingleton<ISenderProfileStore, SqliteSenderProfileStore>();
         services.AddSingleton<ICompanyStore, SqliteCompanyStore>();
+
+        // Entity properties. The options gate inferred writes, which are off unless a deployment
+        // says its audience is mixed or unknown (spec §9.16). Registered unconditionally so a test
+        // host can layer its configuration in before the store is first resolved.
+        services.Configure<PropertyOptions>(configuration.GetSection(PropertyOptions.SectionName));
+        services.AddSingleton<IPropertyStore, SqlitePropertyStore>();
 
         // The access proxy backend. Registered unconditionally, with the key-dependent pieces
         // refusing at use rather than at composition: this composition root runs before a test host
