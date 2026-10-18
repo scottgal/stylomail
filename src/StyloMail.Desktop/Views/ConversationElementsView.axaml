@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:StyloMail.Desktop.Views"
+             x:Class="StyloMail.Desktop.Views.ConversationElementsView">
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+    <StackPanel Spacing="4">
+      <TextBlock Classes="paneTitle" Text="Element signals" />
+      <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ThreadLabel}" />
+      <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ProvenanceLine}" />
+      <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding StatusLabel}" />
+    </StackPanel>
+    <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+      <ItemsControl ItemsSource="{Binding Points}">
+        <ItemsControl.ItemTemplate><DataTemplate><Border Classes="card"><StackPanel Spacing="5">
+          <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Summary}" />
+          <TextBlock Classes="cardWarningText" TextWrapping="Wrap" Text="{Binding ToneLabel}" />
+          <ItemsControl ItemsSource="{Binding Elements}"><ItemsControl.ItemTemplate><DataTemplate><Border BorderBrush="#D1D1D6" BorderThickness="1" CornerRadius="4" Padding="8"><StackPanel Spacing="2">
+            <TextBlock Classes="rowSubtitle" Text="{Binding ElementLabel}" />
+            <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ScorerLabel}" />
+            <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ScoreLabel}" />
+            <TextBlock Classes="signalReason" TextWrapping="Wrap" Text="{Binding AvailabilityLabel}" />
+            <TextBlock Classes="paneDetail" TextWrapping="Wrap" Text="{Binding ExemplarLabel}" IsVisible="{Binding HasExemplar}" />
+          </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+        </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+    <Button Grid.Row="2" Classes="rowButton" HorizontalAlignment="Left" Margin="0,12,0,0" Content="Refresh" Click="OnRefreshClick" />
+  </Grid>
+</UserControl>

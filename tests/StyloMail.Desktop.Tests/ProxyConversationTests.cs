@@ -64,6 +64,17 @@ public sealed class ProxyConversationTests
             handler.SingleRequest.PathAndQuery);
     }
 
+    [Fact]
+    public async Task Element_request_keeps_the_thread_token_as_one_opaque_path_segment()
+    {
+        const string token = "abcDEF012-_9";
+        var handler = StubHttpMessageHandler.ReturningJson(ElementsJson(token, string.Empty));
+
+        await Client(handler).GetElementsAsync(token);
+
+        Assert.Equal("/v1/proxy/conversations/abcDEF012-_9/elements?window=last_24_hours", handler.SingleRequest.PathAndQuery);
+    }
+
     [Theory]
     [InlineData("abcd", true)]
     [InlineData("abcDEF012-_9", true)]
@@ -452,6 +463,64 @@ public sealed class ProxyConversationTests
     }
 
     [Fact]
+    public void Element_scores_name_their_scorer_and_keep_a_negative_margin_as_a_measurement()
+    {
+        var margin = ProxyElementScoreView.From(Element("threat", "prototype_knn", -0.25, "seed-1:threat:0007"));
+        var probe = ProxyElementScoreView.From(Element("urgency_pressure", "linear_probe", 0.8, null));
+
+        Assert.Contains("prototype kNN", margin.ScorerLabel, StringComparison.Ordinal);
+        Assert.Contains("Signed kNN margin: -0.25", margin.ScoreLabel, StringComparison.Ordinal);
+        Assert.Contains("benign", margin.ScoreLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("linear probe", probe.ScorerLabel, StringComparison.Ordinal);
+        Assert.Contains("Probe probability: 0.8", probe.ScoreLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("seed-1:threat:0007", margin.ExemplarLabel, StringComparison.Ordinal);
+        Assert.Contains("...", margin.ExemplarLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Element_not_produced_reason_and_separate_tone_gap_are_both_rendered()
+    {
+        var point = ProxyElementPointView.From(new ProxyElementPointResponse
+        {
+            ObservedAt = DateTimeOffset.Parse(WindowStart), TurnToken = "turn_safe", TrafficKind = "Submission", Ordinal = 0,
+            Elements = [Element("threat", "prototype_knn", null, null, availability: "not_produced", reason: "no_exemplars")],
+            Tone = new ProxyToneResponse { VocabularyVersion = "goemotions/1", ModelTag = null, Availability = "not_produced", AvailabilityReason = "tone_model_unavailable", Top = [] },
+        });
+
+        Assert.Contains("Not produced: no_exemplars", point.Elements.Single().AvailabilityLabel, StringComparison.Ordinal);
+        Assert.Contains("no numeric score", point.Elements.Single().ScoreLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tone not produced: tone_model_unavailable", point.ToneLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_superseded_element_response_never_applies_to_the_new_selection()
+    {
+        var oldStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var oldResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = StubHttpMessageHandler.ReturningAsync(request =>
+        {
+            if (request.Path.EndsWith("thread-old/elements", StringComparison.Ordinal))
+            {
+                oldStarted.TrySetResult();
+                return oldResponse.Task;
+            }
+            return Task.FromResult(Json(ElementsJson("thread-new", ElementPointJson("turn_new", "Submission"))));
+        });
+        var model = new ProxyConversationElementsViewModel(Client(handler));
+
+        var oldRead = model.LoadAsync("thread-old");
+        await oldStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await model.LoadAsync("thread-new");
+        oldResponse.SetResult(Json(ElementsJson("thread-old", ElementPointJson("turn_old", "Retrieval"))));
+        await oldRead;
+
+        Assert.Equal("thread-new", model.ThreadToken);
+        Assert.Single(model.Points);
+        Assert.Contains("turn_new", model.Points.Single().Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("turn_old", model.Points.Single().Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_signals_read_for_a_different_thread_is_refused_without_showing_points()
     {
         var handler = StubHttpMessageHandler.ReturningJson(SignalsJson(
@@ -524,6 +593,26 @@ public sealed class ProxyConversationTests
         $$"""
         {"tenantId":"tenant","threadToken":"{{threadToken}}","window":"last_24_hours","windowStart":"{{WindowStart}}","windowEnd":"{{WindowEnd}}","provenance":"proxy_threading_and_assessment","points":[{{points}}]}
         """;
+
+    private static string ElementsJson(string threadToken, string points) =>
+        $$"""
+        {"tenantId":"tenant","threadToken":"{{threadToken}}","window":"last_24_hours","windowStart":"{{WindowStart}}","windowEnd":"{{WindowEnd}}","provenance":"proxy_element_classification","points":[{{points}}]}
+        """;
+
+    private static string ElementPointJson(string turnToken, string trafficKind) =>
+        "{\"observedAt\":\"" + WindowStart
+        + "\",\"turnToken\":\"" + turnToken
+        + "\",\"trafficKind\":\"" + trafficKind
+        + "\",\"ordinal\":0,\"elements\":[{\"element\":\"threat\",\"scorer\":\"prototype_knn\",\"scorerVersion\":\"prototype_knn/corpus-1\",\"vocabularyVersion\":\"elements/1\",\"modelTag\":\"model\",\"prefixVersion\":\"classification/1\",\"dimension\":256,\"score\":-0.2,\"nearestExemplarId\":\"seed-1:threat:0007\",\"availability\":\"available\",\"availabilityReason\":\"none\"}],\"tone\":{\"vocabularyVersion\":\"goemotions/1\",\"modelTag\":null,\"availability\":\"not_produced\",\"availabilityReason\":\"tone_model_unavailable\",\"top\":[]}}";
+
+    private static ProxyElementScoreResponse Element(string element, string scorer, double? score, string? exemplar, string availability = "available", string reason = "none") => new()
+    {
+        Element = element, Scorer = scorer, ScorerVersion = scorer + "/corpus-1", VocabularyVersion = "elements/1",
+        ModelTag = "model", PrefixVersion = "classification/1", Dimension = 256, Score = score,
+        NearestExemplarId = exemplar, Availability = availability, AvailabilityReason = reason,
+    };
+
+    private static HttpResponseMessage Json(string value) => new(HttpStatusCode.OK) { Content = new StringContent(value, Encoding.UTF8, "application/json") };
 
     private static string PointJson(
         string turnToken,

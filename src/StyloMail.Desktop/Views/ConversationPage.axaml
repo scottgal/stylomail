@@ -5,6 +5,9 @@
   <Grid ColumnDefinitions="380,1,*">
     <local:ConversationListView Grid.Column="0" x:Name="ListView" />
     <Border Grid.Column="1" Classes="separator" />
-    <local:ConversationSignalsView Grid.Column="2" x:Name="SignalsView" />
+    <TabControl Grid.Column="2">
+      <TabItem Header="Thread signals"><local:ConversationSignalsView x:Name="SignalsView" /></TabItem>
+      <TabItem Header="Element signals"><local:ConversationElementsView x:Name="ElementsView" /></TabItem>
+    </TabControl>
   </Grid>
 </UserControl>

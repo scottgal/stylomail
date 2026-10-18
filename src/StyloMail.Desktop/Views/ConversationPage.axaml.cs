@@ -18,6 +18,7 @@ public partial class ConversationPage : UserControl
 {
     private ProxyConversationListViewModel? _list;
     private ProxyConversationSignalsViewModel? _signals;
+    private ProxyConversationElementsViewModel? _elements;
 
     /// <summary>Required by the XAML compiler.</summary>
     public ConversationPage() => InitializeComponent();
@@ -25,7 +26,7 @@ public partial class ConversationPage : UserControl
     /// <summary>Wires both panes to one client. A null client renders both reads as unavailable.</summary>
     public ConversationPage(ProxyConversationClient? client)
         : this()
-        => Wire(new ProxyConversationListViewModel(client), new ProxyConversationSignalsViewModel(client));
+        => Wire(new ProxyConversationListViewModel(client), new ProxyConversationSignalsViewModel(client), new ProxyConversationElementsViewModel(client));
 
     /// <summary>Wires both panes to view models the caller already holds.</summary>
     public ConversationPage(ProxyConversationListViewModel list, ProxyConversationSignalsViewModel signals)
@@ -33,15 +34,30 @@ public partial class ConversationPage : UserControl
     {
         ArgumentNullException.ThrowIfNull(list);
         ArgumentNullException.ThrowIfNull(signals);
-        Wire(list, signals);
+        Wire(list, signals, new ProxyConversationElementsViewModel());
     }
 
-    private void Wire(ProxyConversationListViewModel list, ProxyConversationSignalsViewModel signals)
+    /// <summary>Wires all three thread panes to caller-owned view models.</summary>
+    public ConversationPage(
+        ProxyConversationListViewModel list,
+        ProxyConversationSignalsViewModel signals,
+        ProxyConversationElementsViewModel elements)
+        : this()
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        ArgumentNullException.ThrowIfNull(signals);
+        ArgumentNullException.ThrowIfNull(elements);
+        Wire(list, signals, elements);
+    }
+
+    private void Wire(ProxyConversationListViewModel list, ProxyConversationSignalsViewModel signals, ProxyConversationElementsViewModel elements)
     {
         _list = list;
         _signals = signals;
+        _elements = elements;
         ListView.DataContext = list;
         SignalsView.DataContext = signals;
+        ElementsView.DataContext = elements;
         list.ConversationSelected += OnConversationSelected;
     }
 
@@ -57,11 +73,11 @@ public partial class ConversationPage : UserControl
 
     private async void OnConversationSelected(object? sender, ProxyConversationRowView? row)
     {
-        if (row is null || _signals is null) return;
+        if (row is null || _signals is null || _elements is null) return;
 
         try
         {
-            await _signals.LoadAsync(row.ThreadToken);
+            await Task.WhenAll(_signals.LoadAsync(row.ThreadToken), _elements.LoadAsync(row.ThreadToken));
         }
         catch (OperationCanceledException)
         {

@@ -101,6 +101,53 @@ namespace StyloMail.Desktop.Api.Contracts
         /// <summary>Zero on an available point means a measured clean message, not an absent analysis.</summary>
         public required int MarkerCount { get; init; }
     }
+
+    public sealed record ProxyElementSeriesResponse
+    {
+        public required string TenantId { get; init; }
+        public required string ThreadToken { get; init; }
+        public required string Window { get; init; }
+        public required DateTimeOffset WindowStart { get; init; }
+        public required DateTimeOffset WindowEnd { get; init; }
+        public required string Provenance { get; init; }
+        public required IReadOnlyList<ProxyElementPointResponse> Points { get; init; }
+    }
+
+    public sealed record ProxyElementPointResponse
+    {
+        public required DateTimeOffset ObservedAt { get; init; }
+        public required string TurnToken { get; init; }
+        public required string TrafficKind { get; init; }
+        public required int Ordinal { get; init; }
+        public required IReadOnlyList<ProxyElementScoreResponse> Elements { get; init; }
+        public required ProxyToneResponse Tone { get; init; }
+    }
+
+    public sealed record ProxyElementScoreResponse
+    {
+        public required string Element { get; init; }
+        public required string Scorer { get; init; }
+        public required string ScorerVersion { get; init; }
+        public required string VocabularyVersion { get; init; }
+        public required string ModelTag { get; init; }
+        public required string PrefixVersion { get; init; }
+        public required int Dimension { get; init; }
+        public double? Score { get; init; }
+        public string? NearestExemplarId { get; init; }
+        public required string Availability { get; init; }
+        public required string AvailabilityReason { get; init; }
+    }
+
+    public sealed record ProxyToneResponse
+    {
+        public required string VocabularyVersion { get; init; }
+        public string? ModelTag { get; init; }
+        public required string Availability { get; init; }
+        public required string AvailabilityReason { get; init; }
+        public required IReadOnlyList<ProxyToneLabelResponse> Top { get; init; }
+    }
+
+    public sealed record ProxyToneLabelResponse { public required string Label { get; init; } public required double Score { get; init; } }
 }
 
 namespace StyloMail.Desktop.Api
@@ -184,6 +231,24 @@ namespace StyloMail.Desktop.Api
             return SendAsync<ProxyConversationSignalsResponse>(
                 "/v1/proxy/conversations/" + Uri.EscapeDataString(threadToken)
                     + "/signals?window=" + Last24Hours,
+                cancellationToken);
+        }
+
+        /// <summary>Reads content-free element measurements for one thread in the fixed named window.</summary>
+        public Task<ProxyElementSeriesResponse> GetElementsAsync(
+            string threadToken,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsThreadToken(threadToken))
+            {
+                throw new ArgumentException(
+                    "A thread token must be unpadded base64url (A-Z, a-z, 0-9, '-' and '_'), at most 512 characters.",
+                    nameof(threadToken));
+            }
+
+            return SendAsync<ProxyElementSeriesResponse>(
+                "/v1/proxy/conversations/" + Uri.EscapeDataString(threadToken)
+                    + "/elements?window=" + Last24Hours,
                 cancellationToken);
         }
 
