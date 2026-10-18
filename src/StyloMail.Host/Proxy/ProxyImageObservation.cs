@@ -43,6 +43,7 @@ public enum ProxyImageReason
     ServiceUnavailable,
     StorageError,
     CapacityExceeded,
+    QuotaDenied,
 }
 
 public enum ProxyImageFindingKind

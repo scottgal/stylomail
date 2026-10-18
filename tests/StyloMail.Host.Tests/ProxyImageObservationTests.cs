@@ -513,6 +513,65 @@ public sealed class ProxyImageObservationTests
         Assert.Contains("invalid_cursor", await response.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task CanceledWriteCreatesNoRowOrFailureMarker()
+    {
+        using var fixture = new StoreFixture();
+        Assert.True(await fixture.Store.InitializeEpochAsync());
+        await fixture.SeedMessageAsync("m-cancel", ThreadA, Now.AddMinutes(-5));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Store.RecordAsync(
+                Observation("k-cancel", "m-cancel", ThreadA, Now.AddMinutes(-5)),
+                cancellation.Token));
+
+        Assert.Equal(0L, fixture.Count("proxy_image_outcome"));
+        Assert.Equal(0L, fixture.UsageBytes());
+    }
+
+    [Fact]
+    public async Task MidTransactionCancellationRollsBackEverything()
+    {
+        using var fixture = new StoreFixture();
+        Assert.True(await fixture.Store.InitializeEpochAsync());
+        await fixture.SeedMessageAsync("m-mid", ThreadA, Now.AddMinutes(-5));
+        using var cancellation = new CancellationTokenSource();
+        fixture.Store.BeforePartInsert = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Store.RecordAsync(
+                Observation("k-mid", "m-mid", ThreadA, Now.AddMinutes(-5)),
+                cancellation.Token));
+
+        Assert.Equal(0L, fixture.Count("proxy_image_outcome"));
+        Assert.Equal(0L, fixture.Count("proxy_image_part"));
+        Assert.Equal(0L, fixture.UsageBytes());
+    }
+
+    [Fact]
+    public async Task NoOpWatermarkCancellationLeavesTheOldWatermark()
+    {
+        using var fixture = new StoreFixture();
+        Assert.True(await fixture.Store.InitializeEpochAsync());
+        await fixture.SeedMessageAsync("m-noop-cancel", ThreadA, Now.AddMinutes(-5));
+        await fixture.Store.RecordAsync(
+            Observation("k-noop-cancel", "m-noop-cancel", ThreadA, Now.AddMinutes(-5), sequence: 1, digest: "A"),
+            CancellationToken.None);
+        var before = fixture.UsageBytes();
+        using var cancellation = new CancellationTokenSource();
+        fixture.Store.BeforeCommit = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Store.RecordAsync(
+                Observation("k-noop-cancel", "m-noop-cancel", ThreadA, Now.AddMinutes(-4), sequence: 3, digest: "A"),
+                cancellation.Token));
+
+        Assert.Equal((1L, 1L), fixture.Watermark("k-noop-cancel"));
+        Assert.Equal(before, fixture.UsageBytes());
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------

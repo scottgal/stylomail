@@ -162,10 +162,16 @@ public static class HostServices
         services.AddSingleton<IThreadTokenDeriver>(ProxyThreadTokens.Create);
         services.AddSingleton(sp => new ThreadingHeaderExtractor(
             sp.GetRequiredService<IThreadTokenDeriver>()));
+        services.AddSingleton(sp => new ImageObservationIdentity(
+            sp.GetRequiredService<IAssessmentSecretSource>()));
         services.AddSingleton<IProxyWarningAnalyzer>(sp => new HostProxyWarningAnalyzer(
             sp.GetService<IMimeMessageAnalyzer>(),
             sp.GetRequiredService<ThreadingHeaderExtractor>(),
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IOptions<HostImageOptions>>().Value,
+            sp.GetRequiredService<ImageObservationIdentity>(),
+            sp.GetService<IProxyImageObservationSink>(),
+            sp.GetService<SqliteProxyImageStore>()));
         services.AddSingleton<AccessProxyBounds>();
         services.AddSingleton<SessionLimiter>();
         services.AddSingleton<IBackendCredentialProvider, AppPasswordCredentialProvider>();

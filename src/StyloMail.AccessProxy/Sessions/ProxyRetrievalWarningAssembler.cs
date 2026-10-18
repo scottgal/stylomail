@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using System.Runtime.InteropServices;
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Submission;
+using StyloMail.Image;
 
 namespace StyloMail.AccessProxy.Sessions;
 
@@ -70,6 +71,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
     private readonly ProxyElementOrchestrator? _elementOrchestrator;
     private readonly Channel<byte[]> _chunks;
     private readonly ProxyRetrievalWorkPool _pool;
+    private readonly IImageScratchQuota _imageScratch;
     private readonly CancellationTokenSource _stopping = new();
     private readonly List<byte> _line = [];
     private readonly TaskCompletionSource _finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -101,6 +103,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         _options = options;
         _elementOrchestrator = elementOrchestrator;
         _pool = pool;
+        _imageScratch = new ProxyRetrievalImageScratchQuota(this);
         _chunks = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(options.MaximumQueuedChunks)
         { FullMode = BoundedChannelFullMode.Wait, SingleReader = false, SingleWriter = false });
     }
@@ -345,6 +348,7 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
                 TenantId = _tenantId,
                 AccountId = _accountId,
                 ObservedAt = _timeProvider.GetUtcNow(),
+                ImageScratch = _imageScratch,
             };
             var analysis = await _analyzer.AnalyzeAsync(input, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -417,6 +421,10 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         return start == 0 || prefix[start - 1] is ' ' or '\t' or '(';
     }
 
+    internal bool TryReserveImageScratch(int bytes) => TryReserve(bytes);
+
+    internal void ReleaseImageScratch(int bytes) => Release(bytes);
+
     private bool TryReserve(int bytes)
     {
         if (!_pool.Reserve(bytes)) return false;
@@ -453,4 +461,19 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         CollectionsMarshal.AsSpan(_line).Clear();
         _line.Clear();
     }
+
+}
+
+/// <summary>
+/// Adapts the assembler's existing session+pool accounting to the image scratch interface.
+/// </summary>
+internal sealed class ProxyRetrievalImageScratchQuota : IImageScratchQuota
+{
+    private readonly ProxyRetrievalWarningAssembler _owner;
+
+    public ProxyRetrievalImageScratchQuota(ProxyRetrievalWarningAssembler owner) => _owner = owner;
+
+    public bool TryReserve(int bytes) => _owner.TryReserveImageScratch(bytes);
+
+    public void Release(int bytes) => _owner.ReleaseImageScratch(bytes);
 }

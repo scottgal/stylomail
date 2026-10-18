@@ -10,6 +10,7 @@
     <ProjectReference Include="..\StyloMail.Core\StyloMail.Core.csproj" />
     <ProjectReference Include="..\StyloMail.Embeddings\StyloMail.Embeddings.csproj" />
     <ProjectReference Include="..\StyloMail.Mime\StyloMail.Mime.csproj" />
+    <ProjectReference Include="..\StyloMail.Image\StyloMail.Image.csproj" />
   </ItemGroup>
 
   <ItemGroup>

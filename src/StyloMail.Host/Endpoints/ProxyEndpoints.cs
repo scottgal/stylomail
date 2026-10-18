@@ -1248,6 +1248,7 @@ internal static class ProxyEndpoints
         ProxyImageReason.ServiceUnavailable => "service_unavailable",
         ProxyImageReason.StorageError => "storage_error",
         ProxyImageReason.CapacityExceeded => "capacity_exceeded",
+        ProxyImageReason.QuotaDenied => "quota_denied",
         _ => "invalid_structure",
     };
 
