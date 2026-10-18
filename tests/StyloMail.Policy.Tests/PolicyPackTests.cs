@@ -1,3 +1,5 @@
+using StyloMail.Core;
+
 namespace StyloMail.Policy.Tests;
 
 /// <summary>
