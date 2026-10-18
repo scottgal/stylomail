@@ -1,16 +1,21 @@
-"""Teacher-label segments with the local strong model, then have a second model check them.
+"""Teacher-label real segments, with a quoted justification per label and an independent check.
 
-The label source this corpus lacked. A stratified sample of the operator dataset is segmented with
-the same deterministic rules the service uses, each segment is labelled against the five-element
-vocabulary by one model, and every answer is checked independently by another model. Exact set
-agreement is kept; disagreements are discarded and the disagreement rate is reported. A generator
-marking its own homework is not a label, and neither is a teacher whose output nobody checked.
+Revision 2 of the teacher, from the spot-check's measured failure: templated benign mail was labelled
+as an element because it contained a polite phrase ("Sincerely, PayPal Security", "the attached
+document is ready for review"). Agreement between two prompts of one model was 0.96 and still wrong.
 
-Provenance per row: teacher model tag, verifier model tag, prompt hash, source row id, segment
-ordinal, seed. The text is redacted for structured identifiers and the derived file is git-ignored.
+Four rules now apply, and they are enforced in code rather than trusted:
 
-    python label_segments_teacher.py --input operator-labels.jsonl \
-        --output teacher-labels.jsonl --manifest teacher-manifest.json --rows 200
+1. Narrow definitions with a positive and a negative example per element, and the rule that an element
+   fires only if the segment itself contains the act, not a template around it.
+2. Explicit exclusions: a security notice reporting an action already taken is benign; a document
+   merely attached and described as available is benign; a generic greeting is not impersonation.
+3. Quote justification: every label must carry the exact phrase from the segment that justifies it,
+   and the phrase is verified verbatim before the label is kept. No quote, no label.
+4. Prefer none. Multi-label is allowed, each label with its own quote.
+
+A second prompt from the same model checks the labels, and the manifest labels that as a second
+prompt, never as an independent verifier.
 """
 
 from __future__ import annotations
@@ -18,41 +23,63 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import random
 import re
-import urllib.error
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-OLLAMA = __import__("os").environ.get("EMB_OLLAMA", "http://127.0.0.1:11434")
+OLLAMA = os.environ.get("EMB_OLLAMA", "http://127.0.0.1:11434")
 ELEMENTS = ("credential_request", "urgency_pressure", "threat", "impersonated_greeting", "attachment_lure")
 MAX_SEGMENTS = 8
 MAX_SEGMENT_CHARS = 6000
 
+DEFINITIONS = """credential_request: asks the reader to send, enter or confirm credentials. POSITIVE: "reply
+with your password and PIN today". NEGATIVE: "your password was reset successfully".
+urgency_pressure: imposes a short deadline or threatens loss for not acting. POSITIVE: "you have two
+hours or the account is closed". NEGATIVE: "please send the report by Friday".
+threat: threatens harm, exposure, legal action or retaliation. POSITIVE: "we will publish your files
+unless you pay". NEGATIVE: "unpaid invoices may incur a late fee".
+impersonated_greeting: claims an identity or authority the sender does not have, to move the reader to
+act. POSITIVE: "this is Microsoft Support, call this number". NEGATIVE: "Sincerely, PayPal Security"
+at the end of a notice reporting an action already taken.
+attachment_lure: asks the reader to open an attachment or enable macros/content to proceed.
+POSITIVE: "enable macros to view the payment details". NEGATIVE: "the attached minutes are for your
+records"."""
+
+EXCLUSIONS = """A security notice that reports an action already taken is benign. A document that is
+merely attached and described as available is benign. A generic greeting or signature is not
+impersonation. An element fires only if the segment itself contains the act, not a polite template
+around it. Prefer none."""
+
 TEACHER_TEMPLATE = """Label each element that is present in this segment.
 
-Elements: credential_request (asks the reader to send or confirm credentials); urgency_pressure
-(imposes a short deadline or threatens loss for not acting); threat (threatens harm, exposure, legal
-action or retaliation); impersonated_greeting (claims to be a company or authority the sender is not,
-or opens as one); attachment_lure (asks the reader to open an attachment, enable macros, or view a
-document to proceed).
+{elements}
 
-Answer ONLY JSON: {{"labels": []}} with zero or more of: {elements}.
+{exclusions}
+
+For EVERY label, quote the exact phrase from the segment that justifies it. A label without a verbatim
+quote from the segment is not a label. Multi-label is allowed, each with its own quote.
+
+Return ONLY JSON: {{"labels":[{{"element":"<name>","quote":"<exact phrase>"}}]}}
+An empty list is the correct answer for benign text.
+
 Segment:
 {segment}
 """
 
-VERIFY_TEMPLATE = """Independently label each element present in this segment. Do not assume any prior answer.
+VERIFY_TEMPLATE = """Independently label this segment. Do not assume any prior answer.
 
-Elements: credential_request (asks the reader to send or confirm credentials); urgency_pressure
-(imposes a short deadline or threatens loss for not acting); threat (threatens harm, exposure, legal
-action or retaliation); impersonated_greeting (claims to be a company or authority the sender is not,
-or opens as one); attachment_lure (asks the reader to open an attachment, enable macros, or view a
-document to proceed).
+{elements}
 
-Answer ONLY JSON: {{"labels": []}} with zero or more of: {elements}.
+{exclusions}
+
+For every label, quote the exact phrase that justifies it. Return ONLY JSON:
+{{"labels":[{{"element":"<name>","quote":"<exact phrase>"}}]}}
+
 Segment:
 {segment}
 """
@@ -64,15 +91,11 @@ def prompt_hash(template: str) -> str:
 
 def call(model: str, prompt: str, seed: int) -> str:
     body = json.dumps({
-        "model": model, "prompt": prompt, "stream": False, "format": "json",
-        "think": False,
-        "options": {"temperature": 0.1, "seed": seed, "num_predict": 300},
+        "model": model, "prompt": prompt, "stream": False, "format": "json", "think": False,
+        "options": {"temperature": 0.1, "seed": seed, "num_predict": 400},
     }).encode("utf-8")
     request = urllib.request.Request(OLLAMA + "/api/generate", data=body,
                                      headers={"Content-Type": "application/json"})
-    # An empty response is retryable. A whole 198-segment teacher run produced zero kept rows because
-    # every call returned empty after a runner wedge; the same call answers in 0.2 s once the runner is
-    # healthy, so an empty answer is treated as a transport fault rather than as "no labels".
     last_error: Exception | None = None
     for attempt in range(3):
         try:
@@ -89,23 +112,39 @@ def call(model: str, prompt: str, seed: int) -> str:
     raise last_error if last_error else RuntimeError("teacher returned nothing")
 
 
-def labels_of(raw: str) -> list[str] | None:
+def labels_of(raw: str, segment: str) -> list[str] | None:
+    """Parse labels, requiring each quote to appear verbatim in the segment."""
     try:
         document = json.loads(raw)
     except json.JSONDecodeError:
         return None
     labels = document.get("labels")
+    if labels is None:
+        return None
+    if isinstance(labels, str):
+        labels = [] if labels.strip().lower() in ("none", "") else [labels]
     if not isinstance(labels, list):
         return None
+
     cleaned = []
-    for label in labels:
-        text = str(label).strip()
-        if text in ELEMENTS and text not in cleaned:
-            cleaned.append(text)
-    # "none" and an empty list are the same answer; anything unknown is a parse failure.
-    unknown = [str(label).strip() for label in labels if str(label).strip() not in ELEMENTS + ("none",)]
-    if unknown:
-        return None
+    haystack = " ".join(segment.lower().split())
+    for entry in labels:
+        if isinstance(entry, str):
+            name, quote = entry.strip(), None
+        elif isinstance(entry, dict):
+            name, quote = str(entry.get("element", "")).strip(), entry.get("quote")
+        else:
+            return None
+        if name.lower() in ("none", ""):
+            continue
+        if name not in ELEMENTS:
+            return None
+        if not isinstance(quote, str) or len(quote.strip()) < 3:
+            return None
+        if " ".join(quote.lower().split()) not in haystack:
+            return None
+        if name not in cleaned:
+            cleaned.append(name)
     return sorted(cleaned)
 
 
@@ -127,15 +166,13 @@ def main() -> int:
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--rows", type=int, default=200)
-    parser.add_argument("--corpus", type=pathlib.Path, default=None,
-                        help="corpus-labels.jsonl from ingest_corpora.py (real mail)")
-    parser.add_argument("--seed-labels", type=pathlib.Path, default=None,
-                        help="seed-labels.jsonl, the authored rows already in the artefact")
-    parser.add_argument("--spotcheck-out", type=pathlib.Path, default=None)
-    parser.add_argument("--teacher", default="qwen3.8:latest")
-    parser.add_argument("--verifier", default="gemma4:26b")
+    parser.add_argument("--corpus", type=pathlib.Path, default=None)
+    parser.add_argument("--seed-labels", type=pathlib.Path, default=None)
+    parser.add_argument("--teacher", default="gemma4:e4b")
+    parser.add_argument("--verifier", default="gemma4:e4b")
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20261018)
+    parser.add_argument("--spotcheck-out", type=pathlib.Path, default=None)
     args = parser.parse_args()
 
     def read(path: pathlib.Path, source: str) -> list[dict]:
@@ -144,12 +181,8 @@ def main() -> int:
             if not line.strip():
                 continue
             row = json.loads(line)
-            output.append({
-                "id": f"{source}:{row['id']}",
-                "text": row["text"],
-                "split": row.get("split", "train"),
-                "source": source,
-            })
+            output.append({"id": f"{source}:{row['id']}", "text": row["text"],
+                           "split": row.get("split", "train"), "source": source})
         return output
 
     rng = random.Random(args.seed)
@@ -159,10 +192,9 @@ def main() -> int:
     if args.seed_labels is not None and args.seed_labels.exists():
         pools["authored"] = read(args.seed_labels, "authored")
 
-    # Stratified across sources so the labels are not dominated by one generator or one corpus.
     per_source = max(1, args.rows // len(pools))
     sample = []
-    for source, pool in pools.items():
+    for pool in pools.values():
         sample.extend(rng.sample(pool, min(per_source, len(pool))))
 
     work = []
@@ -170,96 +202,99 @@ def main() -> int:
         for ordinal, segment in enumerate(segments_of(row["text"])):
             work.append((row, ordinal, segment))
 
+    elements_block = DEFINITIONS
+    exclusions_block = EXCLUSIONS
+
     def label_one(item):
         row, ordinal, segment = item
         seed = int(hashlib.sha256(f"{row['id']}:{ordinal}".encode()).hexdigest()[:8], 16)
-        teacher_prompt = TEACHER_TEMPLATE.format(elements=", ".join(ELEMENTS), segment=segment)
-        verifier_prompt = VERIFY_TEMPLATE.format(elements=", ".join(ELEMENTS), segment=segment)
-        teacher_labels = labels_of(call(args.teacher, teacher_prompt, seed))
-        verifier_labels = labels_of(call(args.verifier, verifier_prompt, seed))
-        return row, ordinal, segment, teacher_labels, verifier_labels, seed
+        teacher_prompt = TEACHER_TEMPLATE.format(
+            elements=elements_block, exclusions=exclusions_block, segment=segment)
+        verifier_prompt = VERIFY_TEMPLATE.format(
+            elements=elements_block, exclusions=exclusions_block, segment=segment)
+        teacher = labels_of(call(args.teacher, teacher_prompt, seed), segment)
+        verifier = labels_of(call(args.verifier, verifier_prompt, seed), segment)
+        return row, ordinal, segment, teacher, verifier, seed
 
     results = []
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         for index, item in enumerate(pool.map(label_one, work), start=1):
             results.append(item)
-            if index % 25 == 0:
+            if index % 50 == 0:
                 print(f"labelled {index}/{len(work)}", flush=True)
 
-    kept = []
-    disagreements = 0
-    parse_failures = 0
+    kept, disagreements, parse_failures = [], 0, 0
     per_label = {element: 0 for element in ELEMENTS}
-    for row, ordinal, segment, teacher_labels, verifier_labels, seed in results:
-        if teacher_labels is None or verifier_labels is None:
+    element_agreement = {element: {"both": 0, "teacher_only": 0, "verifier_only": 0} for element in ELEMENTS}
+
+    for row, ordinal, segment, teacher, verifier, seed in results:
+        if teacher is None or verifier is None:
             parse_failures += 1
             continue
-        if teacher_labels != verifier_labels:
+        for element in ELEMENTS:
+            in_teacher, in_verifier = element in teacher, element in verifier
+            if in_teacher and in_verifier:
+                element_agreement[element]["both"] += 1
+            elif in_teacher:
+                element_agreement[element]["teacher_only"] += 1
+            elif in_verifier:
+                element_agreement[element]["verifier_only"] += 1
+        if teacher != verifier:
             disagreements += 1
             continue
-        for label in teacher_labels:
+        for label in teacher:
             per_label[label] += 1
         kept.append({
-            "id": f"{row['id']}:{ordinal}",
-            "source_row": row["id"],
-            "source": row.get("source", "unknown"),
-            "ordinal": ordinal,
-            "text": segment,
-            "labels": teacher_labels,
-            "split": row["split"],
-            "teacher_model": args.teacher,
-            "verifier_model": args.verifier,
+            "id": f"{row['id']}:{ordinal}", "source_row": row["id"], "source": row["source"],
+            "ordinal": ordinal, "text": segment, "labels": teacher, "split": row["split"],
+            "teacher_model": args.teacher, "verifier_model": args.verifier,
             "teacher_prompt_hash": prompt_hash(TEACHER_TEMPLATE),
             "verifier_prompt_hash": prompt_hash(VERIFY_TEMPLATE),
-            "seed": seed,
-            "licence": "project-owned labels over operator-provided text",
+            "seed": seed, "licence": "project-owned labels over operator-provided text",
         })
 
     args.output.write_text("\n".join(json.dumps(row) for row in kept) + "\n", encoding="utf-8")
-    total = len(results)
+
     spotcheck = None
     if args.spotcheck_out is not None:
         lines = ["id,source,split,labels,text"]
         for row in kept[:20]:
-            text = row["text"].replace('"', "'").replace("\n", " ")[:400]
+            text = row["text"].replace('"', "'")[:400]
             labels = "|".join(row["labels"]) if row["labels"] else "none"
             lines.append(f'{row["id"]},{row["source"]},{row["split"]},{labels},"{text}"')
         args.spotcheck_out.write_text("\n".join(lines) + "\n", encoding="utf-8")
         spotcheck = str(args.spotcheck_out)
 
+    total = len(results)
     agreement = round(len(kept) / total, 4) if total else 0.0
-    gate_passed = agreement >= 0.80
-    zero_elements = [element for element, count in per_label.items() if count == 0]
     manifest = {
         "rows_sampled": len(sample),
         "sources": {source: len(pool) for source, pool in pools.items()},
-        "agreement_gate": 0.80,
-        "agreement_passed": gate_passed,
-        "seed_permitted": gate_passed,
-        "elements_with_no_positives": zero_elements,
-        "spotcheck_file": spotcheck,
-        "spotcheck_rows": 20 if spotcheck else 0,
         "segments_labelled": total,
         "segments_kept": len(kept),
-        "exact_agreement_rate": round(len(kept) / total, 4) if total else None,
+        "exact_agreement_rate": agreement,
+        "agreement_gate": 0.80,
+        "agreement_passed": agreement >= 0.80,
+        "seed_permitted": False,
         "disagreements_discarded": disagreements,
         "parse_failures": parse_failures,
         "per_element_counts": per_label,
+        "per_element_agreement": element_agreement,
+        "elements_with_no_positives": [e for e, c in per_label.items() if c == 0],
+        "spotcheck_file": spotcheck,
         "teacher_model": args.teacher,
         "verifier_model": args.verifier,
+        "verifier_role": "second prompt (same model), not an independent verifier",
         "teacher_prompt_hash": prompt_hash(TEACHER_TEMPLATE),
         "verifier_prompt_hash": prompt_hash(VERIFY_TEMPLATE),
         "seed": args.seed,
-        "split": "inherits the operator row split, so segments of one message stay together",
         "note": (
-            "Only exact set agreement is kept. Disagreement is reported rather than resolved by "
-            "preference; a label nobody checked is not a label."
+            "Every kept label carried a quote verified verbatim in the segment. Seeding is blocked "
+            "until an independent-model check and a human spot-check both say the labels are right."
         ),
     }
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, indent=2))
-    if not gate_passed:
-        print("GATE FAILED: agreement below 0.80; do not seed an artefact from these labels")
     return 0
 
 
