@@ -217,6 +217,14 @@ internal sealed class ProxyRetrievalWarningAssembler : IProxyRetrievalWarningAss
         if (!_finished.Task.IsCompleted && (_chunks.Reader.TryPeek(out _) || Volatile.Read(ref _disposed) != 0 || Abandoned)) Schedule();
     }
 
+    internal void ExpireQueued()
+    {
+        // The job was claimed from the queue; no consumer owns this parser or these buffers.
+        AbandonCore();
+        Cleanup();
+        Interlocked.Exchange(ref _scheduled, 0);
+    }
+
     private async ValueTask ProcessChunkAsync(byte[] chunk, CancellationToken cancellationToken)
     {
         for (var index = 0; index < chunk.Length; index++)

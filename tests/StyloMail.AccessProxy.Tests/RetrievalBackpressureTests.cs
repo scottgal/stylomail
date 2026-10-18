@@ -102,9 +102,9 @@ public sealed class RetrievalBackpressureTests
     }
 
     [Fact]
-    public async Task Four_stuck_workers_reject_new_sessions_without_retaining_more_copies()
+    public async Task Four_stuck_workers_expire_queued_copies_then_refuse_until_a_worker_frees()
     {
-        await using var pool = new ProxyRetrievalWorkPool(4 * 1024 * 1024, 4);
+        await using var pool = new ProxyRetrievalWorkPool(4 * 1024 * 1024, 4, queueWait: TimeSpan.FromMilliseconds(500));
         var analyzer = new Analyzer(true);
         var sink = new Sink();
         List<ProxyRetrievalWarningAssembler> observers = [];
@@ -120,14 +120,18 @@ public sealed class RetrievalBackpressureTests
                 for (var i = 0; i < 3; i++) captured.Observe(new byte[256 * 1024]);
             var retained = pool.Counters.BufferedBytes;
             Assert.InRange(retained, 3L * 1024 * 1024, 4L * 1024 * 1024);
+            var queuedFrame = Frame("Subject: queued\r\n\r\nnever analyze after expiry"u8);
             for (var i = 0; i < 64; i++)
             {
-                var observer = Create(pool, analyzer, sink); observers.Add(observer); observer.Observe("x"u8);
-                Assert.True(observer.Abandoned, "All four optional workers are occupied; no fresh stream may retain a copy.");
-                Assert.Equal(0, observer.ReservedBytes);
+                var observer = Create(pool, analyzer, sink, new Classifier(false)); observers.Add(observer); observer.Observe(queuedFrame);
+                Assert.False(observer.Abandoned);
             }
+            Assert.Equal(64, pool.Counters.ReadySessions);
+            Assert.Equal(retained + 64 * queuedFrame.Length, pool.Counters.BufferedBytes);
+            await Until(() => observers.Skip(4).All(observer => observer.Abandoned && observer.ReservedBytes == 0));
             Assert.Equal(0, pool.Counters.ReadySessions);
             Assert.Equal(retained, pool.Counters.BufferedBytes);
+            Assert.True(pool.Counters.Saturated);
             var refused = Create(pool, analyzer, sink); observers.Add(refused); refused.Observe("x"u8);
             Assert.True(refused.Abandoned);
             Assert.Equal(0, refused.ReservedBytes);
@@ -145,6 +149,51 @@ public sealed class RetrievalBackpressureTests
         }
         await Until(() => pool.Counters.BufferedBytes == 0 && pool.Counters.ActiveWorkers == 0 && pool.Counters.ReadySessions == 0);
         Assert.Empty(sink.Warnings);
+        Assert.Empty(sink.Points);
+        Assert.False(pool.Counters.Saturated);
+        // Once a worker frees, the same pool must produce real points again, not just refuse less.
+        var positiveSink = new Sink();
+        await using var resumed = Create(pool, new Analyzer(false), positiveSink, new Classifier(false));
+        resumed.Observe(Frame("Subject: resumed\r\n\r\nbody"u8));
+        await resumed.DisposeAsync();
+        Assert.Single(positiveSink.Warnings);
+        Assert.NotEmpty(positiveSink.Points);
+    }
+
+    [Fact]
+    public async Task Healthy_bursts_larger_than_four_are_queued_and_analyzed_as_workers_free()
+    {
+        await using var pool = new ProxyRetrievalWorkPool(1024 * 1024, 4);
+        var analyzer = new Analyzer(true);
+        var sink = new Sink();
+        List<ProxyRetrievalWarningAssembler> observers = [];
+        try
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                var observer = Create(pool, analyzer, sink); observers.Add(observer);
+                observer.Observe(Frame("Subject: running\r\n\r\nbody"u8));
+            }
+            await Until(() => analyzer.Calls == 4);
+            for (var i = 0; i < 8; i++)
+            {
+                var observer = Create(pool, analyzer, sink); observers.Add(observer);
+                observer.Observe(Frame("Subject: queued\r\n\r\nbody"u8));
+                Assert.False(observer.Abandoned, "A healthy burst beyond four must retain its analysis copy.");
+            }
+            Assert.Equal(8, pool.Counters.ReadySessions);
+            Assert.False(pool.Counters.Saturated);
+            analyzer.Release.TrySetResult();
+            await Until(() => analyzer.Calls == 12 && sink.Warnings.Count == 12);
+            Assert.InRange(analyzer.MaxActive, 1, 4);
+            Assert.Equal(0, pool.Counters.DroppedChunks);
+        }
+        finally
+        {
+            analyzer.Release.TrySetResult();
+            await Task.WhenAll(observers.Select(observer => observer.DisposeAsync().AsTask())).WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        await Until(() => pool.Counters.BufferedBytes == 0 && pool.Counters.ActiveWorkers == 0);
     }
 
     [Fact]
