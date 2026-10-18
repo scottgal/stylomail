@@ -57,15 +57,18 @@ public sealed class HostProxyBackendTransport : IBackendTransport
     private readonly IOptions<HostProxyOptions> _options;
     private readonly IBackendCredentialStore _credentials;
     private readonly ProxyTrustAnchors _anchors;
+    private readonly AccessProxyBounds _bounds;
 
     public HostProxyBackendTransport(
         IOptions<HostProxyOptions> options,
         IBackendCredentialStore credentials,
-        ProxyTrustAnchors anchors)
+        ProxyTrustAnchors anchors,
+        AccessProxyBounds bounds)
     {
         _options = options;
         _credentials = credentials;
         _anchors = anchors;
+        _bounds = bounds;
     }
 
     public async ValueTask<IDuplexChannel> OpenAsync(
@@ -104,7 +107,13 @@ public sealed class HostProxyBackendTransport : IBackendTransport
                 "The configured provider has no endpoint for this protocol.");
         }
 
-        if (!tls && !await IsLoopbackAsync(host, cancellationToken).ConfigureAwait(false))
+        // One deadline covers DNS, TCP and TLS establishment. Without it, a black-holed or
+        // half-open backend waits on the operating system's connect/handshake timeout, well past
+        // the session's configured bound, before the client sees a failure.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_bounds.BackendConnectTimeout);
+
+        if (!tls && !await IsLoopbackAsync(host, deadline.Token).ConfigureAwait(false))
         {
             throw new ProxyConfigurationException(
                 "A plaintext backend endpoint is permitted only on loopback.");
@@ -113,7 +122,13 @@ public sealed class HostProxyBackendTransport : IBackendTransport
         var client = new TcpClient();
         try
         {
-            await client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+            await client.ConnectAsync(host, port, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            client.Dispose();
+            throw new AccessProxyTimeoutException(
+                "The backend connection exceeded the configured connect bound.");
         }
         catch
         {
@@ -153,7 +168,14 @@ public sealed class HostProxyBackendTransport : IBackendTransport
                 clientOptions.CertificateChainPolicy = policy;
             }
 
-            await secure.AuthenticateAsClientAsync(clientOptions, cancellationToken).ConfigureAwait(false);
+            await secure.AuthenticateAsClientAsync(clientOptions, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            await secure.DisposeAsync().ConfigureAwait(false);
+            client.Dispose();
+            throw new AccessProxyTimeoutException(
+                "The backend TLS handshake exceeded the configured connect bound.");
         }
         catch
         {

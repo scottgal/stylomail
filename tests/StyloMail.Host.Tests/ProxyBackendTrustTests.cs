@@ -145,7 +145,8 @@ public sealed class ProxyBackendTrustTests
         var transport = new HostProxyBackendTransport(
             options,
             new FixedCredentialStore("harness"),
-            new ProxyTrustAnchors(options, TimeProvider.System));
+            new ProxyTrustAnchors(options, TimeProvider.System),
+            new AccessProxyBounds());
 
         try
         {
