@@ -324,7 +324,7 @@ public static class ImageInspector
         ImageFormat.Png => 8,
         ImageFormat.Jpeg => 3,
         ImageFormat.Gif => 6,
-        ImageFormat.Bmp => 2,
+        ImageFormat.Bmp => 18,
         ImageFormat.WebP => 12,
         ImageFormat.Tiff => 4,
         ImageFormat.Heic or ImageFormat.Avif => 12,

@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace StyloMail.Image;
 
 /// <summary>
@@ -123,7 +125,7 @@ internal static class ImageFormats
             return ImageFormat.Gif;
         }
 
-        if (bytes.Length >= 2 && bytes[0] == (byte)'B' && bytes[1] == (byte)'M')
+        if (IsBmp(bytes))
         {
             return ImageFormat.Bmp;
         }
@@ -197,6 +199,40 @@ internal static class ImageFormats
         return ImageFormat.Unknown;
     }
 
+    /// <summary>
+    /// A two-byte "BM" is not enough: ordinary text can begin with those letters. Requiring a
+    /// plausible pixel offset and DIB header keeps a plain-text file from being promoted to an
+    /// image claim and reported as a mismatch.
+    /// </summary>
+    private static bool IsBmp(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 18 || bytes[0] != (byte)'B' || bytes[1] != (byte)'M')
+        {
+            return false;
+        }
+
+        var fileSize = BinaryPrimitives.ReadUInt32LittleEndian(bytes[2..]);
+        var reserved = BinaryPrimitives.ReadUInt32LittleEndian(bytes[6..]);
+        var pixelOffset = BinaryPrimitives.ReadUInt32LittleEndian(bytes[10..]);
+        var dibSize = BinaryPrimitives.ReadUInt32LittleEndian(bytes[14..]);
+        if (reserved != 0 || pixelOffset < 14)
+        {
+            return false;
+        }
+
+        if (dibSize is not (12 or 40 or 52 or 56 or 64 or 108 or 124))
+        {
+            return false;
+        }
+
+        if (pixelOffset < 14 + dibSize)
+        {
+            return false;
+        }
+
+        return fileSize == 0 || fileSize >= pixelOffset;
+    }
+
     private static bool LooksLikeSvg(ReadOnlySpan<byte> bytes)
     {
         var start = 0;
@@ -221,7 +257,43 @@ internal static class ImageFormats
             return true;
         }
 
-        return StartsWithIgnoreCase(head, "<?xml"u8) && ContainsIgnoreCase(head, "<svg"u8);
+        if (!StartsWithIgnoreCase(head, "<?xml"u8))
+        {
+            return false;
+        }
+
+        // The SVG element must be the document element. An XHTML page that merely contains an
+        // inline <svg> is not an SVG image, and calling it one would manufacture a mismatch when
+        // the sender correctly declared XHTML.
+        var declarationEnd = head.IndexOf("?>"u8);
+        if (declarationEnd < 0)
+        {
+            return false;
+        }
+
+        var index = declarationEnd + 2;
+        while (true)
+        {
+            while (index < head.Length && IsAsciiWhitespace(head[index]))
+            {
+                index++;
+            }
+
+            if (index + 4 > head.Length || !StartsWithIgnoreCase(head[index..], "<!--"u8))
+            {
+                break;
+            }
+
+            var commentEnd = head[index..].IndexOf("-->"u8);
+            if (commentEnd < 0)
+            {
+                return false;
+            }
+
+            index += commentEnd + 3;
+        }
+
+        return StartsWithIgnoreCase(head[index..], "<svg"u8);
     }
 
     private static bool IsAsciiWhitespace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
@@ -242,19 +314,6 @@ internal static class ImageFormats
         }
 
         return true;
-    }
-
-    private static bool ContainsIgnoreCase(ReadOnlySpan<byte> value, ReadOnlySpan<byte> needle)
-    {
-        for (var i = 0; i + needle.Length <= value.Length; i++)
-        {
-            if (StartsWithIgnoreCase(value[i..], needle))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static byte ToLower(byte value) => value is >= (byte)'A' and <= (byte)'Z' ? (byte)(value + 32) : value;

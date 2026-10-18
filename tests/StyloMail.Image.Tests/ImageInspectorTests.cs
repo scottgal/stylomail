@@ -444,6 +444,45 @@ public sealed class ImageInspectorTests
     }
 
     [Fact]
+    public void XhtmlWithAnInlineSvgIsNotAnImage()
+    {
+        var xhtml = System.Text.Encoding.UTF8.GetBytes(
+            "<?xml version=\"1.0\"?><html><body><svg xmlns=\"http://www.w3.org/2000/svg\"></svg></body></html>");
+
+        var result = ImageInspector.Inspect(Request(xhtml, "application/xhtml+xml"));
+
+        Assert.Equal(ImageDisposition.NotProduced, result.Disposition);
+        Assert.Equal(ImageNotProducedReason.NotAnImage, result.NotProducedReason);
+        Assert.Equal(EvidenceAvailability.NotApplicable, result.Availability);
+        Assert.False(result.FormatMismatch);
+    }
+
+    [Fact]
+    public void TextBeginningWithBmIsNotABitmap()
+    {
+        var text = System.Text.Encoding.ASCII.GetBytes("BMW is a car, not a bitmap");
+
+        var result = ImageInspector.Inspect(Request(text, "text/plain"));
+
+        Assert.Equal(ImageNotProducedReason.NotAnImage, result.NotProducedReason);
+        Assert.Equal(ImageFormat.Unknown, result.DetectedFormat);
+        Assert.False(result.FormatMismatch);
+    }
+
+    [Fact]
+    public void TruncatedBmpIsATruncatedHeaderRatherThanAMismatch()
+    {
+        var bytes = new byte[10];
+        bytes[0] = (byte)'B';
+        bytes[1] = (byte)'M';
+
+        var result = ImageInspector.Inspect(Request(bytes, "image/bmp"));
+
+        Assert.Equal(ImageNotProducedReason.TruncatedHeader, result.NotProducedReason);
+        Assert.False(result.FormatMismatch);
+    }
+
+    [Fact]
     public void EveryCutPointOfTheRealFixturesProducesAResultNeverAnException()
     {
         foreach (var (name, declared) in new[]
