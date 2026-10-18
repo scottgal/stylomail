@@ -102,6 +102,14 @@ public sealed class StyloMailApiClient
             body: null, cancellationToken);
     }
 
+    public Task<PolicyEffectiveBindingResponse> GetEffectivePolicyBindingAsync(string entity, string? company, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entity);
+        var query = "entity=" + Uri.EscapeDataString(entity);
+        if (!string.IsNullOrWhiteSpace(company)) query += "&company=" + Uri.EscapeDataString(company);
+        return SendAsync<PolicyEffectiveBindingResponse>(HttpMethod.Get, "/v1/policy/effective-binding?" + query, body: null, cancellationToken);
+    }
+
     /// <summary>
     /// Reads a page of original assessed records for a Slack workspace/channel.
     /// Tenant identity comes only from the Host's authenticated Review key.

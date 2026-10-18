@@ -6,8 +6,8 @@ namespace StyloMail.Desktop.Models;
 /// <summary>Presentation-only projection of a Host profile; it makes no judgement about a person.</summary>
 public sealed class EntityProfileView
 {
-    private readonly string _policyBinding = "Effective policy binding: pending from the policy service.";
-    public EntityProfileView(ProfileResponse profile)
+    private readonly string _policyBinding;
+    public EntityProfileView(ProfileResponse profile, PolicyEffectiveBindingResponse? binding = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         Title = profile.DisplayLabelAvailable && !string.IsNullOrWhiteSpace(profile.DisplayLabel)
@@ -26,6 +26,7 @@ public sealed class EntityProfileView
             (string.IsNullOrWhiteSpace(profile.Coverage.Reason) ? string.Empty : $" {profile.Coverage.Reason}");
         Tiles = profile.Kpis.Select(k => new KpiTileView(k)).ToArray();
         NotMeasured = profile.NotMeasured.Select(x => $"{x.Label}: {x.Reason}").ToArray();
+        _policyBinding = DescribeBinding(binding);
     }
 
     public string Title { get; }
@@ -38,6 +39,15 @@ public sealed class EntityProfileView
     public IReadOnlyList<string> NotMeasured { get; }
 
     private static string Short(string value) => value.Length <= 12 ? value : value[..12] + "…";
+    private static string DescribeBinding(PolicyEffectiveBindingResponse? binding)
+    {
+        if (binding is null) return "Effective policy binding: unavailable from the policy service.";
+        if (!string.Equals(binding.State, "Bound", StringComparison.Ordinal)) return $"Effective policy binding: {binding.State}. {binding.Reason}".Trim();
+        var selected = binding.Bindings.FirstOrDefault(x => x.Selected);
+        var chain = binding.AddressedChain.Count == 0 ? "no addressed scopes" : string.Join(" → ", binding.AddressedChain);
+        return selected is null ? $"Effective policy binding: no selected binding (resolved chain: {chain})." :
+            $"Effective policy binding: {selected.Action} at {selected.ScopeKind}; resolved chain: {chain}.";
+    }
 }
 
 public sealed class KpiTileView

@@ -1221,11 +1221,14 @@ public partial class MainWindow : Window
         if (_services is null || string.IsNullOrWhiteSpace(sender.PrincipalId)) return;
         try
         {
-            var profile = await _services.Client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var settings = await _services.Client.GetSenderSettingsAsync(sender.PrincipalId, cancellationToken).ConfigureAwait(false);
+            var profile = await _services.Client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken).ConfigureAwait(false);
+            PolicyEffectiveBindingResponse? binding = null;
+            try { binding = await _services.Client.GetEffectivePolicyBindingAsync(sender.PrincipalId, settings.CompanyId, cancellationToken).ConfigureAwait(false); }
+            catch (StyloMailApiException) { /* Profile remains usable; its line says policy was unavailable. */ }
             await Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                var dialog = new EntityProfileDialog(new EntityProfileView(profile));
+                var dialog = new EntityProfileDialog(new EntityProfileView(profile, binding));
                 await dialog.ShowDialog(this);
             }).ConfigureAwait(false);
         }

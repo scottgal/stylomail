@@ -10,7 +10,7 @@ public sealed class EntityProfileViewTests
     {
         var view = new EntityProfileView(Profile());
         Assert.Equal("Entity entity-ident…", view.Title);
-        Assert.Contains("pending", view.PolicyBinding, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unavailable", view.PolicyBinding, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Trend not produced: prior_window_empty", view.Tiles.Single().Trend);
     }
 
