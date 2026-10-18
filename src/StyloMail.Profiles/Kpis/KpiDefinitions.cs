@@ -41,10 +41,14 @@ public static class KpiDefinitions
             Numerator = "Inbound messages that were followed within 7 days by an outbound message "
                 + "from this scope to the same counterparty address, matched by a tenant-keyed HMAC "
                 + "of the normalised address.",
-            Denominator = "Inbound messages that carried a counterparty address.",
-            Window = "Inbound messages in the profile window; each inbound message is searched "
-                + "forward up to 7 days for an outbound match. Matches are by address reciprocity "
-                + "only: true In-Reply-To or thread linkage is NOT produced.",
+            Denominator = "Inbound messages that carried a counterparty address and whose 7-day "
+                + "reply window has fully elapsed.",
+            Window = "Inbound messages in the profile window whose 7-day reply window has fully "
+                + "elapsed; each is searched forward up to 7 days for an outbound match. Recent "
+                + "inbound messages are excluded and counted, not treated as unanswered. The "
+                + "outbound candidate set is capped; when it is capped or unreadable the value is "
+                + "NotProduced rather than undercounted. Matches are by address reciprocity only: "
+                + "true In-Reply-To or thread linkage is NOT produced.",
             MinimumSample = 5,
             Direction = KpiDirection.HigherIsBetter,
             Unit = KpiUnit.Ratio,
@@ -55,6 +59,8 @@ public static class KpiDefinitions
                 KpiReasons.NoProfileKey,
                 KpiReasons.NoAddressReciprocityInScope,
                 KpiReasons.NoOutboundRecipientIdentity,
+                KpiReasons.ReplyCandidatesIncomplete,
+                KpiReasons.NoFullyObservedInbound,
             ],
             Version = Version,
         },
