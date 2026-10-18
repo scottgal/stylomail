@@ -1,5 +1,13 @@
 namespace StyloMail.Image;
 
+/// <summary>A reservation and release seam shared with the host's copy accounting.</summary>
+public interface IImageScratchQuota
+{
+    bool TryReserve(int bytes);
+
+    void Release(int bytes);
+}
+
 /// <summary>
 /// A byte quota for image scratch, shared with the host's existing copy accounting.
 /// </summary>
@@ -9,7 +17,7 @@ namespace StyloMail.Image;
 /// buffer is allocated and releases only when the caller disposes it, which is the consumer's
 /// settle point.
 /// </remarks>
-public sealed class ImageScratchQuota
+public sealed class ImageScratchQuota : IImageScratchQuota
 {
     private long _reservedBytes;
 
@@ -49,7 +57,7 @@ public sealed class ImageScratchQuota
         }
     }
 
-    private bool TryReserve(int bytes)
+    public bool TryReserve(int bytes)
     {
         while (true)
         {
@@ -66,7 +74,7 @@ public sealed class ImageScratchQuota
         }
     }
 
-    internal void Release(int bytes) => Interlocked.Add(ref _reservedBytes, -bytes);
+    public void Release(int bytes) => Interlocked.Add(ref _reservedBytes, -bytes);
 }
 
 /// <summary>
@@ -75,10 +83,10 @@ public sealed class ImageScratchQuota
 /// </summary>
 public sealed class ImageScratchLease : IDisposable
 {
-    private readonly ImageScratchQuota _quota;
+    private readonly IImageScratchQuota _quota;
     private byte[]? _buffer;
 
-    internal ImageScratchLease(ImageScratchQuota quota, int bytes)
+    internal ImageScratchLease(IImageScratchQuota quota, int bytes)
     {
         _quota = quota;
         _buffer = new byte[bytes];
@@ -93,6 +101,30 @@ public sealed class ImageScratchLease : IDisposable
         _buffer is { } buffer
             ? buffer
             : throw new ObjectDisposedException(nameof(ImageScratchLease));
+
+    /// <summary>
+    /// Reserves through an arbitrary quota and returns a lease, or null when the quota refuses.
+    /// Nothing is allocated on refusal; allocation failure rolls the reservation back.
+    /// </summary>
+    public static ImageScratchLease? TryRent(IImageScratchQuota quota, int bytes)
+    {
+        ArgumentNullException.ThrowIfNull(quota);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bytes);
+        if (!quota.TryReserve(bytes))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new ImageScratchLease(quota, bytes);
+        }
+        catch
+        {
+            quota.Release(bytes);
+            throw;
+        }
+    }
 
     public void Dispose()
     {

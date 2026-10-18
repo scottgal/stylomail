@@ -1,6 +1,7 @@
 using StyloMail.AccessProxy.Hosting;
 using StyloMail.AccessProxy.Threading;
 using StyloMail.Core;
+using StyloMail.Host.Storage;
 using StyloMail.Mime;
 
 namespace StyloMail.Host.Proxy;
@@ -33,18 +34,35 @@ public sealed class HostProxyWarningAnalyzer : IProxyWarningAnalyzer
     private readonly IMimeMessageAnalyzer? _mime;
     private readonly ThreadingHeaderExtractor _threading;
     private readonly TimeProvider _clock;
+    private readonly HostImageOptions? _imageOptions;
+    private readonly ImageObservationIdentity? _imageIdentity;
+    private readonly IProxyImageObservationSink? _imageSink;
+    private readonly SqliteProxyImageStore? _imageStore;
+    private readonly MimeParseLimits? _mimeLimits;
+    private long _imageSequence;
+
 
     public HostProxyWarningAnalyzer(
         IMimeMessageAnalyzer? mime,
         ThreadingHeaderExtractor threading,
-        TimeProvider clock)
+        TimeProvider clock,
+        HostImageOptions? imageOptions = null,
+        ImageObservationIdentity? imageIdentity = null,
+        IProxyImageObservationSink? imageSink = null,
+        SqliteProxyImageStore? imageStore = null,
+        MimeParseLimits? mimeLimits = null)
     {
         _mime = mime;
         _threading = threading ?? throw new ArgumentNullException(nameof(threading));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _imageOptions = imageOptions;
+        _imageIdentity = imageIdentity;
+        _imageSink = imageSink;
+        _imageStore = imageStore;
+        _mimeLimits = mimeLimits;
     }
 
-    public ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(
+    public async ValueTask<ProxyWarningAnalysisResult> AnalyzeAsync(
         ProxyWarningAnalysisInput input,
         CancellationToken cancellationToken)
     {
@@ -59,9 +77,9 @@ public sealed class HostProxyWarningAnalyzer : IProxyWarningAnalyzer
 
         if (_mime is null)
         {
-            return ValueTask.FromResult(Result(
+            return Result(
                 threading, ProxyWarningAvailability.NotProduced,
-                ProxyWarningAvailabilityReason.NoAnalyserConfigured, []));
+                ProxyWarningAvailabilityReason.NoAnalyserConfigured, []);
         }
 
         var envelope = new MailEnvelope
@@ -79,6 +97,27 @@ public sealed class HostProxyWarningAnalyzer : IProxyWarningAnalyzer
             PayloadReference = string.Empty,
         };
 
+        ImagePartObserver? observer = null;
+        if (_imageOptions?.Enabled == true
+            && _imageIdentity is not null
+            && _imageSink is not null
+            && _imageStore is { EpochAvailable: true }
+            && input.ImageScratch is not null)
+        {
+            observer = new ImagePartObserver(
+                _imageIdentity,
+                input.TenantId,
+                input.AccountId,
+                threading.MessageToken,
+                threading.ThreadToken,
+                MessageTrafficKind.Retrieval,
+                input.ObservedAt,
+                _imageStore.CurrentEpoch,
+                Interlocked.Increment(ref _imageSequence),
+                input.ImageScratch,
+                input.Message);
+        }
+
         MimeAnalysisResult analysis;
         try
         {
@@ -87,6 +126,8 @@ public sealed class HostProxyWarningAnalyzer : IProxyWarningAnalyzer
                 Envelope = envelope,
                 RawMessage = input.Message,
                 TimeProvider = _clock,
+                Limits = _mimeLimits ?? MimeParseLimits.Default,
+                ImageParts = observer,
             });
         }
         catch (Exception)
@@ -94,29 +135,41 @@ public sealed class HostProxyWarningAnalyzer : IProxyWarningAnalyzer
             // The MIME adapter is documented not to throw for hostile input. If that ever changes,
             // an unreadable message is still a named outcome rather than an exception into the
             // relay or a fabricated clean result.
-            return ValueTask.FromResult(Result(
+            return Result(
                 threading, ProxyWarningAvailability.NotProduced,
-                ProxyWarningAvailabilityReason.UnreadableMessage, []));
+                ProxyWarningAvailabilityReason.UnreadableMessage, []);
+        }
+
+        if (observer?.Observation is { } imageObservation && _imageSink is not null)
+        {
+            try
+            {
+                await _imageSink.RecordAsync(imageObservation, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Image storage is observational; a failed write cannot change warning analysis.
+            }
         }
 
         if (!analysis.IsAnalysable || analysis.Message is null)
         {
-            return ValueTask.FromResult(Result(
+            return Result(
                 threading, ProxyWarningAvailability.NotProduced,
-                ProxyWarningAvailabilityReason.UnreadableMessage, []));
+                ProxyWarningAvailabilityReason.UnreadableMessage, []);
         }
 
         if (!analysis.Message.Coverage.BodyParsed)
         {
             // Parsed structurally, but no analysable body (for example wholly encrypted content).
-            return ValueTask.FromResult(Result(
+            return Result(
                 threading, ProxyWarningAvailability.NotProduced,
-                ProxyWarningAvailabilityReason.UnsupportedContent, []));
+                ProxyWarningAvailabilityReason.UnsupportedContent, []);
         }
 
-        return ValueTask.FromResult(Result(
+        return Result(
             threading, ProxyWarningAvailability.Available,
-            ProxyWarningAvailabilityReason.None, Findings(analysis.Evidence)));
+            ProxyWarningAvailabilityReason.None, Findings(analysis.Evidence));
     }
 
     private static ProxyWarningAnalysisResult Result(

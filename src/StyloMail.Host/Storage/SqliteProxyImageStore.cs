@@ -87,6 +87,10 @@ public sealed class SqliteProxyImageStore : IProxyImageObservationSink, IProxyIm
 
     public long EpochUnavailableDrops => Interlocked.Read(ref _epochUnavailableDrops);
 
+    internal Action? BeforePartInsert { get; set; }
+
+    internal Action? BeforeCommit { get; set; }
+
     /// <summary>
     /// Increments the persisted monotonic epoch once. A fresh migration has seeded 0, so the first
     /// start returns 1. Missing epoch after the migration marker is a repair fault: the method
@@ -196,6 +200,8 @@ public sealed class SqliteProxyImageStore : IProxyImageObservationSink, IProxyIm
                 if (string.Equals(observation.ResultDigest, current.ResultDigest, StringComparison.Ordinal))
                 {
                     AdvanceWatermark(connection, transaction, observation);
+                    BeforeCommit?.Invoke();
+                    cancellationToken.ThrowIfCancellationRequested();
                     transaction.Commit();
                     return ValueTask.CompletedTask;
                 }
@@ -210,7 +216,9 @@ public sealed class SqliteProxyImageStore : IProxyImageObservationSink, IProxyIm
 
                 UpdateOutcome(connection, transaction, observation, usageBytes, expiresAt);
                 DeleteParts(connection, transaction, observation);
-                InsertParts(connection, transaction, observation);
+                InsertParts(connection, transaction, observation, cancellationToken);
+                BeforeCommit?.Invoke();
+                cancellationToken.ThrowIfCancellationRequested();
                 transaction.Commit();
                 return ValueTask.CompletedTask;
             }
@@ -223,7 +231,9 @@ public sealed class SqliteProxyImageStore : IProxyImageObservationSink, IProxyIm
             }
 
             InsertOutcome(connection, transaction, observation, usageBytes, expiresAt);
-            InsertParts(connection, transaction, observation);
+            InsertParts(connection, transaction, observation, cancellationToken);
+            BeforeCommit?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             transaction.Commit();
             return ValueTask.CompletedTask;
         }
@@ -600,13 +610,17 @@ public sealed class SqliteProxyImageStore : IProxyImageObservationSink, IProxyIm
         command.ExecuteNonQuery();
     }
 
-    private static void InsertParts(
+    private void InsertParts(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        ProxyImageObservation observation)
+        ProxyImageObservation observation,
+        CancellationToken cancellationToken)
     {
         foreach (var part in observation.Parts)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeforePartInsert?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText =

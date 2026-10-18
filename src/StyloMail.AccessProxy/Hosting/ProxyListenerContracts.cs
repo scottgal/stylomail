@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using StyloMail.AccessProxy.Sessions;
+using StyloMail.Image;
 
 namespace StyloMail.AccessProxy.Hosting;
 
@@ -151,6 +152,9 @@ public sealed record ProxyWarningAnalysisInput
     public required string TenantId { get; init; }
     public required string AccountId { get; init; }
     public required DateTimeOffset ObservedAt { get; init; }
+
+    /// <summary>Optional message-scoped scratch quota for image observation.</summary>
+    public IImageScratchQuota? ImageScratch { get; init; }
 }
 
 public sealed record ProxyWarningFinding
