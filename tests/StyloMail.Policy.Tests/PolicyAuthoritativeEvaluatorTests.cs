@@ -416,6 +416,85 @@ public sealed class PolicyAuthoritativeEvaluatorTests
             Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
     }
 
+    [Fact]
+    public async Task A_pack_becoming_effective_after_a_healthy_Absent_installs_and_clears_absence()
+    {
+        var reader = new SwitchablePackReader { Absent = true, Version = "1.0.0" };
+        var evaluator = NewSwitchableEvaluator(reader);
+
+        var absent = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+        Assert.Equal(PolicyAuthoritativeKind.Absent, absent.Kind);
+
+        reader.Absent = false;
+        var pack = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+
+        Assert.Equal(PolicyAuthoritativeKind.Pack, pack.Kind);
+        Assert.Equal("1.0.0", pack.Record!.PackVersion);
+        Assert.Equal(1, CountPrivateDictionary(evaluator, "_cache"));
+    }
+
+    [Fact]
+    public async Task A_current_read_after_Invalidate_installs_the_new_pack()
+    {
+        var reader = new SwitchablePackReader { Version = "1.0.0" };
+        var evaluator = NewSwitchableEvaluator(reader);
+
+        var first = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+        Assert.Equal("1.0.0", first.Record!.PackVersion);
+
+        evaluator.Invalidate(PolicyFixtures.Tenant);
+        reader.Version = "2.0.0";
+        var second = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+
+        Assert.Equal(PolicyAuthoritativeKind.Pack, second.Kind);
+        Assert.Equal("2.0.0", second.Record!.PackVersion);
+        Assert.Equal(1, CountPrivateDictionary(evaluator, "_cache"));
+    }
+
+    private static PolicyAuthoritativeEvaluator NewSwitchableEvaluator(IPolicyPackReader packs) => new(
+        packs,
+        new RuleReader(PolicyFixtures.RuleSet()),
+        new PropertyReader([], []),
+        new BindingReader(),
+        new PolicyAuthoritativeOptions
+        {
+            Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [PolicyFixtures.Tenant] = "GB",
+            },
+        });
+
+    private sealed class SwitchablePackReader : IPolicyPackReader
+    {
+        public bool Absent { get; set; }
+
+        public string Version { get; set; } = "1.0.0";
+
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(
+                Absent ? null : PolicyFixtures.Pack(version: Version, tenant: tenantId));
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
     private sealed class BothControlledPacks : IPolicyPackReader
     {
         private int _calls;

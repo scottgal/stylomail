@@ -452,23 +452,30 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         DateTimeOffset now)
     {
         var fence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
-        if (fence.Generation != epoch || fence.Absent)
+        if (fence.Generation != epoch)
         {
             return;
         }
 
         // Publish the immutable entry atomically. The update factory keeps the higher read ordinal
-        // if another read already published, and the post-publication epoch check removes this
-        // entry if an Invalidate or healthy Absence advanced the fence while it was being written.
+        // if another read already published. A successful read at the current epoch clears the
+        // Absent tombstone: absence is per-epoch, not a permanent tenant state.
         var candidate = new CacheEntry(pack, ruleSet, now, now, epoch, generation);
         _cache.AddOrUpdate(
             cacheKey,
             candidate,
             (_, existing) => generation > existing.ReadGeneration ? candidate : existing);
 
-        var publishedFence = _fences.GetOrAdd(cacheKey, _ => new Fence(0, Absent: false));
+        var publishedFence = _fences.AddOrUpdate(
+            cacheKey,
+            _ => new Fence(epoch, Absent: false),
+            (_, current) => current.Generation == epoch
+                ? new Fence(epoch, Absent: false)
+                : current);
+
         if (publishedFence.Generation != epoch || publishedFence.Absent)
         {
+            // A newer epoch won while this read was publishing; the stale entry is not live.
             ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(
                 new KeyValuePair<string, CacheEntry>(cacheKey, candidate));
             return;
