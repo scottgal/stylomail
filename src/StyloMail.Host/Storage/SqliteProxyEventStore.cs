@@ -172,7 +172,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
         // a closed session look live.
         command.CommandText =
             "SELECT s.session_id,s.account_id,s.protocol,s.direction,s.occurred_at,s.authenticated_at,"
-            + "s.client_bytes,s.backend_bytes "
+            + "s.client_bytes,s.backend_bytes,s.bound_reason "
             + "FROM proxy_session_event s "
             + "WHERE s.tenant_id=$tenant AND s.kind='Opened' "
             + "AND s.id=(SELECT MAX(x.id) FROM proxy_session_event x "
@@ -197,6 +197,7 @@ public sealed class SqliteProxyEventStore : IProxyListenerEventSink, IProxyThrea
                 AuthenticatedAt = reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
                 ClientBytes = reader.GetInt64(6),
                 BackendBytes = reader.GetInt64(7),
+                BoundReason = reader.IsDBNull(8) ? null : reader.GetString(8),
             });
         }
 

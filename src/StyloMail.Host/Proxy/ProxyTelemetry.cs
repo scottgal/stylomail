@@ -21,6 +21,9 @@ public sealed record ProxyLiveSession
     public long ClientBytes { get; init; }
 
     public long BackendBytes { get; init; }
+
+    /// <summary>The stored safe reason, without substituting a value when it is absent.</summary>
+    public string? BoundReason { get; init; }
 }
 
 /// <summary>Records the moment a live session authenticated, without opening a second session.</summary>

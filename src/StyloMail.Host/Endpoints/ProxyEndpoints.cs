@@ -466,7 +466,7 @@ internal static class ProxyEndpoints
                 // measured zero. Null is the honest value until the counter lands.
                 ClientBytes = null,
                 BackendBytes = null,
-                BoundReason = null,
+                BoundReason = session.BoundReason,
             })],
             HasMore = hasMore,
             NextCursor = hasMore && page.Count > 0
