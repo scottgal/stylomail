@@ -282,6 +282,19 @@ public sealed class SegmentEmbeddingProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task A_null_entry_in_the_vectors_array_is_a_contract_failure()
+    {
+        var handler = new StubHandler();
+        handler.EnqueueMetadata();
+        handler.EnqueueRawVectors("[null]");
+
+        var batch = await Provider(handler).EmbedAsync(OneSegment);
+
+        Assert.False(batch.AnyProduced);
+        Assert.All(batch.Segments, row => Assert.Equal(EmbeddingNotProducedReason.ContractViolation, row.Reason));
+    }
+
+    [Fact]
     public async Task A_refusing_service_opens_the_circuit_and_the_next_call_makes_no_request()
     {
         var handler = new StubHandler();
@@ -467,6 +480,16 @@ public sealed class SegmentEmbeddingProviderTests : IDisposable
                     Content = new StringContent(body, Encoding.UTF8, "application/json"),
                 };
             });
+        }
+
+        public void EnqueueRawVectors(string vectorsJson)
+        {
+            var body = $"{{\"vectors\":{vectorsJson},\"dimension\":256,\"model_tag\":\"{ModelTag}\"," +
+                $"\"prefix_version\":\"{PrefixVersion}\",\"dtype\":\"bfloat16\",\"normalized\":true}}";
+            _responses.Enqueue(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            }));
         }
 
         public void EnqueueStallingBody() =>

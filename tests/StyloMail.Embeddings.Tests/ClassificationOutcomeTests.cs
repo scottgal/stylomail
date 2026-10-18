@@ -119,6 +119,35 @@ public sealed class ClassificationOutcomeTests : IDisposable
             Assert.IsType<ClassificationOutcome.Unavailable>(await Provider(handler).ClassifyAsync(OneSegment)).Reason);
     }
 
+    [Theory]
+    [InlineData("scorer")]
+    [InlineData("segment")]
+    [InlineData("element")]
+    public async Task A_null_entry_in_a_classify_array_is_a_contract_failure(string nullIn)
+    {
+        var handler = new ScriptedHandler();
+        handler.EnqueueMetadata();
+        var body = ClassifyBody();
+        body = nullIn switch
+        {
+            "scorer" => body.Replace("\"scorers\":[{\"scorer\"", "\"scorers\":[null,{\"scorer\"", StringComparison.Ordinal)
+                            .Replace("]}", "}", StringComparison.Ordinal),
+            "segment" => body.Replace("\"segments\":[{", "\"segments\":[null,{", StringComparison.Ordinal)
+                             .Replace("]}}]}", "]}}]}", StringComparison.Ordinal),
+            _ => body.Replace("\"elements\":[{\"element\"", "\"elements\":[null,{\"element\"", StringComparison.Ordinal)
+                      .Replace("]}]}]}", "]}]}]}", StringComparison.Ordinal),
+        };
+        // The replacements above can produce invalid JSON; a malformed document is also a contract
+        // failure, so the assertion is the typed outcome either way.
+        handler.Enqueue(HttpStatusCode.OK, body, alreadyJson: true);
+
+        var outcome = await Provider(handler).ClassifyAsync(OneSegment);
+
+        Assert.Equal(
+            ClassificationUnavailableReason.ContractViolation,
+            Assert.IsType<ClassificationOutcome.Unavailable>(outcome).Reason);
+    }
+
     [Fact]
     public async Task A_batch_over_the_bound_is_invalid_request_without_a_request()
     {

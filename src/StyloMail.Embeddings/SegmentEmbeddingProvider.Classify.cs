@@ -173,8 +173,11 @@ public sealed partial class SegmentEmbeddingProvider
         var results = new List<ElementScorerResult>(requested.Count);
         foreach (var scorerName in requested)
         {
+            // Entries can be null in well-formed JSON; a null coin the list must be a contract
+            // failure, not a dereference.
             var scorer = document.Scorers.FirstOrDefault(
-                candidate => string.Equals(candidate.Scorer, scorerName, StringComparison.Ordinal));
+                candidate => candidate is not null
+                    && string.Equals(candidate.Scorer, scorerName, StringComparison.Ordinal));
             if (scorer?.Segments is null || scorer.Segments.Count != count)
             {
                 _breaker.RecordFailure();
@@ -194,7 +197,8 @@ public sealed partial class SegmentEmbeddingProvider
             var rows = new List<SegmentElementScores>(count);
             for (var ordinal = 0; ordinal < count; ordinal++)
             {
-                var segment = scorer.Segments.FirstOrDefault(candidate => candidate.Ordinal == ordinal);
+                var segment = scorer.Segments.FirstOrDefault(
+                    candidate => candidate is not null && candidate.Ordinal == ordinal);
                 if (segment?.Elements is null || segment.Elements.Count != ElementVocabulary.All.Count)
                 {
                     _breaker.RecordFailure();
@@ -205,7 +209,8 @@ public sealed partial class SegmentEmbeddingProvider
                 foreach (var element in ElementVocabulary.All)
                 {
                     var point = segment.Elements.FirstOrDefault(
-                        candidate => string.Equals(candidate.Element, element, StringComparison.Ordinal));
+                        candidate => candidate is not null
+                            && string.Equals(candidate.Element, element, StringComparison.Ordinal));
                     if (point is null)
                     {
                         _breaker.RecordFailure();

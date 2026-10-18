@@ -445,6 +445,13 @@ public sealed partial class SegmentEmbeddingProvider : ISegmentEmbeddingProvider
         for (var ordinal = 0; ordinal < count; ordinal++)
         {
             var vector = document.Vectors[ordinal];
+            // A well-formed JSON array can contain a null entry, and deserialisation keeps it. Reject
+            // it as a contract violation instead of dereferencing it.
+            if (vector is null)
+            {
+                return Absent(count, EmbeddingNotProducedReason.ContractViolation);
+            }
+
             if (vector.Length != _options.Dimension)
             {
                 return Absent(count, EmbeddingNotProducedReason.DimensionMismatch);
