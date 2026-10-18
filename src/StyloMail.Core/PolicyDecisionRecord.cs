@@ -99,6 +99,9 @@ public sealed record PolicyEffectiveInputSnapshot
 
     public required IReadOnlyList<string> ForcedReviewCategories { get; init; }
 
+    /// <summary>Categories withheld because an expired HoldForReview binding still applies.</summary>
+    public required IReadOnlyList<string> WithheldReviewCategories { get; init; }
+
     public required IReadOnlyList<PolicyPropertyFact> PropertyFacts { get; init; }
 
     public required IReadOnlyList<string> MissingPropertyKeys { get; init; }
@@ -195,6 +198,9 @@ public sealed record PolicyDecisionRecord
     public string? EffectiveInputDigest { get; init; }
 
     public required DateTimeOffset EvaluatedAt { get; init; }
+
+    /// <summary>The absolute review deadline the queue admission used. Null when the action is not Review.</summary>
+    public DateTimeOffset? ReviewDeadline { get; init; }
 
     /// <summary>True when the record was produced under a shadow mode and no action was applied.</summary>
     public bool Shadow { get; init; }

@@ -402,9 +402,10 @@ public sealed class PolicyAuthoritativeEvaluator : IPolicyAuthoritativeEvaluator
         PolicyRuleSet ruleSet,
         DateTimeOffset now)
     {
-        if (_generation.GetOrAdd(pack.TenantId, 0) != generation)
+        // Claim the next generation atomically. A slow older read that started before a newer
+        // install cannot advance the generation it captured, and therefore cannot overwrite it.
+        if (!_generation.TryUpdate(pack.TenantId, generation + 1, generation))
         {
-            // A newer invalidation/install won; never resurrect an older read.
             return;
         }
 

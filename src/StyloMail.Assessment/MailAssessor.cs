@@ -493,9 +493,9 @@ public sealed class MailAssessor : IMailAssessor
             UpdateObservedState(analysis, context, profiles, dimensionVector, action != MailAction.Allow, now);
         }
 
-        // The legacy action is the action the engine chose before composition. The pack candidate
-        // is composed beside it; a pack never relaxes a legacy protective outcome.
-        var legacyAction = decision.Action;
+        // The legacy action is the pre-shadow, post-outage decision. A semantic outage that already
+        // declined responsibility (Defer) must not be overwritten by a pack verdict.
+        var legacyAction = composedAction;
         PolicyDecisionRecord? policyRecord = null;
         MailAction? packCandidate = null;
         var policyContributed = false;
@@ -521,7 +521,14 @@ public sealed class MailAssessor : IMailAssessor
                     // The durable Review state is a capability, not an acceptance outcome. Decide
                     // it before admission and compose Quarantine instead.
                     packCandidate = MailAction.Quarantine;
-                    policyRecord = policyRecord! with { ReviewStateUnavailable = true };
+                    policyRecord = policyRecord! with
+                    {
+                        ReviewStateUnavailable = true,
+                        DecidingReasonCode = "policy.review_state_unavailable",
+                        DecidingReason =
+                            "The durable review state is unavailable, so the Review verdict was "
+                            + "composed as Quarantine rather than attempted.",
+                    };
                 }
 
                 policyContributed = packCandidate != legacyAction;
@@ -533,8 +540,12 @@ public sealed class MailAssessor : IMailAssessor
                     {
                         Source = PolicySource.GlobalShadow,
                         Shadow = true,
-                        Authoritative = true,
+                        Authoritative = authoritative.Kind == PolicyAuthoritativeKind.Pack,
                         Applied = false,
+                        DecidingReasonCode = "policy.global_shadow_precedence",
+                        DecidingReason =
+                            "The global shadow mode is active, so the pack candidate is recorded "
+                            + "and the established action is kept.",
                     };
                 }
                 else
@@ -631,6 +642,7 @@ public sealed class MailAssessor : IMailAssessor
                 legacyAction,
                 packCandidate,
                 action,
+                decision.ReviewDeadline,
                 context.AssessmentOnly,
                 acceptance),
             DeliveryTiming = DeliveryTiming.PreAcceptance,
@@ -1172,6 +1184,7 @@ public sealed class MailAssessor : IMailAssessor
         MailAction legacyAction,
         MailAction? composedAction,
         MailAction finalAction,
+        DateTimeOffset? reviewDeadline,
         bool assessmentOnly,
         AcceptanceOutcome acceptance)
     {
@@ -1196,6 +1209,9 @@ public sealed class MailAssessor : IMailAssessor
             && record.Source != PolicySource.GlobalShadow
             && finalAction != legacyAction;
 
+        var reviewRefused = composedAction == MailAction.Review
+            && admission == AdmissionOutcome.Refused;
+
         return record with
         {
             LegacyAction = legacyAction,
@@ -1205,8 +1221,15 @@ public sealed class MailAssessor : IMailAssessor
             Applied = applied,
             Durable = durable,
             Admission = admission,
-            ReviewAdmissionRefused = composedAction == MailAction.Review
-                && admission == AdmissionOutcome.Refused,
+            ReviewDeadline = reviewDeadline,
+            ReviewAdmissionRefused = reviewRefused,
+            DecidingReasonCode = reviewRefused
+                ? "policy.review_admission_refused"
+                : record.DecidingReasonCode,
+            DecidingReason = reviewRefused
+                ? "The Review admission was refused, so responsibility is declined rather than "
+                    + "claiming a durable review or quarantine."
+                : record.DecidingReason,
         };
     }
 

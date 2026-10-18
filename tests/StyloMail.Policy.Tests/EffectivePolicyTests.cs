@@ -28,6 +28,89 @@ public sealed class EffectivePolicyTests
     }
 
     [Fact]
+    public void A_healthy_unknown_age_with_null_value_still_forces_the_age_categories()
+    {
+        var effective = Resolve(
+            PolicyFixtures.Pack(),
+            facts: [new PolicyPropertyFact
+            {
+                Key = PolicyPropertyKeys.AgeBand,
+                Value = null,
+                State = "Unknown",
+                Source = null,
+                Scope = "entity:entity-1",
+                Availability = "NotProduced",
+                AvailabilityReason = "no_unexpired_value",
+            }]);
+
+        Assert.Contains(PolicyCategories.AdultContent, effective.ForcedReviewCategories);
+        Assert.Contains(PolicyCategories.CoercionAndExtortion, effective.ForcedReviewCategories);
+        Assert.Contains(PolicyCategories.Harassment, effective.ForcedReviewCategories);
+    }
+
+    [Fact]
+    public void An_expired_HoldForReview_forces_review_even_below_the_band()
+    {
+        var binding = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b",
+            startsAt: Now.AddDays(-10),
+            expiresAt: Now.AddDays(-1),
+            reviewBy: Now.AddDays(-2)) with
+        {
+            OnExpiry = BindingOnExpiry.HoldForReview,
+        };
+
+        var pack = PolicyFixtures.Pack();
+        var rules = PolicyFixtures.RuleSet(PolicyFixtures.PaymentRule());
+        var effective = Resolve(pack, bindings: [binding]);
+
+        var evaluation = new DeterministicPolicyEvaluator().Evaluate(new PolicyEvaluationInput
+        {
+            TenantId = PolicyFixtures.Tenant,
+            Pack = pack,
+            RuleSet = rules,
+            Evidence = [PolicyFixtures.Signal(PolicyFixtures.PaymentSignal, 0.10)],
+            Effective = effective,
+        });
+
+        Assert.Equal(PolicyVerdict.Review, evaluation.Verdict);
+        Assert.Contains(evaluation.Rules, rule => rule.State == RuleEvaluationState.WithheldForReview);
+    }
+
+    [Theory]
+    [InlineData("tenant")]
+    [InlineData("pack")]
+    [InlineData("pack-id")]
+    [InlineData("scope")]
+    public void A_binding_from_another_tenant_pack_or_scope_is_not_applied(string mismatch)
+    {
+        var levels = PolicyFixtures.DefaultLevels();
+        levels[PolicyCategories.PaymentRedirection] = ToleranceLevel.Strict;
+
+        var binding = PolicyFixtures.Binding(
+            action: BindingAction.LowerTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.Observe,
+            approvedBy: "reviewer-b");
+
+        binding = mismatch switch
+        {
+            "tenant" => binding with { TenantId = "other-tenant" },
+            "pack" => binding with { PackVersion = "9.9.9" },
+            "pack-id" => binding with { PackId = "other-pack" },
+            _ => binding with { ScopeValue = "other-entity" },
+        };
+
+        var effective = Resolve(PolicyFixtures.Pack(levels: levels), bindings: [binding]);
+
+        Assert.Equal(ToleranceLevel.Strict, effective.Levels[PolicyCategories.PaymentRedirection]);
+        Assert.Empty(effective.Bindings);
+    }
+
+    [Fact]
     public void A_suggested_adult_never_lowers_a_declared_minor()
     {
         var levels = PolicyFixtures.DefaultLevels();
@@ -96,7 +179,8 @@ public sealed class EffectivePolicyTests
 
         var effective = Resolve(PolicyFixtures.Pack(), bindings: [binding]);
 
-        Assert.Contains(PolicyCategories.PaymentRedirection, effective.ForcedReviewCategories);
+        Assert.Contains(PolicyCategories.PaymentRedirection, effective.WithheldReviewCategories);
+        Assert.DoesNotContain(PolicyCategories.PaymentRedirection, effective.ForcedReviewCategories);
     }
 
     [Fact]
@@ -123,7 +207,7 @@ public sealed class EffectivePolicyTests
             bindings: [],
             facts: [],
             missingPropertyKeys: [PolicyPropertyKeys.AgeBand],
-            addressedChain: ["entity:e1"],
+            addressedChain: ["entity:entity-1"],
             now: Now);
 
         var evaluation = new DeterministicPolicyEvaluator().Evaluate(new PolicyEvaluationInput
@@ -166,6 +250,32 @@ public sealed class EffectivePolicyTests
     }
 
     [Fact]
+    public void The_digest_includes_binding_scope_and_fact_availability_reason()
+    {
+        var bindingA = PolicyFixtures.Binding(
+            action: BindingAction.RaiseTolerance,
+            categoryId: PolicyCategories.PaymentRedirection,
+            targetLevel: ToleranceLevel.ZeroTolerance,
+            approvedBy: "reviewer-b");
+        var bindingB = bindingA with { ScopeValue = "example.com", ScopeKind = BindingScope.Domain };
+
+        var chain = new[] { "entity:entity-1", "domain:example.com" };
+        var first = Resolve(PolicyFixtures.Pack(), bindings: [bindingA], chain: chain).ToSnapshot();
+        var second = Resolve(PolicyFixtures.Pack(), bindings: [bindingB], chain: chain).ToSnapshot();
+        Assert.NotEqual(first.Digest, second.Digest);
+
+        var factA = Fact(PolicyPropertyKeys.Country, "GB", "Declared") with
+        {
+            AvailabilityReason = "available",
+        };
+        var factB = factA with { AvailabilityReason = "only_ineligible_candidates" };
+
+        Assert.NotEqual(
+            Resolve(PolicyFixtures.Pack(), facts: [factA]).ToSnapshot().Digest,
+            Resolve(PolicyFixtures.Pack(), facts: [factB]).ToSnapshot().Digest);
+    }
+
+    [Fact]
     public void An_unknown_property_key_on_a_rule_is_refused()
     {
         var rule = PolicyFixtures.PaymentRule() with
@@ -182,14 +292,15 @@ public sealed class EffectivePolicyTests
         PolicyPack pack,
         IReadOnlyList<PolicyBinding>? bindings = null,
         IReadOnlyList<PolicyPropertyFact>? facts = null,
-        IReadOnlyList<string>? missing = null) =>
+        IReadOnlyList<string>? missing = null,
+        IReadOnlyList<string>? chain = null) =>
         EffectivePolicyResolver.Resolve(
             pack,
             PolicyFixtures.RuleSet(),
             bindings ?? [],
             facts ?? [],
             missing ?? [],
-            ["entity:e1"],
+            chain ?? ["entity:entity-1"],
             Now);
 
     private static PolicyPropertyFact Fact(string key, string value, string state) => new()
@@ -198,7 +309,7 @@ public sealed class EffectivePolicyTests
         Value = value,
         State = state,
         Source = state,
-        Scope = "entity:e1",
+        Scope = "entity:entity-1",
         Availability = "Available",
     };
 }

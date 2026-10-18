@@ -1269,7 +1269,8 @@ public sealed partial class QueueStore
             """
             SELECT opening_event_id, assessment_id, opening_source, pack_id, pack_version,
                    rule_set_id, rule_set_version, rule_id, rule_version, reason_code, reason,
-                   evidence_digest, unavailable_reason, fallback_deadline, decided_at
+                   evidence_digest, legacy_digest_absent, unavailable_reason, fallback_deadline,
+                   decided_at
               FROM queue_review_opening
              WHERE tenant_id = $tenant AND queue_id = $queue;
             """;
@@ -1302,9 +1303,10 @@ public sealed partial class QueueStore
                 ReasonCode = reader.GetString(9),
                 Reason = reader.GetString(10),
                 EvidenceSnapshotDigest = reader.IsDBNull(11) ? null : reader.GetString(11),
-                UnavailableReason = reader.IsDBNull(12) ? null : reader.GetString(12),
-                FallbackDeadline = reader.IsDBNull(13) ? null : FromDb(reader.GetString(13)),
-                DecidedAt = FromDb(reader.GetString(14)) ?? _options.TimeProvider.GetUtcNow(),
+                LegacyDigestAbsent = reader.GetInt32(12) != 0,
+                UnavailableReason = reader.IsDBNull(13) ? null : reader.GetString(13),
+                FallbackDeadline = reader.IsDBNull(14) ? null : FromDb(reader.GetString(14)),
+                DecidedAt = FromDb(reader.GetString(15)) ?? _options.TimeProvider.GetUtcNow(),
             },
         };
     }
@@ -1345,11 +1347,11 @@ public sealed partial class QueueStore
             INSERT INTO queue_review_opening
                 (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
                  pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
-                 reason_code, reason, evidence_digest, unavailable_reason, fallback_deadline,
-                 decided_at)
+                 reason_code, reason, evidence_digest, legacy_digest_absent,
+                 unavailable_reason, fallback_deadline, decided_at)
             VALUES ($tenant, $queue, $event, $assessment, $source, $pack, $packVersion,
                     $ruleSet, $ruleSetVersion, $rule, $ruleVersion, $reasonCode, $reason,
-                    $digest, $unavailable, $fallbackDeadline, $decided);
+                    $digest, $legacyDigestAbsent, $unavailable, $fallbackDeadline, $decided);
             """;
         cmd.Parameters.AddWithValue("$tenant", tenantId);
         cmd.Parameters.AddWithValue("$queue", queueId);
@@ -1365,6 +1367,7 @@ public sealed partial class QueueStore
         cmd.Parameters.AddWithValue("$reasonCode", opening.ReasonCode);
         cmd.Parameters.AddWithValue("$reason", opening.Reason);
         cmd.Parameters.AddWithValue("$digest", (object?)opening.EvidenceSnapshotDigest ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$legacyDigestAbsent", opening.LegacyDigestAbsent ? 1 : 0);
         cmd.Parameters.AddWithValue("$unavailable", (object?)opening.UnavailableReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$fallbackDeadline",
             opening.FallbackDeadline is { } deadline ? ToDb(deadline) : DBNull.Value);

@@ -65,6 +65,7 @@ public static class QueueSchema
         Execute(connection, transaction, AttemptDdl);
         Execute(connection, transaction, ReviewEventDdl);
         Execute(connection, transaction, ReviewOpeningDdl);
+        EnsureLegacyDigestColumn(connection, transaction);
 
         var version = ReadVersion(connection, transaction);
         if (version == 0)
@@ -232,6 +233,42 @@ public static class QueueSchema
     }
 
     /// <summary>
+    /// Adds the named legacy-digest flag to a tagged opening table that predates it. This is a
+    /// readback marker, so a migrated row can say "the digest was absent" rather than "unread".
+    /// </summary>
+    private static void EnsureLegacyDigestColumn(
+        SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "PRAGMA table_info(queue_review_opening);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        if (columns.Count == 0
+            || !columns.Contains("opening_source")
+            || columns.Contains("legacy_digest_absent"))
+        {
+            return;
+        }
+
+        Execute(connection, transaction,
+            "ALTER TABLE queue_review_opening ADD COLUMN legacy_digest_absent INTEGER NOT NULL DEFAULT 0;");
+        Execute(connection, transaction,
+            """
+            UPDATE queue_review_opening
+               SET legacy_digest_absent = 1
+             WHERE opening_source = 'pack' AND evidence_digest IS NULL;
+            """);
+    }
+
+    /// <summary>
     /// Adds the opening-event column and the tagged source to an existing queue, recreating the
     /// opening table once so fallback provenance can carry nulls.
     /// </summary>
@@ -287,11 +324,13 @@ public static class QueueSchema
                 INSERT INTO queue_review_opening
                     (tenant_id, queue_id, opening_event_id, assessment_id, opening_source,
                      pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
-                     reason_code, reason, evidence_digest, unavailable_reason, fallback_deadline,
-                     decided_at)
+                     reason_code, reason, evidence_digest, legacy_digest_absent,
+                     unavailable_reason, fallback_deadline, decided_at)
                 SELECT tenant_id, queue_id, opening_event_id, assessment_id, 'pack',
                        pack_id, pack_version, rule_set_id, rule_set_version, rule_id, rule_version,
-                       reason_code, reason, evidence_digest, NULL, NULL, decided_at
+                       reason_code, reason, evidence_digest,
+                       CASE WHEN evidence_digest IS NULL THEN 1 ELSE 0 END,
+                       NULL, NULL, decided_at
                   FROM queue_review_opening_old;
                 """);
             Execute(connection, transaction, "DROP TABLE queue_review_opening_old;");
@@ -474,6 +513,7 @@ public static class QueueSchema
             reason_code      TEXT NOT NULL,
             reason           TEXT NOT NULL,
             evidence_digest  TEXT NULL,
+            legacy_digest_absent INTEGER NOT NULL DEFAULT 0,
             unavailable_reason TEXT NULL,
             fallback_deadline  TEXT NULL,
             decided_at       TEXT NOT NULL,

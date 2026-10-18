@@ -126,6 +126,86 @@ public sealed class PolicyAuthoritativeEvaluatorTests
         Assert.Equal("effective-policy/1", result.Record.EffectiveInput.ResolverVersion);
     }
 
+    [Fact]
+    public async Task An_older_slow_read_cannot_overwrite_a_newer_cached_pack()
+    {
+        var reader = new RacingPackReader();
+        var evaluator = new PolicyAuthoritativeEvaluator(
+            reader,
+            new RuleReader(PolicyFixtures.RuleSet()),
+            new PropertyReader([], []),
+            new BindingReader(),
+            new PolicyAuthoritativeOptions
+            {
+                Tenants = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [PolicyFixtures.Tenant] = "GB",
+                },
+            });
+
+        var older = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now);
+        var newer = evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(1));
+
+        reader.Second.SetResult(PolicyFixtures.Pack() with { Version = "2.0.0" });
+        var newerResult = await newer;
+        Assert.Equal("2.0.0", newerResult.Record!.PackVersion);
+
+        reader.First.SetResult(PolicyFixtures.Pack() with { Version = "1.0.0" });
+        var olderResult = await older;
+        Assert.Equal("1.0.0", olderResult.Record!.PackVersion);
+
+        reader.ThrowAfterFirstTwo = true;
+        var fromCache = await evaluator.EvaluateAsync(
+            PolicyFixtures.Tenant, [], new PolicyPropertyScope("entity-1"), Now.AddSeconds(2));
+
+        Assert.Equal("2.0.0", fromCache.Record!.PackVersion);
+        Assert.True(fromCache.Record.PackFromCache);
+    }
+
+    private sealed class RacingPackReader : IPolicyPackReader
+    {
+        public TaskCompletionSource<PolicyPack?> First { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<PolicyPack?> Second { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool ThrowAfterFirstTwo { get; set; }
+
+        private int _calls;
+
+        public Task<PolicyPack?> GetEffectiveAsync(
+            string tenantId,
+            string jurisdiction,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            var call = Interlocked.Increment(ref _calls);
+            if (call == 1) return First.Task;
+            if (call == 2) return Second.Task;
+            if (ThrowAfterFirstTwo)
+            {
+                return Task.FromException<PolicyPack?>(new InvalidOperationException("store unavailable"));
+            }
+
+            return Task.FromResult<PolicyPack?>(null);
+        }
+
+        public Task<PolicyPack?> GetVersionAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPack?>(null);
+
+        public Task<PolicyPackSummary?> GetSummaryAsync(
+            string tenantId, string packId, string version, CancellationToken cancellationToken = default) =>
+            Task.FromResult<PolicyPackSummary?>(null);
+
+        public Task<IReadOnlyList<PolicyPackSummary>> ListAsync(
+            string tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PolicyPackSummary>>([]);
+    }
+
     private static PolicyAuthoritativeEvaluator Build(
         PackReader packs,
         PolicyRuleSet? ruleSet = null,

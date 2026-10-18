@@ -148,33 +148,29 @@ public sealed class MailAssessorTests
     }
 
     [Fact]
-    public async Task Authoritative_off_is_identical_to_the_legacy_assessment()
+    public async Task Authoritative_off_is_identical_to_the_pinned_legacy_reference()
     {
-        var legacy = Build();
         var disabled = Build(policyAuthoritative: new FixedAuthoritative
         {
             Enabled = false,
             ThrowIfCalled = true,
         });
         var message = Submittable();
-
-        legacy.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
         disabled.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
 
-        var first = await legacy.Assessor.AssessAsync(
-            message,
-            Builders.Context(legacy.Clock, assessmentOnly: true),
-            CancellationToken.None);
-        var second = await disabled.Assessor.AssessAsync(
+        var assessment = await disabled.Assessor.AssessAsync(
             message,
             Builders.Context(disabled.Clock, assessmentOnly: true),
             CancellationToken.None);
 
-        Assert.Null(first.Policy);
-        Assert.Null(second.Policy);
-        Assert.Equal(
-            System.Text.Json.JsonSerializer.Serialize(first),
-            System.Text.Json.JsonSerializer.Serialize(second));
+        // Captured byte-for-byte from the pre-Phase-3 commit 6b62581 by running the same
+        // deterministic message through the legacy assessor before any repair. It is a pinned
+        // artifact, not a second harness running the new implementation.
+        var fixture = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "fixtures", "legacy-assessment-6b62581.json"));
+
+        Assert.Null(assessment.Policy);
+        Assert.Equal(fixture, System.Text.Json.JsonSerializer.Serialize(assessment));
     }
 
     [Fact]
@@ -252,6 +248,52 @@ public sealed class MailAssessorTests
         Assert.Equal(MailAction.Quarantine, assessment.Policy.FinalAction);
     }
 
+    [Theory]
+    [InlineData(PolicyVerdict.Permit, MailAction.Allow, false)]
+    [InlineData(PolicyVerdict.Observe, MailAction.Allow, false)]
+    [InlineData(PolicyVerdict.Hold, MailAction.Hold, true)]
+    [InlineData(PolicyVerdict.Review, MailAction.Review, true)]
+    [InlineData(PolicyVerdict.Quarantine, MailAction.Quarantine, true)]
+    public async Task Every_pack_verdict_composes_against_a_legacy_allow(
+        PolicyVerdict verdict,
+        MailAction expected,
+        bool contributes)
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(verdict),
+                Record = Record(PolicySource.Pack, verdict, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(expected, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(contributes, assessment.Policy!.PolicyContributed);
+        Assert.Equal(contributes, assessment.Policy.Applied);
+        Assert.Equal(MailAction.Allow, assessment.Policy.LegacyAction);
+        Assert.Equal(expected, assessment.Policy.ComposedAction);
+        Assert.Equal(expected, assessment.Policy.FinalAction);
+
+        if (verdict == PolicyVerdict.Review)
+        {
+            Assert.NotNull(assessment.Policy.ReviewDeadline);
+            Assert.Equal(MailAction.Review, assessment.Policy.FinalAction);
+        }
+    }
+
     [Fact]
     public async Task A_pack_review_maps_to_the_durable_review_action_and_an_opening()
     {
@@ -283,6 +325,73 @@ public sealed class MailAssessorTests
         Assert.Equal(AdmissionOutcome.Admitted, assessment.Policy.Admission);
     }
 
+    [Theory]
+    [InlineData(PolicyVerdict.Permit)]
+    [InlineData(PolicyVerdict.Hold)]
+    [InlineData(PolicyVerdict.Review)]
+    [InlineData(PolicyVerdict.Quarantine)]
+    public async Task A_pack_cannot_turn_a_semantic_outage_defer_into_an_admitted_action(
+        PolicyVerdict verdict)
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(verdict),
+                Record = Record(PolicySource.Pack, verdict, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative, classifierUnavailable: true);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Defer, assessment.Action);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(MailAction.Defer, assessment.Policy!.LegacyAction);
+        Assert.False(assessment.Policy.PolicyContributed);
+        Assert.False(assessment.Policy.Applied);
+        Assert.False(assessment.Policy.Durable);
+        Assert.Equal(AdmissionOutcome.NotAttempted, assessment.Policy.Admission);
+    }
+
+    [Fact]
+    public async Task Global_shadow_with_a_fallback_does_not_claim_authoritative()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Unavailable,
+                UnavailableReason = "policy.pack_store_unavailable",
+                Record = Record(PolicySource.Fallback, PolicyVerdict.Review, fallback: true),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock, shadowMode: true, assessmentOnly: true),
+            CancellationToken.None);
+
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(PolicySource.GlobalShadow, assessment.Policy!.Source);
+        Assert.False(assessment.Policy.Authoritative);
+        Assert.True(assessment.Policy.FallbackAttempted);
+        Assert.False(assessment.Policy.Applied);
+    }
+
     [Fact]
     public async Task Global_shadow_keeps_the_action_while_recording_the_pack_candidate()
     {
@@ -309,6 +418,7 @@ public sealed class MailAssessorTests
         Assert.Equal(MailAction.Allow, assessment.Action);
         Assert.NotNull(assessment.Policy);
         Assert.Equal(PolicySource.GlobalShadow, assessment.Policy!.Source);
+        Assert.Equal("policy.global_shadow_precedence", assessment.Policy.DecidingReasonCode);
         Assert.True(assessment.Policy.Shadow);
         Assert.True(assessment.Policy.Authoritative);
         Assert.True(assessment.Policy.PolicyContributed);
@@ -379,7 +489,44 @@ public sealed class MailAssessorTests
         Assert.Equal(MailAction.Quarantine, assessment.Action);
         Assert.NotNull(assessment.Policy);
         Assert.True(assessment.Policy!.ReviewStateUnavailable);
+        Assert.Equal("policy.review_state_unavailable", assessment.Policy.DecidingReasonCode);
         Assert.True(assessment.Policy.Applied);
+    }
+
+    [Fact]
+    public async Task A_refused_review_admission_becomes_a_defer_without_claiming_durability()
+    {
+        var authoritative = new FixedAuthoritative
+        {
+            Enabled = true,
+            Result = new PolicyAuthoritativeResult
+            {
+                Kind = PolicyAuthoritativeKind.Pack,
+                Evaluation = Evaluation(PolicyVerdict.Review),
+                Record = Record(PolicySource.Pack, PolicyVerdict.Review, fallback: false),
+            },
+        };
+
+        var harness = Build(policyAuthoritative: authoritative);
+        harness.Queue.Admission = QueueAdmission.RefusedTenantItemLimit;
+        var message = Submittable();
+        harness.Payloads.Add(message.Envelope.PayloadReference, Builders.RawMessage);
+
+        var assessment = await harness.Assessor.AssessAsync(
+            message,
+            Builders.Context(harness.Clock),
+            CancellationToken.None);
+
+        Assert.Equal(MailAction.Defer, assessment.Action);
+        Assert.Null(assessment.SubmissionId);
+        Assert.NotNull(assessment.Policy);
+        Assert.Equal(MailAction.Review, assessment.Policy!.ComposedAction);
+        Assert.Equal(MailAction.Defer, assessment.Policy.FinalAction);
+        Assert.Equal(AdmissionOutcome.Refused, assessment.Policy.Admission);
+        Assert.False(assessment.Policy.Durable);
+        Assert.False(assessment.Policy.Applied);
+        Assert.True(assessment.Policy.ReviewAdmissionRefused);
+        Assert.Equal("policy.review_admission_refused", assessment.Policy.DecidingReasonCode);
     }
 
     [Fact]

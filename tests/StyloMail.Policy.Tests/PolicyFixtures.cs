@@ -192,6 +192,7 @@ internal static class PolicyFixtures
             Action = action,
             CategoryId = categoryId,
             TargetLevel = targetLevel,
+            PackId = PackId,
             PackVersion = "1.0.0",
             Author = "operator-a",
             ApprovedBy = approvedBy,

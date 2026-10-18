@@ -75,6 +75,13 @@ public sealed record EffectivePolicy
 
     public required IReadOnlyList<string> ForcedReviewCategories { get; init; }
 
+    /// <summary>
+    /// Categories held for review by an expired binding rather than by property uncertainty. This is
+    /// deliberately separate: a binding expiry withholds even below the band, while a forced property
+    /// category only raises a candidate that actually fired.
+    /// </summary>
+    public required IReadOnlyList<string> WithheldReviewCategories { get; init; }
+
     public required IReadOnlyList<PolicyBindingSnapshot> Bindings { get; init; }
 
     public required IReadOnlyList<string> AddressedChain { get; init; }
@@ -90,6 +97,7 @@ public sealed record EffectivePolicy
         }
 
         var forced = ForcedReviewCategories.Order(StringComparer.Ordinal).ToArray();
+        var withheld = WithheldReviewCategories.Order(StringComparer.Ordinal).ToArray();
         var missing = MissingPropertyKeys.Order(StringComparer.Ordinal).ToArray();
         var facts = PropertyFacts.OrderBy(fact => fact.Key, StringComparer.Ordinal).ToArray();
         var bindings = Bindings.OrderBy(binding => binding.BindingId, StringComparer.Ordinal).ToArray();
@@ -101,11 +109,12 @@ public sealed record EffectivePolicy
             Levels = levels,
             Ceiling = Ceiling.ToString(),
             ForcedReviewCategories = forced,
+            WithheldReviewCategories = withheld,
             PropertyFacts = facts,
             MissingPropertyKeys = missing,
             AddressedChain = chain,
             Bindings = bindings,
-            Digest = Digest(levels, Ceiling, forced, facts, missing, chain, bindings, ResolverVersion),
+            Digest = Digest(levels, Ceiling, forced, withheld, facts, missing, chain, bindings, ResolverVersion),
         };
     }
 
@@ -113,6 +122,7 @@ public sealed record EffectivePolicy
         IReadOnlyDictionary<string, string> levels,
         PolicyVerdict ceiling,
         IReadOnlyList<string> forced,
+        IReadOnlyList<string> withheld,
         IReadOnlyList<PolicyPropertyFact> facts,
         IReadOnlyList<string> missing,
         IReadOnlyList<string> chain,
@@ -132,12 +142,18 @@ public sealed record EffectivePolicy
             builder.Append("forced=").Append(category).Append('\n');
         }
 
+        foreach (var category in withheld)
+        {
+            builder.Append("withheld=").Append(category).Append('\n');
+        }
+
         foreach (var fact in facts)
         {
             builder.Append("fact=").Append(fact.Key).Append('|').Append(fact.Value ?? "-")
                 .Append('|').Append(fact.State).Append('|').Append(fact.Source ?? "-")
                 .Append('|').Append(fact.Scope ?? "-").Append('|')
-                .Append(fact.Availability ?? "-").Append('\n');
+                .Append(fact.Availability ?? "-").Append('|')
+                .Append(fact.AvailabilityReason ?? "-").Append('\n');
         }
 
         foreach (var key in missing)
@@ -155,7 +171,11 @@ public sealed record EffectivePolicy
             builder.Append("binding=").Append(binding.BindingId).Append('|')
                 .Append(binding.Action).Append('|').Append(binding.CategoryId ?? "-")
                 .Append('|').Append(binding.TargetLevel ?? "-").Append('|')
-                .Append(binding.Selected ? "1" : "0").Append('\n');
+                .Append(binding.ScopeKind).Append('|').Append(binding.ScopeValue).Append('|')
+                .Append(binding.StartsAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Append('|').Append(binding.ExpiresAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Append('|').Append(binding.OnExpiry)
+                .Append('|').Append(binding.Selected ? "1" : "0").Append('\n');
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
@@ -196,15 +216,39 @@ public static class EffectivePolicyResolver
         }
 
         var forced = new HashSet<string>(StringComparer.Ordinal);
+        var withheld = new HashSet<string>(StringComparer.Ordinal);
         var propertyFloors = PropertyFloors(pack, facts, forced);
         ApplyFloors(levels, propertyFloors);
 
         var snapshots = new List<PolicyBindingSnapshot>();
         var selected = new HashSet<string>(StringComparer.Ordinal);
         var candidates = new List<PolicyBinding>();
+        var rejected = new List<PolicyBinding>();
 
         foreach (var binding in bindings)
         {
+            // A binding applies only in its own tenant, against its own pack version and in its
+            // own scope. A binding from another scope or pack is not evidence about this decision.
+            if (!string.Equals(binding.TenantId, pack.TenantId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!string.Equals(binding.PackVersion, pack.Version, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!string.Equals(binding.PackId, pack.Id, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!IsInScope(binding, addressedChain))
+            {
+                continue;
+            }
+
             var active = binding.IsActiveAt(now);
             var heldExpiry = !active
                 && binding.OnExpiry == BindingOnExpiry.HoldForReview
@@ -212,6 +256,9 @@ public static class EffectivePolicyResolver
 
             if (!active && !heldExpiry)
             {
+                // A reverted binding is still part of the resolution record: it was considered,
+                // and the audit must be able to say it was rejected rather than absent.
+                rejected.Add(binding);
                 continue;
             }
 
@@ -221,7 +268,16 @@ public static class EffectivePolicyResolver
             {
                 if (!string.IsNullOrWhiteSpace(binding.CategoryId))
                 {
-                    forced.Add(binding.CategoryId);
+                    withheld.Add(binding.CategoryId);
+                }
+                else
+                {
+                    // "The scope is withheld" when the expired binding names no category: a permit
+                    // or capture exception cannot be allowed to vanish at its expiry.
+                    foreach (var category in PolicyCategories.All)
+                    {
+                        withheld.Add(category.Id);
+                    }
                 }
 
                 selected.Add(binding.Id);
@@ -252,7 +308,7 @@ public static class EffectivePolicyResolver
             selected.Add(chosen.Id);
         }
 
-        foreach (var binding in candidates)
+        foreach (var binding in candidates.Concat(rejected))
         {
             snapshots.Add(new PolicyBindingSnapshot
             {
@@ -283,9 +339,21 @@ public static class EffectivePolicyResolver
             PropertyFacts = facts,
             MissingPropertyKeys = [.. missingPropertyKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
             ForcedReviewCategories = [.. forced.Order(StringComparer.Ordinal)],
+            WithheldReviewCategories = [.. withheld.Order(StringComparer.Ordinal)],
             Bindings = snapshots,
             AddressedChain = addressedChain,
         };
+    }
+
+    private static bool IsInScope(PolicyBinding binding, IReadOnlyList<string> addressedChain)
+    {
+        if (binding.ScopeKind == BindingScope.Tenant)
+        {
+            return true;
+        }
+
+        var key = $"{binding.ScopeKind.ToString().ToLowerInvariant()}:{binding.ScopeValue}";
+        return addressedChain.Any(scope => string.Equals(scope, key, StringComparison.OrdinalIgnoreCase));
     }
 
     private static Dictionary<string, ToleranceLevel> PropertyFloors(
@@ -297,20 +365,27 @@ public static class EffectivePolicyResolver
         var age = facts.FirstOrDefault(fact => fact.Key == PolicyPropertyKeys.AgeBand);
         var country = facts.FirstOrDefault(fact => fact.Key == PolicyPropertyKeys.Country);
 
-        if (age?.Value is { } band)
+        if (age is not null)
         {
-            if (band is "under_13" or "13_15" or "16_17")
+            if (age.Value is "under_13" or "13_15" or "16_17")
             {
                 Raise(floors, PolicyCategories.AdultContent, ToleranceLevel.Strict);
                 Raise(floors, PolicyCategories.CoercionAndExtortion, ToleranceLevel.Strict);
                 Raise(floors, PolicyCategories.Harassment, ToleranceLevel.Standard);
             }
-            else if (band == "unknown" && age.State == "Unknown")
+            else if (string.Equals(age.State, "Unknown", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(age.Value)
+                || string.Equals(age.Value, "unknown", StringComparison.OrdinalIgnoreCase))
             {
-                // A healthy unknown is a measured answer: the categories that depend on age are
-                // reviewed rather than guessed, and no level is lowered.
+                // A healthy Unknown is a measured answer with Value=null. The categories that
+                // depend on age are raised to the declared protection and reviewed rather than
+                // guessed; no level is lowered.
+                Raise(floors, PolicyCategories.AdultContent, ToleranceLevel.Strict);
+                Raise(floors, PolicyCategories.CoercionAndExtortion, ToleranceLevel.Strict);
+                Raise(floors, PolicyCategories.Harassment, ToleranceLevel.Standard);
                 forced.Add(PolicyCategories.AdultContent);
                 forced.Add(PolicyCategories.CoercionAndExtortion);
+                forced.Add(PolicyCategories.Harassment);
             }
         }
 

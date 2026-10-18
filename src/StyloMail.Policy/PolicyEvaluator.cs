@@ -395,6 +395,12 @@ public enum RuleEvaluationState
 
     /// <summary>A property key this rule requires could not be read.</summary>
     MissingProperty = 6,
+
+    /// <summary>An effective property requires review even though no band fired.</summary>
+    ForcedReview = 7,
+
+    /// <summary>An expired HoldForReview binding withholds this category even below the band.</summary>
+    WithheldForReview = 8,
 }
 
 /// <summary>
@@ -547,10 +553,35 @@ public sealed class DeterministicPolicyEvaluator
         var ceiling = input.Effective?.Ceiling ?? pack.ActionCeiling;
         var missingProperties = input.Effective?.MissingPropertyKeys ?? [];
         var forced = (input.Effective?.ForcedReviewCategories ?? []).ToHashSet(StringComparer.Ordinal);
+        var withheld = (input.Effective?.WithheldReviewCategories ?? []).ToHashSet(StringComparer.Ordinal);
         var evaluations = ruleSet.Rules
             .OrderBy(rule => rule.Id, StringComparer.Ordinal)
-            .Select(rule => EvaluateRule(rule, available, levels, missingProperties, forced, ceiling))
+            .Select(rule => EvaluateRule(rule, available, levels, missingProperties, forced, withheld, ceiling))
             .ToList();
+
+        foreach (var category in withheld.Where(category =>
+                     evaluations.All(evaluation => !string.Equals(evaluation.Category, category, StringComparison.Ordinal))))
+        {
+            evaluations.Add(new RuleEvaluation
+            {
+                RuleId = $"policy.withheld_review.{category}",
+                RuleVersion = 1,
+                Category = category,
+                SignalId = string.Empty,
+                State = RuleEvaluationState.WithheldForReview,
+                Outcome = PolicyVerdict.Review,
+                Threshold = null,
+                ObservedValue = null,
+                Coverage = 1,
+                CoverageSignalsMeasured = 0,
+                CoverageSignalsExpected = 0,
+                SampleSupport = null,
+                MissingSignals = [],
+                RequiresHumanReview = true,
+                ReasonCode = "policy.binding_expired_hold",
+                Reason = $"An expired HoldForReview binding still withholds {category} for a human decision.",
+            });
+        }
 
         var deciding = SelectDeciding(evaluations);
         var missing = evaluations
@@ -601,6 +632,7 @@ public sealed class DeterministicPolicyEvaluator
         IReadOnlyDictionary<string, ToleranceLevel> levels,
         IReadOnlyList<string> missingPropertyKeys,
         IReadOnlySet<string> forced,
+        IReadOnlySet<string> withheld,
         PolicyVerdict ceiling)
     {
         var missingProperty = rule.RequiredProperties
@@ -728,6 +760,29 @@ public sealed class DeterministicPolicyEvaluator
 
         if (band is null)
         {
+            if (withheld.Contains(rule.Category))
+            {
+                return new RuleEvaluation
+                {
+                    RuleId = rule.Id,
+                    RuleVersion = rule.Version,
+                    Category = rule.Category,
+                    SignalId = rule.SignalId,
+                    State = RuleEvaluationState.WithheldForReview,
+                    Outcome = PolicyVerdict.Review,
+                    Threshold = null,
+                    ObservedValue = value,
+                    Coverage = coverage,
+                    CoverageSignalsMeasured = coverageMeasured,
+                    CoverageSignalsExpected = coverageSignals.Count,
+                    SampleSupport = scored.SampleSupport,
+                    MissingSignals = [],
+                    RequiresHumanReview = true,
+                    ReasonCode = "policy.binding_expired_hold",
+                    Reason = $"An expired HoldForReview binding still withholds {rule.Category} for a human decision.",
+                };
+            }
+
             return new RuleEvaluation
             {
                 RuleId = rule.Id,
@@ -766,14 +821,18 @@ public sealed class DeterministicPolicyEvaluator
             outcome = PolicyVerdict.Review;
         }
 
-        if (forced.Contains(rule.Category) && outcome < PolicyVerdict.Review)
+        if ((forced.Contains(rule.Category) || withheld.Contains(rule.Category))
+            && outcome < PolicyVerdict.Review)
         {
             outcome = PolicyVerdict.Review;
         }
 
         var requiresReview = zeroTolerance
             || forced.Contains(rule.Category)
+            || withheld.Contains(rule.Category)
             || outcome == PolicyVerdict.Review;
+        var withheldOverride = withheld.Contains(rule.Category)
+            && band.Verdict < PolicyVerdict.Review;
 
         return new RuleEvaluation
         {
@@ -792,12 +851,16 @@ public sealed class DeterministicPolicyEvaluator
             MissingSignals = [],
             CappedByCeiling = capped,
             RequiresHumanReview = requiresReview,
-            ReasonCode = band.ReasonCode,
+            ReasonCode = withheldOverride
+                ? "policy.binding_expired_hold"
+                : band.ReasonCode,
             Reason = zeroTolerance
                 ? $"{rule.Category} is at zero tolerance: a candidate at {value.ToString("0.####", CultureInfo.InvariantCulture)} against {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)} routes to human review with the evidence preserved."
-                : forced.Contains(rule.Category)
-                    ? $"{rule.Category} requires human review because an effective property is unknown or differs from the pack jurisdiction."
-                    : $"Value {value.ToString("0.####", CultureInfo.InvariantCulture)} crossed rule '{rule.Id}' at threshold {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)}.",
+                : withheldOverride
+                    ? $"An expired HoldForReview binding still withholds {rule.Category} for a human decision."
+                    : forced.Contains(rule.Category)
+                        ? $"{rule.Category} requires human review because an effective property is unknown or differs from the pack jurisdiction."
+                        : $"Value {value.ToString("0.####", CultureInfo.InvariantCulture)} crossed rule '{rule.Id}' at threshold {band.Threshold.ToString("0.####", CultureInfo.InvariantCulture)}.",
         };
     }
 

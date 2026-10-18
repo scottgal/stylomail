@@ -99,6 +99,9 @@ public sealed record ReviewOpening
     /// <summary>Bounded fallback review deadline when <see cref="Source"/> is Fallback.</summary>
     public DateTimeOffset? FallbackDeadline { get; init; }
 
+    /// <summary>True only for a migrated pack opening whose digest was genuinely absent.</summary>
+    public bool LegacyDigestAbsent { get; init; }
+
     public required DateTimeOffset DecidedAt { get; init; }
 
     /// <summary>The exact policy reference recorded on every later event, or null for a fallback.</summary>
