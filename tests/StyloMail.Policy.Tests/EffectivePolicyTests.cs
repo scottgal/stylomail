@@ -180,7 +180,7 @@ public sealed class EffectivePolicyTests
         var effective = Resolve(PolicyFixtures.Pack(), bindings: [binding]);
 
         Assert.Contains(PolicyCategories.PaymentRedirection, effective.WithheldReviewCategories);
-        Assert.DoesNotContain(PolicyCategories.PaymentRedirection, effective.ForcedReviewCategories);
+        Assert.Contains(PolicyCategories.PaymentRedirection, effective.ForcedReviewCategories);
     }
 
     [Fact]
