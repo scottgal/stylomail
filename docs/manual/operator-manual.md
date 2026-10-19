@@ -170,13 +170,64 @@ uses the stored key, which is never shown, and re-reads every pane.
    privilege. Save and connect.
 3. Read the status bar. **Connected** and **Live** mean the console is following the Host. Any other
    pairing is diagnosed in sections 2.4 and 2.5 before you act on a queue.
-4. Open **Awaiting decision**, **Held** or **Quarantined**. Each empty state says what its emptiness
-   means; none of them means the Host is broken.
-5. Open **Decisions**, choose a row, and use **Open decision** to read why the action was taken.
-6. Open **Proxy management** to review accounts, listeners, live sessions and operations. Chapter 3
-   states which of those you can change here and which belong to the deployment.
-7. If a check fails, chapter 6 names the three failures that are easy to confuse and what the screen
+4. Read the **Dashboard**. Service health, mail flow, the queue, storage and the people who need a
+   look are on the first screen; each card states its window and coverage. An empty card says what
+   its emptiness means; none of them means the Host is broken.
+5. Open **Mail** for **Needs your decision**, **Being re-checked before delivery** and **Stopped
+   before delivery**. These are different states, not three names for one queue.
+6. Open **Review queue** for messages **Awaiting human review**. Only these need a person.
+7. Open **Decision history** under **Advanced**, choose a row, and read why the action was taken.
+8. Open **Service** for accounts, listeners, live sessions and operations. Chapter 3 states which of
+   those you can change here and which belong to the deployment.
+9. If a check fails, chapter 6 names the three failures that are easy to confuse and what the screen
    says for each.
+
+### 2.7 The dashboard at a glance
+
+The dashboard is the default destination. It answers four questions without opening a queue: is the
+service healthy, what mail moved, is anything waiting, and who should I look at.
+
+![Figure M29: the dashboard with real mail flow](images/m29-dashboard-home.png)
+
+> **Figure M29.** The dashboard on a governed Host with one accepted submission. The headline says
+> **Mail is flowing normally**; the Service card names **Accepting mail: yes**, **Live feed:
+> connected** and the last check. The flow card states its basis in plain words: **Accepted in the
+> last 24 hours, current state**, with the exact window and the count **1 message counted. The whole
+> window was counted.** The four legend entries are **Inbound**, **Outbound**, **Delivered** and
+> **Held**, and the rising Held line is the one message waiting for its re-check. The axis is
+> labelled **Messages** with integer ticks. No route or internal slice name appears in the rail.
+>
+> This is governed harness data: a temporary database was seeded before Host start, then read
+> through the real Host routes. It is not production traffic. Captured at 1180x720, Host build
+> `8c9275a80753`, sha256 `64d4890d47f65cc24c059199dea76f0fb75d7377d7025c2dee332819211f5676`.
+
+![Figure M30: queue and storage below the dashboard fold](images/m30-dashboard-queue-storage.png)
+
+> **Figure M30.** The lower half of the same dashboard. **Client connections** reports no failures
+> in the window. **People to look at** names the seeded sending account and its state. **Recent
+> conversations** says the Host does not record conversation threads yet rather than showing an
+> empty list as if there were none. **Queue and storage** makes the union explicit: **In the delivery
+> queue** includes the other three states, and **the rows are not a sum**. Beneath it are the real
+> state rows: Being re-checked before delivery **1**, Stopped before delivery **0**, Awaiting human
+> review **0**. Storage separates database, write-ahead log, payloads, spool files and free disk, and
+> states that the percentage is disk use, not a StyloMail quota.
+>
+> Same run and Host build, sha256
+> `085bff3589eba9cc52908c614b0d7eb57411d3bc8cd0005ec89a033a67aa7603`.
+
+![Figure M31: the dashboard at the minimum window size](images/m31-dashboard-minimum-size.png)
+
+> **Figure M31.** The same dashboard at **900x520**. The Service and Needs-your-attention cards sit
+> side by side, the flow card and its Held line are partly visible in the first viewport, labels wrap
+> without clipping and there is no horizontal scroll. The rail keeps its labels rather than
+> collapsing to icons.
+>
+> Same run and Host build, sha256
+> `72c6b8798f0d8bfac4878d60892b54c80181961acc0e78df5bd9d00706e659ad`.
+
+The dashboard never colours a person. Colour names a state: accepted, held, stopped, or needs a
+person. A count that could not be measured is shown as a named gap, not as zero, and a window with no
+mail says **No messages in this window** instead of drawing three flat zero lines.
 
 ## 3. Settings
 
@@ -1008,10 +1059,15 @@ signals, not message content, and its caption says that.
 | M26 | Element signals | ux-results/console-external-host/20261018T125450Z-68237 | captured; build 09bed8235ebd; sha256 b9d1acf5…; one urgency_pressure card, +0.001 weak evidence |
 | M27 | Entity profile, produced KPI and evidence | ux-results/console-profile-history | captured; governed harness; build c9feabf7b48a; sha256 b987b029…; Produced 80%, up +60 points, coverage 5/9 |
 | M28 | Entity profile, not enough history | ux-results/console-profile-history | captured; governed harness; build c9feabf7b48a; sha256 c0a195b5…; momentum 0 seen, needs 3 |
+| M29 | Dashboard home with mail flow | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 64d4890d…; Inbound 1, Held 1, 1180x720 |
+| M30 | Dashboard queue and storage | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 085bff35…; union not a sum, storage sizes |
+| M31 | Dashboard at minimum size | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 72c6b879…; 900x520, flow partly visible |
 
-Fourteen frames in this table are captured, in seven batches. M27 and M28 come from the seventh, the
+Seventeen frames in this table are captured, in eight batches. M27 and M28 come from the seventh, the
 `console-profile-history` governed harness run against host build `c9feabf7b48a`; they are real
-Host and route output over a temporary seeded database, not production traffic. M08 and M21a come
+Host and route output over a temporary seeded database, not production traffic. M29 to M31 come from
+the eighth, the `console-dashboard` governed harness run against Host build `8c9275a80753`, with the
+same rule: real Host and routes over a temporary seeded database. M08 and M21a come
 from the first batch, whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
