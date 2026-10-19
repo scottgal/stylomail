@@ -48,6 +48,15 @@ public static class SummaryReasons
     public const string DirectionAgnosticScope = "direction_agnostic_scope";
 
     public const string SearchUnsupported = "search_unsupported";
+
+    /// <summary>The correspondent's address was not among the bounded recent-envelope scan.</summary>
+    public const string AddressNotInBoundedScan = "address_not_in_bounded_scan";
+
+    /// <summary>The stored address has no usable local part and domain, so it cannot be masked.</summary>
+    public const string AddressNotMaskable = "address_not_maskable";
+
+    /// <summary>No domain is recorded for this kind.</summary>
+    public const string DomainNotRecorded = "domain_not_recorded";
 }
 
 /// <summary>One series the response did not produce, and why.</summary>
@@ -374,6 +383,12 @@ public sealed record EntitySummaryResponse
     public string? DisplayLabel { get; init; }
 
     public required string DisplayLabelAvailability { get; init; }
+
+    /// <summary>
+    /// Where the label came from: <c>sender_profile</c>, <c>queue_envelope_masked</c>, <c>domain</c>
+    /// or <c>company</c>. Null when no label was produced.
+    /// </summary>
+    public string? DisplayLabelSource { get; init; }
 
     public string? DisplayLabelReason { get; init; }
 

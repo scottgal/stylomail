@@ -625,6 +625,7 @@ public sealed class SummaryEndpointsTests
         Assert.Equal(MailDirection.Outbound, row.Direction);
         Assert.Equal("Acme Billing", row.DisplayLabel);
         Assert.Equal(SummaryAvailability.Available, row.DisplayLabelAvailability);
+        Assert.Equal("sender_profile", row.DisplayLabelSource);
         Assert.Equal("co_acme", row.CompanyId);
         Assert.Equal("Acme Corporation", row.CompanyName);
         Assert.Equal(7, row.Volume.Messages);
@@ -638,11 +639,13 @@ public sealed class SummaryEndpointsTests
     }
 
     [Fact]
-    public async Task The_recipient_directory_carries_no_label_and_says_so()
+    public async Task The_recipient_directory_names_an_unrecoverable_label_instead_of_guessing()
     {
         using var host = new TestHost().WithClock().WithProfileMasterKey(ProfileKey);
         var at = host.Clock.GetUtcNow().AddDays(-1);
 
+        // A profile key with no matching envelope in the queue: the hash cannot be reversed, so the
+        // honest answer is a named absence, not a label assembled from the hash.
         InsertProfile(host, Acme, "InboundSenderIdentity", "hash-a#inbound",
             MailDirection.Inbound, attempts: 14, lastObservedAt: at);
         InsertProfile(host, Globex, "InboundSenderIdentity", "hash-g#inbound",
@@ -658,11 +661,123 @@ public sealed class SummaryEndpointsTests
         Assert.Equal(MailDirection.Inbound, row.Direction);
         Assert.Null(row.DisplayLabel);
         Assert.Equal(SummaryAvailability.NotProduced, row.DisplayLabelAvailability);
-        Assert.Equal(SummaryReasons.NoStoredLabel, row.DisplayLabelReason);
+        Assert.Null(row.DisplayLabelSource);
+        Assert.Equal(SummaryReasons.AddressNotInBoundedScan, row.DisplayLabelReason);
+        Assert.Null(row.Domain);
+        Assert.Equal(SummaryReasons.AddressNotInBoundedScan, row.DomainReason);
         Assert.Equal(14, row.Volume.Messages);
         Assert.Equal(14, row.Volume.Inbound);
         Assert.Equal(0, row.Volume.Outbound);
         Assert.Equal(at.ToUniversalTime(), row.LastContactAt);
+    }
+
+    [Fact]
+    public async Task The_recipient_directory_masks_recovered_envelope_addresses()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(ProfileKey);
+        var at = host.Clock.GetUtcNow();
+
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "alice@example.test", recipient: "owner@acme.test");
+        await AcceptAsync(host, Acme, MailDirection.Outbound, DeliveryState.Queued,
+            mailFrom: "owner@acme.test", recipient: "bob@example.test");
+
+        var hasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(ProfileKey));
+
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "alice@example.test") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 3, lastObservedAt: at);
+        InsertProfile(host, Acme, "Recipient",
+            hasher.Hash(Acme, "bob@example.test") + "#outbound",
+            MailDirection.Outbound, attempts: 2, lastObservedAt: at);
+
+        // The tenant's own local mailbox: a Recipient profile in the inbound direction. It is not
+        // a person the tenant deals with, so the directory must exclude it even though it exists.
+        var localMailbox = hasher.Hash(Acme, "owner@acme.test") + "#inbound";
+        InsertProfile(host, Acme, "Recipient", localMailbox,
+            MailDirection.Inbound, attempts: 5, lastObservedAt: at);
+
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await client.GetAsync("/v1/entities?kind=recipient");
+        var body = await response.Content.ReadAsStringAsync();
+        var page = JsonSerializer.Deserialize<EntityDirectoryResponse>(body, Json)!;
+
+        Assert.Equal(2, page.Entities.Count);
+        Assert.DoesNotContain(page.Entities, entity => entity.ScopeId == localMailbox);
+
+        var alice = Assert.Single(page.Entities, entity => entity.Direction == MailDirection.Inbound);
+        Assert.Equal("a***@example.test", alice.DisplayLabel);
+        Assert.Equal(SummaryAvailability.Available, alice.DisplayLabelAvailability);
+        Assert.Equal("queue_envelope_masked", alice.DisplayLabelSource);
+        Assert.Null(alice.DisplayLabelReason);
+        Assert.Equal("example.test", alice.Domain);
+
+        var bob = Assert.Single(page.Entities, entity => entity.Direction == MailDirection.Outbound);
+        Assert.Equal("b***@example.test", bob.DisplayLabel);
+        Assert.Equal("queue_envelope_masked", bob.DisplayLabelSource);
+        Assert.Equal("example.test", bob.Domain);
+
+        // The whole point: the raw envelope addresses are recovery inputs, never response values.
+        Assert.DoesNotContain("alice@example.test", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("bob@example.test", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_null_sender_profile_is_not_maskable()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(ProfileKey);
+        var at = host.Clock.GetUtcNow();
+
+        // A bounce has no identity to mask. The queue accepts the null sender inbound; the profile
+        // exists, and the row must say "not maskable" rather than "outside the scan" or a guess.
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "<>", recipient: "owner@acme.test");
+
+        var hasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(ProfileKey));
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "<>") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at);
+
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var page = await ReadAsync<EntityDirectoryResponse>(
+            await client.GetAsync("/v1/entities?kind=recipient"));
+
+        var row = Assert.Single(page.Entities);
+        Assert.Null(row.DisplayLabel);
+        Assert.Equal(SummaryReasons.AddressNotMaskable, row.DisplayLabelReason);
+    }
+
+    [Fact]
+    public async Task The_masked_label_scan_is_capped_and_says_when_it_stopped()
+    {
+        using var host = WithEntityScanCap(new TestHost().WithClock().WithProfileMasterKey(ProfileKey), 1);
+        var hasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(ProfileKey));
+
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "older@example.test", recipient: "owner@acme.test");
+        host.Clock.Advance(TimeSpan.FromMinutes(1));
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "newer@example.test", recipient: "owner@acme.test");
+
+        var at = host.Clock.GetUtcNow();
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "older@example.test") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at.AddMinutes(-1));
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "newer@example.test") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at);
+
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var page = await ReadAsync<EntityDirectoryResponse>(
+            await client.GetAsync("/v1/entities?kind=recipient"));
+
+        var newer = Assert.Single(page.Entities, entity =>
+            entity.DisplayLabelSource == "queue_envelope_masked");
+        Assert.Equal("n***@example.test", newer.DisplayLabel);
+
+        var older = Assert.Single(page.Entities, entity =>
+            entity.DisplayLabelReason == SummaryReasons.AddressNotInBoundedScan);
+        Assert.Null(older.DisplayLabel);
     }
 
     [Fact]
@@ -682,6 +797,7 @@ public sealed class SummaryEndpointsTests
 
         Assert.Equal("example.test", row.ScopeId);
         Assert.Equal("example.test", row.DisplayLabel);
+        Assert.Equal("domain", row.DisplayLabelSource);
         Assert.Equal("example.test", row.Domain);
         Assert.Null(row.Direction);
         Assert.Equal(3, row.Volume.Messages);
@@ -713,6 +829,7 @@ public sealed class SummaryEndpointsTests
 
         Assert.Equal("co_acme", row.ScopeId);
         Assert.Equal("Acme Corporation", row.DisplayLabel);
+        Assert.Equal("company", row.DisplayLabelSource);
         Assert.Equal(SummaryAvailability.NotProduced, row.Volume.Availability);
     }
 
@@ -936,6 +1053,7 @@ public sealed class SummaryEndpointsTests
                 command.Parameters.AddWithValue("$scope_a", "InboundSenderIdentity");
                 command.Parameters.AddWithValue("$scope_b", "Recipient");
                 command.Parameters.AddWithValue("$scope", "DomainContext");
+                command.Parameters.AddWithValue("$outbound", (int)MailDirection.Outbound);
                 command.Parameters.AddWithValue("$after_at", DBNull.Value);
                 command.Parameters.AddWithValue("$after_key", DBNull.Value);
                 command.Parameters.AddWithValue("$q", DBNull.Value);
@@ -947,11 +1065,51 @@ public sealed class SummaryEndpointsTests
             Assert.DoesNotContain(plan, detail =>
                 detail.Contains("SCAN profiles", StringComparison.Ordinal));
         }
+
+        var inboundCandidates = Plan(host, EntityDirectoryStore.InboundSenderCandidatesSql, command =>
+        {
+            command.Parameters.AddWithValue("$tenant", Acme);
+            command.Parameters.AddWithValue("$inbound", (int)MailDirection.Inbound);
+            command.Parameters.AddWithValue("$cap", 5_000);
+        });
+
+        Assert.Contains(inboundCandidates, detail =>
+            detail.Contains("ix_queue_item_tenant_created", StringComparison.Ordinal));
+        Assert.DoesNotContain(inboundCandidates, detail =>
+            detail.Contains("SCAN queue_item", StringComparison.Ordinal));
+
+        var outboundCandidates = Plan(
+            host, EntityDirectoryStore.OutboundRecipientCandidatesSql, command =>
+            {
+                command.Parameters.AddWithValue("$tenant", Acme);
+                command.Parameters.AddWithValue("$outbound", (int)MailDirection.Outbound);
+                command.Parameters.AddWithValue("$cap", 5_000);
+            });
+
+        Assert.Contains(outboundCandidates, detail =>
+            detail.Contains("ix_queue_item_tenant_created", StringComparison.Ordinal));
+        Assert.DoesNotContain(outboundCandidates, detail =>
+            detail.Contains("SCAN queue_item", StringComparison.Ordinal));
+        Assert.DoesNotContain(outboundCandidates, detail =>
+            detail.Contains("SCAN queue_recipient", StringComparison.Ordinal));
     }
 
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Replaces the directory store with one whose envelope scan cap the test can reach.</summary>
+    private static TestHost WithEntityScanCap(TestHost host, int cap)
+        => host.Override(services =>
+        {
+            services.RemoveAll<EntityDirectoryStore>();
+            services.AddSingleton(sp => new EntityDirectoryStore(
+                sp.GetRequiredService<HostDatabase>(),
+                sp.GetRequiredService<IAddressPseudonymSource>())
+            {
+                MaskedLabelScanCap = cap,
+            });
+        });
 
     /// <summary>Replaces the store with one whose caps the test can reach.</summary>
     private static TestHost WithSummaryLimits(
@@ -977,7 +1135,9 @@ public sealed class SummaryEndpointsTests
         MailDirection direction,
         DeliveryState state,
         int payloadBytes = 32,
-        DeliveryState? secondRecipientState = null)
+        DeliveryState? secondRecipientState = null,
+        string mailFrom = "sender@example.test",
+        string recipient = "owner@example.test")
     {
         var queue = host.Services.GetRequiredService<QueueStore>();
         var now = host.Clock.GetUtcNow();
@@ -996,14 +1156,14 @@ public sealed class SummaryEndpointsTests
                 InternalMessageId = $"message-{Guid.NewGuid():N}",
                 Direction = direction,
                 TrustedPrincipalId = PrincipalA,
-                MailFrom = "sender@example.test",
+                MailFrom = mailFrom,
                 MimeDigest = $"digest-{Guid.NewGuid():N}",
                 Payload = new byte[payloadBytes],
                 Recipients =
                 [
                     new RecipientAdmission
                     {
-                        Recipient = "owner@example.test",
+                        Recipient = recipient,
                         State = admission,
                         ReEvaluateBy = admission == DeliveryState.Held ? now.AddHours(1) : null,
                     },

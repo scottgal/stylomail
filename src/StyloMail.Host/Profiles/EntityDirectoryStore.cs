@@ -46,6 +46,17 @@ public sealed class EntityDirectoryStore
     public const int MaxLimit = 200;
     public const int MaxQueryLength = 128;
 
+    /// <summary>
+    /// How many recent envelopes one directory page may scan to recover a masked label.
+    /// </summary>
+    /// <remarks>
+    /// The queue's raw envelope columns are not indexed by address, so the only bounded reverse
+    /// lookup is "the most recent N messages". Five thousand recent recipients is far more than one
+    /// page of profiles ordered by last observation, and a profile outside it gets a named gap
+    /// rather than a guessed label. Overridable in the test assembly to exercise that boundary.
+    /// </remarks>
+    internal int MaskedLabelScanCap { get; init; } = 5_000;
+
     internal const string SenderSql =
         """
         SELECT p.principal_id, p.label, p.company_id, c.name
@@ -96,6 +107,7 @@ public sealed class EntityDirectoryStore
               FROM profiles
              WHERE tenant_id = $tenant
                AND profile_scope = $scope_b
+               AND direction = $outbound
                AND last_observed_at IS NOT NULL
                AND ($after_at IS NULL
                     OR last_observed_at < $after_at
@@ -132,7 +144,36 @@ public sealed class EntityDirectoryStore
            AND profile_key IN ($keys);
         """;
 
+    /// <summary>
+    /// Recent inbound envelope senders. Index-backed by (tenant_id, created_at) and capped, so the
+    /// reverse lookup never walks the tenant's whole queue history.
+    /// </summary>
+    internal const string InboundSenderCandidatesSql =
+        """
+        SELECT mail_from
+          FROM queue_item
+         WHERE tenant_id = $tenant AND direction = $inbound
+         ORDER BY created_at DESC
+         LIMIT $cap;
+        """;
+
+    /// <summary>
+    /// Recent outbound envelope recipients, the raw counterpart of the hashed Recipient profile
+    /// key. The item index drives the order; the recipient lookup is the table's primary key.
+    /// </summary>
+    internal const string OutboundRecipientCandidatesSql =
+        """
+        SELECT r.recipient_key
+          FROM queue_recipient r
+          JOIN queue_item i ON i.queue_id = r.queue_id
+         WHERE i.tenant_id = $tenant AND i.direction = $outbound
+         ORDER BY i.created_at DESC
+         LIMIT $cap;
+        """;
+
     private const string OutboundSuffix = "#outbound";
+    private const string InboundSuffix = "#inbound";
+    private const string QueueMaskedSource = "queue_envelope_masked";
     private const string InboundScope = "InboundSenderIdentity";
     private const string RecipientScope = "Recipient";
     private const string DomainScope = "DomainContext";
@@ -270,11 +311,12 @@ public sealed class EntityDirectoryStore
                 DisplayLabelAvailability = label is null
                     ? SummaryAvailability.NotProduced
                     : SummaryAvailability.Available,
+                DisplayLabelSource = label is null ? null : "sender_profile",
                 DisplayLabelReason = label is null ? SummaryReasons.NoStoredLabel : null,
                 CompanyId = companyId,
                 CompanyName = companyName,
                 Domain = null,
-                DomainReason = SummaryReasons.DirectionAgnosticScope,
+                DomainReason = SummaryReasons.DomainNotRecorded,
                 LastContactAt = volume?.LastObservedAt,
                 LastContactReason = volume is null ? VolumeReason() : null,
                 Volume = SenderVolume(volume),
@@ -371,7 +413,7 @@ public sealed class EntityDirectoryStore
     // Recipients
     // ---------------------------------------------------------------------------------------------
 
-    private static EntityDirectoryResponse ReadRecipients(
+    private EntityDirectoryResponse ReadRecipients(
         SqliteConnection connection,
         string tenantId,
         string? term,
@@ -387,6 +429,7 @@ public sealed class EntityDirectoryStore
             command.Parameters.AddWithValue("$tenant", tenantId);
             command.Parameters.AddWithValue("$scope_a", InboundScope);
             command.Parameters.AddWithValue("$scope_b", RecipientScope);
+            command.Parameters.AddWithValue("$outbound", (int)MailDirection.Outbound);
             command.Parameters.AddWithValue("$q", (object?)term ?? DBNull.Value);
             command.Parameters.AddWithValue("$limit", limit + 1);
             BindCursor(command, cursor);
@@ -407,21 +450,41 @@ public sealed class EntityDirectoryStore
         var scanned = rows.Count;
         var trimmed = TrimPage(rows, limit, out var hasMore);
 
+        // Resolved for this page only: the candidate scans are bounded and their cost should not be
+        // paid for the probe row or for a page the caller is not reading.
+        var masked = _pseudonyms.Current is null
+            ? null
+            : ReadMaskedLabels(connection, tenantId, trimmed, cancellationToken);
+
         var entities = new List<EntitySummaryResponse>(trimmed.Count);
         foreach (var row in trimmed)
         {
+            var recovered = masked is not null && masked.TryGetValue(row.Key, out var known)
+                ? known
+                : null;
+
+            var label = recovered?.Label;
+            var reason = masked is null
+                ? SummaryReasons.NoProfileKey
+                : recovered is null
+                    ? SummaryReasons.AddressNotInBoundedScan
+                    : recovered.Reason;
+
             entities.Add(new EntitySummaryResponse
             {
                 ScopeId = row.Key,
                 Kind = "recipient",
                 Direction = row.Direction,
-                DisplayLabel = null,
-                DisplayLabelAvailability = SummaryAvailability.NotProduced,
-                DisplayLabelReason = SummaryReasons.NoStoredLabel,
+                DisplayLabel = label,
+                DisplayLabelAvailability = label is null
+                    ? SummaryAvailability.NotProduced
+                    : SummaryAvailability.Available,
+                DisplayLabelSource = label is null ? null : QueueMaskedSource,
+                DisplayLabelReason = label is null ? reason : null,
                 CompanyId = null,
                 CompanyName = null,
-                Domain = null,
-                DomainReason = SummaryReasons.DirectionAgnosticScope,
+                Domain = recovered?.Domain,
+                DomainReason = recovered?.Domain is null ? reason : null,
                 LastContactAt = row.LastObservedAt,
                 LastContactReason = row.LastObservedAt is null
                     ? SummaryReasons.NoProfileRecorded
@@ -450,6 +513,164 @@ public sealed class EntityDirectoryStore
             Reason = row.Direction is null ? SummaryReasons.DirectionAgnosticScope : null,
         };
     }
+
+    /// <summary>
+    /// Recovers a display-safe masked address for the page's correspondent rows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The profile key is a tenant-keyed hash and cannot be reversed. The raw address does still
+    /// exist in the queue's envelope columns, so the lookup runs the other way: read a bounded set
+    /// of recent envelope addresses, hash each with the same hasher, and match the page's keys.
+    /// </para>
+    /// <para>
+    /// <b>No payload is parsed and no full address leaves this method.</b> The candidate string is
+    /// reduced to the mask before it is attached to a row; the raw value is local to this call.
+    /// </para>
+    /// </remarks>
+    private Dictionary<string, MaskedRecipient> ReadMaskedLabels(
+        SqliteConnection connection,
+        string tenantId,
+        IReadOnlyList<ProfileRow> rows,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, MaskedRecipient>(StringComparer.Ordinal);
+        var hasher = _pseudonyms.Current;
+        if (hasher is null)
+        {
+            return result;
+        }
+
+        var needInbound = rows.Any(row =>
+            row.Scope == InboundScope && InboundHash(row.Key) is not null);
+        var needOutbound = rows.Any(row =>
+            row.Scope == RecipientScope && row.Direction == MailDirection.Outbound
+            && OutboundHash(row.Key) is not null);
+
+        var byHash = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (needInbound)
+        {
+            CollectCandidates(
+                connection, InboundSenderCandidatesSql, tenantId, hasher, byHash, cancellationToken);
+        }
+
+        if (needOutbound)
+        {
+            CollectCandidates(
+                connection, OutboundRecipientCandidatesSql, tenantId, hasher, byHash, cancellationToken);
+        }
+
+        foreach (var row in rows)
+        {
+            var hash = row.Scope switch
+            {
+                InboundScope => InboundHash(row.Key),
+                RecipientScope when row.Direction == MailDirection.Outbound => OutboundHash(row.Key),
+                _ => null,
+            };
+
+            if (hash is null || !byHash.TryGetValue(hash, out var address))
+            {
+                continue;
+            }
+
+            result[row.Key] = MaskAddress(address);
+        }
+
+        return result;
+    }
+
+    private void CollectCandidates(
+        SqliteConnection connection,
+        string sql,
+        string tenantId,
+        ProfileKeyHasher hasher,
+        Dictionary<string, string> byHash,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$tenant", tenantId);
+        command.Parameters.AddWithValue("$inbound", (int)MailDirection.Inbound);
+        command.Parameters.AddWithValue("$outbound", (int)MailDirection.Outbound);
+        command.Parameters.AddWithValue("$cap", MaskedLabelScanCap);
+
+        using var reader = command.ExecuteReader();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (reader.Read())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var address = reader.GetString(0);
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                // The assessor substitutes "<>" for an absent sender so the profile key exists.
+                // Keep that identity here so the row can say "not maskable" rather than "outside
+                // the scan", which are different facts.
+                address = "<>";
+            }
+
+            if (!seen.Add(address))
+            {
+                continue;
+            }
+
+            byHash[hasher.Hash(tenantId, address)] = address;
+        }
+    }
+
+    /// <summary>
+    /// The hash component of an inbound-sender profile key: <c>hash|auth=...#inbound</c>.
+    /// </summary>
+    private static string? InboundHash(string key)
+    {
+        var withoutSuffix = key.EndsWith(InboundSuffix, StringComparison.Ordinal)
+            ? key[..^InboundSuffix.Length]
+            : key;
+
+        var bar = withoutSuffix.IndexOf('|', StringComparison.Ordinal);
+        var hash = bar > 0 ? withoutSuffix[..bar] : withoutSuffix;
+        return hash.Length == 0 ? null : hash;
+    }
+
+    /// <summary>The hash component of an outbound-recipient profile key: <c>hash#outbound</c>.</summary>
+    private static string? OutboundHash(string key)
+    {
+        var hash = key.EndsWith(OutboundSuffix, StringComparison.Ordinal)
+            ? key[..^OutboundSuffix.Length]
+            : key;
+
+        return hash.Length == 0 ? null : hash;
+    }
+
+    /// <summary>
+    /// First character of the local part plus the domain. Never the local part itself.
+    /// </summary>
+    /// <remarks>
+    /// The mask keeps one character so two correspondents at the same domain are distinguishable,
+    /// and keeps the domain because that is the part an operator can act on. A one-character local
+    /// part still renders as <c>a***@domain</c>, so length is not disclosed. An address with no
+    /// usable local part and domain (the null sender, or a malformed value) is not maskable and
+    /// says so rather than rendering something misleading.
+    /// </remarks>
+    private static MaskedRecipient MaskAddress(string address)
+    {
+        var at = address.LastIndexOf('@');
+
+        if (at <= 0 || at == address.Length - 1)
+        {
+            return new MaskedRecipient(null, null, SummaryReasons.AddressNotMaskable);
+        }
+
+        var local = address[..at];
+        var domain = address[(at + 1)..].ToLowerInvariant();
+        var first = local.EnumerateRunes().First().ToString();
+
+        return new MaskedRecipient($"{first}***@{domain}", domain, null);
+    }
+
+    private sealed record MaskedRecipient(string? Label, string? Domain, string? Reason);
 
     // ---------------------------------------------------------------------------------------------
     // Domains
@@ -504,6 +725,7 @@ public sealed class EntityDirectoryStore
                 Direction = null,
                 DisplayLabel = row.Key,
                 DisplayLabelAvailability = SummaryAvailability.Available,
+                DisplayLabelSource = "domain",
                 CompanyId = null,
                 CompanyName = null,
                 Domain = row.Key,
@@ -574,10 +796,11 @@ public sealed class EntityDirectoryStore
                 Direction = null,
                 DisplayLabel = name,
                 DisplayLabelAvailability = SummaryAvailability.Available,
+                DisplayLabelSource = "company",
                 CompanyId = companyId,
                 CompanyName = name,
                 Domain = null,
-                DomainReason = SummaryReasons.DirectionAgnosticScope,
+                DomainReason = SummaryReasons.DomainNotRecorded,
                 LastContactAt = null,
                 LastContactReason = SummaryReasons.VolumeNotComputed,
                 Volume = UnavailableVolume(SummaryReasons.VolumeNotComputed),
