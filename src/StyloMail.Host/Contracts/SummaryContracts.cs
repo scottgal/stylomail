@@ -232,12 +232,19 @@ public sealed record SummaryCoverageResponse
 // GET /v1/storage/summary
 // ---------------------------------------------------------------------------------------------
 
-/// <summary>A capped row count. <see cref="Truncated"/> means the table holds more than <see cref="Count"/>.</summary>
+/// <summary>
+/// A capped row count. <see cref="Truncated"/> means the table holds more than <see cref="Count"/>.
+/// </summary>
+/// <remarks>
+/// <b><see cref="Count"/> is null when the table could not be read, not zero.</b> A readable empty
+/// table is 0 and a truncated table is the cap; an unreadable one is neither, and a zero there would
+/// be indistinguishable from an empty table in a storage card.
+/// </remarks>
 public sealed record TableRowCountResponse
 {
     public required string Table { get; init; }
 
-    public required int Count { get; init; }
+    public int? Count { get; init; }
 
     public required bool Truncated { get; init; }
 
@@ -264,6 +271,12 @@ public sealed record StorageSummaryResponse
 
     /// <summary>Files counted under this tenant's spool directory.</summary>
     public int? SpoolFileCount { get; init; }
+
+    /// <summary>
+    /// True when the spool walk stopped at its file cap, so <see cref="SpoolBytes"/> is a lower bound.
+    /// Null when the spool was not measured at all.
+    /// </summary>
+    public bool? SpoolTruncated { get; init; }
 
     /// <summary>Sum of unpurged payload bytes recorded for this tenant's accepted messages.</summary>
     public long? PayloadBytes { get; init; }

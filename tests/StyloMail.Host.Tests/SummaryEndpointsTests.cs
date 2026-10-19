@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using StyloMail.Adaptive.Profiles;
 using StyloMail.Core;
@@ -179,6 +180,10 @@ public sealed class SummaryEndpointsTests
         Assert.Equal(0, flow.Totals.Other);
 
         Assert.All(flow.Buckets, bucket => Assert.Equal(0, bucket.Inbound));
+
+        // Rejected is measured zero in every bucket of a successful ledger read. A null here would
+        // mean "the ledger could not be read", which is a different fact from "nothing was rejected".
+        Assert.All(flow.Buckets, bucket => Assert.Equal(0, bucket.Rejected));
         Assert.Equal(flow.WindowStart, flow.Buckets[0].BucketStart);
         Assert.True(flow.Coverage.Complete);
         Assert.Null(flow.Coverage.Note);
@@ -215,6 +220,9 @@ public sealed class SummaryEndpointsTests
             flow.Totals.Held + flow.Totals.Review + flow.Totals.Quarantined
                 + flow.Totals.Delivered + flow.Totals.Other);
 
+        // No ledger rows were written, so the ledger was read and every bucket is a measured zero.
+        Assert.All(flow.Buckets, bucket => Assert.Equal(0, bucket.Rejected));
+
         Assert.Equal(5, flow.Coverage.MessagesCounted);
         Assert.True(flow.Coverage.Complete);
         Assert.Contains("queue_item", flow.Coverage.Tables);
@@ -241,6 +249,13 @@ public sealed class SummaryEndpointsTests
         Assert.Equal(1, flow.Coverage.DecisionsCounted);
         Assert.Contains("direction is not recoverable", flow.Coverage.Note, StringComparison.Ordinal);
         Assert.True(flow.Coverage.Complete);
+
+        // Exactly one bucket carries the reject; every other bucket is zero, not null.
+        Assert.Equal(1, flow.Buckets.Sum(bucket => bucket.Rejected ?? 0));
+        Assert.Equal(1, flow.Buckets.Count(bucket => bucket.Rejected == 1));
+        Assert.Equal(
+            flow.Buckets.Count - 1,
+            flow.Buckets.Count(bucket => bucket.Rejected == 0));
     }
 
     [Fact]
@@ -319,6 +334,9 @@ public sealed class SummaryEndpointsTests
             // The gap needs both tables, so it is not produced either. It is named rather than
             // rendered as the zero that would read as "every decision had a recoverable direction".
             Assert.Null(flow.Coverage.DirectionNotRecoverable);
+            Assert.Equal(1, flow.Buckets.Sum(bucket => bucket.Rejected ?? 0));
+            Assert.Equal(1, flow.Buckets.Count(bucket => bucket.Rejected == 1));
+            Assert.All(flow.Buckets, bucket => Assert.Null(bucket.Inbound));
             Assert.Contains(
                 flow.NotProduced,
                 entry => entry.Series == "directionNotRecoverable"
@@ -411,24 +429,101 @@ public sealed class SummaryEndpointsTests
     }
 
     [Fact]
-    public async Task A_row_count_at_the_cap_reports_more_than_the_cap()
+    public async Task A_row_count_at_the_cap_reports_the_cap_and_a_truncated_flag()
     {
-        using var host = new TestHost().WithClock();
+        // The cap is injected at one so the boundary can be exercised against two real rows. A
+        // count that merely stays under ten thousand proves nothing: mutating either the flag or
+        // the clamp would still pass. One row is exactly at the cap, two is over it.
+        using var host = WithSummaryLimits(new TestHost().WithClock(), rowCountLimit: 1);
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
 
-        // Two companies is enough when the store is asked to report a cap of one. The cap is
-        // configurable only through the store, so the observable rule is the one asserted here:
-        // the count never exceeds the cap and truncation is explicit.
         await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued);
+
+        var atCap = await ReadAsync<StorageSummaryResponse>(
+            await client.GetAsync("/v1/storage/summary"));
+        var atCapRow = Assert.Single(atCap.RowCounts, row => row.Table == "queue_item");
+
+        Assert.Equal(1, atCapRow.Count);
+        Assert.False(atCapRow.Truncated);
+
         await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued);
+
+        var overCap = await ReadAsync<StorageSummaryResponse>(
+            await client.GetAsync("/v1/storage/summary"));
+        var overCapRow = Assert.Single(overCap.RowCounts, row => row.Table == "queue_item");
+
+        // Two rows exist, the reported count is the cap, and the flag says the raw count was larger.
+        // The raw count is read directly so the fixture proves what the response is claiming about.
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "SELECT COUNT(*) FROM queue_item WHERE tenant_id = $tenant;";
+            command.Parameters.AddWithValue("$tenant", Acme);
+            Assert.Equal(2, Convert.ToInt32(command.ExecuteScalar()));
+        }
+
+        Assert.Equal(1, overCapRow.Count);
+        Assert.True(overCapRow.Truncated);
+    }
+
+    [Fact]
+    public void An_unreadable_row_count_is_null_with_a_reason_not_zero()
+    {
+        // A host database without the queue or persistence tables: the host's own tables read as
+        // measured zeroes, the missing ones are null with a reason, and the route still answers.
+        var directory = Path.Combine(
+            Path.GetTempPath(), "stylomail-summary-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var clock = new TestClock(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
+            var database = new HostDatabase(Options.Create(new HostStorageOptions
+            {
+                DatabasePath = Path.Combine(directory, "host.db"),
+            }));
+            database.EnsureCreated();
+
+            var store = new DashboardSummaryStore(
+                database,
+                new SpoolStore(Path.Combine(directory, "spool")),
+                clock);
+
+            var storage = store.ReadStorage(Acme, CancellationToken.None);
+
+            var unreadable = Assert.Single(storage.RowCounts, row => row.Table == "queue_item");
+            Assert.Null(unreadable.Count);
+            Assert.Equal("table_unreadable", unreadable.Reason);
+            Assert.Null(storage.PayloadBytes);
+
+            // The control: a table that exists and is empty is still a measured zero.
+            var readable = Assert.Single(
+                storage.RowCounts, row => row.Table == "host_decision_ledger");
+            Assert.Equal(0, readable.Count);
+            Assert.False(readable.Truncated);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_capped_spool_walk_is_flagged_as_a_lower_bound()
+    {
+        using var host = WithSummaryLimits(new TestHost().WithClock(), spoolFileLimit: 1);
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued, payloadBytes: 64);
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued, payloadBytes: 64);
 
         using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
         var storage = await ReadAsync<StorageSummaryResponse>(
             await client.GetAsync("/v1/storage/summary"));
 
-        var itemRows = Assert.Single(storage.RowCounts, row => row.Table == "queue_item");
-        Assert.Equal(2, itemRows.Count);
-        Assert.False(itemRows.Truncated);
-        Assert.True(itemRows.Count <= DashboardSummaryStore.RowCountCap);
+        Assert.True(storage.SpoolTruncated);
+        Assert.Equal(1, storage.SpoolFileCount);
+        Assert.NotNull(storage.SpoolBytes);
+        Assert.True(storage.SpoolBytes > 0);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -621,6 +716,10 @@ public sealed class SummaryEndpointsTests
         Assert.False(first.Coverage.Complete);
         Assert.Equal(PrincipalA, first.Entities[0].ScopeId);
 
+        // The query returned both sender rows and the page returned one of them. Scanned is the
+        // raw count, not the page length, so a client counting what remains can use it.
+        Assert.Equal(2, first.Coverage.Scanned);
+
         var second = await ReadAsync<EntityDirectoryResponse>(
             await client.GetAsync(
                 $"/v1/entities?kind=sender&limit=1&after={Uri.EscapeDataString(first.NextCursor!)}"));
@@ -629,6 +728,7 @@ public sealed class SummaryEndpointsTests
         Assert.Equal(PrincipalB, second.Entities[0].ScopeId);
         Assert.False(second.HasMore);
         Assert.True(second.Coverage.Complete);
+        Assert.Equal(1, second.Coverage.Scanned);
 
         // Neither page contains the other tenant's sender, even though its label matches the query.
         var searched = await ReadAsync<EntityDirectoryResponse>(
@@ -806,6 +906,24 @@ public sealed class SummaryEndpointsTests
     // ---------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Replaces the store with one whose caps the test can reach.</summary>
+    private static TestHost WithSummaryLimits(
+        TestHost host,
+        int? rowCountLimit = null,
+        int? spoolFileLimit = null)
+        => host.Override(services =>
+        {
+            services.RemoveAll<DashboardSummaryStore>();
+            services.AddSingleton(sp => new DashboardSummaryStore(
+                sp.GetRequiredService<HostDatabase>(),
+                sp.GetRequiredService<SpoolStore>(),
+                sp.GetRequiredService<TimeProvider>())
+            {
+                RowCountLimit = rowCountLimit ?? DashboardSummaryStore.RowCountCap,
+                SpoolFileLimit = spoolFileLimit ?? DashboardSummaryStore.SpoolFileCap,
+            });
+        });
 
     private static async Task<string> AcceptAsync(
         TestHost host,

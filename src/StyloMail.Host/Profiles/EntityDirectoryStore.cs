@@ -243,6 +243,11 @@ public sealed class EntityDirectoryStore
             }
         }
 
+        // Captured before the page is trimmed: this is how many rows the query returned, including
+        // the extra probe row that proves a further page exists. A client counting rows it still
+        // has to fetch needs this, not the page length.
+        var scanned = rows.Count;
+
         var hasMore = rows.Count > limit;
         if (hasMore)
         {
@@ -278,7 +283,7 @@ public sealed class EntityDirectoryStore
         }
 
         return DirectoryResponse(
-            tenantId, "sender", entities, hasMore, rows.Count, cursor is null);
+            tenantId, "sender", entities, hasMore, scanned, cursor is null);
     }
 
     private Dictionary<string, SenderProfileRow> ReadSenderVolumes(
@@ -399,6 +404,7 @@ public sealed class EntityDirectoryStore
             }
         }
 
+        var scanned = rows.Count;
         var trimmed = TrimPage(rows, limit, out var hasMore);
 
         var entities = new List<EntitySummaryResponse>(trimmed.Count);
@@ -426,7 +432,7 @@ public sealed class EntityDirectoryStore
         }
 
         return DirectoryResponse(
-            tenantId, "recipient", entities, hasMore, rows.Count, cursor is null);
+            tenantId, "recipient", entities, hasMore, scanned, cursor is null);
     }
 
     private static EntityVolumeResponse RecipientVolume(ProfileRow row)
@@ -480,6 +486,8 @@ public sealed class EntityDirectoryStore
                     reader.IsDBNull(2) ? null : ParseStamp(reader.GetString(2))));
             }
         }
+
+        var scanned = rows.Count;
         var hasMore = rows.Count > limit;
         if (hasMore)
         {
@@ -516,7 +524,7 @@ public sealed class EntityDirectoryStore
             });
         }
 
-        return DirectoryResponse(tenantId, "domain", entities, hasMore, rows.Count, cursor is null);
+        return DirectoryResponse(tenantId, "domain", entities, hasMore, scanned, cursor is null);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -549,6 +557,7 @@ public sealed class EntityDirectoryStore
             }
         }
 
+        var scanned = rows.Count;
         var hasMore = rows.Count > limit;
         if (hasMore)
         {
@@ -576,7 +585,7 @@ public sealed class EntityDirectoryStore
             });
         }
 
-        return DirectoryResponse(tenantId, "company", entities, hasMore, rows.Count, cursor is null);
+        return DirectoryResponse(tenantId, "company", entities, hasMore, scanned, cursor is null);
     }
 
     // ---------------------------------------------------------------------------------------------

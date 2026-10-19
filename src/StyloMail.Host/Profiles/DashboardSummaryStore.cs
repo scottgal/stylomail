@@ -179,6 +179,16 @@ public sealed class DashboardSummaryStore
             + "WHERE tenant_id = $tenant LIMIT $cap);"),
     ];
 
+    /// <summary>
+    /// The row-count cap this instance uses. <see cref="RowCountCap"/> in every deployment;
+    /// overridable inside the test assembly so the truncation boundary can be exercised without
+    /// seeding ten thousand rows.
+    /// </summary>
+    internal int RowCountLimit { get; init; } = RowCountCap;
+
+    /// <summary>The spool file cap this instance uses. Overridable for the truncation test.</summary>
+    internal int SpoolFileLimit { get; init; } = SpoolFileCap;
+
     private readonly HostDatabase _database;
     private readonly SpoolStore _spool;
     private readonly TimeProvider _clock;
@@ -226,9 +236,10 @@ public sealed class DashboardSummaryStore
                 Quarantined = 0,
                 Delivered = 0,
                 Other = 0,
-                // Rejected is populated only if the ledger source answers. It starts null so a
-                // ledger failure does not leave a zero standing in for a series nobody measured.
-                Rejected = null,
+                // Rejected is a measured zero here. The ledger-failure path below nulls every
+                // bucket, so a null always means "the ledger could not be read", never "no rejects
+                // happened in this bucket".
+                Rejected = 0,
             };
         }
 
@@ -567,6 +578,7 @@ public sealed class DashboardSummaryStore
         long? walBytes = null;
         long? spoolBytes = null;
         int? spoolFileCount = null;
+        bool? spoolTruncated = null;
         long? payloadBytes = null;
         long? capacityBytes = null;
         long? volumeFreeBytes = null;
@@ -614,19 +626,11 @@ public sealed class DashboardSummaryStore
 
         try
         {
-            var usage = _spool.MeasureTenantBytes(tenantId, SpoolFileCap);
+            var usage = _spool.MeasureTenantBytes(tenantId, SpoolFileLimit);
             spoolBytes = usage.Bytes;
             spoolFileCount = usage.FileCount;
+            spoolTruncated = usage.Truncated;
             measured.Add("spool");
-
-            if (usage.Truncated)
-            {
-                notProduced.Add(new SummaryAbsenceResponse
-                {
-                    Series = "spoolBytes",
-                    Reason = "spool_walk_capped",
-                });
-            }
         }
         catch (Exception ex) when (
             ex is IOException or UnauthorizedAccessException or ArgumentException)
@@ -638,16 +642,38 @@ public sealed class DashboardSummaryStore
             });
         }
 
+        SqliteConnection? connection = null;
         try
         {
-            using var connection = _database.Open();
-            using (var payload = connection.CreateCommand())
+            connection = _database.Open();
+        }
+        catch (SqliteException ex)
+        {
+            // The file cannot be opened at all. That is an outage rather than a partial answer.
+            throw new StorageUnavailableException(
+                "The storage metadata could not be read, so no byte totals are being given.", ex);
+        }
+
+        using (connection)
+        {
+            try
             {
+                using var payload = connection.CreateCommand();
                 payload.CommandText = PayloadBytesSql;
                 payload.Parameters.AddWithValue("$tenant", tenantId);
                 payloadBytes = Convert.ToInt64(
                     payload.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
                 measured.Add("payloads");
+            }
+            catch (SqliteException)
+            {
+                // One absent table is not an outage. The byte total is null and named, because a
+                // zero would read as a measured empty queue.
+                notProduced.Add(new SummaryAbsenceResponse
+                {
+                    Series = "payloadBytes",
+                    Reason = "table_unreadable",
+                });
             }
 
             foreach (var (table, sql) in RowCountQueries)
@@ -659,24 +685,24 @@ public sealed class DashboardSummaryStore
                     using var count = connection.CreateCommand();
                     count.CommandText = sql;
                     count.Parameters.AddWithValue("$tenant", tenantId);
-                    count.Parameters.AddWithValue("$cap", RowCountCap + 1);
+                    count.Parameters.AddWithValue("$cap", RowCountLimit + 1);
 
                     var raw = Convert.ToInt32(count.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
                     rowCounts.Add(new TableRowCountResponse
                     {
                         Table = table,
-                        Count = Math.Min(raw, RowCountCap),
-                        Truncated = raw > RowCountCap,
+                        Count = Math.Min(raw, RowCountLimit),
+                        Truncated = raw > RowCountLimit,
                     });
                 }
                 catch (SqliteException)
                 {
-                    // A table that is absent is named, not reported as empty. The rest of the
-                    // storage answer is still true and still useful.
+                    // A table that is absent is named, not reported as empty. Count stays null so
+                    // it cannot be read as a measured zero, and the rest of the answer stands.
                     rowCounts.Add(new TableRowCountResponse
                     {
                         Table = table,
-                        Count = 0,
+                        Count = null,
                         Truncated = false,
                         Reason = "table_unreadable",
                     });
@@ -689,11 +715,6 @@ public sealed class DashboardSummaryStore
             }
 
             measured.Add("row_counts");
-        }
-        catch (SqliteException ex)
-        {
-            throw new StorageUnavailableException(
-                "The storage metadata could not be read, so no byte totals are being given.", ex);
         }
 
         try
@@ -738,6 +759,7 @@ public sealed class DashboardSummaryStore
             WriteAheadLogBytes = walBytes,
             SpoolBytes = spoolBytes,
             SpoolFileCount = spoolFileCount,
+            SpoolTruncated = spoolTruncated,
             PayloadBytes = payloadBytes,
             CapacityBytes = capacityBytes,
             VolumeFreeBytes = volumeFreeBytes,
@@ -753,7 +775,9 @@ public sealed class DashboardSummaryStore
                     + "per-tenant share. spoolBytes is this tenant's own spool directory. "
                     + "capacityBytes and volumeFreeBytes describe the filesystem volume, not a "
                     + "StyloMail quota. rowCounts are capped at "
-                    + $"{RowCountCap}; a capped row reports truncated, never the cap as a total. "
+                    + $"{RowCountLimit}; a capped row reports truncated, never the cap as a total. "
+                    + "An unreadable row count is null with a reason, never zero. spoolTruncated=true "
+                    + "means spoolBytes is a lower bound: the walk stopped at its file cap. "
                     + "No path is served.",
             },
             NotProduced = notProduced,
