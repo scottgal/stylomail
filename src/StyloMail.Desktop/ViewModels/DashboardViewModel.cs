@@ -1361,7 +1361,7 @@ public sealed class DashboardViewModel : ObservableObject
     private static string DescribeFlowCoverage(FlowCoverage coverage)
     {
         var counted = coverage.MessagesCounted is { } value
-            ? $"{value:N0} messages counted."
+            ? $"{value:N0} message{(value == 1 ? string.Empty : "s")} counted."
             : "The Host did not report how many messages were counted.";
 
         var skipped = coverage.MessagesSkipped is > 0 and { } count

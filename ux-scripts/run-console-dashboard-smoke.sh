@@ -12,6 +12,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=console-harness.sh
 source "$HERE/console-harness.sh"
 
+# A working local assessor is what makes the flow card carry a real message
+# rather than the empty-window state. The dashboard is about the aggregate, but
+# an aggregate of nothing cannot show the chart, its axis or its legend.
+export CONSOLE_PROVIDER=nimble
+CONSOLE_MESSAGE="$CONSOLE_REPO/tests/StyloMail.Desktop.Tests/fixtures/nimble-held-message.eml"
+
 cleanup() {
     console_stop_host
 }
@@ -29,6 +35,15 @@ mkdir -p "$CONSOLE_RESULTS"
 
 echo "== starting the throwaway Host on $CONSOLE_BASE =="
 console_start_host || exit 1
+
+echo "== submitting one message through POST /v1/submissions =="
+# The dashboard's flow and queue cards need a real accepted message. The
+# assessment-only seed the main smoke uses writes a ledger row and leaves every
+# queue empty, which would make the flow card the empty state on every run.
+console_seed_submission \
+    "$CONSOLE_MESSAGE" \
+    "billing@paypa1-secure.top" \
+    "alice@example.test" || exit 1
 
 console_export_app_env
 export ASPNETCORE_URLS=""
