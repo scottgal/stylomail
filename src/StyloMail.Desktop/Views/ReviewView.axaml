@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.ReviewView">
+
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom"
+                Classes="resultBar"
+                Classes.failed="{Binding LastFailed}"
+                IsVisible="{Binding HasLastResult}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="{Binding LastResult}" />
+                <Button Grid.Column="1"
+                        Classes="linkButton"
+                        Content="Dismiss"
+                        Click="OnDismissResultClick" />
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom"
+                Classes="actionBar"
+                IsVisible="{Binding HasPendingAction}">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="actionTitle" Text="{Binding PendingAction.Title}" />
+                <TextBlock Classes="actionConsequence"
+                           TextWrapping="Wrap"
+                           Text="{Binding PendingAction.Consequence}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="actionLabel"
+                               VerticalAlignment="Center"
+                               Text="Tell the audit trail why" />
+                    <TextBox Width="380"
+                             Watermark="Explain this decision"
+                             Text="{Binding PendingReason, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button Content="Cancel" Click="OnCancelPendingClick" />
+                    <Button Classes="primaryButton"
+                            Content="{Binding PendingAction.ConfirmLabel}"
+                            IsEnabled="{Binding CanConfirm}"
+                            Click="OnConfirmClick" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer x:Name="ReviewScroll" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="24,20,16,24"
+                        Spacing="10"
+                        AutomationProperties.AutomationId="review-page">
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Classes="dashboardHeadline" Text="Review" />
+                        <TextBlock Classes="dashboardDetail" Text="Messages waiting for your decision." />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Classes="rowButton"
+                            VerticalAlignment="Top"
+                            Content="{Binding RefreshLabel}"
+                            AutomationProperties.AutomationId="review-refresh"
+                            Click="OnRefreshClick" />
+                </Grid>
+
+                <TextBlock Classes="dashboardCoverage" Text="{Binding StatusLabel}" />
+                <TextBlock Classes="dashboardCoverage" Text="{Binding LastUpdatedLabel}" />
+
+                <ItemsControl ItemsSource="{Binding Reviews}" AutomationProperties.AutomationId="review-list">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Classes="dashboardCard" Margin="0,0,0,8">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
+                                    <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Reason}" />
+                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding PolicyLine}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding WaitingLabel}" />
+                                    <TextBlock Classes="cardWarningText"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding HasOverdue}"
+                                               Text="{Binding OverdueLabel}" />
+                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding RecipientsLabel}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                        <Button Classes="rowButton"
+                                                Content="Release to delivery"
+                                                Click="OnReleaseClick" />
+                                        <Button Classes="rowButton"
+                                                Content="Keep stopped"
+                                                Click="OnKeepStoppedClick" />
+                                        <Button Classes="rowButton"
+                                                Content="Reject permanently"
+                                                Click="OnRejectClick" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Classes="dashboardGap" IsVisible="{Binding ShowEmpty}">
+                    <StackPanel Spacing="3">
+                        <TextBlock Classes="cardTitle" Text="No messages are awaiting human review." />
+                        <TextBlock Classes="cardBody"
+                                   TextWrapping="Wrap"
+                                   Text="Held and stopped messages are summarized below and can be opened in Mail." />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="dashboardCardTitle" Text="Other attention" />
+                        <TextBlock Classes="dashboardCoverage"
+                                   TextWrapping="Wrap"
+                                   Text="These lists carry no decision summary, so they stay in Mail, where the evidence is one action away." />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Classes="rowTitle"
+                                       Text="{Binding HeldCountLabel, StringFormat='Being re-checked: {0}'}" />
+                            <Button Grid.Column="1"
+                                    Classes="linkButton"
+                                    Content="Open re-check queue"
+                                    Click="OnOpenHeldClick" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Classes="rowTitle"
+                                       Text="{Binding StoppedCountLabel, StringFormat='Stopped before delivery: {0}'}" />
+                            <Button Grid.Column="1"
+                                    Classes="linkButton"
+                                    Content="Open stopped queue"
+                                    Click="OnOpenStoppedClick" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Expander Header="Advanced review detail"
+                          AutomationProperties.AutomationId="review-advanced">
+                    <ItemsControl ItemsSource="{Binding TechnicalLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Classes="paneDetail"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

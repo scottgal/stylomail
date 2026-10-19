@@ -123,9 +123,15 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Classes="dashboardCoverage"
-                                   IsVisible="{Binding !HasAccounts}"
-                                   Text="No proxy accounts are configured on this Host." />
+                        <StackPanel Spacing="6" IsVisible="{Binding !HasAccounts}">
+                            <TextBlock Classes="dashboardCoverage"
+                                       Text="No proxy accounts are configured on this Host." />
+                            <Button Classes="rowButton"
+                                    HorizontalAlignment="Left"
+                                    Content="Create proxy account"
+                                    AutomationProperties.AutomationId="service-create-account"
+                                    Click="OnCreateAccountClick" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -169,7 +175,8 @@
 
                         <TextBlock Classes="dashboardCoverage"
                                    IsVisible="{Binding !HasListeners}"
-                                   Text="No listeners are configured on this Host." />
+                                   TextWrapping="Wrap"
+                                   Text="No listeners are configured on this Host. Listeners are part of the deployment, not objects this console creates. See Settings or the deployment documentation for the configured routes." />
                     </StackPanel>
                 </Border>
 

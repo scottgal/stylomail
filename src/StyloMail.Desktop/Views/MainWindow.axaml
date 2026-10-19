@@ -1053,6 +1053,27 @@
                     IsVisible="{Binding IsServiceSelected}">
                 <local:ServiceView DataContext="{Binding Service}" />
             </Border>
+
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsReviewSelected}">
+                <local:ReviewView DataContext="{Binding Review}" />
+            </Border>
+
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsPolicySelected}">
+                <local:PolicyView DataContext="{Binding Policy}" />
+            </Border>
+
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsImagesSelected}">
+                <local:ImagesView DataContext="{Binding Images}" />
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

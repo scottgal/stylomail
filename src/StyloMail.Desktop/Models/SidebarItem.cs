@@ -82,6 +82,15 @@ public sealed class SidebarItem : ObservableObject
     /// <summary>Whether this destination opens the Service page.</summary>
     public bool IsService { get; init; }
 
+    /// <summary>Whether this destination opens the human review queue.</summary>
+    public bool IsReview { get; init; }
+
+    /// <summary>Whether this destination opens the read-only policy page.</summary>
+    public bool IsPolicy { get; init; }
+
+    /// <summary>Whether this destination opens the image observations page.</summary>
+    public bool IsImages { get; init; }
+
     private string? _badge;
 
     /// <summary>

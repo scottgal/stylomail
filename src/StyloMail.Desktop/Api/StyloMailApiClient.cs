@@ -102,6 +102,35 @@ public sealed class StyloMailApiClient
             body: null, cancellationToken);
     }
 
+    /// <summary>Reads the tenant's authoritative policy status.</summary>
+    public Task<PolicyStatusResponse> GetPolicyStatusAsync(CancellationToken cancellationToken = default)
+        => SendAsync<PolicyStatusResponse>(HttpMethod.Get, "/v1/policy/status", body: null, cancellationToken);
+
+    /// <summary>Reads the tenant's policy pack versions, newest first.</summary>
+    public Task<PolicyPackListResponse> GetPolicyPacksAsync(CancellationToken cancellationToken = default)
+        => SendAsync<PolicyPackListResponse>(HttpMethod.Get, "/v1/policy/packs", body: null, cancellationToken);
+
+    /// <summary>Reads one pack version, including its category levels and capture rules.</summary>
+    public Task<PolicyPackResponse> GetPolicyPackAsync(
+        string id,
+        string? version = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        var path = "/v1/policy/packs/" + Uri.EscapeDataString(id);
+        if (!string.IsNullOrWhiteSpace(version))
+        {
+            path += "?version=" + Uri.EscapeDataString(version);
+        }
+
+        return SendAsync<PolicyPackResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+    }
+
+    /// <summary>Reads the tenant's policy bindings.</summary>
+    public Task<PolicyBindingListResponse> GetPolicyBindingsAsync(CancellationToken cancellationToken = default)
+        => SendAsync<PolicyBindingListResponse>(HttpMethod.Get, "/v1/policy/bindings", body: null, cancellationToken);
+
     public Task<PolicyEffectiveBindingResponse> GetEffectivePolicyBindingAsync(string entity, string? company, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entity);
@@ -338,6 +367,34 @@ public sealed class StyloMailApiClient
     /// <summary>Reads measured storage and the retention horizon.</summary>
     public Task<StorageSummaryResponse> GetStorageSummaryAsync(CancellationToken cancellationToken = default)
         => SendAsync<StorageSummaryResponse>(HttpMethod.Get, "/v1/storage/summary", body: null, cancellationToken);
+
+    /// <summary>Applies a release decision to an open review.</summary>
+    public Task<ReviewDetailResponse> ReleaseReviewAsync(string queueId, string reason, CancellationToken cancellationToken = default)
+        => ReviewActionAsync(queueId, "release", reason, cancellationToken);
+
+    /// <summary>Keeps a review item stopped before delivery.</summary>
+    public Task<ReviewDetailResponse> QuarantineReviewAsync(string queueId, string reason, CancellationToken cancellationToken = default)
+        => ReviewActionAsync(queueId, "quarantine", reason, cancellationToken);
+
+    /// <summary>Permanently rejects a review item. Requires the Administer privilege.</summary>
+    public Task<ReviewDetailResponse> RejectReviewAsync(string queueId, string reason, CancellationToken cancellationToken = default)
+        => ReviewActionAsync(queueId, "reject", reason, cancellationToken);
+
+    private Task<ReviewDetailResponse> ReviewActionAsync(
+        string queueId,
+        string action,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+
+        return SendAsync<ReviewDetailResponse>(
+            HttpMethod.Post,
+            $"/v1/policy/reviews/{Uri.EscapeDataString(queueId)}/{action}",
+            new { reason },
+            cancellationToken);
+    }
 
     /// <summary>
     /// Reads one page of open reviews. Used for the dashboard count while the queue summary is

@@ -1322,7 +1322,7 @@ public sealed class DashboardViewModel : ObservableObject
                 "Review",
                 "Open the review queue to release, keep stopped or reject them.",
                 "Open review queue",
-                "Awaiting human review"));
+                "Review queue"));
         }
 
         if (_quarantinedCount is > 0)

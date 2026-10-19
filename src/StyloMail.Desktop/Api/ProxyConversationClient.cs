@@ -234,6 +234,24 @@ namespace StyloMail.Desktop.Api
                 cancellationToken);
         }
 
+        /// <summary>Reads image observations for one thread in the fixed named window.</summary>
+        public Task<ConversationImagesResponse> GetImagesAsync(
+            string threadToken,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsThreadToken(threadToken))
+            {
+                throw new ArgumentException(
+                    "A thread token must be unpadded base64url (A-Z, a-z, 0-9, '-' and '_'), at most 512 characters.",
+                    nameof(threadToken));
+            }
+
+            return SendAsync<ConversationImagesResponse>(
+                "/v1/proxy/conversations/" + Uri.EscapeDataString(threadToken)
+                    + "/images?window=" + Last24Hours,
+                cancellationToken);
+        }
+
         /// <summary>Reads content-free element measurements for one thread in the fixed named window.</summary>
         public Task<ProxyElementSeriesResponse> GetElementsAsync(
             string threadToken,

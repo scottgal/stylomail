@@ -39,7 +39,17 @@ public sealed class ServiceViewModel : ObservableObject
     private bool _lastFailed;
     private bool _sectionFailed;
 
-    public ServiceViewModel(StyloMailApiClient? client = null) => _client = client;
+    public ServiceViewModel(StyloMailApiClient? client = null)
+    {
+        _client = client;
+
+        Accounts.CollectionChanged += (_, _) => Raise(nameof(HasAccounts));
+        Listeners.CollectionChanged += (_, _) => Raise(nameof(HasListeners));
+        Sessions.CollectionChanged += (_, _) => Raise(nameof(HasSessions));
+    }
+
+    /// <summary>Raised when the empty accounts state asks for the existing create-account dialog.</summary>
+    public event EventHandler? CreateAccountRequested;
 
     public ObservableCollection<ServiceAccountRow> Accounts { get; } = [];
 
@@ -202,6 +212,9 @@ public sealed class ServiceViewModel : ObservableObject
     public void SetClient(StyloMailApiClient? client) => _client = client;
 
     public void SetHostAddress(string address) => HostAddress = address;
+
+    /// <summary>Asks the window to open the existing proxy account creation dialog.</summary>
+    public void RequestCreateAccount() => CreateAccountRequested?.Invoke(this, EventArgs.Empty);
 
     public void SetFeedStatus(string headline)
     {

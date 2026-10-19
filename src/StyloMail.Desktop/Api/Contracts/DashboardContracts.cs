@@ -404,7 +404,96 @@ public sealed record ReviewQueueRow
 {
     public required string QueueId { get; init; }
 
+    public string? TenantId { get; init; }
+
     public required string InternalMessageId { get; init; }
+
+    public IReadOnlyList<ReviewRecipientRow> Recipients { get; init; } = [];
+
+    public ReviewOpeningRow? Opening { get; init; }
+
+    public ReviewPolicyRow? Policy { get; init; }
+
+    public bool PolicyRecordMissing { get; init; }
+
+    public bool LegacyReviewOpeningMissing { get; init; }
+
+    public DateTimeOffset? CreatedAt { get; init; }
+
+    public DateTimeOffset? UpdatedAt { get; init; }
+}
+
+public sealed record ReviewRecipientRow
+{
+    public required string Recipient { get; init; }
+
+    public string? State { get; init; }
+
+    public DateTimeOffset? ReviewDeadline { get; init; }
+
+    public bool Overdue { get; init; }
+
+    public int Attempts { get; init; }
+
+    public string? LastError { get; init; }
+}
+
+public sealed record ReviewOpeningRow
+{
+    public required string AssessmentId { get; init; }
+
+    public string? Source { get; init; }
+
+    public string? PackId { get; init; }
+
+    public string? PackVersion { get; init; }
+
+    public string? RuleSetId { get; init; }
+
+    public string? RuleSetVersion { get; init; }
+
+    public string? RuleId { get; init; }
+
+    public int? RuleVersion { get; init; }
+
+    public string? ReasonCode { get; init; }
+
+    public string? Reason { get; init; }
+
+    public string? UnavailableReason { get; init; }
+
+    public DateTimeOffset? DecidedAt { get; init; }
+}
+
+public sealed record ReviewPolicyRow
+{
+    public string? Source { get; init; }
+
+    public string? PackId { get; init; }
+
+    public string? PackVersion { get; init; }
+
+    public string? RuleSetId { get; init; }
+
+    public string? RuleSetVersion { get; init; }
+
+    public string? DecidingRuleId { get; init; }
+
+    public int? DecidingRuleVersion { get; init; }
+
+    public string? DecidingReasonCode { get; init; }
+
+    public string? DecidingReason { get; init; }
+
+    public double? Coverage { get; init; }
+
+    public bool RequiresHumanReview { get; init; }
+}
+
+/// <summary>The response to a review resolution. The events are not rendered by this page.</summary>
+public sealed record ReviewDetailResponse
+{
+    public required ReviewQueueRow Item { get; init; }
 }
 
 /// <summary><c>GET /v1/proxy/connection-outcomes</c>: counted admission failures and timeouts.</summary>

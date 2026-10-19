@@ -1,0 +1,123 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.PolicyView">
+
+    <ScrollViewer x:Name="PolicyScroll" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,16,24"
+                    Spacing="10"
+                    AutomationProperties.AutomationId="policy-page">
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="3">
+                    <TextBlock Classes="dashboardHeadline" Text="Policy" />
+                    <TextBlock Classes="dashboardDetail" Text="Rules and tolerances. This page is read-only." />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rowButton"
+                        VerticalAlignment="Top"
+                        Content="Refresh"
+                        AutomationProperties.AutomationId="policy-refresh"
+                        Click="OnRefreshClick" />
+            </Grid>
+
+            <Border Classes="dashboardCard">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="rowTitle" Text="{Binding ProtectionLabel}" />
+                    <TextBlock Classes="rowTitle" Text="{Binding ShadowLabel}" />
+                    <TextBlock Classes="paneDetail" Text="{Binding JurisdictionLabel}" />
+                    <TextBlock Classes="paneDetail" Text="{Binding EffectivePackLabel}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Classes="dashboardCoverage" Text="{Binding StatusLabel}" />
+            <TextBlock Classes="dashboardCoverage" Text="{Binding LastUpdatedLabel}" />
+
+            <Border Classes="dashboardCard">
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="dashboardCardTitle" Text="Effective pack" />
+
+                    <StackPanel Spacing="3" IsVisible="{Binding HasActivePack}">
+                        <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding ActivePackTitle}" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackContext}" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackCeiling}" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackCapture}" />
+                        <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding ActivePackRetention}" />
+
+                        <TextBlock Classes="sectionLabel" Text="Tolerances" />
+                        <ItemsControl ItemsSource="{Binding Tolerances}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                        <TextBlock Grid.Column="0" Classes="cardBody" Text="{Binding Category}" />
+                                        <TextBlock Grid.Column="1" Classes="rowTitle" Text="{Binding Level}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasTolerances}"
+                                   Text="This pack did not report category tolerances." />
+                    </StackPanel>
+
+                    <StackPanel Spacing="3" IsVisible="{Binding !HasActivePack}">
+                        <TextBlock Classes="rowTitle" Text="No active policy pack." />
+                        <TextBlock Classes="cardBody"
+                                   TextWrapping="Wrap"
+                                   Text="Protection is not configured on this Host. The page does not create or activate a pack." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="dashboardCard">
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="dashboardCardTitle" Text="Pack versions" />
+                    <ItemsControl ItemsSource="{Binding Packs}" AutomationProperties.AutomationId="policy-packs">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="0,2">
+                                    <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
+                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="dashboardCoverage"
+                               IsVisible="{Binding !HasPacks}"
+                               Text="No policy packs are configured on this Host." />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="dashboardCard">
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="dashboardCardTitle" Text="Bindings" />
+                    <ItemsControl ItemsSource="{Binding Bindings}" AutomationProperties.AutomationId="policy-bindings">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="0,2">
+                                    <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
+                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="dashboardCoverage"
+                               IsVisible="{Binding !HasBindings}"
+                               Text="No policy bindings are configured on this Host." />
+                </StackPanel>
+            </Border>
+
+            <Expander Header="Advanced policy detail"
+                      AutomationProperties.AutomationId="policy-advanced">
+                <ItemsControl ItemsSource="{Binding TechnicalLines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Classes="paneDetail"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,106 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.ImagesView">
+
+    <ScrollViewer x:Name="ImagesScroll" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,16,24"
+                    Spacing="10"
+                    AutomationProperties.AutomationId="images-page">
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="3">
+                    <TextBlock Classes="dashboardHeadline" Text="Images" />
+                    <TextBlock Classes="dashboardDetail" Text="Image observations, not image content." />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rowButton"
+                        VerticalAlignment="Top"
+                        Content="Refresh"
+                        AutomationProperties.AutomationId="images-refresh"
+                        Click="OnRefreshClick" />
+            </Grid>
+
+            <TextBlock Classes="dashboardCoverage" Text="{Binding ConversationNote}" />
+
+            <ComboBox x:Name="ConversationPicker"
+                      ItemsSource="{Binding Conversations}"
+                      SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                      SelectionChanged="OnConversationSelected"
+                      MinWidth="420"
+                      AutomationProperties.AutomationId="images-conversations">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Spacing="1">
+                            <TextBlock Classes="rowTitle" Text="{Binding Reference}" />
+                            <TextBlock Classes="rowSubtitle" Text="{Binding LastActivity}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <TextBlock Classes="dashboardCoverage" Text="{Binding StatusLabel}" />
+            <TextBlock Classes="dashboardCoverage" Text="{Binding WindowLabel}" />
+            <TextBlock Classes="dashboardCoverage" Text="{Binding ProvenanceLabel}" />
+            <TextBlock Classes="dashboardCoverage" Text="{Binding RetentionLabel}" />
+
+            <ItemsControl ItemsSource="{Binding Messages}" AutomationProperties.AutomationId="images-messages">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Classes="dashboardCard" Margin="0,0,0,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                <TextBlock Classes="dashboardCoverage" Text="{Binding ObservedLabel}" />
+                                <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />
+                                <TextBlock Classes="dashboardCoverage" Text="{Binding TrafficLabel}" />
+                                <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding CountsLabel}" />
+
+                                <ItemsControl ItemsSource="{Binding Observations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Classes="card" Margin="0,4,0,0">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Classes="cardTitle" Text="{Binding Title}" />
+                                                    <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />
+                                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding AvailabilityLabel}" />
+                                                    <ItemsControl ItemsSource="{Binding Parts}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel Spacing="1" Margin="0,2">
+                                                                    <TextBlock Classes="cardBody" Text="{Binding Title}" />
+                                                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="dashboardGap" IsVisible="{Binding ShowEmpty}">
+                <TextBlock Classes="cardBody"
+                           TextWrapping="Wrap"
+                           Text="{Binding StatusLabel}" />
+            </Border>
+
+            <Expander Header="Advanced image detail"
+                      AutomationProperties.AutomationId="images-advanced">
+                <ItemsControl ItemsSource="{Binding TechnicalLines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Classes="paneDetail"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

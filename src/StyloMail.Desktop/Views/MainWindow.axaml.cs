@@ -76,6 +76,15 @@ public partial class MainWindow : Window
     /// <summary>The service page, built with the window because it holds the client.</summary>
     private readonly ServiceViewModel _service;
 
+    /// <summary>The human review queue, built with the window because it holds the client.</summary>
+    private readonly ReviewViewModel _review;
+
+    /// <summary>The read-only policy page.</summary>
+    private readonly PolicyViewModel _policy;
+
+    /// <summary>The image observation page.</summary>
+    private readonly ImagesViewModel _images;
+
     /// <summary>
     /// Set while a row's open button is assigning the selection itself.
     /// </summary>
@@ -120,9 +129,15 @@ public partial class MainWindow : Window
         _dashboard = new DashboardViewModel(services?.Client, services?.Conversations);
         _recipients = new RecipientsViewModel(services?.Client);
         _service = new ServiceViewModel(services?.Client);
+        _review = new ReviewViewModel(services?.Client);
+        _policy = new PolicyViewModel(services?.Client);
+        _images = new ImagesViewModel(services?.Conversations);
         _model.Dashboard = _dashboard;
         _model.Recipients = _recipients;
         _model.Service = _service;
+        _model.Review = _review;
+        _model.Policy = _policy;
+        _model.Images = _images;
 
         AvaloniaXamlLoader.Load(this);
 
@@ -139,8 +154,24 @@ public partial class MainWindow : Window
             }
         };
         _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
+        _review.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
         _recipients.ProfileRequested += (_, row) =>
             _ = OpenEntityProfileAsync(row.ProfileKind, row.ScopeId, row.CompanyId);
+        _service.CreateAccountRequested += async (_, _) =>
+        {
+            if (_services is null) return;
+
+            try
+            {
+                var dialog = new ProxyAccountCreateDialog(_services.Client);
+                await dialog.ShowDialog(this);
+                await _service.LoadAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Service] create account: {ex.GetType().Name}: {ex.Message}");
+            }
+        };
 
 #if DEBUG
         // A harness affordance, not a product behaviour. The reason rows live
@@ -420,6 +451,30 @@ public partial class MainWindow : Window
             _service.SetHostAddress(_model.HostAddress);
             await Dispatcher.UIThread
                 .InvokeAsync(async () => await _service.LoadAsync(cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
+        if (_model.IsReviewSelected)
+        {
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _review.LoadAsync(cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
+        if (_model.IsPolicySelected)
+        {
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _policy.LoadAsync(cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
+        if (_model.IsImagesSelected)
+        {
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _images.LoadAsync(cancellationToken))
                 .ConfigureAwait(false);
             return _services is not null;
         }
@@ -1140,6 +1195,9 @@ public partial class MainWindow : Window
             _recipients.SetClient(_services.Client);
             _service.SetClient(_services.Client);
             _service.SetHostAddress(_services.HostAddress.ToString());
+            _review.SetClient(_services.Client);
+            _policy.SetClient(_services.Client);
+            _images.SetClient(_services.Conversations);
             await LoadSendersAsync().ConfigureAwait(true);
             await LoadQueueCountsAsync().ConfigureAwait(true);
             await LoadSelectionAsync().ConfigureAwait(true);

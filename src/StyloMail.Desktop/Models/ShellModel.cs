@@ -138,6 +138,33 @@ public sealed class ShellModel : ObservableObject
 
     private ServiceViewModel? _service;
 
+    /// <summary>The human review queue model, when the window has built one.</summary>
+    public ReviewViewModel? Review
+    {
+        get => _review;
+        set => Set(ref _review, value);
+    }
+
+    private ReviewViewModel? _review;
+
+    /// <summary>The read-only policy page model.</summary>
+    public PolicyViewModel? Policy
+    {
+        get => _policy;
+        set => Set(ref _policy, value);
+    }
+
+    private PolicyViewModel? _policy;
+
+    /// <summary>The image observation page model.</summary>
+    public ImagesViewModel? Images
+    {
+        get => _images;
+        set => Set(ref _images, value);
+    }
+
+    private ImagesViewModel? _images;
+
     public ObservableCollection<MessageRow> Messages { get; } = [];
 
     /// <summary>
@@ -289,6 +316,9 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(IsDashboardSelected));
             Raise(nameof(IsRecipientsSelected));
             Raise(nameof(IsServiceSelected));
+            Raise(nameof(IsReviewSelected));
+            Raise(nameof(IsPolicySelected));
+            Raise(nameof(IsImagesSelected));
             Raise(nameof(ShowQueuePanes));
 
             // The detail pane's empty text is written for the destination that
@@ -313,8 +343,22 @@ public sealed class ShellModel : ObservableObject
     /// <summary>Whether the Service page is the selected destination.</summary>
     public bool IsServiceSelected => SelectedItem?.IsService == true;
 
+    /// <summary>Whether the human review queue is the selected destination.</summary>
+    public bool IsReviewSelected => SelectedItem?.IsReview == true;
+
+    /// <summary>Whether the read-only policy page is the selected destination.</summary>
+    public bool IsPolicySelected => SelectedItem?.IsPolicy == true;
+
+    /// <summary>Whether the image observation page is the selected destination.</summary>
+    public bool IsImagesSelected => SelectedItem?.IsImages == true;
+
     /// <summary>Whether the list and detail panes should be on screen.</summary>
-    public bool ShowQueuePanes => !IsDashboardSelected && !IsRecipientsSelected && !IsServiceSelected;
+    public bool ShowQueuePanes => !IsDashboardSelected
+        && !IsRecipientsSelected
+        && !IsServiceSelected
+        && !IsReviewSelected
+        && !IsPolicySelected
+        && !IsImagesSelected;
 
     private void OnSelectedItemChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -326,6 +370,9 @@ public sealed class ShellModel : ObservableObject
         Raise(nameof(IsDashboardSelected));
         Raise(nameof(IsRecipientsSelected));
         Raise(nameof(IsServiceSelected));
+        Raise(nameof(IsReviewSelected));
+        Raise(nameof(IsPolicySelected));
+        Raise(nameof(IsImagesSelected));
         Raise(nameof(ShowQueuePanes));
     }
 
@@ -759,27 +806,36 @@ public sealed class ShellModel : ObservableObject
         [
             new SidebarItem(
                 "Review queue",
-                SidebarItemState.NotBuilt,
+                SidebarItemState.Available,
                 "Messages waiting for your decision",
-                "The review page is being prepared. Decisions are under Advanced."),
+                "No messages are awaiting human review.")
+            {
+                IsReview = true,
+            },
         ]));
 
         model.Sections.Add(new SidebarSection("Policy",
         [
             new SidebarItem(
                 "Policy",
-                SidebarItemState.NotBuilt,
+                SidebarItemState.Available,
                 "Rules and tolerances",
-                "The policy page is being prepared."),
+                "No active policy pack.")
+            {
+                IsPolicy = true,
+            },
         ]));
 
         model.Sections.Add(new SidebarSection("Images",
         [
             new SidebarItem(
                 "Images",
-                SidebarItemState.NotBuilt,
+                SidebarItemState.Available,
                 "Images inspected in conversations",
-                "The image inspection page is being prepared."),
+                "Image inspection is off by default on this Host.")
+            {
+                IsImages = true,
+            },
         ]));
 
         // The operator's configuration, still reachable by the same handlers the

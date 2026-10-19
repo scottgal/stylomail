@@ -19,6 +19,8 @@ public partial class ServiceView : UserControl
         await RunAsync(() => model.LoadAsync());
     }
 
+    private void OnCreateAccountClick(object? sender, RoutedEventArgs e) => Model?.RequestCreateAccount();
+
     private void OnEnableAccountClick(object? sender, RoutedEventArgs e)
         => AskAccount(sender, static (model, row) => model.AskEnableAccount(row));
 
