@@ -46,6 +46,8 @@ public sealed class ShellModelTests
         Assert.Contains("Decisions", titles);
 
         Assert.Contains(model.Sections, section => section.Title == "Senders");
+        Assert.Contains(model.Sections, section => section.Title == "Overview");
+        Assert.DoesNotContain(model.Sections, section => section.Title == "StyloMail");
     }
 
     /// <summary>

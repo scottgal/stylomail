@@ -604,6 +604,7 @@ public sealed class DashboardViewModel : ObservableObject
             AddFlowLine(lines, missing, "Inbound", flow.Buckets.Select(bucket => new ChartPoint(bucket.BucketStart, bucket.Inbound)));
             AddFlowLine(lines, missing, "Outbound", flow.Buckets.Select(bucket => new ChartPoint(bucket.BucketStart, bucket.Outbound)));
             AddFlowLine(lines, missing, "Delivered", flow.Buckets.Select(bucket => new ChartPoint(bucket.BucketStart, bucket.Delivered)));
+            AddFlowLine(lines, missing, "Held", flow.Buckets.Select(bucket => new ChartPoint(bucket.BucketStart, bucket.Held)));
 
             if (lines.Count == 0)
             {

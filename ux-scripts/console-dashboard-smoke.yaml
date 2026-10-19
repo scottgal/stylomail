@@ -46,6 +46,25 @@ actions:
     composite: true
     description: "Dashboard home at 1180x720, real Host data from the four summary routes"
 
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: bottom
+
+  - type: Wait
+    value: "500"
+
+  - type: Screenshot
+    value: "dashboard-1180x720-lower"
+    composite: true
+    description: "Dashboard lower cards at 1180x720: People, Conversations, Queue and Storage"
+
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: top
+
+  - type: Wait
+    value: "300"
+
   - type: WindowResize
     x: 900
     y: 520

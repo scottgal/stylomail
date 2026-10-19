@@ -8,7 +8,7 @@
         <controls:ChartPaletteBrushConverter x:Key="ChartBrush" />
     </UserControl.Resources>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <ScrollViewer x:Name="DashboardScroll" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="24,20,16,24" Spacing="4">
 
             <!-- The one sentence an operator reads first. -->
@@ -36,7 +36,7 @@
 
             <WrapPanel>
                 <!-- ================= service ================= -->
-                <Border Classes="dashboardCard" Width="356">
+                <Border Classes="dashboardCard" Width="280">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="dashboardCardTitle" Text="Service" />
                         <TextBlock x:Name="ServiceHeadlineText"
@@ -63,7 +63,7 @@
                 </Border>
 
                 <!-- ================= warnings ================= -->
-                <Border Classes="dashboardCard" Width="356">
+                <Border Classes="dashboardCard" Width="280">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="dashboardCardTitle" Text="Needs your attention" />
                         <TextBlock Classes="dashboardCoverage" Text="{Binding WarningSummary}" />

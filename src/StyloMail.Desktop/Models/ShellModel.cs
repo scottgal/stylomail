@@ -653,7 +653,7 @@ public sealed class ShellModel : ObservableObject
             TracksHostStatus = true,
         };
 
-        model.Sections.Add(new SidebarSection("StyloMail", [dashboard, service]));
+        model.Sections.Add(new SidebarSection("Overview", [dashboard, service]));
 
         // Only the dispositions GET /v1/messages enumerates. The labels are the
         // approved operator vocabulary: Review and Quarantined stay distinct.

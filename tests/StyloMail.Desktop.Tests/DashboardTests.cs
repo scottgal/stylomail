@@ -38,6 +38,7 @@ public sealed class DashboardTests
         Assert.Contains("Inbound", model.FlowChart!.Lines.Select(line => line.Name));
         Assert.Contains("Outbound", model.FlowChart.Lines.Select(line => line.Name));
         Assert.Contains("Delivered", model.FlowChart.Lines.Select(line => line.Name));
+        Assert.Contains("Held", model.FlowChart.Lines.Select(line => line.Name));
         Assert.Contains("whole window was counted", model.FlowNote, StringComparison.Ordinal);
         Assert.Contains("messages", model.FlowChart.Summary, StringComparison.Ordinal);
 
