@@ -418,6 +418,19 @@ public static class QueueSchema
         CREATE INDEX IF NOT EXISTS ix_queue_item_spool
             ON queue_item (tenant_id, purged_at);
 
+        -- The flow summary reads "messages accepted in [from, to) grouped by direction and state".
+        -- Without this the planner can only narrow to the tenant and then filter every message the
+        -- tenant has ever accepted, which is the tenant's whole history rather than the window. The
+        -- extra two columns make it covering, so the aggregate never touches the row payload.
+        CREATE INDEX IF NOT EXISTS ix_queue_item_tenant_created
+            ON queue_item (tenant_id, created_at, direction, state);
+
+        -- The same aggregate reports how many decisions have no accepted queue row, which is the
+        -- honest gap for direction. That is a LEFT JOIN from the ledger on (tenant, message id);
+        -- without this index SQLite builds a transient index or scans the queue per ledger row.
+        CREATE INDEX IF NOT EXISTS ix_queue_item_tenant_message
+            ON queue_item (tenant_id, internal_message_id);
+
         -- One submission per tenant per idempotency key. Partial, because most SMTP submissions
         -- carry no key and NULLs must not collide. This index is what makes a concurrent double
         -- submission safe: the loser of the race is rejected by the database, not by a

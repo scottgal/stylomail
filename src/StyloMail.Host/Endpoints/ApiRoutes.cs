@@ -90,6 +90,24 @@ public static class ApiRoutes
         v1.MapGet("/profiles/{kind}/{id}", ProfileEndpoints.GetProfileAsync)
             .RequireAuthorization(HostPolicies.Review);
 
+        // The dashboard's read-only aggregates. Review for the same reason the profile surface is:
+        // these are reviewer-level facts about a tenant's mail and the people in it, and none of
+        // them can act. The tenant is the principal's; no route takes one.
+        v1.MapGet("/overview/flow", SummaryEndpoints.GetFlow)
+            .RequireAuthorization(HostPolicies.Review);
+
+        v1.MapGet("/queues/summary", SummaryEndpoints.GetQueues)
+            .RequireAuthorization(HostPolicies.Review);
+
+        // Sizes only. Deliberately never the spool or database path: an operator needs the number,
+        // not a filesystem map of the machine.
+        v1.MapGet("/storage/summary", SummaryEndpoints.GetStorage)
+            .RequireAuthorization(HostPolicies.Review);
+
+        // The entity directory. A bounded page over stored profiles, with no address and no content.
+        v1.MapGet("/entities", EntityEndpoints.List)
+            .RequireAuthorization(HostPolicies.Review);
+
         // The evidence drawer. Reviewer-level and content-free: what a KPI was computed from, and
         // what a stored evidence reference resolves to. No body, address, filename or subject.
         v1.MapGet("/evidence/kpi/{definitionId}/{kind}/{id}", EvidenceEndpoints.GetKpiEvidenceAsync)

@@ -35,7 +35,15 @@ public sealed class HostDatabase
         var databasePath = options.Value.DatabasePath;
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
 
-        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
+        // Resolved once, here, rather than left relative. The connection string would resolve a
+        // relative DataSource against the process working directory at every open, while a reader
+        // asking how many bytes the database occupies has no connection to ask through and would
+        // resolve it against whatever working directory it happens to run under. That is how a
+        // storage route reports zero for a database it is successfully reading. Absolute means the
+        // path a connection opens and the path a size measurement stats are the same path.
+        databasePath = Path.GetFullPath(databasePath);
+
+        var directory = Path.GetDirectoryName(databasePath);
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);

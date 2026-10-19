@@ -127,6 +127,14 @@ public static class SqliteSchema
 
         CREATE INDEX IF NOT EXISTS ix_profiles_last_observed
             ON profiles (tenant_id, last_observed_at);
+
+        -- The dashboard's entity directory is "the people this tenant has profiles for, most
+        -- recently seen first". The primary key orders by key, not by time, so without this the
+        -- directory either sorts the tenant's whole profile population on every page or pages in
+        -- hash order. Scoped by scope as well because the directory asks for one kind at a time and
+        -- a keyset cursor needs a stable total order within it.
+        CREATE INDEX IF NOT EXISTS ix_profiles_tenant_scope_observed
+            ON profiles (tenant_id, profile_scope, last_observed_at);
         """;
 
     /// <summary>Append-only decision ledger and trusted feedback. Decisions are never mutated.</summary>

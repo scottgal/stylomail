@@ -85,6 +85,12 @@ public static class HostServices
         services.AddSingleton<IAddressPseudonymSource, AssessmentAddressPseudonymSource>();
         services.AddSingleton<ProfileQueryStore>();
 
+        // The dashboard aggregates. Both are read-only and bounded: flow over an indexed window,
+        // queue counts over the three attention states, storage over filesystem sizes and capped
+        // row counts, and the directory over one indexed page of stored profiles.
+        services.AddSingleton<DashboardSummaryStore>();
+        services.AddSingleton<EntityDirectoryStore>();
+
         // Policy packs, rule sets and bindings. The read ports are what the decision path may
         // resolve; the lifecycle stores are reached only by the administration endpoints. Phase 1
         // registers them without calling the evaluator from any route.
@@ -215,8 +221,11 @@ public static class HostServices
         // cannot be pointed at different places by two independently-edited configuration keys.
         services.AddSingleton(sp =>
         {
-            var storage = sp.GetRequiredService<IOptions<HostStorageOptions>>().Value;
-            return new SqliteConnectionFactory(storage.DatabasePath);
+            // The resolved path from HostDatabase, not the configured string. The two would
+            // otherwise be resolved independently against the working directory, and a queue and a
+            // ledger that disagree about which file they are opening is not a difference a reader
+            // can see from either one.
+            return new SqliteConnectionFactory(sp.GetRequiredService<HostDatabase>().DatabasePath);
         });
         services.AddSingleton(sp =>
         {

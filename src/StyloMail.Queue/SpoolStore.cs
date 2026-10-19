@@ -51,11 +51,72 @@ public sealed class SpoolStore
     public SpoolStore(string rootDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        _root = rootDirectory;
+
+        // Resolved once, for the same reason the database path is: a relative root would be
+        // interpreted against the process working directory by every filesystem call, and a
+        // diagnostic that resolves it against a different working directory reports a size for a
+        // directory the spool is not writing to.
+        _root = Path.GetFullPath(rootDirectory);
         Directory.CreateDirectory(_root);
     }
 
     public string Root => _root;
+
+    /// <summary>
+    /// Measures the bytes and files this tenant currently occupies in the spool.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Tenant-scoped on purpose.</b> The spool root is shared, so walking it would let any
+    /// tenant's storage card report every other tenant's mail volume as a size. This resolves the
+    /// tenant's own directory through the same containment guard the writer and reader use, so a
+    /// tenant that cannot be a directory name is refused here exactly as it is refused at accept.
+    /// </para>
+    /// <para>
+    /// The file cap bounds one diagnostic read on a volume that has been filling for months. A page
+    /// that hits it reports <see cref="SpoolUsage.Truncated"/> rather than a total it did not count.
+    /// No path is returned: the caller gets sizes only.
+    /// </para>
+    /// </remarks>
+    public SpoolUsage MeasureTenantBytes(string tenantId, int maxFiles = 100_000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxFiles, 1);
+
+        var directory = ResolveWithinRoot(EncodedTenant(tenantId));
+        if (directory is null || !Directory.Exists(directory))
+        {
+            return new SpoolUsage(0, 0, Truncated: false);
+        }
+
+        long bytes = 0;
+        var files = 0;
+
+        foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+        {
+            if (files >= maxFiles)
+            {
+                return new SpoolUsage(bytes, files, Truncated: true);
+            }
+
+            try
+            {
+                bytes += new FileInfo(file).Length;
+                files++;
+            }
+            catch (IOException)
+            {
+                // A payload swept between enumeration and stat is not a measurement failure. It is
+                // absent from the total, which is what "swept" means, and the file count follows.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return new SpoolUsage(bytes, files, Truncated: true);
+            }
+        }
+
+        return new SpoolUsage(bytes, files, Truncated: false);
+    }
 
     /// <summary>
     /// Durably writes a payload and returns its reference. Throws
@@ -458,3 +519,10 @@ public sealed class SpoolStore
         internal static extern int Close(int fileDescriptor);
     }
 }
+
+/// <summary>What one tenant's spool directory occupies, and whether the walk was cut short.</summary>
+/// <remarks>
+/// A size with <see cref="Truncated"/> true is a lower bound and says so. It is never reported as a
+/// total, because a partial walk and a complete one are otherwise indistinguishable in a number.
+/// </remarks>
+public sealed record SpoolUsage(long Bytes, int FileCount, bool Truncated);
