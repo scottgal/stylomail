@@ -111,3 +111,75 @@ public sealed record PolicyBindingRow
     public DateTimeOffset? ReviewBy { get; init; }
     public string? OnExpiry { get; init; }
 }
+
+/// <summary>A draft pack as the console submits it. Tenant, author and approver come from the Host.</summary>
+public sealed record PolicyPackDraftRequest
+{
+    public required string Id { get; init; }
+
+    public required string Version { get; init; }
+
+    public required PolicyPackContextRow Context { get; init; }
+
+    public required IReadOnlyDictionary<string, string> CategoryLevels { get; init; }
+
+    public required string ActionCeiling { get; init; }
+
+    public required TextCaptureRulesRow CaptureText { get; init; }
+
+    public required int EvidenceRetentionDays { get; init; }
+
+    public string? ReviewDeadline { get; init; }
+
+    public required string RuleSetVersion { get; init; }
+
+    public required string ScorerVersion { get; init; }
+
+    public required DateTimeOffset EffectiveFrom { get; init; }
+
+    public DateTimeOffset? ReviewDue { get; init; }
+
+    public string? Supersedes { get; init; }
+}
+
+/// <summary>The authenticated principal is the approver; this names only the second one.</summary>
+public sealed record PolicyPackApprovalRequest
+{
+    public string? SecondApprover { get; init; }
+}
+
+/// <summary>The audit reason for withdrawing or deactivating a pack.</summary>
+public sealed record PolicyPackTransitionRequest
+{
+    public string? Reason { get; init; }
+}
+
+/// <summary>A scoped exception as the console submits it.</summary>
+public sealed record PolicyBindingRequest
+{
+    public required string ScopeKind { get; init; }
+
+    public required string ScopeValue { get; init; }
+
+    public required string Action { get; init; }
+
+    public string? CategoryId { get; init; }
+
+    public string? TargetLevel { get; init; }
+
+    public required string PackId { get; init; }
+
+    public required string PackVersion { get; init; }
+
+    public string? ApprovedBy { get; init; }
+
+    public required string Reason { get; init; }
+
+    public required DateTimeOffset StartsAt { get; init; }
+
+    public required DateTimeOffset ExpiresAt { get; init; }
+
+    public required DateTimeOffset ReviewBy { get; init; }
+
+    public required string OnExpiry { get; init; }
+}

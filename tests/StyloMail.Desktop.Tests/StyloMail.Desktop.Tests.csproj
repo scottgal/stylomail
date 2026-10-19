@@ -20,6 +20,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\StyloMail.Desktop\StyloMail.Desktop.csproj" />
+    <!-- The contract pin only. The console itself still has no project reference to the Host or
+         policy engine; the test reads the Host's own category catalogue so the mirrored labels and
+         hard-floor flags cannot drift silently. -->
+    <ProjectReference Include="..\..\src\StyloMail.Policy\StyloMail.Policy.csproj" />
   </ItemGroup>
 
 </Project>

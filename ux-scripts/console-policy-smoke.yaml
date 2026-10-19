@@ -1,0 +1,143 @@
+name: console-policy-smoke
+description: >
+  Drives the policy configuration page against a throwaway Host with
+  authoritative evaluation off and one real draft seeded through the audited
+  route. Harness data; no authoritative enablement, no fixture pack.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Policy)"
+    description: "Open the policy configuration page"
+
+  - type: Expect
+    target: "testid=policy-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=policy-mode"
+    matcher: HasText
+    value: "Off"
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=policy-authoritative-gap"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=policy-preview"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "policy-flag-off-1180x720"
+    composite: true
+    description: "Policy at 1180x720 on a harness Host with authoritative evaluation off: status, consequence and the configuration-only boundary"
+
+  - type: Scroll
+    target: "name=PolicyScroll"
+    value: bottom
+
+  - type: Wait
+    value: "700"
+
+  - type: Expect
+    target: "testid=policy-packs"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=policy-pack-row"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text='Pack pack v1 · Draft'"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Screenshot
+    value: "policy-draft-1180x720"
+    composite: true
+    description: "Policy at 1180x720 with one real draft version seeded through the Host, showing state, hash and lifecycle actions"
+
+  - type: Click
+    target: "type=Button:has-text(Edit draft)"
+    description: "Open the draft editor on the seeded draft"
+
+  - type: Wait
+    value: "600"
+
+  - type: Scroll
+    target: "name=PolicyScroll"
+    value: up
+
+  - type: Wait
+    value: "400"
+
+  - type: Scroll
+    target: "name=PolicyScroll"
+    value: up
+
+  - type: Wait
+    value: "400"
+
+  - type: Expect
+    target: "testid=policy-draft-editor"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=policy-draft-tolerances"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "policy-draft-editor-1180x720"
+    composite: true
+    description: "Draft editor at 1180x720: context, dates, provenance and the starting-point controls"
+
+  - type: PressKey
+    target: "name=PolicyScroll"
+    value: "PageDown"
+
+  - type: Wait
+    value: "500"
+
+  - type: PressKey
+    target: "name=PolicyScroll"
+    value: "PageDown"
+
+  - type: Wait
+    value: "500"
+
+  - type: Expect
+    target: "testid=policy-draft-tolerances"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Screenshot
+    value: "policy-draft-tolerances-1180x720"
+    composite: true
+    description: "Draft editor at 1180x720: tolerance rows with the five-level pickers"
+
+  - type: PressKey
+    target: "name=PolicyScroll"
+    value: "PageUp"
+
+  - type: Wait
+    value: "500"
+
+  - type: Expect
+    target: "text='Child safety and grooming'"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Screenshot
+    value: "policy-draft-hard-floors-1180x720"
+    composite: true
+    description: "Draft editor at 1180x720: hard-floor categories locked to Strict or Zero tolerance with the reason shown"

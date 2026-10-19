@@ -31,11 +31,15 @@ public sealed class PolicyTests
         Assert.Contains("Commerce", model.ActivePackContext, StringComparison.Ordinal);
         Assert.Contains("No message content is retained", model.ActivePackCapture, StringComparison.Ordinal);
         Assert.Contains("stop before delivery", model.ActivePackCeiling, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Payment Redirection", model.Tolerances.Single(row => row.Category == "Payment Redirection").Category, StringComparison.Ordinal);
+        Assert.Contains("Payment redirection", model.Tolerances.Single(row => row.Category == "Payment redirection").Category, StringComparison.Ordinal);
         Assert.Contains(model.Tolerances, row => row.Level == "Strict");
+        Assert.Equal(12, model.Tolerances.Count);
+        Assert.Contains(model.Tolerances, row => row.Level == "Not declared");
         Assert.Single(model.Packs);
         Assert.Single(model.Bindings);
         Assert.Contains(model.TechnicalLines, line => line.StartsWith("Routes read:", StringComparison.Ordinal));
+        Assert.Contains("\"status\"", model.TechnicalJson, StringComparison.Ordinal);
+        Assert.Contains("\"packs\"", model.TechnicalJson, StringComparison.Ordinal);
     }
 
     [Fact]

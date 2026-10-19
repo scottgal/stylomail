@@ -10,7 +10,8 @@
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Spacing="3">
                     <TextBlock Classes="dashboardHeadline" Text="Policy" />
-                    <TextBlock Classes="dashboardDetail" Text="Rules and tolerances. This page is read-only." />
+                    <TextBlock Classes="dashboardDetail"
+                               Text="Protection rules and scoped exceptions. Changes affect real mail and are audited." />
                 </StackPanel>
                 <Button Grid.Column="1"
                         Classes="rowButton"
@@ -20,37 +21,116 @@
                         Click="OnRefreshClick" />
             </Grid>
 
-            <Border Classes="dashboardCard">
-                <StackPanel Spacing="4">
-                    <TextBlock Classes="rowTitle" Text="{Binding ProtectionLabel}" />
-                    <TextBlock Classes="rowTitle" Text="{Binding ShadowLabel}" />
-                    <TextBlock Classes="paneDetail" Text="{Binding JurisdictionLabel}" />
-                    <TextBlock Classes="paneDetail" Text="{Binding EffectivePackLabel}" />
+            <!-- ===================== protection status ===================== -->
+            <Border Classes="dashboardCard" AutomationProperties.AutomationId="policy-status-card">
+                <StackPanel Spacing="7">
+                    <TextBlock Classes="sectionLabel" Text="Protection status" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Classes="dashboardHeadline"
+                                       AutomationProperties.AutomationId="policy-mode"
+                                       Text="{Binding ProtectionModeLabel}" />
+                            <TextBlock Classes="dashboardDetail"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding ProtectionMeaningLabel}" />
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Classes="dashboardChip"
+                                VerticalAlignment="Top"
+                                Margin="12,0,0,0">
+                            <TextBlock Classes="dashboardChipText" Text="{Binding AuthoritativeStateLabel}" />
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                        <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,12,0">
+                            <TextBlock Classes="dashboardCoverage" Text="Jurisdiction" />
+                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding JurisdictionLabel}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,12,0">
+                            <TextBlock Classes="dashboardCoverage" Text="Effective pack" />
+                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding EffectivePackLabel}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="2">
+                            <TextBlock Classes="dashboardCoverage" Text="Last read" />
+                            <TextBlock Classes="rowTitle" Text="{Binding LastUpdatedLabel}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Classes="cardWarning" AutomationProperties.AutomationId="policy-consequence">
+                        <TextBlock Classes="cardWarningText"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ConsequenceLabel}" />
+                    </Border>
+
+                    <Border Classes="dashboardGap" AutomationProperties.AutomationId="policy-authoritative-gap">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="rowTitle" Text="Authoritative evaluation is deployment configuration" />
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding AuthoritativeGapLabel}" />
+                            <Button Content="Change in deployment configuration"
+                                    Classes="rowButton"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="{Binding CanEnableAuthoritative}"
+                                    AutomationProperties.AutomationId="policy-authoritative-action"
+                                    ToolTip.Tip="There is no audited console route for this. Set it in the Host deployment configuration." />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Classes="dashboardCoverage"
+                               TextWrapping="Wrap"
+                               Text="{Binding StatusLabel}" />
                 </StackPanel>
             </Border>
 
-            <TextBlock Classes="dashboardCoverage" Text="{Binding StatusLabel}" />
-            <TextBlock Classes="dashboardCoverage" Text="{Binding LastUpdatedLabel}" />
+            <!-- ===================== effective policy and tolerances ===================== -->
+            <Border Classes="dashboardCard" AutomationProperties.AutomationId="policy-effective-card">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="dashboardCardTitle" Text="Effective policy" />
 
-            <Border Classes="dashboardCard">
-                <StackPanel Spacing="5">
-                    <TextBlock Classes="dashboardCardTitle" Text="Effective pack" />
-
-                    <StackPanel Spacing="3" IsVisible="{Binding HasActivePack}">
+                    <StackPanel Spacing="4" IsVisible="{Binding HasActivePack}">
                         <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding ActivePackTitle}" />
                         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackContext}" />
                         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackCeiling}" />
                         <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding ActivePackCapture}" />
                         <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding ActivePackRetention}" />
 
-                        <TextBlock Classes="sectionLabel" Text="Tolerances" />
-                        <ItemsControl ItemsSource="{Binding Tolerances}">
+                        <TextBlock Classes="sectionLabel" Text="Tolerances" Margin="0,8,0,2" />
+                        <ItemsControl ItemsSource="{Binding Tolerances}"
+                                      AutomationProperties.AutomationId="policy-tolerances">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                        <TextBlock Grid.Column="0" Classes="cardBody" Text="{Binding Category}" />
-                                        <TextBlock Grid.Column="1" Classes="rowTitle" Text="{Binding Level}" />
-                                    </Grid>
+                                    <Border Width="515"
+                                            Margin="0,0,10,8"
+                                            Padding="10,8"
+                                            CornerRadius="6"
+                                            Background="#FBFBFC"
+                                            BorderBrush="#E4E4E8"
+                                            BorderThickness="1">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,10,0">
+                                                <TextBlock Classes="rowTitle" Text="{Binding Category}" />
+                                                <TextBlock Classes="dashboardCoverage"
+                                                           TextWrapping="Wrap"
+                                                           Text="{Binding Description}" />
+                                                <TextBlock Classes="cardWarningText"
+                                                           TextWrapping="Wrap"
+                                                           Text="{Binding FloorNote}"
+                                                           IsVisible="{Binding IsHardFloor}" />
+                                            </StackPanel>
+                                            <Border Grid.Column="1"
+                                                    Classes="dashboardChip"
+                                                    VerticalAlignment="Top">
+                                                <TextBlock Classes="dashboardChipText" Text="{Binding Level}" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -65,60 +145,666 @@
                         <TextBlock Classes="rowTitle" Text="No active policy pack." />
                         <TextBlock Classes="cardBody"
                                    TextWrapping="Wrap"
-                                   Text="Protection is not configured on this Host. The page does not create or activate a pack." />
+                                   Text="No pack is in force for this tenant. A draft is not protection: it must be approved and activated. The page never treats a missing pack as every category Off." />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
-            <Border Classes="dashboardCard">
-                <StackPanel Spacing="5">
-                    <TextBlock Classes="dashboardCardTitle" Text="Pack versions" />
-                    <ItemsControl ItemsSource="{Binding Packs}" AutomationProperties.AutomationId="policy-packs">
+            <!-- ===================== preview gap ===================== -->
+            <Border Classes="dashboardCard" AutomationProperties.AutomationId="policy-preview">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="dashboardCardTitle" Text="Preview against recent traffic" />
+                    <TextBlock Classes="cardBody"
+                               TextWrapping="Wrap"
+                               Text="{Binding PreviewGapLabel}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===================== packs ===================== -->
+            <Border Classes="dashboardCard" AutomationProperties.AutomationId="policy-packs-card">
+                <StackPanel Spacing="7">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Classes="dashboardCardTitle" Text="Pack versions" />
+                            <TextBlock Classes="dashboardCoverage"
+                                       TextWrapping="Wrap"
+                                       Text="A draft is a proposal. Approval records who approved the exact bytes; activation puts them in force." />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Classes="rowButton"
+                                VerticalAlignment="Top"
+                                Content="New draft from template"
+                                AutomationProperties.AutomationId="policy-new-draft"
+                                Click="OnNewDraftClick" />
+                    </Grid>
+
+                    <Border Classes="dashboardGap"
+                            IsVisible="{Binding HasActionMessage}"
+                            AutomationProperties.AutomationId="policy-action-message">
+                        <TextBlock Classes="cardBody"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ActionMessage}" />
+                    </Border>
+
+                    <!-- draft editor -->
+                    <Border Classes="dashboardCard"
+                            Margin="0,2,0,2"
+                            IsVisible="{Binding IsDraftEditorOpen}"
+                            AutomationProperties.AutomationId="policy-draft-editor">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="dashboardCardTitle" Text="{Binding DraftEditorTitle}" />
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="A template is a starting point, not a calibrated profile. Review every level before approval." />
+
+                            <Grid ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Pack id" />
+                                    <TextBox Text="{Binding DraftId}" AutomationProperties.AutomationId="policy-draft-id" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Version" />
+                                    <TextBox Text="{Binding DraftVersion}" AutomationProperties.AutomationId="policy-draft-version" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Jurisdiction" />
+                                    <TextBox Text="{Binding DraftJurisdiction}"
+                                             Watermark="e.g. GB"
+                                             AutomationProperties.AutomationId="policy-draft-jurisdiction" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*,*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Vertical" />
+                                    <ComboBox ItemsSource="{Binding VerticalChoices}"
+                                              SelectedItem="{Binding DraftVertical, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-draft-vertical">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Audience" />
+                                    <ComboBox ItemsSource="{Binding AudienceChoices}"
+                                              SelectedItem="{Binding DraftAudience, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-draft-audience">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Automatic ceiling" />
+                                    <ComboBox ItemsSource="{Binding ActionCeilingChoices}"
+                                              SelectedItem="{Binding DraftActionCeiling, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-draft-ceiling">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Content capture" />
+                                    <ComboBox ItemsSource="{Binding CaptureModeChoices}"
+                                              SelectedItem="{Binding DraftCaptureMode, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-draft-capture-mode">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Effective date" />
+                                    <DatePicker MonthFormat="MMM"
+                                                MinWidth="0"
+                                                SelectedDate="{Binding DraftEffectiveDate, Mode=TwoWay}"
+                                                AutomationProperties.AutomationId="policy-draft-effective" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Review due" />
+                                    <DatePicker MonthFormat="MMM"
+                                                MinWidth="0"
+                                                SelectedDate="{Binding DraftReviewDate, Mode=TwoWay}"
+                                                AutomationProperties.AutomationId="policy-draft-review" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Evidence retention (days)" />
+                                    <TextBox Text="{Binding DraftEvidenceRetentionDays}"
+                                             AutomationProperties.AutomationId="policy-draft-retention" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Review deadline (hours)" />
+                                    <TextBox Text="{Binding DraftReviewDeadlineHours}"
+                                             AutomationProperties.AutomationId="policy-draft-deadline" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Rule-set version" />
+                                    <TextBox Text="{Binding DraftRuleSetVersion}"
+                                             Watermark="the version this Host has live"
+                                             AutomationProperties.AutomationId="policy-draft-ruleset" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Scorer version" />
+                                    <TextBox Text="{Binding DraftScorerVersion}"
+                                             Watermark="the version these thresholds were calibrated against"
+                                             AutomationProperties.AutomationId="policy-draft-scorer" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Classes="sectionLabel" Text="Tolerances" Margin="0,8,0,2" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ComboBox Grid.Column="0"
+                                          ItemsSource="{Binding TemplateChoices}"
+                                          SelectedItem="{Binding SelectedTemplate, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="policy-draft-template">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="1">
+                                                <TextBlock Text="{Binding Label}" />
+                                                <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Description}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Grid.Column="1"
+                                        Classes="rowButton"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Top"
+                                        Content="Apply starting point"
+                                        AutomationProperties.AutomationId="policy-draft-apply-template"
+                                        Click="OnApplyTemplateClick" />
+                            </Grid>
+
+                            <ItemsControl ItemsSource="{Binding DraftTolerances}"
+                                          AutomationProperties.AutomationId="policy-draft-tolerances">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,6"
+                                                Padding="9,7"
+                                                CornerRadius="6"
+                                                Background="#FBFBFC"
+                                                BorderBrush="#E4E4E8"
+                                                BorderThickness="1">
+                                            <Grid ColumnDefinitions="*,220">
+                                                <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,12,0">
+                                                    <TextBlock Classes="rowTitle" Text="{Binding Label}" />
+                                                    <TextBlock Classes="dashboardCoverage"
+                                                               TextWrapping="Wrap"
+                                                               Text="{Binding Description}" />
+                                                    <TextBlock Classes="cardWarningText"
+                                                               TextWrapping="Wrap"
+                                                               Text="{Binding FloorNote}"
+                                                               IsVisible="{Binding IsHardFloor}" />
+                                                </StackPanel>
+                                                <ComboBox Grid.Column="1"
+                                                          VerticalAlignment="Top"
+                                                          ItemsSource="{Binding LevelOptions}"
+                                                          SelectedItem="{Binding SelectedLevel, Mode=TwoWay}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Label}" />
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Capture statement" />
+                                    <TextBox Text="{Binding DraftCaptureStatement}"
+                                             Watermark="what is stored and for how long"
+                                             AutomationProperties.AutomationId="policy-draft-capture-statement" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Maximum characters" />
+                                    <TextBox Text="{Binding DraftCaptureMaxCharacters}"
+                                             AutomationProperties.AutomationId="policy-draft-capture-max" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Capture retention (days)" />
+                                    <TextBox Text="{Binding DraftCaptureRetentionDays}"
+                                             AutomationProperties.AutomationId="policy-draft-capture-retention" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Classes="cardWarningText"
+                                       TextWrapping="Wrap"
+                                       Text="Full-body capture needs a second administrator at approval. An effective date before approval is refused by the Host; a future date is scheduled, not applied." />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Save draft"
+                                        AutomationProperties.AutomationId="policy-draft-save"
+                                        IsEnabled="{Binding !DraftBusy}"
+                                        Click="OnSaveDraftClick" />
+                                <Button Content="Cancel"
+                                        Classes="rowButton"
+                                        Click="OnCancelDraftClick" />
+                            </StackPanel>
+
+                            <TextBlock Classes="cardWarningText"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding DraftError}"
+                                       IsVisible="{Binding HasDraftError}"
+                                       AutomationProperties.AutomationId="policy-draft-error" />
+                            <TextBlock Classes="dashboardCoverage"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding DraftStatus}" />
+                        </StackPanel>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Packs}"
+                                  AutomationProperties.AutomationId="policy-packs">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Spacing="2" Margin="0,2">
-                                    <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
-                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
-                                </StackPanel>
+                                <Border BorderBrush="#E4E4E8"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="0,8"
+                                        AutomationProperties.AutomationId="policy-pack-row">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,12,0">
+                                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding HashLabel}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding ApproverLabel}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Horizontal"
+                                                    Spacing="6"
+                                                    VerticalAlignment="Top">
+                                            <Button Classes="rowButton"
+                                                    Content="Edit draft"
+                                                    Tag="{Binding}"
+                                                    IsVisible="{Binding CanEditDraft}"
+                                                    Click="OnEditDraftClick" />
+                                            <Button Classes="rowButton"
+                                                    Content="Approve"
+                                                    Tag="{Binding}"
+                                                    IsVisible="{Binding CanApprove}"
+                                                    Click="OnApproveClick" />
+                                            <Button Classes="rowButton"
+                                                    Content="Activate"
+                                                    Tag="{Binding}"
+                                                    IsVisible="{Binding CanActivate}"
+                                                    Click="OnActivateClick" />
+                                            <Button Classes="rowButton"
+                                                    Content="Withdraw"
+                                                    Tag="{Binding}"
+                                                    IsVisible="{Binding CanWithdraw}"
+                                                    Click="OnWithdrawClick" />
+                                            <Button Classes="rowButton"
+                                                    Content="Deactivate"
+                                                    Tag="{Binding}"
+                                                    IsVisible="{Binding CanDeactivate}"
+                                                    Click="OnDeactivateClick" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Classes="dashboardCoverage"
                                IsVisible="{Binding !HasPacks}"
                                Text="No policy packs are configured on this Host." />
+
+                    <!-- pack action panel -->
+                    <Border Classes="dashboardGap"
+                            IsVisible="{Binding IsPackActionOpen}"
+                            AutomationProperties.AutomationId="policy-pack-action">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding PackActionTitle}" />
+                            <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding PackActionDetail}" />
+
+                            <StackPanel Spacing="3" IsVisible="{Binding IsPackActionApprove}">
+                                <TextBlock Classes="dashboardCoverage" Text="Second approver (principal id)" />
+                                <TextBox Text="{Binding SecondApprover}"
+                                         Watermark="A different administrator. Leave blank when no lowering or capture widening is involved."
+                                         AutomationProperties.AutomationId="policy-second-approver" />
+                                <TextBlock Classes="dashboardCoverage"
+                                           TextWrapping="Wrap"
+                                           Text="The Host refuses a second approver who is the same person, is not in this tenant, or does not hold Administer." />
+                            </StackPanel>
+
+                            <StackPanel Spacing="3" IsVisible="{Binding IsPackActionWithdraw}">
+                                <TextBlock Classes="dashboardCoverage" Text="Audit reason" />
+                                <TextBox Text="{Binding PackActionReason}"
+                                         Watermark="Why this version is being withdrawn"
+                                         AutomationProperties.AutomationId="policy-pack-action-reason" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="3" IsVisible="{Binding IsPackActionDeactivate}">
+                                <TextBlock Classes="dashboardCoverage" Text="Audit reason" />
+                                <TextBox Text="{Binding PackActionReason}"
+                                         Watermark="Why the effective pack is being taken off the policy path"
+                                         AutomationProperties.AutomationId="policy-pack-action-reason" />
+                            </StackPanel>
+
+                            <TextBlock Classes="dashboardCoverage"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding PackActionDatesLabel}" />
+
+                            <CheckBox IsChecked="{Binding PackActionConfirmed, Mode=TwoWay}"
+                                      Content="I have reviewed this change and the dates shown." />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Apply"
+                                        IsEnabled="{Binding !PackActionBusy}"
+                                        Click="OnConfirmPackActionClick"
+                                        AutomationProperties.AutomationId="policy-pack-action-apply" />
+                                <Button Content="Cancel"
+                                        Classes="rowButton"
+                                        Click="OnCancelPackActionClick" />
+                            </StackPanel>
+
+                            <TextBlock Classes="cardWarningText"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding PackActionError}"
+                                       IsVisible="{Binding HasPackActionError}"
+                                       AutomationProperties.AutomationId="policy-pack-action-error" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 
-            <Border Classes="dashboardCard">
-                <StackPanel Spacing="5">
-                    <TextBlock Classes="dashboardCardTitle" Text="Bindings" />
-                    <ItemsControl ItemsSource="{Binding Bindings}" AutomationProperties.AutomationId="policy-bindings">
+            <!-- ===================== bindings ===================== -->
+            <Border Classes="dashboardCard" AutomationProperties.AutomationId="policy-bindings-card">
+                <StackPanel Spacing="7">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Classes="dashboardCardTitle" Text="Exceptions" />
+                            <TextBlock Classes="dashboardCoverage"
+                                       TextWrapping="Wrap"
+                                       Text="A scoped, time-bound exception is how operator knowledge enters policy without pretending it was measured. It never outlives its expiry." />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Classes="rowButton"
+                                VerticalAlignment="Top"
+                                Content="New exception"
+                                AutomationProperties.AutomationId="policy-new-binding"
+                                Click="OnNewBindingClick" />
+                    </Grid>
+
+                    <!-- binding editor -->
+                    <Border Classes="dashboardCard"
+                            Margin="0,2,0,2"
+                            IsVisible="{Binding IsBindingEditorOpen}"
+                            AutomationProperties.AutomationId="policy-binding-editor">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="dashboardCardTitle" Text="New scoped exception" />
+
+                            <Grid ColumnDefinitions="*,*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Scope" />
+                                    <ComboBox ItemsSource="{Binding ScopeKindChoices}"
+                                              SelectedItem="{Binding BindingScopeKind, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-binding-scope-kind">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Scope value" />
+                                    <TextBox Text="{Binding BindingScopeValue}"
+                                             Watermark="domain, company, person or conversation id"
+                                             AutomationProperties.AutomationId="policy-binding-scope-value" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Action" />
+                                    <ComboBox ItemsSource="{Binding BindingActionChoices}"
+                                              SelectedItem="{Binding BindingAction, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-binding-action">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding BindingScopeHint}" />
+
+                            <Grid ColumnDefinitions="*,*,*" IsVisible="{Binding BindingNeedsCategory}">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Category" />
+                                    <ComboBox ItemsSource="{Binding BindingCategoryChoices}"
+                                              SelectedItem="{Binding BindingCategory, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-binding-category">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Target level" />
+                                    <ComboBox ItemsSource="{Binding BindingTargetLevels}"
+                                              SelectedItem="{Binding BindingTargetLevel, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-binding-target">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2"
+                                           Classes="cardWarningText"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Bottom"
+                                           Text="Hard floors stay at Strict or above. The Host refuses a lower target even if this form is bypassed." />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Pack id" />
+                                    <TextBox Text="{Binding BindingPackId}"
+                                             AutomationProperties.AutomationId="policy-binding-pack-id" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Pack version" />
+                                    <TextBox Text="{Binding BindingPackVersion}"
+                                             AutomationProperties.AutomationId="policy-binding-pack-version" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="On expiry" />
+                                    <ComboBox ItemsSource="{Binding BindingOnExpiryChoices}"
+                                              SelectedItem="{Binding BindingOnExpiry, Mode=TwoWay}"
+                                              AutomationProperties.AutomationId="policy-binding-on-expiry">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*,*">
+                                <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Starts" />
+                                    <DatePicker MonthFormat="MMM"
+                                                MinWidth="0"
+                                                SelectedDate="{Binding BindingStartDate, Mode=TwoWay}"
+                                                AutomationProperties.AutomationId="policy-binding-start" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,10,0">
+                                    <TextBlock Classes="dashboardCoverage" Text="Expires" />
+                                    <DatePicker MonthFormat="MMM"
+                                                MinWidth="0"
+                                                SelectedDate="{Binding BindingExpiryDate, Mode=TwoWay}"
+                                                AutomationProperties.AutomationId="policy-binding-expiry" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="3">
+                                    <TextBlock Classes="dashboardCoverage" Text="Review by" />
+                                    <DatePicker MonthFormat="MMM"
+                                                MinWidth="0"
+                                                SelectedDate="{Binding BindingReviewDate, Mode=TwoWay}"
+                                                AutomationProperties.AutomationId="policy-binding-review" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Spacing="3" IsVisible="{Binding BindingNeedsApprover}">
+                                <TextBlock Classes="dashboardCoverage" Text="Second approver (principal id)" />
+                                <TextBox Text="{Binding BindingApprovedBy}"
+                                         Watermark="A different administrator. Required for capture and lowering."
+                                         AutomationProperties.AutomationId="policy-binding-approver" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="dashboardCoverage" Text="Reason" />
+                                <TextBox Text="{Binding BindingReason}"
+                                         Watermark="The operator knowledge this exception encodes"
+                                         AutomationProperties.AutomationId="policy-binding-reason" />
+                            </StackPanel>
+
+                            <Border Classes="dashboardGap" AutomationProperties.AutomationId="policy-binding-consequence">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="rowTitle" Text="Consequence before applying" />
+                                    <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding BindingConsequence}" />
+                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding BindingPrecedence}" />
+                                </StackPanel>
+                            </Border>
+
+                            <CheckBox IsChecked="{Binding BindingConfirmed, Mode=TwoWay}"
+                                      Content="I have reviewed the consequence, scope and dates." />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Apply exception"
+                                        IsEnabled="{Binding !BindingBusy}"
+                                        Click="OnSaveBindingClick"
+                                        AutomationProperties.AutomationId="policy-binding-save" />
+                                <Button Content="Cancel"
+                                        Classes="rowButton"
+                                        Click="OnCancelBindingClick" />
+                            </StackPanel>
+
+                            <TextBlock Classes="cardWarningText"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding BindingError}"
+                                       IsVisible="{Binding HasBindingError}"
+                                       AutomationProperties.AutomationId="policy-binding-error" />
+                        </StackPanel>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Bindings}"
+                                  AutomationProperties.AutomationId="policy-bindings">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Spacing="2" Margin="0,2">
-                                    <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
-                                    <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
-                                </StackPanel>
+                                <Border BorderBrush="#E4E4E8"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="0,8"
+                                        AutomationProperties.AutomationId="policy-binding-row">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,12,0">
+                                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding Title}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Effect}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Dates}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Author}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Approver}" />
+                                            <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding Reason}" />
+                                            <TextBlock Classes="dashboardCoverage" TextWrapping="Wrap" Text="{Binding Precedence}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Classes="rowButton"
+                                                VerticalAlignment="Top"
+                                                Content="Revoke"
+                                                Tag="{Binding}"
+                                                IsVisible="{Binding CanRevoke}"
+                                                Click="OnRevokeBindingClick" />
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Classes="dashboardCoverage"
                                IsVisible="{Binding !HasBindings}"
-                               Text="No policy bindings are configured on this Host." />
+                               Text="No policy exceptions are active on this Host." />
+
+                    <!-- revoke panel -->
+                    <Border Classes="dashboardGap"
+                            IsVisible="{Binding IsBindingRevokeOpen}"
+                            AutomationProperties.AutomationId="policy-binding-revoke">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding BindingRevokeTitle}" />
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="Revocation is an audit event, not a deletion. The exception stops applying to new mail and the record remains." />
+                            <TextBlock Classes="dashboardCoverage" Text="Audit reason" />
+                            <TextBox Text="{Binding BindingRevokeReason}"
+                                     Watermark="Why this exception is being revoked"
+                                     AutomationProperties.AutomationId="policy-binding-revoke-reason" />
+                            <CheckBox IsChecked="{Binding BindingRevokeConfirmed, Mode=TwoWay}"
+                                      Content="I want to revoke this exception." />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Revoke exception"
+                                        IsEnabled="{Binding !BindingRevokeBusy}"
+                                        Click="OnConfirmRevokeBindingClick"
+                                        AutomationProperties.AutomationId="policy-binding-revoke-apply" />
+                                <Button Content="Cancel"
+                                        Classes="rowButton"
+                                        Click="OnCancelRevokeBindingClick" />
+                            </StackPanel>
+                            <TextBlock Classes="cardWarningText"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding BindingRevokeError}"
+                                       IsVisible="{Binding HasBindingRevokeError}"
+                                       AutomationProperties.AutomationId="policy-binding-revoke-error" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 
             <Expander Header="Advanced policy detail"
                       AutomationProperties.AutomationId="policy-advanced">
-                <ItemsControl ItemsSource="{Binding TechnicalLines}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Classes="paneDetail"
-                                       TextWrapping="Wrap"
-                                       Text="{Binding}" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <StackPanel Spacing="6">
+                    <ItemsControl ItemsSource="{Binding TechnicalLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Classes="paneDetail"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Classes="sectionLabel" Text="The data this page read, as JSON" />
+                    <TextBox Text="{Binding TechnicalJson}"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             Height="240"
+                             FontFamily="SF Mono,Menlo,Consolas,monospace"
+                             FontSize="11"
+                             AutomationProperties.AutomationId="policy-advanced-json" />
+                </StackPanel>
             </Expander>
         </StackPanel>
     </ScrollViewer>

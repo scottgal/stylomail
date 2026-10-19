@@ -131,6 +131,95 @@ public sealed class StyloMailApiClient
     public Task<PolicyBindingListResponse> GetPolicyBindingsAsync(CancellationToken cancellationToken = default)
         => SendAsync<PolicyBindingListResponse>(HttpMethod.Get, "/v1/policy/bindings", body: null, cancellationToken);
 
+    /// <summary>Creates or edits a draft pack. The Host supplies tenant, author and approver.</summary>
+    public Task<PolicyPackResponse> CreatePolicyDraftAsync(
+        PolicyPackDraftRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<PolicyPackResponse>(HttpMethod.Post, "/v1/policy/packs", request, cancellationToken);
+
+    /// <summary>Approves a draft. The caller becomes the approver; the second must be distinct.</summary>
+    public Task<PolicyPackResponse> ApprovePolicyPackAsync(
+        string id,
+        string version,
+        string? secondApprover,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return SendAsync<PolicyPackResponse>(
+            HttpMethod.Post,
+            $"/v1/policy/packs/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}/approve",
+            new PolicyPackApprovalRequest { SecondApprover = secondApprover },
+            cancellationToken);
+    }
+
+    /// <summary>Activates an approved pack. The effective date comes from the pack itself.</summary>
+    public Task<PolicyPackResponse> ActivatePolicyPackAsync(
+        string id,
+        string version,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return SendAsync<PolicyPackResponse>(
+            HttpMethod.Post,
+            $"/v1/policy/packs/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}/activate",
+            body: null,
+            cancellationToken);
+    }
+
+    /// <summary>Withdraws a draft or approved pack. The reason is the audit record.</summary>
+    public Task<PolicyPackResponse> WithdrawPolicyPackAsync(
+        string id,
+        string version,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return SendAsync<PolicyPackResponse>(
+            HttpMethod.Post,
+            $"/v1/policy/packs/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}/withdraw",
+            new PolicyPackTransitionRequest { Reason = reason },
+            cancellationToken);
+    }
+
+    /// <summary>Takes an effective pack off the policy path. The reason is the audit record.</summary>
+    public Task<PolicyPackResponse> DeactivatePolicyPackAsync(
+        string id,
+        string version,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return SendAsync<PolicyPackResponse>(
+            HttpMethod.Post,
+            $"/v1/policy/packs/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}/deactivate",
+            new PolicyPackTransitionRequest { Reason = reason },
+            cancellationToken);
+    }
+
+    /// <summary>Creates a scoped, time-bound exception.</summary>
+    public Task<PolicyBindingRow> CreatePolicyBindingAsync(
+        PolicyBindingRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<PolicyBindingRow>(HttpMethod.Post, "/v1/policy/bindings", request, cancellationToken);
+
+    /// <summary>Revokes a binding. Revocation is an audit event, never a deletion.</summary>
+    public Task<PolicyBindingRow> RevokePolicyBindingAsync(
+        string id,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return SendAsync<PolicyBindingRow>(
+            HttpMethod.Post,
+            $"/v1/policy/bindings/{Uri.EscapeDataString(id)}/revoke",
+            new PolicyPackTransitionRequest { Reason = reason },
+            cancellationToken);
+    }
+
     public Task<PolicyEffectiveBindingResponse> GetEffectivePolicyBindingAsync(string entity, string? company, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entity);
