@@ -413,64 +413,64 @@ zero. The read did not happen, so the screen has nothing to report about account
 
 ## 4. Review
 
-### 4.1 Queues
+### 4.1 Mail
 
-The Queues section lists what is waiting for attention, by disposition:
+The Mail section has four destinations, and they are not four names for one queue:
 
 | Destination | What it lists |
 | --- | --- |
-| **Awaiting decision** | Messages accepted and not yet decided on. Mail already in normal delivery is not enumerable here. |
-| **Held** | Messages retained to a bounded re-evaluation deadline. That deadline is an observation window, not a soft reject. |
-| **Quarantined** | Messages policy placed in quarantine. Releasing one is audited and requires the review privilege. |
+| **In the delivery queue** | The union of the three states below. It is a count of work in the delivery pipeline, not a count of messages waiting for a person. |
+| **Being re-checked before delivery** | Messages held to a bounded re-evaluation deadline. The deadline is an observation window, not a soft reject. |
+| **Stopped before delivery** | Messages policy placed in quarantine. Releasing one is audited and requires the review privilege. |
+| **Awaiting human review** | Messages whose decision needs a person before delivery. Only this destination is an attention queue. |
 
-Each destination's empty state is written for that destination, for example **Nothing is held**
-with the explanation that a held message is retained to a bounded deadline. An empty list here means
-nothing is waiting, not that the Host is broken. A listing the Host had to drop rows out of is shown
-as a warning beside the rows, not as an empty page.
+The rows are not a sum. **In the delivery queue** includes the other three states, and the card says so
+beside the counts. Each destination has its own empty state, for example **Nothing is being
+re-checked** with the explanation that a held message is retained to a bounded deadline. An empty
+list here means nothing is in that state, not that the Host is broken. A listing the Host had to drop
+rows out of is shown as a warning beside the rows, not as an empty page.
 
-### 4.2 Senders and companies
+### 4.2 People and companies
 
-Senders are the authenticated principals. The left rail groups them by company. Selecting a sender
-opens a profile with its label, company, notes, external reference, notification target and posture.
+The People section is the directory of the people and organisations you correspond with, not a mail
+reader. The tabs separate the populations:
 
-- **Pause** and **Resume** change the principal's control state. The row keeps the audit trail, so a
-  sender that was paused and lifted is distinguishable from one nobody has touched. That is the
-  answer to "why was this account stopped for six hours", asked after the pause is gone.
+- **Who writes to you**: inbound correspondents.
+- **People you write to**: outbound recipients.
+- **Sending accounts**: the authenticated principals you operate, with their label and company.
+- **Companies**: the operator-side grouping.
+
+A correspondent is shown only by a **masked address**, for example `a***@example.com`; the local part
+beyond one character and the full address are never served. When the address is outside the bounded
+lookup, the row says so and falls back to a short opaque reference instead of guessing. A sender row
+shows its stored label. The directory never reconstructs an address from a hash.
+
+Selecting **Open profile** opens the entity profile: label and source, relationship dates, coverage,
+the effective policy binding, the six KPI tiles and their evidence drawer. That is the place to read
+behaviour over time; the directory row is only an index.
+
+Sending accounts keep their controls:
+
+- **Block outgoing** and **Allow outgoing** change the principal's control state. The audit trail
+  keeps the history, so a sender that was paused and lifted is distinguishable from one nobody has
+  touched.
 - **Edit** changes the operator's description of the principal, not how mail is judged.
-- **Notification target** is stored only. Nothing sends to it yet, on this Host or any other.
-- **Posture** is stored and shown. No part of the pipeline reads it yet, so it records a stance
-  rather than enforcing one.
+- **Notification target** is stored only. Nothing sends to it yet.
+- **Posture** is stored and shown. No part of the pipeline reads it yet.
 
-A company is operator-side grouping only. Nothing in the assessment pipeline reads it. Two senders
-with no company are two different cases: a null company means nobody has described the sender, and
-an id with no matching company means somebody filed it under a company since deleted. The console
-labels them differently because the remedies differ.
+A company is operator-side grouping only. Nothing in the assessment pipeline reads it.
 
-> **Figure M15.** Covered by Figure M02, which shows the sender rail grouped by company: the heading
-> **Acme** with the sender **Acme outbound** beneath it, its Active state, and its Pause and Edit
-> controls. No separate frame is used, so the same run and build apply.
->
-![Figure M16: sender profile](images/m16-sender-profile.png)
+### 4.3 Review queue
 
-> **Figure M16.** The Sender profile dialog for **Acme outbound**, with Label, Company **Acme**,
-> Notes, External reference and Notification target visible, and the stored-only note under the
-> notification target. The sender rail behind it shows the same sender's **Pause** and **Edit**
-> controls. Posture is not visible in this frame, and the dialog itself shows Cancel and Save rather
-> than Pause or Resume. Captured from `ux-results/console-smoke`, scenario `console-smoke` (success,
-> 106 actions), host build `7e498edf538a` as reported by the console lane; this run's `result.json`
-> does not stamp it. sha256
-> `c4ceb77729e4a6be634e95995c252fadfd995cf45af49bb32bef7d81e7cc8c11`.
+The Review queue lists messages **Awaiting human review**. A row carries the reason, the pack and rule
+that opened the review, how long it has waited, whether it is overdue, and its recipients. The
+actions are **Release**, **Keep stopped** and **Reject**; each asks for a reason and uses the audited
+review route. Reject requires the Administer privilege; release and keep stopped require Review.
 
-### 4.3 Respondents
-
-> **Not available in this build.** There is no respondents screen, and none is currently planned.
-> The proxy conversation surface groups turns by threading headers and carries pseudonymous
-> participant tokens, so a conversation can be listed without exposing an address. That is not a
-> respondent directory, and the conversation view is planned but not implemented (section 4.5).
->
-> Assessments themselves carry no conversation identifiers for email, so the decision ledger's
-> conversation history remains Slack-only. For email, a decision-level conversation view is not
-> available, and an empty view would not mean nobody replied.
+The queue does not mix in held or stopped messages. Their counts sit below with links to the matching
+Mail destination, because those messages move on their own and do not need a person. An empty queue
+says **No messages are awaiting human review**, with the note that held and stopped mail is summarised
+below. It never presents a failed read as zero reviews.
 
 ### 4.4 Decisions
 
@@ -479,7 +479,7 @@ saw with each observation's origin and window, the ordered reasons, the coverage
 versions that produced it. The console reads that record; it does not re-run policy or recompute the
 index.
 
-Open **Decisions** in the Review section. The ledger lists recorded assessments. A row shows the
+Open **Decision history** under **Advanced**. The ledger lists recorded assessments. A row shows the
 action, the assessment time and the policy's headline reason; the row's **Open decision** control
 opens the full decision over its own route, because a summary cannot carry the evidence it would
 have to truncate.
