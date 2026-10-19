@@ -223,7 +223,8 @@ public sealed record ImageMessageView
             TrafficLabel = "Traffic: " + TrafficLabelFor(message.TrafficKind) + ".",
             CountsLabel = counts is null
                 ? "Counts not reported."
-                : $"{counts.ImageParts} image parts, {counts.ImagesProduced} produced, {counts.ImagesNotProduced} not produced, {counts.ImagesOverBudget} over budget.",
+                : $"{counts.ImageParts} image parts, {counts.ImagesAdmitted} admitted, {counts.ImagesSkippedAsChrome} skipped as chrome, "
+                    + $"{counts.ImagesProduced} produced, {counts.ImagesNotProduced} not produced, {counts.ImagesOverBudget} over budget.",
             Observations = [.. message.Observations.Select(ImageObservationView.From)],
             TechnicalDetail =
                 $"Message {message.MessageToken}: account {message.AccountId}; traffic {message.TrafficKind}; state {message.State}; "
@@ -268,10 +269,11 @@ public sealed record ImageObservationView
             Title = "Observation " + observation.ObservationKey,
             StateLabel = ObservationStateLabel(observation.State),
             AvailabilityLabel = observation.AvailabilityReason is { Length: > 0 } reason
-                ? "Not inspected: " + Humanize(reason) + "."
-                : string.Equals(observation.Availability, "available", StringComparison.OrdinalIgnoreCase)
-                    ? "Inspected."
-                    : "Availability not reported.",
+                && !string.Equals(reason, "None", StringComparison.OrdinalIgnoreCase)
+                    ? "Not inspected: " + Humanize(reason) + "."
+                    : string.Equals(observation.Availability, "available", StringComparison.OrdinalIgnoreCase)
+                        ? "Inspected."
+                        : "Availability not reported.",
             Parts = [.. observation.Parts.Select(ImagePartView.From)],
         };
 
@@ -296,7 +298,9 @@ public sealed record ImagePartView
     public static ImagePartView From(ImagePartRow part)
     {
         var dimensions = part.Width is { } width && part.Height is { } height
-            ? $"{width}x{height}"
+            ? part.PixelCount is { } pixels
+                ? $"{width}x{height} ({pixels} px)"
+                : $"{width}x{height}"
             : "dimensions not reported";
 
         var declared = string.IsNullOrWhiteSpace(part.DeclaredFormat)
