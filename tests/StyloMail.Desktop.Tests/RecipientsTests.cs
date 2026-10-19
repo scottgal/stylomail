@@ -172,7 +172,7 @@ public sealed class RecipientsTests
     {
         var handler = Handler(request => request.Path switch
         {
-            "/v1/entities" when request.Query.Contains("after=cursor_next", StringComparison.Ordinal) =>
+            "/v1/entities" when request.Query?.Contains("after=cursor_next", StringComparison.Ordinal) == true =>
                 Json(DirectoryJson("[]")),
             "/v1/entities" => Json(DirectoryJson("""
                 [
@@ -189,7 +189,7 @@ public sealed class RecipientsTests
         await model.LoadAsync(append: true);
 
         Assert.Contains(handler.Requests, request =>
-            request.Path == "/v1/entities" && request.Query.Contains("after=cursor_next", StringComparison.Ordinal));
+            request.Path == "/v1/entities" && request.Query?.Contains("after=cursor_next", StringComparison.Ordinal) == true);
     }
 
     [Fact]

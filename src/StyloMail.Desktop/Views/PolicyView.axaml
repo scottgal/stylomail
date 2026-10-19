@@ -59,7 +59,9 @@
                                    Text="This pack did not report category tolerances." />
                     </StackPanel>
 
-                    <StackPanel Spacing="3" IsVisible="{Binding !HasActivePack}">
+                    <StackPanel Spacing="3"
+                                IsVisible="{Binding !HasActivePack}"
+                                AutomationProperties.AutomationId="policy-empty">
                         <TextBlock Classes="rowTitle" Text="No active policy pack." />
                         <TextBlock Classes="cardBody"
                                    TextWrapping="Wrap"

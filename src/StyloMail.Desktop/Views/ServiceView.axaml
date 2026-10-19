@@ -123,7 +123,9 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <StackPanel Spacing="6" IsVisible="{Binding !HasAccounts}">
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding !HasAccounts}"
+                                    AutomationProperties.AutomationId="service-accounts-empty">
                             <TextBlock Classes="dashboardCoverage"
                                        Text="No proxy accounts are configured on this Host." />
                             <Button Classes="rowButton"
@@ -175,6 +177,7 @@
 
                         <TextBlock Classes="dashboardCoverage"
                                    IsVisible="{Binding !HasListeners}"
+                                   AutomationProperties.AutomationId="service-listeners-empty"
                                    TextWrapping="Wrap"
                                    Text="No listeners are configured on this Host. Listeners are part of the deployment, not objects this console creates. See Settings or the deployment documentation for the configured routes." />
                     </StackPanel>

@@ -99,7 +99,9 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <Border Classes="dashboardGap" IsVisible="{Binding ShowEmpty}">
+                <Border Classes="dashboardGap"
+                        IsVisible="{Binding ShowEmpty}"
+                        AutomationProperties.AutomationId="review-empty">
                     <StackPanel Spacing="3">
                         <TextBlock Classes="cardTitle" Text="No messages are awaiting human review." />
                         <TextBlock Classes="cardBody"
@@ -117,6 +119,7 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0"
                                        Classes="rowTitle"
+                                       AutomationProperties.AutomationId="review-held-count"
                                        Text="{Binding HeldCountLabel, StringFormat='Being re-checked: {0}'}" />
                             <Button Grid.Column="1"
                                     Classes="linkButton"

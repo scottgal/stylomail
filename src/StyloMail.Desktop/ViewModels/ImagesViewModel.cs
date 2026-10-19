@@ -220,7 +220,7 @@ public sealed record ImageMessageView
             Title = "Message " + Shorten(message.MessageToken),
             ObservedLabel = "Observed " + message.ObservedAt.ToLocalTime().ToString("d MMM HH:mm", CultureInfo.InvariantCulture) + ".",
             StateLabel = StateLabelFor(message.State),
-            TrafficLabel = "Traffic: " + Humanize(message.TrafficKind) + ".",
+            TrafficLabel = "Traffic: " + TrafficLabelFor(message.TrafficKind) + ".",
             CountsLabel = counts is null
                 ? "Counts not reported."
                 : $"{counts.ImageParts} image parts, {counts.ImagesProduced} produced, {counts.ImagesNotProduced} not produced, {counts.ImagesOverBudget} over budget.",
@@ -238,6 +238,13 @@ public sealed record ImageMessageView
         "produced" or "available" => "Inspected",
         "failed" => "Inspection failed",
         _ => Humanize(state),
+    };
+
+    private static string TrafficLabelFor(string traffic) => traffic switch
+    {
+        "Retrieval" => "received mail",
+        "Submission" => "sent mail",
+        _ => Humanize(traffic),
     };
 
     private static string Shorten(string value)
@@ -259,12 +266,22 @@ public sealed record ImageObservationView
         => new()
         {
             Title = "Observation " + observation.ObservationKey,
-            StateLabel = observation.State,
+            StateLabel = ObservationStateLabel(observation.State),
             AvailabilityLabel = observation.AvailabilityReason is { Length: > 0 } reason
                 ? "Not inspected: " + Humanize(reason) + "."
-                : "Availability: " + (observation.Availability ?? "not reported") + ".",
+                : string.Equals(observation.Availability, "available", StringComparison.OrdinalIgnoreCase)
+                    ? "Inspected."
+                    : "Availability not reported.",
             Parts = [.. observation.Parts.Select(ImagePartView.From)],
         };
+
+    private static string ObservationStateLabel(string state) => state switch
+    {
+        "produced" or "available" => "Inspected",
+        "not_produced" or "disabled" => "Not inspected",
+        "failed" => "Inspection failed",
+        _ => Humanize(state),
+    };
 
     private static string Humanize(string value)
         => string.Join(' ', value.Split(['_', '-'], StringSplitOptions.RemoveEmptyEntries)
@@ -284,10 +301,10 @@ public sealed record ImagePartView
 
         var declared = string.IsNullOrWhiteSpace(part.DeclaredFormat)
             ? string.Empty
-            : $" Declared {part.DeclaredFormat}.";
+            : $" Declared {part.DeclaredFormat.ToUpperInvariant()}.";
         var detected = string.IsNullOrWhiteSpace(part.Format)
             ? "Actual type not reported."
-            : $" Detected {part.Format}.";
+            : $" Detected {part.Format.ToUpperInvariant()}.";
         var trailing = part.TrailingByteCount is { } trailingBytes
             ? $" Trailing bytes {trailingBytes}."
             : string.Empty;
@@ -297,7 +314,7 @@ public sealed record ImagePartView
 
         return new ImagePartView
         {
-            Title = "Part " + part.Ordinal + " · " + (part.Format ?? "type not reported"),
+            Title = "Part " + part.Ordinal + " · " + (part.Format?.ToUpperInvariant() ?? "type not reported"),
             Detail = dimensions + declared + detected + trailing + " " + findings,
         };
     }

@@ -1,0 +1,67 @@
+name: console-management-smoke
+description: >
+  Drives the Review, Policy and Images management pages against a throwaway
+  Host with one accepted held message and no policy pack or proxy composition.
+  The captures show the review empty state with the held count, the policy
+  no-pack empty state, and the images no-conversation-telemetry empty state.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Review queue)"
+    description: "Open the human review queue"
+
+  - type: Expect
+    target: "testid=review-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=review-empty"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=review-held-count"
+    matcher: ContainsText
+    value: "Being re-checked"
+
+  - type: Screenshot
+    value: "review-1180x720"
+    composite: true
+    description: "Review page at 1180x720: no review item, real held count and Mail link"
+
+  - type: Click
+    target: "type=Button:has-text(Policy)"
+    description: "Open the read-only policy page"
+
+  - type: Expect
+    target: "testid=policy-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=policy-empty"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "policy-empty-1180x720"
+    composite: true
+    description: "Policy page at 1180x720 with the no-active-pack empty state"
+
+  - type: Click
+    target: "type=Button:has-text(Images)"
+    description: "Open the image observation page"
+
+  - type: Expect
+    target: "testid=images-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text='This Host does not record conversation threads yet.'"
+    matcher: IsVisible

@@ -27,12 +27,16 @@ actions:
     timeout: 15000
 
   - type: Expect
-    target: "text='No proxy accounts are configured on this Host.'"
+    target: "testid=service-accounts-empty"
     matcher: IsVisible
     timeout: 15000
 
   - type: Expect
-    target: "text='No listeners are configured on this Host.'"
+    target: "testid=service-create-account"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=service-listeners-empty"
     matcher: IsVisible
     timeout: 15000
 
