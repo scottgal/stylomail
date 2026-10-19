@@ -908,6 +908,31 @@ The **Why?** control now opens the definition and the evidence, not the definiti
 reference that cannot be resolved returns a named outcome, and the drawer never renders an opaque id
 as if it were content.
 
+### 4.9 Image observations
+
+The Images page shows what the image inspector found, never the image itself. It is disabled by
+default; a deployment enables it with `StyloMail:Images:Enabled=true`.
+
+![Figure M33: an image observation from a live proxy fetch](images/m33-image-observation.png)
+
+> **Figure M33.** A real observation from a live proxy retrieval with images enabled. The
+> conversation picker shows the opaque thread, **1 message with image observations**, the 24-hour
+> window, source `proxy_image_observation/1` and a **30-day** retention. The message is **Clean**,
+> received mail, with **2 image parts, 1 admitted, 1 skipped as chrome, 1 produced, 0 not produced,
+> 0 over budget**. The admitted part is **Part 3, PNG, 64x64 (4096 px)**, declared PNG and detected
+> PNG, **trailing bytes 0**, **no findings**. The skipped part is a one-pixel tracking image, which
+> is why it is counted as chrome rather than shown as a finding.
+>
+> No image bytes, filename, address or content are present. The capture is governed harness data
+> over the real proxy and Host routes, not production traffic. Host build `ef200fd090af`, sha256
+> `4a414f24dba3c79938bd8cb642f9d5ae03a7dfa3d0a56ca85d45c5779da4c9ca`.
+
+The page reports three separate things: how many image parts were present, how many were admitted
+for inspection, and how many produced a result. A part that is over budget or could not be inspected
+is counted with a named reason, never as a clean image. Chrome and over-budget images get no
+individual row. The **Advanced image detail** drawer carries the opaque ids and the raw state, which
+the default row keeps out of the first read.
+
 ## 5. Operations
 
 ### 5.1 Live sessions
@@ -1077,14 +1102,16 @@ signals, not message content, and its caption says that.
 | M30 | Dashboard queue and storage | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 085bff35…; union not a sum, storage sizes |
 | M31 | Dashboard at minimum size | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 72c6b879…; 900x520, flow partly visible |
 | M32 | Dashboard charts with real bars | ux-results/console-graphs | captured; governed harness; build 9b4fb40f1c51; sha256 4a075bc8…; Inbound 3, Held 3, outcome mix Held 3 |
+| M33 | Image observation from a live proxy fetch | ux-results/console-images-live | captured; governed harness; build ef200fd090af; sha256 4a414f24…; 2 parts, 1 admitted PNG 64x64, no findings |
 
-Eighteen frames in this table are captured, in nine batches. M27 and M28 come from the seventh, the
+Nineteen frames in this table are captured, in ten batches. M27 and M28 come from the seventh, the
 `console-profile-history` governed harness run against host build `c9feabf7b48a`; they are real
 Host and route output over a temporary seeded database, not production traffic. M29 to M31 come from
 the eighth, the `console-dashboard` governed harness run against Host build `8c9275a80753`, with the
 same rule: real Host and routes over a temporary seeded database. M32 comes from the ninth, the
 `console-dashboard-graphs` run against Host build `9b4fb40f1c51`, with three real submissions and the
-same governed-data rule. M08 and M21a come
+same governed-data rule. M33 comes from the tenth, the image-enabled `proxy-e2e-console-capture` run
+against Host build `ef200fd090af`, with a real proxy fetch and the same governed-data rule. M08 and M21a come
 from the first batch, whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
