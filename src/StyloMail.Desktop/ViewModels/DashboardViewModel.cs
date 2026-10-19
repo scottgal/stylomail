@@ -857,7 +857,7 @@ public sealed class DashboardViewModel : ObservableObject
 
             QueueState = "ready";
             QueueRelationLabel = summary.Overlapping
-                ? "Needs your decision includes the other three states. The rows are not a sum."
+                ? "In the delivery queue includes the other three states. The rows are not a sum."
                 : "Each row is a separate count.";
             var largest = new[]
             {
@@ -875,11 +875,11 @@ public sealed class DashboardViewModel : ObservableObject
 
             QueueCounts.Clear();
             QueueCounts.Add(new QueueCountRow(
-                "Needs your decision",
+                "In the delivery queue",
                 FormatCount(summary.Counts.AwaitingDecision),
-                "Accepted and waiting for a decision.",
-                "awaiting-decision",
-                "queue-awaiting-decision")
+                "Includes the three states below.",
+                "delivery-queue",
+                "queue-delivery")
             { BarWidth = Width(summary.Counts.AwaitingDecision) });
             QueueCounts.Add(new QueueCountRow(
                 "Being re-checked before delivery",
@@ -943,7 +943,7 @@ public sealed class DashboardViewModel : ObservableObject
         var review = await CountReviewsAsync(cancellationToken);
 
         QueueState = "fallback";
-        QueueRelationLabel = "Needs your decision includes the other three states. The rows are not a sum.";
+        QueueRelationLabel = "In the delivery queue includes the other three states. The rows are not a sum.";
         var largest = new[] { awaiting.Count, held.Count, quarantined.Count, review.Count }
             .Where(value => value.HasValue)
             .Select(value => value!.Value)
@@ -953,7 +953,7 @@ public sealed class DashboardViewModel : ObservableObject
         double Width(long? value) => largest <= 0 || value is null ? 0 : 140.0 * value.Value / largest;
 
         QueueCounts.Clear();
-        QueueCounts.Add(new QueueCountRow("Needs your decision", FormatBounded(awaiting), "Accepted and waiting for a decision.", "awaiting-decision", "queue-awaiting-decision") { BarWidth = Width(awaiting.Count) });
+        QueueCounts.Add(new QueueCountRow("In the delivery queue", FormatBounded(awaiting), "Includes the three states below.", "delivery-queue", "queue-delivery") { BarWidth = Width(awaiting.Count) });
         QueueCounts.Add(new QueueCountRow("Being re-checked before delivery", FormatBounded(held), "Held for a scheduled re-check.", "held", "queue-held") { BarWidth = Width(held.Count) });
         QueueCounts.Add(new QueueCountRow("Stopped before delivery", FormatBounded(quarantined), "Retained for review and not delivered.", "quarantined", "queue-quarantined") { BarWidth = Width(quarantined.Count) });
         QueueCounts.Add(new QueueCountRow("Awaiting human review", FormatBounded(review), "Withheld for an authenticated human decision.", "review", "queue-review") { BarWidth = Width(review.Count) });

@@ -660,10 +660,10 @@ public sealed class ShellModel : ObservableObject
         model.Sections.Add(new SidebarSection("Mail",
         [
             new SidebarItem(
-                "Needs your decision",
+                "In the delivery queue",
                 SidebarItemState.Available,
-                "Email waiting for your decision.",
-                "No email needs your decision right now.",
+                "Includes the three states below.",
+                "No email is in the delivery queue.",
                 MessageListState.AwaitingDecision),
 
             new SidebarItem(

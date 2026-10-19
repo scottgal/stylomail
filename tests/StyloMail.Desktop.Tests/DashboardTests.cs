@@ -43,7 +43,9 @@ public sealed class DashboardTests
         Assert.Contains("messages", model.FlowChart.Summary, StringComparison.Ordinal);
 
         Assert.Equal(4, model.QueueCounts.Count);
-        Assert.Contains("not a sum", model.QueueRelationLabel, StringComparison.Ordinal);
+        Assert.Equal("In the delivery queue", model.QueueCounts[0].Label);
+        Assert.Contains("includes the other three states", model.QueueRelationLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Needs your decision", model.QueueRelationLabel, StringComparison.Ordinal);
         Assert.Equal("3", model.QueueCounts[0].CountLabel);
 
         Assert.Equal("ready", model.StorageState);

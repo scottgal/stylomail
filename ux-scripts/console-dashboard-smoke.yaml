@@ -24,7 +24,7 @@ actions:
     timeout: 15000
 
   - type: Expect
-    target: "testid=queue-awaiting-decision"
+    target: "testid=queue-delivery"
     matcher: IsVisible
     timeout: 15000
 
@@ -78,7 +78,7 @@ actions:
     timeout: 10000
 
   - type: Expect
-    target: "testid=queue-awaiting-decision"
+    target: "testid=queue-delivery"
     matcher: IsVisible
     timeout: 10000
 

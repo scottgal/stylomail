@@ -39,7 +39,7 @@ public sealed class ShellModelTests
 
         Assert.Contains("Dashboard", titles);
         Assert.Contains("Host", titles);
-        Assert.Contains("Needs your decision", titles);
+        Assert.Contains("In the delivery queue", titles);
         Assert.Contains("Being re-checked before delivery", titles);
         Assert.Contains("Stopped before delivery", titles);
         Assert.Contains("Awaiting human review", titles);
@@ -75,6 +75,11 @@ public sealed class ShellModelTests
             [MessageListState.AwaitingDecision, MessageListState.Held, MessageListState.Quarantined, MessageListState.Review],
             queues.Select(item => item.Queue));
 
+        Assert.Equal(
+            ["In the delivery queue", "Being re-checked before delivery", "Stopped before delivery", "Awaiting human review"],
+            queues.Select(item => item.Title));
+
+        Assert.DoesNotContain(queues, item => item.Title.Contains("Needs your decision", StringComparison.Ordinal));
         Assert.DoesNotContain(queues, item => item.Title.Contains("Queued", StringComparison.Ordinal));
         Assert.DoesNotContain(queues, item => item.Title.Contains("Delivered", StringComparison.Ordinal));
     }
@@ -1013,10 +1018,10 @@ public sealed class ShellModelTests
 
         model.SelectedItem = model.Sections
             .SelectMany(section => section.Items)
-            .Single(item => item.Title == "Needs your decision");
+            .Single(item => item.Title == "In the delivery queue");
 
         // The entry's own sentence, which says what an empty listing means.
-        Assert.Contains("No email needs your decision", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("No email is in the delivery queue", model.EmptyListDetail, StringComparison.Ordinal);
 
         // The second cause, which the entry cannot know on its own: nothing could
         // be queued rather than nothing was. Both ways of being unable to assess
