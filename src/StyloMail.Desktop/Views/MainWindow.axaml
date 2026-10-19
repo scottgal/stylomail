@@ -293,7 +293,7 @@
                                            Text="Sender label and subject are not available. Open the decision for evidence." />
                                 <Expander x:Name="QueueTechnicalDetailExpander"
                                           Margin="0,6,0,0"
-                                          Header="Why? View queue details"
+                                          Header="Why is it waiting?"
                                           IsVisible="{Binding HasSelectedPaneTechnicalDetail}">
                                     <TextBlock Classes="paneDetail"
                                                TextWrapping="Wrap"
@@ -443,7 +443,7 @@
                                     <Button Classes="rowButton"
                                             HorizontalAlignment="Left"
                                             Margin="0,4,0,0"
-                                            Content="View email status"
+                                            Content="See delivery status"
                                             AutomationProperties.AutomationId="{Binding OpenAutomationId}"
                                             Click="OnOpenMessageClick" />
                                 </StackPanel>

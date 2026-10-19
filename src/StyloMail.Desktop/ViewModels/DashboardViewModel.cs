@@ -81,6 +81,11 @@ public sealed class DashboardViewModel : ObservableObject
 
     private int _unavailableCards;
     private long? _reviewCount;
+    private long? _heldCount;
+    private long? _quarantinedCount;
+    private long? _awaitingCount;
+    private long? _storageFreeBytes;
+    private long? _storageCapacityBytes;
 
     public DashboardViewModel(
         StyloMailApiClient? client = null,
@@ -368,7 +373,9 @@ public sealed class DashboardViewModel : ObservableObject
 
     public string WarningSummary => Warnings.Count == 0
         ? "Nothing needs your attention."
-        : $"{Warnings.Count} item{(Warnings.Count == 1 ? string.Empty : "s")} need your attention.";
+        : Warnings.Count == 1
+            ? "1 item needs your attention."
+            : $"{Warnings.Count} items need your attention.";
 
     public bool HasCriticalWarnings => Warnings.Any(warning => warning.IsCritical);
 
@@ -851,6 +858,9 @@ public sealed class DashboardViewModel : ObservableObject
                     : summary.Coverage.Note!;
                 QueueAsOfLabel = "Counted at " + summary.AsOf.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
                 QueueRelationLabel = string.Empty;
+                _awaitingCount = summary.Counts.AwaitingDecision;
+                _heldCount = summary.Counts.Held;
+                _quarantinedCount = summary.Counts.Quarantined;
                 _reviewCount = summary.Counts.Review;
                 return;
             }
@@ -903,6 +913,9 @@ public sealed class DashboardViewModel : ObservableObject
                 "queue-review")
             { BarWidth = Width(summary.Counts.Review) });
 
+            _awaitingCount = summary.Counts.AwaitingDecision;
+            _heldCount = summary.Counts.Held;
+            _quarantinedCount = summary.Counts.Quarantined;
             _reviewCount = summary.Counts.Review;
             QueueCoverageLabel = string.Equals(summary.Availability, "partial", StringComparison.OrdinalIgnoreCase)
                 ? "Some queue counts were not produced. The rows shown are the counts the Host did produce."
@@ -924,6 +937,10 @@ public sealed class DashboardViewModel : ObservableObject
             QueueCoverageLabel = "Queue counts could not be read. " + Reason(ex);
             QueueAsOfLabel = string.Empty;
             QueueRelationLabel = string.Empty;
+            _awaitingCount = null;
+            _heldCount = null;
+            _quarantinedCount = null;
+            _reviewCount = null;
             _unavailableCards++;
         }
     }
@@ -958,6 +975,9 @@ public sealed class DashboardViewModel : ObservableObject
         QueueCounts.Add(new QueueCountRow("Stopped before delivery", FormatBounded(quarantined), "Retained for review and not delivered.", "quarantined", "queue-quarantined") { BarWidth = Width(quarantined.Count) });
         QueueCounts.Add(new QueueCountRow("Awaiting human review", FormatBounded(review), "Withheld for an authenticated human decision.", "review", "queue-review") { BarWidth = Width(review.Count) });
 
+        _awaitingCount = awaiting.Count;
+        _heldCount = held.Count;
+        _quarantinedCount = quarantined.Count;
         _reviewCount = review.Count;
         QueueCoverageLabel = "First page of each queue. A plus means there are more.";
         QueueAsOfLabel = "Counted at " + _clock().ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -1007,8 +1027,13 @@ public sealed class DashboardViewModel : ObservableObject
                     ? "The Host did not produce a storage measurement."
                     : storage.Coverage.Note!;
                 StorageCoverageLabel = string.Empty;
+                _storageFreeBytes = null;
+                _storageCapacityBytes = null;
                 return;
             }
+
+            _storageFreeBytes = storage.VolumeFreeBytes;
+            _storageCapacityBytes = storage.CapacityBytes;
 
             StorageState = string.Equals(storage.Availability, "partial", StringComparison.OrdinalIgnoreCase)
                 ? "partial"
@@ -1099,6 +1124,8 @@ public sealed class DashboardViewModel : ObservableObject
             StorageHeadline = "Waiting for the Host to provide a storage summary.";
             StorageDetail = "The console does not infer storage from cumulative counters.";
             StorageCoverageLabel = string.Empty;
+            _storageFreeBytes = null;
+            _storageCapacityBytes = null;
         }
         catch (Exception ex) when (ex is StyloMailApiException or HttpRequestException)
         {
@@ -1106,6 +1133,8 @@ public sealed class DashboardViewModel : ObservableObject
             StorageHeadline = "Storage could not be read.";
             StorageDetail = Reason(ex);
             StorageCoverageLabel = string.Empty;
+            _storageFreeBytes = null;
+            _storageCapacityBytes = null;
             _unavailableCards++;
         }
     }
@@ -1275,9 +1304,48 @@ public sealed class DashboardViewModel : ObservableObject
                 "warning",
                 $"{_reviewCount:N0} message{(_reviewCount == 1 ? " is" : "s are")} awaiting human review.",
                 "Review",
-                "Open Review to release, keep stopped or reject them.",
-                "Open Review",
-                "Decisions"));
+                "Open the review queue to release, keep stopped or reject them.",
+                "Open review queue",
+                "Awaiting human review"));
+        }
+
+        if (_quarantinedCount is > 0)
+        {
+            Add(new DashboardWarning(
+                "quarantine-waiting",
+                "warning",
+                $"{_quarantinedCount:N0} message{(_quarantinedCount == 1 ? " is" : "s are")} stopped before delivery.",
+                "Mail queue",
+                "Open the stopped queue to decide whether to release them.",
+                "Open stopped queue",
+                "Stopped before delivery"));
+        }
+
+        if (_heldCount is > 0)
+        {
+            Add(new DashboardWarning(
+                "held-waiting",
+                "info",
+                $"{_heldCount:N0} message{(_heldCount == 1 ? " is" : "s are")} being re-checked before delivery.",
+                "Mail queue",
+                "Open the re-check queue to see what is waiting. No action is needed while the re-check runs.",
+                "Open re-check queue",
+                "Being re-checked before delivery",
+                canDismiss: true));
+        }
+
+        if (_storageFreeBytes is { } free
+            && _storageCapacityBytes is > 0 and { } capacity
+            && (free < capacity / 10 || free < 1024L * 1024 * 1024))
+        {
+            Add(new DashboardWarning(
+                "storage-low",
+                "warning",
+                "The disk holding the mail store is nearly full.",
+                "Storage",
+                $"{FormatBytes(free)} free of {FormatBytes(capacity)}. The warning threshold is below 10 percent or 1 GB.",
+                "Open Host detail",
+                "Host"));
         }
 
         if (_connectionFailureTotal > 0)
@@ -1291,6 +1359,16 @@ public sealed class DashboardViewModel : ObservableObject
                 "Open Host detail",
                 "Host"));
         }
+
+        // Severity order, not insertion order. A warning that appears above a
+        // critical one because of the order its loader finished is a panel that
+        // makes the operator read the wrong line first.
+        var ordered = Warnings
+            .OrderBy(warning => warning.IsCritical ? 0 : warning.IsWarning ? 1 : 2)
+            .ToArray();
+
+        Warnings.Clear();
+        foreach (var warning in ordered) Warnings.Add(warning);
 
         WarningsChanged();
     }

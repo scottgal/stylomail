@@ -84,11 +84,16 @@
                                             <TextBlock Classes="cardBody"
                                                        TextWrapping="Wrap"
                                                        Text="{Binding NextAction}" />
-                                            <Button Classes="linkButton"
-                                                    HorizontalAlignment="Left"
-                                                    Content="{Binding ActionLabel}"
-                                                    IsVisible="{Binding HasAction}"
-                                                    Click="OnWarningActionClick" />
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button Classes="linkButton"
+                                                        Content="{Binding ActionLabel}"
+                                                        IsVisible="{Binding HasAction}"
+                                                        Click="OnWarningActionClick" />
+                                                <Button Classes="linkButton"
+                                                        Content="Dismiss"
+                                                        IsVisible="{Binding CanDismiss}"
+                                                        Click="OnDismissWarningClick" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>

@@ -1502,7 +1502,12 @@ public sealed class MessageRow
         _ => $"{Recipients[0]} +{Recipients.Count - 1}",
     };
 
-    public string AttemptsLabel => Attempts == 1 ? "1 attempt" : $"{Attempts} attempts";
+    public string AttemptsLabel => Attempts switch
+    {
+        0 => "No delivery attempts yet",
+        1 => "1 attempt",
+        _ => $"{Attempts} attempts",
+    };
 
     /// <summary>
     /// The row's own open control, and the only part of the row a script can

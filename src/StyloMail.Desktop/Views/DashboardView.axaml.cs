@@ -42,6 +42,14 @@ public partial class DashboardView : UserControl
         }
     }
 
+    private void OnDismissWarningClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: DashboardWarning warning } && Model is { } model)
+        {
+            model.Dismiss(warning);
+        }
+    }
+
     private void OnOpenPeopleClick(object? sender, RoutedEventArgs e) => Model?.RequestNavigation("Recipients");
 
     private void OnOpenConversationsClick(object? sender, RoutedEventArgs e) => Model?.RequestNavigation("Conversations");

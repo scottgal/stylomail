@@ -1061,6 +1061,23 @@ public sealed class ShellModelTests
     }
 
     [Fact]
+    public void A_message_with_no_attempts_says_so_without_a_zero()
+    {
+        var row = new MessageRow
+        {
+            QueueId = "q-moderator",
+            State = Api.Contracts.DeliveryState.Held,
+            Attempts = 0,
+            Recipients = ["alice@example.test"],
+            CreatedAt = new DateTimeOffset(2026, 10, 19, 12, 2, 0, TimeSpan.Zero),
+        };
+
+        Assert.Equal("No delivery attempts yet", row.AttemptsLabel);
+        Assert.Equal("To alice@example.test", row.RecipientTitle);
+        Assert.StartsWith("Received ", row.CreatedAtLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_queue_keeps_the_exact_state_behind_its_why_expander()
     {
         var model = ShellModel.CreateDefault();

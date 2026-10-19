@@ -184,6 +184,93 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task A_held_queue_item_produces_a_dismissible_info_warning()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(EmptyFlowJson()),
+            "/v1/queues/summary" => Json(HeldQueueJson()),
+            "/v1/storage/summary" => Json(StorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(NoConnectionsJson()),
+            "/v1/senders" => Json(SendersJson()),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        await model.LoadAsync();
+
+        var warning = model.Warnings.Single(item => item.Id == "held-waiting");
+        Assert.True(warning.IsInfo);
+        Assert.True(warning.CanDismiss);
+        Assert.Equal("Being re-checked before delivery", warning.ActionDestination);
+        Assert.Equal("1 item needs your attention.", model.WarningSummary);
+    }
+
+    [Fact]
+    public async Task A_paused_sender_produces_a_dismissible_info_warning()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(EmptyFlowJson()),
+            "/v1/queues/summary" => Json("""
+                {
+                  "tenantId": "t1",
+                  "asOf": "2026-10-19T10:00:00+00:00",
+                  "availability": "available",
+                  "basis": "current_attention_recipient_state",
+                  "overlapping": true,
+                  "counts": { "awaitingDecision": 0, "held": 0, "quarantined": 0, "review": 0 },
+                  "coverage": { "complete": true, "note": null }
+                }
+                """),
+            "/v1/storage/summary" => Json(StorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(ConnectionsJson()),
+            "/v1/senders" => Json("""
+                {
+                  "tenantId": "t1",
+                  "senders": [ { "principalId": "p1", "control": { "paused": true, "reason": "harness" }, "label": "Billing", "source": "store", "companyId": null } ]
+                }
+                """),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        await model.LoadAsync();
+
+        var warning = model.Warnings.Single(item => item.Id == "senders-paused");
+        Assert.True(warning.IsInfo);
+        Assert.True(warning.CanDismiss);
+        Assert.Equal("Recipients", warning.ActionDestination);
+    }
+
+    [Fact]
+    public async Task A_disk_below_the_stated_threshold_produces_a_warning()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(EmptyFlowJson()),
+            "/v1/queues/summary" => Json(QueueJson()),
+            "/v1/storage/summary" => Json(LowStorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(ConnectionsJson()),
+            "/v1/senders" => Json(SendersJson()),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        await model.LoadAsync();
+
+        var warning = model.Warnings.Single(item => item.Id == "storage-low");
+        Assert.True(warning.IsWarning);
+        Assert.Contains("below 10 percent or 1 GB", warning.NextAction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void A_count_axis_uses_whole_numbers()
     {
         var start = new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero);
@@ -367,6 +454,51 @@ public sealed class DashboardTests
           "capacityScope": "filesystem_volume",
           "spoolFileCount": 4,
           "rowCounts": [ { "table": "queue_item", "count": 12000, "truncated": true, "reason": "capped" } ],
+          "coverage": { "measured": ["database", "spool", "payloads"], "note": null }
+        }
+        """;
+
+    private static string NoConnectionsJson()
+        => """
+        {
+          "tenantId": "t1",
+          "from": "2026-10-18T10:00:00+00:00",
+          "through": "2026-10-19T10:00:00+00:00",
+          "buckets": []
+        }
+        """;
+
+    private static string HeldQueueJson()
+        => """
+        {
+          "tenantId": "t1",
+          "asOf": "2026-10-19T10:00:00+00:00",
+          "availability": "available",
+          "basis": "current_attention_recipient_state",
+          "overlapping": true,
+          "counts": { "awaitingDecision": 1, "held": 1, "quarantined": 0, "review": 0 },
+          "coverage": { "complete": true, "note": null }
+        }
+        """;
+
+    private static string LowStorageJson()
+        => """
+        {
+          "tenantId": "t1",
+          "asOf": "2026-10-19T10:00:00+00:00",
+          "availability": "available",
+          "databaseBytes": 1073741824,
+          "writeAheadLogBytes": 1048576,
+          "spoolBytes": 12582912,
+          "spoolTruncated": null,
+          "spoolFileCount": 4,
+          "payloadBytes": 83886080,
+          "capacityBytes": 107374182400,
+          "volumeFreeBytes": 104857600,
+          "capacityScope": "filesystem_volume",
+          "retentionHorizon": null,
+          "retentionReason": "retention_horizon_not_recorded",
+          "rowCounts": [ { "table": "queue_item", "count": 12000, "truncated": true, "reason": null } ],
           "coverage": { "measured": ["database", "spool", "payloads"], "note": null }
         }
         """;
