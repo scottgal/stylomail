@@ -1,0 +1,55 @@
+name: console-dashboard-graphs
+description: >
+  Graph-focused dashboard capture at 1180x720, mid-scroll. The Host has a small
+  governed set of real submissions, so the flow series, the assessments buckets
+  and the outcome mix carry nonzero values. Harness data, clearly labelled.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+  - type: Scroll
+    target: "name=DashboardScroll"
+    value: down
+
+  - type: Wait
+    value: "700"
+
+  - type: Expect
+    target: "testid=dashboard-flow"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "testid=dashboard-assessments"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=dashboard-outcomes"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "dashboard-graphs-1180x720"
+    composite: true
+    description: "Mid-scroll dashboard at 1180x720: mail flow, assessments per 2 hours and outcome mix from governed harness data"

@@ -134,7 +134,9 @@
             </WrapPanel>
 
             <!-- ================= mail flow ================= -->
-            <Border Classes="dashboardCard" Margin="0,0,0,12">
+            <Border Classes="dashboardCard"
+                    Margin="0,0,0,12"
+                    AutomationProperties.AutomationId="dashboard-flow">
                 <StackPanel Spacing="4">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0">
@@ -232,7 +234,9 @@
 
             <WrapPanel>
                 <!-- ================= assessments ================= -->
-                <Border Classes="dashboardCard" Width="356">
+                <Border Classes="dashboardCard"
+                        Width="356"
+                        AutomationProperties.AutomationId="dashboard-assessments">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="dashboardCardTitle" Text="Assessments" />
                         <TextBlock Classes="dashboardCoverage" Text="{Binding AssessmentsNote}" />
@@ -289,7 +293,9 @@
                 </Border>
 
                 <!-- ================= outcome mix ================= -->
-                <Border Classes="dashboardCard" Width="356">
+                <Border Classes="dashboardCard"
+                        Width="356"
+                        AutomationProperties.AutomationId="dashboard-outcomes">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="dashboardCardTitle" Text="What the decisions did" />
                         <TextBlock Classes="dashboardCoverage" Text="{Binding OutcomeChart.CoverageLabel}" />

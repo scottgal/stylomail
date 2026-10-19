@@ -1111,7 +1111,7 @@ PYEOF
 # assessing again, which would turn a second submission into a read of the
 # first one's answer.
 console_seed_submission() {
-    local mime="$1" mail_from="$2" rcpt_to="$3"
+    local mime="$1" mail_from="$2" rcpt_to="$3" idempotency="${4:-console-$$}"
     local headers
     headers="$(console_auth_headers)"
 
@@ -1147,7 +1147,7 @@ PYEOF
         --max-time "$timeout" \
         -H @"$headers" \
         -H "Content-Type: application/json" \
-        -H "Idempotency-Key: console-$$" \
+        -H "Idempotency-Key: $idempotency" \
         --data @"$CONSOLE_RUN/submission.json" \
         "$CONSOLE_BASE/v1/submissions" 2>"$CONSOLE_RUN/submission-post.err")"
 
