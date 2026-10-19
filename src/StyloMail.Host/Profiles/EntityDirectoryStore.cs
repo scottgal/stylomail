@@ -654,20 +654,131 @@ public sealed class EntityDirectoryStore
     /// usable local part and domain (the null sender, or a malformed value) is not maskable and
     /// says so rather than rendering something misleading.
     /// </remarks>
-    private static MaskedRecipient MaskAddress(string address)
+    private static MaskedRecipient MaskAddress(string candidate)
     {
+        var address = ExtractAddress(candidate);
+
+        if (address is null)
+        {
+            return new MaskedRecipient(null, null, SummaryReasons.AddressNotMaskable);
+        }
+
         var at = address.LastIndexOf('@');
 
-        if (at <= 0 || at == address.Length - 1)
+        // Exactly one at-sign. A quoted local part may legally contain another, but rendering a
+        // mask from a value this parser does not fully understand is how a malformed candidate
+        // becomes a plausible-looking label. Refuse instead.
+        if (at <= 0 || at == address.Length - 1 || address.IndexOf('@') != at)
         {
             return new MaskedRecipient(null, null, SummaryReasons.AddressNotMaskable);
         }
 
         var local = address[..at];
         var domain = address[(at + 1)..].ToLowerInvariant();
-        var first = local.EnumerateRunes().First().ToString();
 
+        if (!IsValidLocal(local) || !IsValidDomain(domain))
+        {
+            return new MaskedRecipient(null, null, SummaryReasons.AddressNotMaskable);
+        }
+
+        var first = local.EnumerateRunes().First().ToString();
         return new MaskedRecipient($"{first}***@{domain}", domain, null);
+    }
+
+    /// <summary>
+    /// The address inside a display-name form, or the value itself when it is already bare.
+    /// </summary>
+    /// <remarks>
+    /// The envelope columns should hold a bare address, but a candidate can arrive as
+    /// <c>Zoe &lt;zoe@example.test&gt;</c>. Extracting the bracket contents before masking prevents
+    /// the mask from carrying the closing angle bracket into the display label. An unmatched
+    /// bracket, an empty result or internal whitespace is refused rather than repaired.
+    /// </remarks>
+    private static string? ExtractAddress(string candidate)
+    {
+        var value = candidate.Trim();
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        var open = value.LastIndexOf('<');
+        if (open >= 0)
+        {
+            var close = value.IndexOf('>', open + 1);
+            if (close < 0)
+            {
+                return null;
+            }
+
+            value = value[(open + 1)..close].Trim();
+            return value.Length == 0 ? null : value;
+        }
+
+        // A closing bracket with no opening one is not a display-name form and not a bare address.
+        return value.Contains('>', StringComparison.Ordinal) ? null : value;
+    }
+
+    /// <summary>Dot-atom local part: ASCII atext, no leading/trailing or doubled dot.</summary>
+    private static bool IsValidLocal(string local)
+    {
+        const string atext = "!#$%&'*+-/=?^_`{|}~.";
+
+        if (local.Length is 0 or > 64 || local[0] == '.' || local[^1] == '.')
+        {
+            return false;
+        }
+
+        if (local.Contains("..", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (var rune in local.EnumerateRunes())
+        {
+            if (rune.IsAscii && char.IsAsciiLetterOrDigit((char)rune.Value))
+            {
+                continue;
+            }
+
+            if (rune.IsAscii && atext.Contains((char)rune.Value, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Non-ASCII local parts are legal in SMTPUTF8 but this route does not attempt to
+            // normalise them. "Not maskable" is the honest answer; a mangled mask is not.
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>ASCII DNS labels, at least one, no empty or hyphen-edged label.</summary>
+    private static bool IsValidDomain(string domain)
+    {
+        if (domain.Length is 0 or > 253 || domain[0] == '.' || domain[^1] == '.')
+        {
+            return false;
+        }
+
+        foreach (var label in domain.Split('.'))
+        {
+            if (label.Length is 0 or > 63 || label[0] == '-' || label[^1] == '-')
+            {
+                return false;
+            }
+
+            foreach (var character in label)
+            {
+                if (!char.IsAsciiLetterOrDigit(character) && character != '-')
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private sealed record MaskedRecipient(string? Label, string? Domain, string? Reason);

@@ -431,6 +431,14 @@ public static class QueueSchema
         CREATE INDEX IF NOT EXISTS ix_queue_item_tenant_message
             ON queue_item (tenant_id, internal_message_id);
 
+        -- The entity directory recovers a masked address from recent envelopes. That lookup asks
+        -- for one direction ordered by time, and the window index above puts created_at before
+        -- direction, so the direction is a residual predicate: a tenant with a million outbound
+        -- messages and few inbound would walk the whole outbound history to fill a page of inbound
+        -- correspondents. Direction-first makes both candidate scans a two-column seek.
+        CREATE INDEX IF NOT EXISTS ix_queue_item_tenant_direction_created
+            ON queue_item (tenant_id, direction, created_at);
+
         -- One submission per tenant per idempotency key. Partial, because most SMTP submissions
         -- carry no key and NULLs must not collide. This index is what makes a concurrent double
         -- submission safe: the loser of the race is rejected by the database, not by a

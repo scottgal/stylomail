@@ -748,6 +748,57 @@ public sealed class SummaryEndpointsTests
     }
 
     [Fact]
+    public async Task A_display_name_candidate_is_extracted_and_malformed_values_are_refused()
+    {
+        using var host = new TestHost().WithClock().WithProfileMasterKey(ProfileKey);
+        var at = host.Clock.GetUtcNow();
+        var hasher = new ProfileKeyHasher(Encoding.UTF8.GetBytes(ProfileKey));
+
+        // The envelope column should hold a bare address, but a candidate can arrive in the
+        // display-name form. The mask must show the extracted address, never the closing bracket.
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "Zoe <zoe@example.test>", recipient: "owner@acme.test");
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "Zoe <zoe@example.test>") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at);
+
+        // Surrounding whitespace is trimmed, not rendered.
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "  bob@example.test  ", recipient: "owner@acme.test");
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "bob@example.test") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at.AddMinutes(1));
+
+        // The control for the refusal path: a value with no local part and no domain.
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Queued,
+            mailFrom: "not an address", recipient: "owner@acme.test");
+        InsertProfile(host, Acme, "InboundSenderIdentity",
+            hasher.Hash(Acme, "not an address") + "|auth=none#inbound",
+            MailDirection.Inbound, attempts: 1, lastObservedAt: at.AddMinutes(2));
+
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await client.GetAsync("/v1/entities?kind=recipient");
+        var body = await response.Content.ReadAsStringAsync();
+        var page = JsonSerializer.Deserialize<EntityDirectoryResponse>(body, Json)!;
+
+        var zoe = Assert.Single(page.Entities, entity => entity.DisplayLabel == "z***@example.test");
+        Assert.Equal("example.test", zoe.Domain);
+
+        var bob = Assert.Single(page.Entities, entity => entity.DisplayLabel == "b***@example.test");
+        Assert.Equal("example.test", bob.Domain);
+
+        var malformed = Assert.Single(page.Entities, entity =>
+            entity.DisplayLabelReason == SummaryReasons.AddressNotMaskable);
+        Assert.Null(malformed.DisplayLabel);
+
+        // Neither the raw forms nor the display-name wrapper survives into the response.
+        Assert.DoesNotContain("zoe@example.test", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("bob@example.test", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zoe <", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("not an address", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_masked_label_scan_is_capped_and_says_when_it_stopped()
     {
         using var host = WithEntityScanCap(new TestHost().WithClock().WithProfileMasterKey(ProfileKey), 1);
@@ -1074,7 +1125,8 @@ public sealed class SummaryEndpointsTests
         });
 
         Assert.Contains(inboundCandidates, detail =>
-            detail.Contains("ix_queue_item_tenant_created", StringComparison.Ordinal));
+            detail.Contains("ix_queue_item_tenant_direction_created", StringComparison.Ordinal)
+            && detail.Contains("direction=?", StringComparison.Ordinal));
         Assert.DoesNotContain(inboundCandidates, detail =>
             detail.Contains("SCAN queue_item", StringComparison.Ordinal));
 
@@ -1087,9 +1139,12 @@ public sealed class SummaryEndpointsTests
             });
 
         Assert.Contains(outboundCandidates, detail =>
-            detail.Contains("ix_queue_item_tenant_created", StringComparison.Ordinal));
+            detail.Contains("ix_queue_item_tenant_direction_created", StringComparison.Ordinal)
+            && detail.Contains("direction=?", StringComparison.Ordinal));
         Assert.DoesNotContain(outboundCandidates, detail =>
             detail.Contains("SCAN queue_item", StringComparison.Ordinal));
+        Assert.Contains(outboundCandidates, detail =>
+            detail.Contains("sqlite_autoindex_queue_recipient_1", StringComparison.Ordinal));
         Assert.DoesNotContain(outboundCandidates, detail =>
             detail.Contains("SCAN queue_recipient", StringComparison.Ordinal));
     }
