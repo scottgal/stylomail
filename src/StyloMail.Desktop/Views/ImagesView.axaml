@@ -46,7 +46,9 @@
             <ItemsControl ItemsSource="{Binding Messages}" AutomationProperties.AutomationId="images-messages">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Classes="dashboardCard" Margin="0,0,0,8">
+                        <Border Classes="dashboardCard"
+                                Margin="0,0,0,8"
+                                AutomationProperties.AutomationId="image-message">
                             <StackPanel Spacing="4">
                                 <TextBlock Classes="rowTitle" Text="{Binding Title}" />
                                 <TextBlock Classes="dashboardCoverage" Text="{Binding ObservedLabel}" />
@@ -57,7 +59,9 @@
                                 <ItemsControl ItemsSource="{Binding Observations}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Classes="card" Margin="0,4,0,0">
+                                            <Border Classes="card"
+                                                    Margin="0,4,0,0"
+                                                    AutomationProperties.AutomationId="image-observation">
                                                 <StackPanel Spacing="2">
                                                     <TextBlock Classes="cardTitle" Text="{Binding Title}" />
                                                     <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />

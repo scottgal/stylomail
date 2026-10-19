@@ -1,0 +1,52 @@
+name: console-images-live-capture
+description: >
+  External-Host capture of the Images page against a real image observation.
+  No fixture. The conversation picker selects the first thread the Host returns;
+  the observation card is asserted before the frame.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "name=StatusHeadlineText"
+    matcher: HasText
+    value: "Connected"
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Images)"
+    description: "Open the image observation page"
+
+  - type: Expect
+    target: "testid=images-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=images-conversations"
+    matcher: IsVisible
+
+  - type: Wait
+    value: "1200"
+
+  - type: Expect
+    target: "testid=images-messages"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Expect
+    target: "testid=image-observation"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Expect
+    target: "text=Inspected"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "text=Detected"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "images-1180x720"
+    composite: true
+    description: "Images page at 1180x720 over a real observation: conversation picker, counts, format, dimensions and findings"
