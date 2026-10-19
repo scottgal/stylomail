@@ -70,6 +70,9 @@ public partial class MainWindow : Window
     /// </summary>
     private readonly DashboardViewModel _dashboard;
 
+    /// <summary>The people directory, built with the window because it holds the client.</summary>
+    private readonly RecipientsViewModel _recipients;
+
     /// <summary>
     /// Set while a row's open button is assigning the selection itself.
     /// </summary>
@@ -112,7 +115,9 @@ public partial class MainWindow : Window
         // blank with every test still green.
         _model = ShellModel.CreateDefault(services?.HostAddress);
         _dashboard = new DashboardViewModel(services?.Client, services?.Conversations);
+        _recipients = new RecipientsViewModel(services?.Client);
         _model.Dashboard = _dashboard;
+        _model.Recipients = _recipients;
 
         AvaloniaXamlLoader.Load(this);
 
@@ -126,6 +131,8 @@ public partial class MainWindow : Window
             }
         };
         _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
+        _recipients.ProfileRequested += (_, row) =>
+            _ = OpenEntityProfileAsync(row.ProfileKind, row.ScopeId, row.CompanyId);
 
 #if DEBUG
         // A harness affordance, not a product behaviour. The reason rows live
@@ -151,6 +158,7 @@ public partial class MainWindow : Window
             {
                 await RefreshHostAsync().ConfigureAwait(true);
                 await LoadSendersAsync().ConfigureAwait(true);
+                await LoadQueueCountsAsync().ConfigureAwait(true);
                 await LoadSelectionAsync().ConfigureAwait(true);
 #if DEBUG
                 await LoadHarnessDecisionAsync().ConfigureAwait(true);
@@ -341,6 +349,28 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Reads the Host's current queue counts for the four queue badges.
+    /// </summary>
+    /// <remarks>
+    /// A failure leaves the previous badges in place rather than printing zeros. The status bar
+    /// already carries the reason, and a queue that lost its count is not an empty queue.
+    /// </remarks>
+    public async Task LoadQueueCountsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_services is null) return;
+
+        try
+        {
+            var summary = await _services.Client.GetQueueSummaryAsync(cancellationToken).ConfigureAwait(false);
+            await OnUiThreadAsync(() => _model.ApplyQueueCounts(summary.Counts)).ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            Console.Error.WriteLine($"[Queues] {failure.Failure}: {failure.Message}");
+        }
+    }
+
+    /// <summary>
     /// Loads whatever the selected sidebar entry lists.
     /// </summary>
     /// <remarks>
@@ -363,6 +393,16 @@ public partial class MainWindow : Window
             // is the one place that knows which thread the bindings live on.
             await Dispatcher.UIThread
                 .InvokeAsync(async () => await _dashboard.LoadAsync(cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
+        if (_model.IsRecipientsSelected)
+        {
+            // The directory fills bound properties, so it has the same UI-thread
+            // requirement as the dashboard.
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _recipients.LoadAsync(cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
             return _services is not null;
         }
@@ -692,6 +732,7 @@ public partial class MainWindow : Window
         if (request.Kind == Models.ActionKind.ReleaseQuarantine)
         {
             await LoadSelectionAsync(cancellationToken).ConfigureAwait(false);
+            await LoadQueueCountsAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -1079,7 +1120,9 @@ public partial class MainWindow : Window
 
             await RefreshHostAsync().ConfigureAwait(true);
             _dashboard.SetClients(_services.Client, _services.Conversations);
+            _recipients.SetClient(_services.Client);
             await LoadSendersAsync().ConfigureAwait(true);
+            await LoadQueueCountsAsync().ConfigureAwait(true);
             await LoadSelectionAsync().ConfigureAwait(true);
 
             // The old feed was to the old Host. Leaving it subscribed would have
@@ -1230,6 +1273,8 @@ public partial class MainWindow : Window
                 // trip, which is the cheap way to be wrong.
                 _ => ResynchroniseAsync(),
             }).ConfigureAwait(true);
+
+            await LoadQueueCountsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1316,15 +1361,62 @@ public partial class MainWindow : Window
     public async Task OpenEntityProfileAsync(SidebarItem sender, CancellationToken cancellationToken = default)
     {
         if (_services is null || string.IsNullOrWhiteSpace(sender.PrincipalId)) return;
-        var client = _services.Client;
+
         try
         {
-            var settings = await client.GetSenderSettingsAsync(sender.PrincipalId, cancellationToken).ConfigureAwait(false);
-            var profile = await client.GetProfileAsync("entity", sender.PrincipalId, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var settings = await _services.Client
+                .GetSenderSettingsAsync(sender.PrincipalId, cancellationToken)
+                .ConfigureAwait(false);
+
+            await OpenEntityProfileAsync("entity", sender.PrincipalId, settings.CompanyId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (StyloMailApiException failure)
+        {
+            await OnUiThreadAsync(() => _model.CompleteAction(
+                $"Could not read this entity profile. {failure.Detail ?? failure.Code}", failed: true)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Opens the read-only evidence profile for one directory scope.
+    /// </summary>
+    /// <remarks>
+    /// A directory row maps to the profile route's own scope kind: sender and recipient rows are
+    /// <c>entity</c>, while a company row is <c>company</c> and a domain row is <c>domain</c>. The
+    /// dialog is the same one the sender sidebar uses, so there is one profile surface rather than
+    /// two that can drift.
+    /// </remarks>
+    public async Task OpenEntityProfileAsync(
+        string kind,
+        string id,
+        string? companyId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_services is null || string.IsNullOrWhiteSpace(id)) return;
+        var client = _services.Client;
+
+        try
+        {
+            var profile = await client
+                .GetProfileAsync(kind, id, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
             PolicyEffectiveBindingResponse? binding = null;
-            try { binding = await client.GetEffectivePolicyBindingAsync(sender.PrincipalId, settings.CompanyId, cancellationToken).ConfigureAwait(false); }
-            catch (StyloMailApiException) { /* Profile remains usable; its line says policy was unavailable. */ }
-            var evidence = await Task.WhenAll(profile.Kpis.Select(kpi => LoadEvidenceAsync(kpi))).ConfigureAwait(false);
+            try
+            {
+                binding = await client.GetEffectivePolicyBindingAsync(id, companyId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (StyloMailApiException)
+            {
+                // The profile remains usable; its line says policy was unavailable.
+            }
+
+            var evidence = await Task.WhenAll(
+                profile.Kpis.Select(kpi => LoadProfileEvidenceAsync(client, profile, kpi, cancellationToken)))
+                .ConfigureAwait(false);
+
             await Dispatcher.UIThread.InvokeAsync(async () =>
             {
                 var profileView = new EntityProfileView(profile, binding);
@@ -1335,27 +1427,35 @@ public partial class MainWindow : Window
                     if (result.Evidence is not null) tile.ApplyEvidence(result.Evidence);
                     else tile.SetEvidenceUnavailable(result.Failure ?? "reason not supplied");
                 }
+
                 var dialog = new EntityProfileDialog(profileView);
                 await dialog.ShowDialog(this);
             }).ConfigureAwait(false);
-
-            async Task<(string DefinitionId, KpiEvidenceResponse? Evidence, string? Failure)> LoadEvidenceAsync(KpiValueResponse kpi)
-            {
-                try
-                {
-                    var result = await client.GetKpiEvidenceAsync(kpi.Definition.Id, profile.Scope.Kind, profile.Scope.Id, cancellationToken: cancellationToken).ConfigureAwait(false);
-                    return (kpi.Definition.Id, result, null);
-                }
-                catch (StyloMailApiException failure)
-                {
-                    return (kpi.Definition.Id, null, failure.Detail ?? failure.Code);
-                }
-            }
         }
         catch (StyloMailApiException failure)
         {
             await OnUiThreadAsync(() => _model.CompleteAction(
                 $"Could not read this entity profile. {failure.Detail ?? failure.Code}", failed: true)).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<(string DefinitionId, KpiEvidenceResponse? Evidence, string? Failure)> LoadProfileEvidenceAsync(
+        StyloMailApiClient client,
+        ProfileResponse profile,
+        KpiValueResponse kpi,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await client
+                .GetKpiEvidenceAsync(kpi.Definition.Id, profile.Scope.Kind, profile.Scope.Id, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            return (kpi.Definition.Id, result, null);
+        }
+        catch (StyloMailApiException failure)
+        {
+            return (kpi.Definition.Id, null, failure.Detail ?? failure.Code);
         }
     }
 

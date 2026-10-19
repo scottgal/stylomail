@@ -120,6 +120,15 @@ public sealed class ShellModel : ObservableObject
 
     private DashboardViewModel? _dashboard;
 
+    /// <summary>The people directory model, when the window has built one.</summary>
+    public RecipientsViewModel? Recipients
+    {
+        get => _recipients;
+        set => Set(ref _recipients, value);
+    }
+
+    private RecipientsViewModel? _recipients;
+
     public ObservableCollection<MessageRow> Messages { get; } = [];
 
     /// <summary>
@@ -269,6 +278,8 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(HasSelectedPaneTechnicalDetail));
             Raise(nameof(EmptyListDetail));
             Raise(nameof(IsDashboardSelected));
+            Raise(nameof(IsRecipientsSelected));
+            Raise(nameof(ShowQueuePanes));
 
             // The detail pane's empty text is written for the destination that
             // is selected: a ledger entry and a queue give different
@@ -286,6 +297,12 @@ public sealed class ShellModel : ObservableObject
     /// </remarks>
     public bool IsDashboardSelected => SelectedItem?.IsDashboard == true;
 
+    /// <summary>Whether the people directory is the selected destination.</summary>
+    public bool IsRecipientsSelected => SelectedItem?.IsRecipients == true;
+
+    /// <summary>Whether the list and detail panes should be on screen.</summary>
+    public bool ShowQueuePanes => !IsDashboardSelected && !IsRecipientsSelected;
+
     private void OnSelectedItemChanged(object? sender, PropertyChangedEventArgs e)
     {
         Raise(nameof(SelectedPaneTitle));
@@ -294,6 +311,8 @@ public sealed class ShellModel : ObservableObject
         Raise(nameof(HasSelectedPaneTechnicalDetail));
         Raise(nameof(EmptyListDetail));
         Raise(nameof(IsDashboardSelected));
+        Raise(nameof(IsRecipientsSelected));
+        Raise(nameof(ShowQueuePanes));
     }
 
     public MessageRow? SelectedMessage
@@ -692,9 +711,12 @@ public sealed class ShellModel : ObservableObject
         [
             new SidebarItem(
                 "Recipients",
-                SidebarItemState.AwaitingRoute,
+                SidebarItemState.Available,
                 "People and companies you correspond with",
-                "The people directory is being prepared. Sending accounts are shown below."),
+                "No people yet.")
+            {
+                IsRecipients = true,
+            },
         ]));
 
         // Filled from GET /v1/senders once the window opens, one section per
@@ -794,6 +816,35 @@ public sealed class ShellModel : ObservableObject
 
         return model;
     }
+
+    /// <summary>
+    /// Applies the Host's current queue counts to the four queue rows.
+    /// </summary>
+    /// <remarks>
+    /// The counts overlap: the awaiting-decision row is the union of the other three, so the rail
+    /// shows four numbers and never a total. A null count is shown as a question mark.
+    /// </remarks>
+    public void ApplyQueueCounts(QueueCounts counts)
+    {
+        ArgumentNullException.ThrowIfNull(counts);
+
+        foreach (var item in Sections.SelectMany(section => section.Items))
+        {
+            var badge = item.Queue switch
+            {
+                MessageListState.AwaitingDecision => FormatCount(counts.AwaitingDecision),
+                MessageListState.Held => FormatCount(counts.Held),
+                MessageListState.Quarantined => FormatCount(counts.Quarantined),
+                MessageListState.Review => FormatCount(counts.Review),
+                _ => null,
+            };
+
+            item.SetBadge(badge);
+        }
+    }
+
+    private static string? FormatCount(long? value)
+        => value is { } count ? count.ToString("N0", CultureInfo.InvariantCulture) : "?";
 
     /// <summary>
     /// Replaces the senders section with the principals the Host reports.
@@ -1433,6 +1484,16 @@ public sealed class MessageRow
     };
 
     public bool HasStateExplanation => StateExplanation.Length > 0;
+
+    /// <summary>The row's plain title. The queue id is technical and stays out of the default list.</summary>
+    public string RecipientTitle => Recipients.Count == 0
+        ? "No recipient"
+        : "To " + RecipientsLabel;
+
+    /// <summary>When the Host durably accepted the message, in local time.</summary>
+    public string CreatedAtLabel => CreatedAt is { } created
+        ? "Received " + created.ToLocalTime().ToString("d MMM HH:mm", CultureInfo.InvariantCulture)
+        : "Received time not recorded.";
 
     public string RecipientsLabel => Recipients.Count switch
     {

@@ -1,0 +1,65 @@
+name: console-slice2-smoke
+description: >
+  Drives the people directory and one real Mail queue against a throwaway Host
+  with a working local assessor. The Host has one accepted, held submission, a
+  seeded company and the harness principal, so the directory and the queue are
+  real rows rather than fixtures. The two frames are governed harness captures.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Recipients)"
+    description: "Open the people directory"
+
+  - type: Expect
+    target: "testid=recipients-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=recipients-status"
+    matcher: ContainsText
+    value: "person"
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=recipients-list"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "type=Button:has-text(Open profile)"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "recipients-1180x720"
+    composite: true
+    description: "People directory at 1180x720 with a real correspondent row and a profile action"
+
+  - type: Click
+    target: "type=Button:has-text(Being re-checked before delivery)"
+    description: "Open the held Mail queue"
+
+  - type: Expect
+    target: "name=PaneTitleText"
+    matcher: HasText
+    value: "Being re-checked before delivery"
+    timeout: 15000
+
+  - type: Expect
+    target: "name=MessageList"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text=Received"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "mail-queue-1180x720"
+    composite: true
+    description: "Held Mail queue at 1180x720 with a real row, plain state and its time"

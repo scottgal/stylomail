@@ -333,6 +333,28 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- ================= tabs ================= -->
+
+    <Style Selector="Button.tab">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#DCDCE1" />
+    </Style>
+
+    <Style Selector="Button.tab.selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource ConsoleAccent}" />
+    </Style>
+
+    <Style Selector="Button.tab.selected">
+        <Setter Property="Foreground" Value="White" />
+    </Style>
+
     <!-- ================= dashboard ================= -->
 
     <Style Selector="TextBlock.dashboardHeadline">

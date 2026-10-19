@@ -870,7 +870,7 @@ public sealed class ShellModelTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void Every_blocked_destination_speaks_in_the_operators_terms()
+    public void No_default_destination_is_blocked_now_that_the_directory_is_available()
     {
         var model = ShellModel.CreateDefault();
 
@@ -879,12 +879,14 @@ public sealed class ShellModelTests
             .Where(item => item.IsBlocked)
             .ToList();
 
-        // The set is asserted rather than one absence, so the next entry to be
-        // unblocked, or the next one to be blocked, has to come here and say so.
-        var waiting = Assert.Single(blocked);
-        Assert.Equal("Recipients", waiting.Title);
-        Assert.Equal("People and companies you correspond with", waiting.Detail);
-        Assert.DoesNotContain("GET /v1", waiting.Detail, StringComparison.Ordinal);
+        Assert.Empty(blocked);
+
+        var recipients = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Title == "Recipients");
+
+        Assert.Equal(SidebarItemState.Available, recipients.State);
+        Assert.Equal("People and companies you correspond with", recipients.Detail);
     }
 
     [Fact]

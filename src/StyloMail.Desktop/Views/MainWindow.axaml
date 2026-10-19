@@ -193,7 +193,7 @@
                                                                 Classes="navRow"
                                                                 Classes.selected="{Binding IsSelected}"
                                                                 Click="OnSidebarItemClick">
-                                                            <Grid ColumnDefinitions="Auto,*">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto">
                                                                 <Ellipse Grid.Column="0"
                                                                          Classes="blockedMarker"
                                                                          IsVisible="{Binding IsBlocked}" />
@@ -207,6 +207,15 @@
                                                                                TextWrapping="Wrap"
                                                                                Text="{Binding Detail}" />
                                                                 </StackPanel>
+
+                                                                <Border Grid.Column="2"
+                                                                        Classes="dashboardChip"
+                                                                        Margin="6,0,0,0"
+                                                                        VerticalAlignment="Center"
+                                                                        IsVisible="{Binding HasBadge}"
+                                                                        ToolTip.Tip="Current queue count. A question mark means the Host did not count this state.">
+                                                                    <TextBlock Classes="dashboardChipText" Text="{Binding Badge}" />
+                                                                </Border>
                                                             </Grid>
                                                         </Button>
 
@@ -258,7 +267,7 @@
             <Border Grid.Column="1" Classes="separator" />
 
             <!-- ============ 2. list ============ -->
-            <Border Grid.Column="2" Classes="list" IsVisible="{Binding !IsDashboardSelected}">
+            <Border Grid.Column="2" Classes="list" IsVisible="{Binding ShowQueuePanes}">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="16,12,16,10">
                         <Grid ColumnDefinitions="*,Auto">
@@ -277,6 +286,11 @@
                                 <TextBlock x:Name="PaneDetailText"
                                            Classes="paneDetail"
                                            Text="{Binding SelectedPaneDetail}" />
+                                <TextBlock Classes="paneDetail"
+                                           Margin="0,4,0,0"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding HasMessages}"
+                                           Text="Sender label and subject are not available. Open the decision for evidence." />
                                 <Expander x:Name="QueueTechnicalDetailExpander"
                                           Margin="0,6,0,0"
                                           Header="Why? View queue details"
@@ -396,39 +410,43 @@
                                     empty columns are a promise the console
                                     cannot keep.
                                 -->
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="rowTitle" Text="{Binding QueueId}" />
-                                        <TextBlock Classes="rowSubtitle" Text="{Binding RecipientsLabel}" />
-                                        <TextBlock Classes="rowSubtitle"
+                                <StackPanel Margin="0,4" Spacing="2">
+                                    <TextBlock Classes="rowTitle"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding RecipientTitle}" />
+                                    <TextBlock Classes="rowSubtitle" Text="{Binding CreatedAtLabel}" />
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Classes="rowTitle"
                                                    TextWrapping="Wrap"
-                                                   IsVisible="{Binding HasStateExplanation}"
-                                                   Text="{Binding StateExplanation}" />
+                                                   Text="{Binding StateLabel}" />
+                                        <TextBlock Classes="rowSubtitle"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding AttemptsLabel}" />
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                        <TextBlock Classes="rowTitle" Text="{Binding StateLabel}" />
-                                        <TextBlock Classes="rowSubtitle" Text="{Binding AttemptsLabel}" />
+                                    <TextBlock Classes="rowSubtitle"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding HasStateExplanation}"
+                                               Text="{Binding StateExplanation}" />
 
-                                        <!--
-                                            The ledger's row button, for the
-                                            same reason and added the same way:
-                                            a driving script clicks by raising
-                                            the control's Click event, which a
-                                            ListBoxItem has no handler for, and
-                                            this is the affordance that makes
-                                            "why was this held" reachable from
-                                            the list rather than only from the
-                                            ledger.
-                                        -->
-                                        <Button Classes="rowButton"
-                                                HorizontalAlignment="Right"
-                                                Margin="0,4,0,0"
-                                                Content="View email status"
-                                                AutomationProperties.AutomationId="{Binding OpenAutomationId}"
-                                                Click="OnOpenMessageClick" />
-                                    </StackPanel>
-                                </Grid>
+                                    <!--
+                                        The ledger's row button, for the same
+                                        reason and added the same way: a driving
+                                        script clicks by raising the control's
+                                        Click event, which a ListBoxItem has no
+                                        handler for, and this is the affordance
+                                        that makes "why was this held" reachable
+                                        from the list rather than only from the
+                                        ledger.
+                                    -->
+                                    <Button Classes="rowButton"
+                                            HorizontalAlignment="Left"
+                                            Margin="0,4,0,0"
+                                            Content="View email status"
+                                            AutomationProperties.AutomationId="{Binding OpenAutomationId}"
+                                            Click="OnOpenMessageClick" />
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -533,10 +551,10 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Column="3" Classes="separator" IsVisible="{Binding !IsDashboardSelected}" />
+            <Border Grid.Column="3" Classes="separator" IsVisible="{Binding ShowQueuePanes}" />
 
             <!-- ============ 3. detail ============ -->
-            <Border Grid.Column="4" Classes="detail" IsVisible="{Binding !IsDashboardSelected}">
+            <Border Grid.Column="4" Classes="detail" IsVisible="{Binding ShowQueuePanes}">
               <!--
                   A DockPanel, not a Panel: the feedback bar docks to the bottom
                   and a Panel ignores docking, so the bar landed on top of the
@@ -1020,6 +1038,13 @@
                     Background="{StaticResource ConsoleSurface}"
                     IsVisible="{Binding IsDashboardSelected}">
                 <local:DashboardView DataContext="{Binding Dashboard}" />
+            </Border>
+
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsRecipientsSelected}">
+                <local:RecipientsView DataContext="{Binding Recipients}" />
             </Border>
         </Grid>
     </DockPanel>

@@ -1,0 +1,127 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.RecipientsView">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,16,24"
+                    Spacing="10"
+                    AutomationProperties.AutomationId="recipients-page">
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="3">
+                    <TextBlock Classes="dashboardHeadline" Text="People" />
+                    <TextBlock Classes="dashboardDetail"
+                               Text="People and companies you correspond with." />
+                </StackPanel>
+                <TextBlock Grid.Column="1"
+                           x:Name="RecipientsStatusText"
+                           Classes="paneDetail"
+                           AutomationProperties.AutomationId="recipients-status"
+                           MaxWidth="360"
+                           TextAlignment="Right"
+                           TextWrapping="Wrap"
+                           Text="{Binding StatusLabel}" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                <Button x:Name="PeopleTabButton"
+                        Classes="tab"
+                        Classes.selected="{Binding IsPeopleKind}"
+                        Content="People"
+                        AutomationProperties.AutomationId="recipients-tab-people"
+                        Click="OnPeopleClick" />
+                <Button x:Name="SendersTabButton"
+                        Classes="tab"
+                        Classes.selected="{Binding IsSenderKind}"
+                        Content="Sending accounts"
+                        AutomationProperties.AutomationId="recipients-tab-senders"
+                        Click="OnSendersClick" />
+                <Button x:Name="CompaniesTabButton"
+                        Classes="tab"
+                        Classes.selected="{Binding IsCompanyKind}"
+                        Content="Companies"
+                        AutomationProperties.AutomationId="recipients-tab-companies"
+                        Click="OnCompaniesClick" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2,0,0">
+                <TextBox x:Name="RecipientSearchBox"
+                         Watermark="Search by label, domain or company"
+                         MaxLength="128"
+                         Text="{Binding SearchText, Mode=TwoWay}" />
+                <Button Grid.Column="1"
+                        Classes="rowButton"
+                        Margin="8,0,0,0"
+                        Content="Search"
+                        AutomationProperties.AutomationId="recipients-search"
+                        Click="OnSearchClick" />
+                <Button Grid.Column="2"
+                        Classes="linkButton"
+                        Margin="8,0,0,0"
+                        Content="Clear"
+                        AutomationProperties.AutomationId="recipients-clear"
+                        Click="OnClearClick" />
+            </Grid>
+
+            <TextBlock Classes="dashboardCoverage" Text="{Binding CoverageLabel}" />
+
+            <ItemsControl x:Name="RecipientsList"
+                          ItemsSource="{Binding Rows}"
+                          IsVisible="{Binding HasRows}"
+                          AutomationProperties.AutomationId="recipients-list">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Classes="dashboardCard" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                        <Border Classes="dashboardChip"
+                                                Background="#FDF6E8"
+                                                IsVisible="{Binding HasWarning}">
+                                            <TextBlock Classes="dashboardChipText" Text="{Binding WarningLabel}" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <TextBlock Classes="rowSubtitle"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Detail}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding VolumeLabel}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding LastContactLabel}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding EvidenceLabel}" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Classes="rowButton"
+                                        VerticalAlignment="Top"
+                                        Content="Open profile"
+                                        AutomationProperties.AutomationId="{Binding ProfileAutomationId}"
+                                        Click="OnProfileClick" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="dashboardGap" IsVisible="{Binding ShowEmpty}">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="cardTitle" Text="Nothing to show" />
+                    <TextBlock Classes="cardBody"
+                               TextWrapping="Wrap"
+                               Text="{Binding EmptyLabel}" />
+                </StackPanel>
+            </Border>
+
+            <Button Classes="linkButton"
+                    HorizontalAlignment="Left"
+                    Content="Load more"
+                    IsVisible="{Binding ShowLoadMore}"
+                    AutomationProperties.AutomationId="recipients-load-more"
+                    Click="OnLoadMoreClick" />
+
+            <TextBlock Classes="dashboardCoverage"
+                       Margin="0,10,0,0"
+                       Text="A volume trend is not available in this directory. Volume is a lifetime observation count; open a profile for its measures." />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

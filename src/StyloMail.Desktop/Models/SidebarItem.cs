@@ -76,6 +76,31 @@ public sealed class SidebarItem : ObservableObject
     /// </remarks>
     public bool IsDashboard { get; }
 
+    /// <summary>Whether this destination opens the people directory rather than the queue panes.</summary>
+    public bool IsRecipients { get; init; }
+
+    private string? _badge;
+
+    /// <summary>
+    /// A count for a queue row, from the Host's current summary.
+    /// </summary>
+    /// <remarks>
+    /// A question mark means the Host did not count that state. It is not zero: the summary
+    /// distinguishes a measured zero from an absent count, and the rail must not collapse them.
+    /// </remarks>
+    public string? Badge
+    {
+        get => _badge;
+        private set
+        {
+            if (Set(ref _badge, value)) Raise(nameof(HasBadge));
+        }
+    }
+
+    public bool HasBadge => !string.IsNullOrEmpty(Badge);
+
+    public void SetBadge(string? value) => Badge = value;
+
     /// <summary>
     /// Whether this row's detail is the Host's current status.
     /// </summary>

@@ -771,8 +771,8 @@ actions:
   # an empty state.
 
   - type: Click
-    target: "type=Button:has-text(Companies)"
-    description: "Open the company screen"
+    target: "type=Button:has-text(Group senders into companies)"
+    description: "Open the company screen from its sidebar description, not the hidden directory tab"
 
   - type: Wait
     value: "800"
