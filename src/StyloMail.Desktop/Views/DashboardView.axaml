@@ -1,0 +1,473 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:StyloMail.Desktop.Views.Controls"
+             x:Class="StyloMail.Desktop.Views.DashboardView">
+
+    <UserControl.Resources>
+        <controls:SeverityBrushConverter x:Key="SeverityBrush" />
+        <controls:ChartPaletteBrushConverter x:Key="ChartBrush" />
+    </UserControl.Resources>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,16,24" Spacing="4">
+
+            <!-- The one sentence an operator reads first. -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock x:Name="DashboardHeadlineText"
+                               Classes="dashboardHeadline"
+                               AutomationProperties.AutomationId="dashboard-headline"
+                               Text="{Binding ServiceHeadline}" />
+                    <TextBlock Classes="dashboardDetail" Text="{Binding ServiceDetail}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Classes="paneDetail" Text="{Binding LastUpdatedLabel}" />
+                        <TextBlock Classes="paneDetail" Text="{Binding WarningSummary}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        x:Name="DashboardRefreshButton"
+                        Classes="rowButton"
+                        AutomationProperties.AutomationId="dashboard-refresh"
+                        Content="{Binding RefreshLabel}"
+                        Click="OnRefreshClick"
+                        VerticalAlignment="Top" />
+            </Grid>
+
+            <WrapPanel>
+                <!-- ================= service ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Service" />
+                        <TextBlock x:Name="ServiceHeadlineText"
+                                   Classes="dashboardMetric"
+                                   AutomationProperties.AutomationId="dashboard-service-headline"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ServiceHeadline}" />
+                        <TextBlock Classes="dashboardDetail" Text="{Binding ServiceDetail}" />
+                        <TextBlock Classes="paneDetail" Text="{Binding ServiceUpdatedLabel}" />
+
+                        <controls:SparklineControl Height="36"
+                                                   Margin="0,4,0,0"
+                                                   Series="{Binding ConnectionsChart}"
+                                                   IsVisible="{Binding HasConnectionsChart}"
+                                                   AutomationProperties.Name="Client connections refused or timed out, last 24 hours" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding ConnectionsNote}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= warnings ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Needs your attention" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding WarningSummary}" />
+
+                        <ItemsControl ItemsSource="{Binding Warnings}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="dashboardWarning"
+                                            BorderBrush="{Binding Severity, Converter={StaticResource SeverityBrush}}">
+                                        <StackPanel Spacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Classes="dashboardChipText" Text="{Binding SeverityLabel}" />
+                                                <TextBlock Classes="paneDetail" Text="{Binding Subject}" />
+                                            </StackPanel>
+                                            <TextBlock Classes="cardTitle"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding WhatHappened}" />
+                                            <TextBlock Classes="cardBody"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding NextAction}" />
+                                            <Button Classes="linkButton"
+                                                    HorizontalAlignment="Left"
+                                                    Content="{Binding ActionLabel}"
+                                                    IsVisible="{Binding HasAction}"
+                                                    Click="OnWarningActionClick" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
+
+            <!-- ================= mail flow ================= -->
+            <Border Classes="dashboardCard" Margin="0,0,0,12">
+                <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Classes="dashboardCardTitle" Text="Mail flow" />
+                            <TextBlock Classes="paneDetail"
+                                       AutomationProperties.AutomationId="dashboard-flow-basis"
+                                       Text="{Binding FlowBasisLabel}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Classes="paneDetail"
+                                   MaxWidth="380"
+                                   TextAlignment="Right"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding FlowWindowLabel}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding FlowChart.Legend}" IsVisible="{Binding HasFlowChart}" Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,14,2">
+                                    <Border Width="10"
+                                            Height="10"
+                                            CornerRadius="2"
+                                            VerticalAlignment="Center"
+                                            Background="{Binding PaletteIndex, Converter={StaticResource ChartBrush}}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding Name}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid ColumnDefinitions="44,*"
+                          Height="150"
+                          Margin="0,8,0,0"
+                          IsVisible="{Binding HasFlowChart}"
+                          AutomationProperties.Name="{Binding FlowChart.Summary}">
+                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       Text="{Binding FlowChart.YMaximumLabel}" />
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding FlowChart.YMiddleLabel}" />
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Bottom"
+                                       Text="0" />
+                        </StackPanel>
+                        <controls:TimeChartControl Grid.Column="1" Series="{Binding FlowChart}" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="44,*,*,*" IsVisible="{Binding HasFlowChart}">
+                        <TextBlock Grid.Column="1"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Left"
+                                   TextAlignment="Left"
+                                   Text="{Binding FlowChart.XStartLabel}" />
+                        <TextBlock Grid.Column="2"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Text="{Binding FlowChart.XMiddleLabel}" />
+                        <TextBlock Grid.Column="3"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Right"
+                                   Text="{Binding FlowChart.XEndLabel}" />
+                    </Grid>
+
+                    <Border Classes="dashboardGap" IsVisible="{Binding !HasFlowChart}">
+                        <TextBlock Classes="cardBody"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding FlowNote}" />
+                    </Border>
+
+                    <TextBlock Classes="dashboardCoverage"
+                               IsVisible="{Binding HasFlowChart}"
+                               Text="{Binding FlowTotalsLabel}" />
+                    <TextBlock Classes="dashboardCoverage"
+                               IsVisible="{Binding HasFlowChart}"
+                               Text="{Binding FlowNote}" />
+                    <TextBlock Classes="dashboardCoverage" Text="{Binding FlowAsOfLabel}" />
+                </StackPanel>
+            </Border>
+
+            <WrapPanel>
+                <!-- ================= assessments ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="dashboardCardTitle" Text="Assessments" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding AssessmentsNote}" />
+
+                        <Grid ColumnDefinitions="36,*"
+                              Height="110"
+                              Margin="0,4,0,0"
+                              IsVisible="{Binding HasAssessmentsChart}"
+                              AutomationProperties.Name="{Binding AssessmentsChart.Summary}">
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Classes="dashboardAxis"
+                                           HorizontalAlignment="Right"
+                                           Text="{Binding AssessmentsChart.YMaximumLabel}" />
+                                <TextBlock Classes="dashboardAxis"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Text="{Binding AssessmentsChart.YMiddleLabel}" />
+                                <TextBlock Classes="dashboardAxis"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Bottom"
+                                           Text="0" />
+                            </StackPanel>
+                            <controls:TimeChartControl Grid.Column="1" Series="{Binding AssessmentsChart}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="36,*,*,*" IsVisible="{Binding HasAssessmentsChart}">
+                            <TextBlock Grid.Column="1"
+                                       Classes="dashboardAxis"
+                                       HorizontalAlignment="Left"
+                                       TextAlignment="Left"
+                                       Text="{Binding AssessmentsChart.XStartLabel}" />
+                            <TextBlock Grid.Column="2"
+                                       Classes="dashboardAxis"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Text="{Binding AssessmentsChart.XMiddleLabel}" />
+                            <TextBlock Grid.Column="3"
+                                       Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       Text="{Binding AssessmentsChart.XEndLabel}" />
+                        </Grid>
+
+                        <Border Classes="dashboardGap" IsVisible="{Binding !HasAssessmentsChart}">
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding AssessmentsNote}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= outcome mix ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="dashboardCardTitle" Text="What the decisions did" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding OutcomeChart.CoverageLabel}" />
+
+                        <ItemsControl ItemsSource="{Binding OutcomeChart.Bars}" IsVisible="{Binding HasOutcomeChart}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="120,*,44" Margin="0,3">
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="paneDetail"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Label}" />
+                                        <Grid Grid.Column="1" Height="10" Margin="6,0" VerticalAlignment="Center">
+                                            <Border Background="#EFEFF2" CornerRadius="5" />
+                                            <Border Background="{StaticResource ConsoleAccent}"
+                                                    CornerRadius="5"
+                                                    HorizontalAlignment="Left"
+                                                    Width="{Binding BarWidth}"
+                                                    IsVisible="{Binding HasValue}" />
+                                        </Grid>
+                                        <TextBlock Grid.Column="2"
+                                                   Classes="paneDetail"
+                                                   TextAlignment="Right"
+                                                   Text="{Binding ValueLabel}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Classes="dashboardGap" IsVisible="{Binding !HasOutcomeChart}">
+                            <TextBlock Classes="cardBody"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding AssessmentsNote}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
+
+            <!-- ================= client connections ================= -->
+            <Border Classes="dashboardCard" Margin="0,0,0,12">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="dashboardCardTitle" Text="Client connections" />
+                    <TextBlock Classes="paneDetail" Text="{Binding ConnectionsChart.WindowLabel}" />
+
+                    <ItemsControl ItemsSource="{Binding ConnectionsChart.Legend}" IsVisible="{Binding HasConnectionsChart}" Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,14,2">
+                                    <Border Width="10"
+                                            Height="10"
+                                            CornerRadius="2"
+                                            VerticalAlignment="Center"
+                                            Background="{Binding PaletteIndex, Converter={StaticResource ChartBrush}}" />
+                                    <TextBlock Classes="dashboardCoverage" Text="{Binding Name}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid ColumnDefinitions="44,*"
+                          Height="120"
+                          Margin="0,8,0,0"
+                          IsVisible="{Binding HasConnectionsChart}"
+                          AutomationProperties.Name="{Binding ConnectionsChart.Summary}">
+                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       Text="{Binding ConnectionsChart.YMaximumLabel}" />
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding ConnectionsChart.YMiddleLabel}" />
+                            <TextBlock Classes="dashboardAxis"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Bottom"
+                                       Text="0" />
+                        </StackPanel>
+                        <controls:TimeChartControl Grid.Column="1" Series="{Binding ConnectionsChart}" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="44,*,*,*" IsVisible="{Binding HasConnectionsChart}">
+                        <TextBlock Grid.Column="1"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Left"
+                                   TextAlignment="Left"
+                                   Text="{Binding ConnectionsChart.XStartLabel}" />
+                        <TextBlock Grid.Column="2"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Text="{Binding ConnectionsChart.XMiddleLabel}" />
+                        <TextBlock Grid.Column="3"
+                                   Classes="dashboardAxis"
+                                   HorizontalAlignment="Right"
+                                   Text="{Binding ConnectionsChart.XEndLabel}" />
+                    </Grid>
+
+                    <TextBlock Classes="dashboardCoverage" Text="{Binding ConnectionsNote}" />
+                    <TextBlock Classes="dashboardCoverage"
+                               IsVisible="{Binding HasConnectionsChart}"
+                               Text="{Binding ConnectionsChart.CoverageLabel}" />
+                </StackPanel>
+            </Border>
+
+            <WrapPanel>
+                <!-- ================= people ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="People to look at" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding PeopleNote}" />
+
+                        <ItemsControl ItemsSource="{Binding SendingAccounts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Classes="rowTitle" Text="{Binding Label}" />
+                                            <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Classes="dashboardChip" VerticalAlignment="Top">
+                                            <TextBlock Classes="dashboardChipText" Text="{Binding StateLabel}" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasSendingAccounts}"
+                                   Text="No sending accounts are configured on this Host." />
+                        <Button Classes="linkButton"
+                                HorizontalAlignment="Left"
+                                Content="Open People"
+                                Click="OnOpenPeopleClick" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= conversations ================= -->
+                <Border Classes="dashboardCard" Width="356">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Recent conversations" />
+                        <TextBlock Classes="paneDetail" Text="{Binding ConversationsWindowLabel}" />
+
+                        <ItemsControl ItemsSource="{Binding Conversations}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                        <TextBlock Grid.Column="0" Classes="signalId" Text="{Binding Reference}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Classes="rowSubtitle"
+                                                   Margin="10,0"
+                                                   TextWrapping="Wrap"
+                                                   Text="{Binding Detail}" />
+                                        <TextBlock Grid.Column="2" Classes="rowSubtitle" Text="{Binding LastActivity}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasConversations}"
+                                   Text="{Binding ConversationsNote}" />
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding HasConversations}"
+                                   Text="{Binding ConversationsNote}" />
+                        <Button Classes="linkButton"
+                                HorizontalAlignment="Left"
+                                Content="Open Conversations"
+                                Click="OnOpenConversationsClick" />
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
+
+            <!-- ================= queues and storage ================= -->
+            <Border Classes="dashboardCard" Margin="0,0,0,12">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="dashboardCardTitle" Text="Queue and storage" />
+                    <TextBlock Classes="paneDetail" Text="{Binding QueueAsOfLabel}" />
+                    <TextBlock Classes="dashboardCoverage" Text="{Binding QueueRelationLabel}" />
+
+                    <ItemsControl ItemsSource="{Binding QueueCounts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="220,*,44"
+                                      Margin="0,3"
+                                      AutomationProperties.AutomationId="{Binding AutomationId}">
+                                    <TextBlock Grid.Column="0" Classes="rowTitle" Text="{Binding Label}" />
+                                    <Grid Grid.Column="1" Height="10" Margin="8,0" VerticalAlignment="Center">
+                                        <Border Background="#EFEFF2" CornerRadius="5" />
+                                        <Border Background="{StaticResource ConsoleAccent}"
+                                                CornerRadius="5"
+                                                HorizontalAlignment="Left"
+                                                Width="{Binding BarWidth}" />
+                                    </Grid>
+                                    <TextBlock Grid.Column="2"
+                                               Classes="rowTitle"
+                                               TextAlignment="Right"
+                                               Text="{Binding CountLabel}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Classes="dashboardCoverage" Text="{Binding QueueCoverageLabel}" />
+
+                    <Border Classes="card" Margin="0,10,0,0">
+                        <StackPanel Spacing="3">
+                            <TextBlock Classes="cardTitle" Text="Storage" />
+                            <TextBlock Classes="cardBody"
+                                       AutomationProperties.AutomationId="dashboard-storage-headline"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding StorageHeadline}" />
+                            <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding StorageDetail}" />
+                            <TextBlock Classes="dashboardCoverage" Text="{Binding StorageCoverageLabel}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Expander Header="Technical detail" AutomationProperties.AutomationId="dashboard-technical-detail">
+                <TextBlock Classes="paneDetail"
+                           TextWrapping="Wrap"
+                           Text="Routes read: GET /health/ready; GET /v1/overview/flow?window=last_24_hours; GET /v1/queues/summary; GET /v1/storage/summary; GET /v1/decisions; GET /v1/proxy/connection-outcomes; GET /v1/senders; GET /v1/proxy/conversations?window=last_24_hours. Null means the Host did not produce the series. Zero is a measured zero." />
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

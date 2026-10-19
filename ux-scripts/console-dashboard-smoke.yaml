@@ -1,0 +1,77 @@
+name: console-dashboard-smoke
+description: >
+  Drives the dashboard-first console against a throwaway Host and asserts the
+  four summary routes are consumed: the flow basis, the queue counts, the
+  storage card and the dashboard's own refresh action. Every value is read from
+  the Host, not from a fixture. The frame is a governed harness capture and its
+  data is harness data, not a production reading.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Expect
+    target: "testid=dashboard-service-headline"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=dashboard-flow-basis"
+    matcher: ContainsText
+    value: "Accepted in the last 24 hours, current state"
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=queue-awaiting-decision"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=dashboard-storage-headline"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=dashboard-refresh"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=dashboard-technical-detail"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "dashboard-1180x720"
+    composite: true
+    description: "Dashboard home at 1180x720, real Host data from the four summary routes"
+
+  - type: WindowResize
+    x: 900
+    y: 520
+
+  - type: Wait
+    value: "800"
+
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "testid=queue-awaiting-decision"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Screenshot
+    value: "dashboard-900x520"
+    composite: true
+    description: "Dashboard home at 900x520, the minimum supported size, with no clipped card label"
+
+  - type: Click
+    target: "testid=dashboard-refresh"
+
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 15000

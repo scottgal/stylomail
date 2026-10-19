@@ -171,7 +171,7 @@
             </Grid>
         </Border>
 
-        <Grid ColumnDefinitions="228,1,340,1,*">
+        <Grid ColumnDefinitions="260,1,340,1,*">
 
             <!-- ============ 1. sidebar ============ -->
             <Border Grid.Column="0" Classes="sidebar">
@@ -199,7 +199,9 @@
                                                                          IsVisible="{Binding IsBlocked}" />
 
                                                                 <StackPanel Grid.Column="1">
-                                                                    <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                                                    <TextBlock Classes="rowTitle"
+                                                                               TextWrapping="Wrap"
+                                                                               Text="{Binding Title}" />
                                                                     <TextBlock Classes="rowSubtitle"
                                                                                AutomationProperties.AutomationId="{Binding DetailAutomationId}"
                                                                                Text="{Binding Detail}" />
@@ -254,7 +256,7 @@
             <Border Grid.Column="1" Classes="separator" />
 
             <!-- ============ 2. list ============ -->
-            <Border Grid.Column="2" Classes="list">
+            <Border Grid.Column="2" Classes="list" IsVisible="{Binding !IsDashboardSelected}">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="16,12,16,10">
                         <Grid ColumnDefinitions="*,Auto">
@@ -529,10 +531,10 @@
                 </DockPanel>
             </Border>
 
-            <Border Grid.Column="3" Classes="separator" />
+            <Border Grid.Column="3" Classes="separator" IsVisible="{Binding !IsDashboardSelected}" />
 
             <!-- ============ 3. detail ============ -->
-            <Border Grid.Column="4" Classes="detail">
+            <Border Grid.Column="4" Classes="detail" IsVisible="{Binding !IsDashboardSelected}">
               <!--
                   A DockPanel, not a Panel: the feedback bar docks to the bottom
                   and a Panel ignores docking, so the bar landed on top of the
@@ -1003,6 +1005,19 @@
 
                 </Panel>
               </DockPanel>
+            </Border>
+
+            <!--
+                The dashboard is a destination, not a second window. It takes the
+                list and detail columns while the rail keeps its place, so the
+                status bar and every other destination stay where the operator
+                left them.
+            -->
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsDashboardSelected}">
+                <local:DashboardView DataContext="{Binding Dashboard}" />
             </Border>
         </Grid>
     </DockPanel>

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
+using StyloMail.Desktop.ViewModels;
 
 namespace StyloMail.Desktop.Models;
 
@@ -103,6 +104,22 @@ public sealed class ShellModel : ObservableObject
 
     public ObservableCollection<SidebarSection> Sections { get; } = [];
 
+    /// <summary>
+    /// The dashboard model, when the window has built one.
+    /// </summary>
+    /// <remarks>
+    /// A property on the shell rather than a named child field, because the dashboard view is
+    /// replaced by the XAML loader and the window should not depend on whether a generated field
+    /// survived compilation. The view binds its own data context to this property.
+    /// </remarks>
+    public DashboardViewModel? Dashboard
+    {
+        get => _dashboard;
+        set => Set(ref _dashboard, value);
+    }
+
+    private DashboardViewModel? _dashboard;
+
     public ObservableCollection<MessageRow> Messages { get; } = [];
 
     /// <summary>
@@ -144,7 +161,15 @@ public sealed class ShellModel : ObservableObject
             // when the destination was selected.
             Raise(nameof(EmptyListDetail));
 
-            SelectedItem?.WithDetail(value.Headline);
+            // Every row that represents the Host takes the new headline, not
+            // only the selected one. Readiness often arrives before the operator
+            // selects the Host, and a row that kept "Not checked yet" under a
+            // status bar reading Connected is the disagreement this update exists
+            // to prevent.
+            foreach (var tracked in Sections.SelectMany(section => section.Items).Where(item => item.TracksHostStatus))
+            {
+                tracked.WithDetail(value.Headline);
+            }
         }
     }
 
@@ -220,6 +245,13 @@ public sealed class ShellModel : ObservableObject
             {
                 value.IsSelected = true;
 
+                // A Host row selected after readiness was read takes the current
+                // answer, rather than whatever it held when it was built.
+                if (value.TracksHostStatus)
+                {
+                    value.WithDetail(Status.Headline);
+                }
+
                 // Subscribed rather than recomputed, because the pane header
                 // reads the selected item's detail and that detail changes
                 // later: the Host entry's subtitle is the connection status,
@@ -236,6 +268,7 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(SelectedPaneTechnicalDetail));
             Raise(nameof(HasSelectedPaneTechnicalDetail));
             Raise(nameof(EmptyListDetail));
+            Raise(nameof(IsDashboardSelected));
 
             // The detail pane's empty text is written for the destination that
             // is selected: a ledger entry and a queue give different
@@ -244,6 +277,15 @@ public sealed class ShellModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Whether the window should show the dashboard instead of the list and detail panes.
+    /// </summary>
+    /// <remarks>
+    /// The sidebar stays visible in both modes. The dashboard is a destination, not a second window,
+    /// so an operator can leave it without a modal and the status bar keeps its place.
+    /// </remarks>
+    public bool IsDashboardSelected => SelectedItem?.IsDashboard == true;
+
     private void OnSelectedItemChanged(object? sender, PropertyChangedEventArgs e)
     {
         Raise(nameof(SelectedPaneTitle));
@@ -251,6 +293,7 @@ public sealed class ShellModel : ObservableObject
         Raise(nameof(SelectedPaneTechnicalDetail));
         Raise(nameof(HasSelectedPaneTechnicalDetail));
         Raise(nameof(EmptyListDetail));
+        Raise(nameof(IsDashboardSelected));
     }
 
     public MessageRow? SelectedMessage
@@ -468,8 +511,9 @@ public sealed class ShellModel : ObservableObject
     public string? SelectedPaneTechnicalDetail => SelectedItem?.Queue switch
     {
         MessageListState.AwaitingDecision => "Internal queue state: awaiting_decision.",
-        MessageListState.Held => "Internal queue state: held (scheduled re-check).",
-        MessageListState.Quarantined => "Internal queue state: quarantined (review before delivery).",
+        MessageListState.Held => "Internal queue state: held (being re-checked before delivery).",
+        MessageListState.Quarantined => "Internal queue state: quarantined (stopped before delivery).",
+        MessageListState.Review => "Internal queue state: review (awaiting human review).",
         _ => null,
     };
 
@@ -585,41 +629,73 @@ public sealed class ShellModel : ObservableObject
     {
         var model = new ShellModel { HostAddress = hostAddress?.ToString() ?? string.Empty };
 
+        var dashboard = new SidebarItem(
+            "Dashboard",
+            SidebarItemState.Available,
+            "Service status and what needs you.",
+            "The dashboard is loading.",
+            isDashboard: true);
+
+        var service = new SidebarItem(
+            "Service",
+            SidebarItemState.NotBuilt,
+            "Slice 3. Host detail is under Advanced.",
+            "The Host is the mail service this console manages.")
+        {
+            TracksHostStatus = true,
+        };
+
         var host = new SidebarItem(
             "Host",
             SidebarItemState.Available,
             HostStatus.Unknown.Headline,
-            "This console's connection to the Host. The status bar below shows whether it is reachable.");
+            "This console's connection to the Host. The status bar below shows whether it is reachable.")
+        {
+            TracksHostStatus = true,
+        };
 
-        model.Sections.Add(new SidebarSection("StyloMail", [host]));
+        model.Sections.Add(new SidebarSection("StyloMail", [dashboard, service]));
 
-        // Only the dispositions GET /v1/messages enumerates. The shell
-        // previously offered "Queued" and "Delivered", which the route answers
-        // with a named 400: the queue lists what is waiting for attention, not
-        // what has been accepted. A destination that cannot be requested is
-        // worse than an absent one, because the refusal reads as a fault.
-        model.Sections.Add(new SidebarSection("Queues",
+        // Only the dispositions GET /v1/messages enumerates. The labels are the
+        // approved operator vocabulary: Review and Quarantined stay distinct.
+        model.Sections.Add(new SidebarSection("Mail",
         [
             new SidebarItem(
                 "Needs your decision",
                 SidebarItemState.Available,
-                "Email waiting for a decision before it can move on.",
+                "Email waiting for your decision.",
                 "No email needs your decision right now.",
                 MessageListState.AwaitingDecision),
 
             new SidebarItem(
-                "Being re-checked",
+                "Being re-checked before delivery",
                 SidebarItemState.Available,
-                "Email waiting for its scheduled re-check.",
+                "Email held for its scheduled re-check.",
                 "No email is waiting for a scheduled re-check.",
                 MessageListState.Held),
 
             new SidebarItem(
-                "Review before delivery",
+                "Stopped before delivery",
                 SidebarItemState.Available,
-                "Email stopped before delivery until someone reviews it.",
-                "No email is waiting for review before delivery.",
+                "Email stopped until it is reviewed.",
+                "No email is stopped before delivery.",
                 MessageListState.Quarantined),
+
+            new SidebarItem(
+                "Awaiting human review",
+                SidebarItemState.Available,
+                "Email withheld for a human decision.",
+                "No email is awaiting a human review.",
+                MessageListState.Review),
+        ]));
+
+        model.Sections.Add(new SidebarSection("People",
+        [
+            new SidebarItem(
+                "Recipients",
+                SidebarItemState.AwaitingRoute,
+                "GET /v1/entities",
+                "The people directory is being served by the summary lane. Sending accounts are below."),
         ]));
 
         // Filled from GET /v1/senders once the window opens, one section per
@@ -632,10 +708,45 @@ public sealed class ShellModel : ObservableObject
 
         foreach (var placeholder in model._senderSections) model.Sections.Add(placeholder);
 
-        // Spec 2 names an Operator / tenant admin whose job is configuring the
-        // system, and 10.2's five areas are all review work. This is where that
-        // second job lives.
-        model.Sections.Add(new SidebarSection("Management",
+        model.Sections.Add(new SidebarSection("Conversations",
+        [
+            new SidebarItem(
+                "Conversations",
+                SidebarItemState.Available,
+                "Threads from the last 24 hours.",
+                "Review pseudonymous conversation threads and their safe signal gaps. Message content, addresses, and raw endpoints are not shown."),
+        ]));
+
+        model.Sections.Add(new SidebarSection("Review",
+        [
+            new SidebarItem(
+                "Review queue",
+                SidebarItemState.NotBuilt,
+                "Slice 3. Decisions are under Advanced.",
+                "The review queue is not on this surface yet."),
+        ]));
+
+        model.Sections.Add(new SidebarSection("Policy",
+        [
+            new SidebarItem(
+                "Policy",
+                SidebarItemState.NotBuilt,
+                "Slice 3. Policy routes are ready.",
+                "The policy surface is not on this screen yet."),
+        ]));
+
+        model.Sections.Add(new SidebarSection("Images",
+        [
+            new SidebarItem(
+                "Images",
+                SidebarItemState.NotBuilt,
+                "Slice 3. Image routes are ready.",
+                "The image inspection surface is not on this screen yet."),
+        ]));
+
+        // The operator's configuration, still reachable by the same handlers the
+        // previous shell used. Their titles are part of that contract.
+        model.Sections.Add(new SidebarSection("Settings",
         [
             new SidebarItem(
                 "Connection",
@@ -657,24 +768,14 @@ public sealed class ShellModel : ObservableObject
                 "GET /v1/proxy/accounts, sessions, operations",
                 "Review pseudonymous proxy accounts, live sessions, and named-window operations. "
                     + "Unavailable telemetry is shown as not produced, never as zero."),
-
-            new SidebarItem(
-                "Conversations",
-                SidebarItemState.Available,
-                "GET /v1/proxy/conversations?window=last_24_hours",
-                "Review pseudonymous conversation threads and their safe signal gaps. Message content, addresses, and raw endpoints are not shown."),
         ]));
 
-        model.Sections.Add(new SidebarSection("Review",
+        // Expert reach: every technical screen that was primary before is still
+        // here, behind one disclosure, with the same route and the same pane.
+        model.Sections.Add(new SidebarSection("Advanced",
         [
-            // Unblocked. This entry read "needs a route that enumerates the
-            // ledger" long after the route landed: GET /v1/decisions has been
-            // served since the ledger listing shipped, and the client has been
-            // complete against it. A blocked marker outliving its blocker is
-            // worse than no marker, because it is a statement about the system
-            // that is no longer true and it survives review by looking
-            // deliberate.
-            //
+            host,
+
             // Rows are summaries, so a row opens the full decision over
             // GET /v1/decisions/{id} rather than the list carrying evidence it
             // would have to truncate.
@@ -689,7 +790,8 @@ public sealed class ShellModel : ObservableObject
             },
         ]));
 
-        model.SelectedItem = host;
+        // Dashboard-first. The window opens on the answer, not on a protocol.
+        model.SelectedItem = dashboard;
 
         return model;
     }
@@ -875,7 +977,7 @@ public sealed class ShellModel : ObservableObject
 
         for (var index = 0; index < Sections.Count; index++)
         {
-            if (Sections[index].Title == "Management")
+            if (Sections[index].Title == "Settings")
             {
                 anchor = index;
                 break;
@@ -1303,8 +1405,8 @@ public sealed class MessageRow
     public string StateLabel => State switch
     {
         DeliveryState.Queued => "Ready to send",
-        DeliveryState.Held => "Being re-checked",
-        DeliveryState.Quarantined => "Waiting for review",
+        DeliveryState.Held => "Being re-checked before delivery",
+        DeliveryState.Quarantined => "Stopped before delivery",
         DeliveryState.Review => "Awaiting human review",
         DeliveryState.Delivering => "Sending now",
         DeliveryState.Delivered => "Delivered",

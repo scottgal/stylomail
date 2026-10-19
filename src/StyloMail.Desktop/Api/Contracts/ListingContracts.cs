@@ -29,6 +29,16 @@ public enum MessageListState
 
     /// <summary>Retained for authenticated review and not delivered.</summary>
     Quarantined,
+
+    /// <summary>
+    /// Withheld for an authenticated human review decision.
+    /// </summary>
+    /// <remarks>
+    /// A separate disposition from <see cref="Quarantined"/> on purpose. The Host's queue lists both,
+    /// and a message waiting for a human decision is not the same state as one stopped before
+    /// delivery. The console keeps both names.
+    /// </remarks>
+    Review,
 }
 
 /// <summary>

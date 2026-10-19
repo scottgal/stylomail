@@ -8,6 +8,7 @@ using StyloMail.Desktop.Api;
 using StyloMail.Desktop.Api.Contracts;
 using StyloMail.Desktop.Models;
 using StyloMail.Desktop.Services;
+using StyloMail.Desktop.ViewModels;
 
 namespace StyloMail.Desktop.Views;
 
@@ -64,6 +65,12 @@ public partial class MainWindow : Window
     private readonly ShellModel _model;
 
     /// <summary>
+    /// The dashboard's own model. It is built with the window because it holds the clients, and it is
+    /// handed to the view once the XAML has loaded.
+    /// </summary>
+    private readonly DashboardViewModel _dashboard;
+
+    /// <summary>
     /// Set while a row's open button is assigning the selection itself.
     /// </summary>
     /// <remarks>
@@ -104,10 +111,13 @@ public partial class MainWindow : Window
         // omitting this left the right-hand side of the status bar rendering
         // blank with every test still green.
         _model = ShellModel.CreateDefault(services?.HostAddress);
+        _dashboard = new DashboardViewModel(services?.Client, services?.Conversations);
+        _model.Dashboard = _dashboard;
 
         AvaloniaXamlLoader.Load(this);
 
         DataContext = _model;
+        _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
 
         // On Opened rather than in the constructor: a check started there would
         // run before the window exists and have nowhere to report to, and an
@@ -155,6 +165,9 @@ public partial class MainWindow : Window
     /// </summary>
     public ShellModel Model => _model;
 
+    /// <summary>The dashboard's model, exposed so a harness can read the same cards an operator sees.</summary>
+    public DashboardViewModel Dashboard => _dashboard;
+
     /// <summary>Completes when the window has finished loading what it loads on open.</summary>
     public Task InitialLoad => _initialLoad.Task;
 
@@ -175,6 +188,25 @@ public partial class MainWindow : Window
 
         await OnUiThreadAsync(() => _model.SelectedItem = item).ConfigureAwait(false);
         await LoadSelectionAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Opens a destination named by a dashboard card or warning.
+    /// </summary>
+    /// <remarks>
+    /// The dashboard asks for a title, not an object, because the cards are filled from a background
+    /// continuation and a <see cref="SidebarItem"/> is replaced when the sender listing reloads. A
+    /// title is resolved against the current sidebar at the moment of the click.
+    /// </remarks>
+    private async Task NavigateToAsync(string destination)
+    {
+        var item = _model.Sections
+            .SelectMany(section => section.Items)
+            .FirstOrDefault(candidate => string.Equals(candidate.Title, destination, StringComparison.Ordinal));
+
+        if (item is null) return;
+
+        await SelectAsync(item).ConfigureAwait(false);
     }
 
     /// <summary>Asks the Host how it is and puts the answer in the status bar.</summary>
@@ -271,6 +303,21 @@ public partial class MainWindow : Window
     /// <returns>Whether what the pane shows was read from the Host.</returns>
     public async Task<bool> LoadSelectionAsync(CancellationToken cancellationToken = default)
     {
+        // The dashboard is a destination with its own cards, not a queue. It is
+        // loaded before the services check so an unconfigured console still
+        // renders the no-host state instead of an empty pane.
+        if (_model.IsDashboardSelected)
+        {
+            // The dashboard fills bound properties, so its continuations must
+            // resume on the UI thread. Dispatch the whole load rather than
+            // marshalling every card: the model has no dispatcher and the window
+            // is the one place that knows which thread the bindings live on.
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _dashboard.LoadAsync(cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
         if (_services is null) return false;
 
         if (_model.SelectedItem?.Ledger is { } ledger)
@@ -982,6 +1029,7 @@ public partial class MainWindow : Window
             }
 
             await RefreshHostAsync().ConfigureAwait(true);
+            _dashboard.SetClients(_services.Client, _services.Conversations);
             await LoadSendersAsync().ConfigureAwait(true);
             await LoadSelectionAsync().ConfigureAwait(true);
 

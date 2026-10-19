@@ -37,17 +37,19 @@ public sealed class ShellModelTests
             .Select(item => item.Title)
             .ToList();
 
+        Assert.Contains("Dashboard", titles);
         Assert.Contains("Host", titles);
         Assert.Contains("Needs your decision", titles);
-        Assert.Contains("Being re-checked", titles);
-        Assert.Contains("Review before delivery", titles);
+        Assert.Contains("Being re-checked before delivery", titles);
+        Assert.Contains("Stopped before delivery", titles);
+        Assert.Contains("Awaiting human review", titles);
         Assert.Contains("Decisions", titles);
 
         Assert.Contains(model.Sections, section => section.Title == "Senders");
     }
 
     /// <summary>
-    /// The queues offered are the three dispositions the route enumerates, and
+    /// The queues offered are the four dispositions the route enumerates, and
     /// the list is closed for the same reason the client's state type is.
     /// </summary>
     /// <remarks>
@@ -64,11 +66,11 @@ public sealed class ShellModelTests
         var model = ShellModel.CreateDefault();
 
         var queues = model.Sections
-            .Single(section => section.Title == "Queues")
+            .Single(section => section.Title == "Mail")
             .Items;
 
         Assert.Equal(
-            [MessageListState.AwaitingDecision, MessageListState.Held, MessageListState.Quarantined],
+            [MessageListState.AwaitingDecision, MessageListState.Held, MessageListState.Quarantined, MessageListState.Review],
             queues.Select(item => item.Queue));
 
         Assert.DoesNotContain(queues, item => item.Title.Contains("Queued", StringComparison.Ordinal));
@@ -861,17 +863,20 @@ public sealed class ShellModelTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void Nothing_is_marked_blocked_because_every_listed_route_exists()
+    public void Every_blocked_destination_names_the_route_it_is_waiting_for()
     {
         var model = ShellModel.CreateDefault();
 
         var blocked = model.Sections
             .SelectMany(section => section.Items)
             .Where(item => item.IsBlocked)
-            .Select(item => item.Title)
             .ToList();
 
-        Assert.Empty(blocked);
+        // The set is asserted rather than one absence, so the next entry to be
+        // unblocked, or the next one to be blocked, has to come here and say so.
+        var waiting = Assert.Single(blocked);
+        Assert.Equal("Recipients", waiting.Title);
+        Assert.Equal("GET /v1/entities", waiting.Detail);
     }
 
     [Fact]
@@ -902,12 +907,29 @@ public sealed class ShellModelTests
     public void A_status_change_reaches_the_pane_header_for_the_selected_item()
     {
         var model = ShellModel.CreateDefault();
+
+        // The status belongs to the rows that represent the Host. The dashboard
+        // is the default now, and its own description must survive readiness.
+        var host = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.Title == "Host");
+
+        model.SelectedItem = host;
         var raised = Watch(model);
 
         model.Status = Ready;
 
         Assert.Equal("Connected", model.SelectedPaneDetail);
         Assert.Contains(nameof(ShellModel.SelectedPaneDetail), raised);
+
+        var dashboard = model.Sections
+            .SelectMany(section => section.Items)
+            .Single(item => item.IsDashboard);
+
+        model.SelectedItem = dashboard;
+        model.Status = Ready;
+
+        Assert.Equal("Service status and what needs you.", dashboard.Detail);
     }
 
     /// <summary>
@@ -990,8 +1012,8 @@ public sealed class ShellModelTests
     }
 
     [Theory]
-    [InlineData(Api.Contracts.DeliveryState.Held, "Being re-checked", "scheduled re-check")]
-    [InlineData(Api.Contracts.DeliveryState.Quarantined, "Waiting for review", "Stopped before delivery")]
+    [InlineData(Api.Contracts.DeliveryState.Held, "Being re-checked before delivery", "scheduled re-check")]
+    [InlineData(Api.Contracts.DeliveryState.Quarantined, "Stopped before delivery", "Stopped before delivery")]
     public void A_message_row_uses_plain_state_language_without_inventing_a_specific_reason(
         Api.Contracts.DeliveryState state,
         string expectedLabel,
@@ -1017,11 +1039,11 @@ public sealed class ShellModelTests
     {
         var model = ShellModel.CreateDefault();
         model.SelectedItem = model.Sections
-            .Single(section => section.Title == "Queues")
+            .Single(section => section.Title == "Mail")
             .Items.Single(item => item.Queue == MessageListState.Held);
 
         Assert.True(model.HasSelectedPaneTechnicalDetail);
-        Assert.Equal("Internal queue state: held (scheduled re-check).", model.SelectedPaneTechnicalDetail);
+        Assert.Equal("Internal queue state: held (being re-checked before delivery).", model.SelectedPaneTechnicalDetail);
     }
 
     /// <summary>

@@ -131,6 +131,7 @@ public sealed class ListingTests
     [InlineData(MessageListState.AwaitingDecision, "awaiting_decision")]
     [InlineData(MessageListState.Held, "held")]
     [InlineData(MessageListState.Quarantined, "quarantined")]
+    [InlineData(MessageListState.Review, "review")]
     public async Task The_state_travels_as_the_wire_name(MessageListState state, string wireName)
     {
         var handler = StubHttpMessageHandler.ReturningJson(Wire.MessageListing);

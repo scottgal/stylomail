@@ -314,6 +314,115 @@ public sealed class StyloMailApiClient
     public Task<ProxyOperationsResponse> GetProxyOperationsAsync(string window, CancellationToken cancellationToken = default)
         => SendAsync<ProxyOperationsResponse>(HttpMethod.Get, "/v1/proxy/operations?window=" + Uri.EscapeDataString(window), body: null, cancellationToken);
 
+    // ===================== dashboard aggregates =====================
+
+    /// <summary>
+    /// Reads the named-window mail flow aggregate served by the summary surface.
+    /// </summary>
+    /// <remarks>
+    /// The window is not a free parameter on the dashboard: the only one the design accepts is
+    /// <c>last_24_hours</c>, and the Host refuses anything else. Offering a caller-supplied value
+    /// would offer a request the server discards or refuses.
+    /// </remarks>
+    public Task<FlowResponse> GetFlowAsync(CancellationToken cancellationToken = default)
+        => SendAsync<FlowResponse>(
+            HttpMethod.Get,
+            "/v1/overview/flow?window=last_24_hours",
+            body: null,
+            cancellationToken);
+
+    /// <summary>Reads counts per attention state at one instant.</summary>
+    public Task<QueueSummaryResponse> GetQueueSummaryAsync(CancellationToken cancellationToken = default)
+        => SendAsync<QueueSummaryResponse>(HttpMethod.Get, "/v1/queues/summary", body: null, cancellationToken);
+
+    /// <summary>Reads measured storage and the retention horizon.</summary>
+    public Task<StorageSummaryResponse> GetStorageSummaryAsync(CancellationToken cancellationToken = default)
+        => SendAsync<StorageSummaryResponse>(HttpMethod.Get, "/v1/storage/summary", body: null, cancellationToken);
+
+    /// <summary>
+    /// Reads one page of open reviews. Used for the dashboard count while the queue summary is
+    /// pending, and by the review page in slice 3.
+    /// </summary>
+    public Task<ReviewQueueResponse> GetOpenReviewsAsync(
+        int limit = 100,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = "/v1/policy/reviews?state=open&limit="
+            + Math.Clamp(limit, 1, 100).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            + (string.IsNullOrEmpty(after) ? string.Empty : "&after=" + Uri.EscapeDataString(after));
+
+        return SendAsync<ReviewQueueResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+    }
+
+    /// <summary>Reads one page of the tenant's entity directory.</summary>
+    public Task<EntityDirectoryResponse> GetEntityDirectoryAsync(
+        string kind,
+        string? query = null,
+        int limit = 50,
+        string? after = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+
+        var path = new StringBuilder("/v1/entities?kind=").Append(Uri.EscapeDataString(kind));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            path.Append("&query=").Append(Uri.EscapeDataString(query));
+        }
+
+        path.Append("&limit=").Append(Math.Clamp(limit, 1, 100).ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        if (!string.IsNullOrEmpty(after))
+        {
+            path.Append("&after=").Append(Uri.EscapeDataString(after));
+        }
+
+        return SendAsync<EntityDirectoryResponse>(HttpMethod.Get, path.ToString(), body: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads counted proxy admission failures and timeouts in aligned five-minute buckets.
+    /// </summary>
+    /// <remarks>
+    /// The Host accepts only aligned five-minute buckets within its retained seven-day window. The
+    /// caller's bounds are floored to that grid here rather than left to the server to refuse, so a
+    /// dashboard read of "the last 24 hours" is always a legal range.
+    /// </remarks>
+    public Task<ConnectionOutcomesResponse> GetConnectionOutcomesAsync(
+        DateTimeOffset from,
+        DateTimeOffset through,
+        CancellationToken cancellationToken = default)
+    {
+        var first = AlignToBucket(from);
+        var last = AlignToBucket(through);
+
+        if (last < first)
+        {
+            (first, last) = (last, first);
+        }
+
+        var path = "/v1/proxy/connection-outcomes?from="
+            + Uri.EscapeDataString(WireTime(first))
+            + "&through="
+            + Uri.EscapeDataString(WireTime(last));
+
+        return SendAsync<ConnectionOutcomesResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+    }
+
+    /// <summary>Floors an instant to the five-minute grid the outcome store writes on.</summary>
+    public static DateTimeOffset AlignToBucket(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        var ticks = utc.UtcTicks - (utc.UtcTicks % (TimeSpan.TicksPerMinute * 5));
+        return new DateTimeOffset(ticks, TimeSpan.Zero);
+    }
+
+    /// <summary>An ISO 8601 UTC instant with second precision, which is what the Host parses.</summary>
+    private static string WireTime(DateTimeOffset value)
+        => value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
     public Task<ProxyAccountResponse> SetProxyAccountEnabledAsync(string accountId, bool enabled, CancellationToken cancellationToken = default)
         => SendAsync<ProxyAccountResponse>(HttpMethod.Post, $"/v1/proxy/accounts/{Uri.EscapeDataString(accountId)}/{(enabled ? "enable" : "disable")}", body: new { }, cancellationToken);
 
@@ -391,6 +500,7 @@ public sealed class StyloMailApiClient
         MessageListState.AwaitingDecision => "awaiting_decision",
         MessageListState.Held => "held",
         MessageListState.Quarantined => "quarantined",
+        MessageListState.Review => "review",
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped listing state."),
     };
 

@@ -333,4 +333,80 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- ================= dashboard ================= -->
+
+    <Style Selector="TextBlock.dashboardHeadline">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardDetail">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style Selector="Border.dashboardCard">
+        <Setter Property="Background" Value="{StaticResource ConsoleSurface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleSeparator}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="Margin" Value="0,0,12,12" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardCardTitle">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardMetric">
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardAxis">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardCoverage">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- The severity rule is a state marker on the card, not a tint on a person. -->
+    <Style Selector="Border.dashboardWarning">
+        <Setter Property="Background" Value="#FBFBFC" />
+        <Setter Property="BorderThickness" Value="3,0,0,0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style Selector="Border.dashboardChip">
+        <Setter Property="CornerRadius" Value="9" />
+        <Setter Property="Padding" Value="7,2" />
+        <Setter Property="Background" Value="#EFEFF2" />
+    </Style>
+
+    <Style Selector="TextBlock.dashboardChipText">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource ConsoleTextSecondary}" />
+    </Style>
+
+    <Style Selector="Border.dashboardGap">
+        <Setter Property="Background" Value="#FDF6E8" />
+        <Setter Property="BorderBrush" Value="{StaticResource ConsoleWarning}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+
 </Styles>

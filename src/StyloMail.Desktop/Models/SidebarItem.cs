@@ -51,18 +51,41 @@ public sealed class SidebarItem : ObservableObject
         SidebarItemState state = SidebarItemState.Available,
         string? detail = null,
         string? emptyDetail = null,
-        MessageListState? queue = null)
+        MessageListState? queue = null,
+        bool isDashboard = false)
     {
         Title = title;
         State = state;
         Detail = detail;
         EmptyDetail = emptyDetail;
         Queue = queue;
+        IsDashboard = isDashboard;
     }
 
     public string Title { get; }
 
     public SidebarItemState State { get; }
+
+    /// <summary>
+    /// Whether this destination opens the dashboard rather than the list and detail panes.
+    /// </summary>
+    /// <remarks>
+    /// A typed marker rather than a title comparison: a title is operator-facing text and may be
+    /// reworded, and a destination that silently stopped opening the dashboard because its label
+    /// changed is the kind of failure a marker prevents.
+    /// </remarks>
+    public bool IsDashboard { get; }
+
+    /// <summary>
+    /// Whether this row's detail is the Host's current status.
+    /// </summary>
+    /// <remarks>
+    /// Only the rows that represent the Host take the status headline. The status write used to
+    /// update whichever row was selected, which was harmless while the Host was the default and
+    /// wrong the moment the dashboard became one: the Dashboard row's own description was replaced
+    /// by "Connected" on the first readiness answer.
+    /// </remarks>
+    public bool TracksHostStatus { get; init; }
 
     /// <summary>
     /// Which disposition this entry lists, when it is a queue.
