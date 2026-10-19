@@ -13,19 +13,21 @@ public partial class RecipientsView : UserControl
 
     private RecipientsViewModel? Model => DataContext as RecipientsViewModel;
 
-    private async void OnPeopleClick(object? sender, RoutedEventArgs e) => await LoadKindAsync("recipient");
+    private async void OnInboundClick(object? sender, RoutedEventArgs e) => await LoadKindAsync("recipient", "Inbound");
+
+    private async void OnOutboundClick(object? sender, RoutedEventArgs e) => await LoadKindAsync("recipient", "Outbound");
 
     private async void OnSendersClick(object? sender, RoutedEventArgs e) => await LoadKindAsync("sender");
 
     private async void OnCompaniesClick(object? sender, RoutedEventArgs e) => await LoadKindAsync("company");
 
-    private async Task LoadKindAsync(string kind)
+    private async Task LoadKindAsync(string kind, string? direction = null)
     {
         if (Model is not { } model) return;
 
         try
         {
-            await model.LoadKindAsync(kind);
+            await model.LoadKindAsync(kind, direction);
         }
         catch (OperationCanceledException)
         {

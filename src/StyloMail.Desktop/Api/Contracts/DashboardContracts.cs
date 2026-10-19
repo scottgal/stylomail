@@ -297,8 +297,14 @@ public sealed record EntityDirectoryRow
 
     public string? DisplayLabelAvailability { get; init; }
 
-    /// <summary>Why the label is null, for example <c>no_stored_label</c>.</summary>
+    /// <summary>Why the label is null, for example <c>address_not_in_bounded_scan</c>.</summary>
     public string? DisplayLabelReason { get; init; }
+
+    /// <summary>
+    /// Where the label came from: <c>sender_profile</c>, <c>queue_envelope_masked</c>,
+    /// <c>domain</c> or <c>company</c>. Null when no label was produced.
+    /// </summary>
+    public string? DisplayLabelSource { get; init; }
 
     public string? CompanyId { get; init; }
 

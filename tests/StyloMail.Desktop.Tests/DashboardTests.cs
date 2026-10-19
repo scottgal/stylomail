@@ -104,9 +104,9 @@ public sealed class DashboardTests
         Assert.Equal("pending", model.StorageState);
         Assert.Contains("Waiting", model.StorageHeadline, StringComparison.Ordinal);
         Assert.Equal("fallback", model.QueueState);
-        Assert.Contains(model.Warnings, warning => warning.Id == "summary-pending" && warning.IsInfo);
-        Assert.Contains("mail flow", model.Warnings.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
-        Assert.DoesNotContain("/v1/", model.Warnings.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
+        Assert.Contains(model.ServiceNotes, warning => warning.Id == "summary-pending" && warning.IsInfo);
+        Assert.Contains("mail flow", model.ServiceNotes.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
+        Assert.DoesNotContain("/v1/", model.ServiceNotes.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -201,11 +201,12 @@ public sealed class DashboardTests
 
         await model.LoadAsync();
 
-        var warning = model.Warnings.Single(item => item.Id == "held-waiting");
+        var warning = model.ServiceNotes.Single(item => item.Id == "held-waiting");
         Assert.True(warning.IsInfo);
         Assert.True(warning.CanDismiss);
         Assert.Equal("Being re-checked before delivery", warning.ActionDestination);
-        Assert.Equal("1 item needs your attention.", model.WarningSummary);
+        Assert.Equal("Nothing needs your attention.", model.WarningSummary);
+        Assert.Equal("1 note.", model.ServiceNoteSummary);
     }
 
     [Fact]
@@ -241,7 +242,7 @@ public sealed class DashboardTests
 
         await model.LoadAsync();
 
-        var warning = model.Warnings.Single(item => item.Id == "senders-paused");
+        var warning = model.ServiceNotes.Single(item => item.Id == "senders-paused");
         Assert.True(warning.IsInfo);
         Assert.True(warning.CanDismiss);
         Assert.Equal("Recipients", warning.ActionDestination);
@@ -362,10 +363,10 @@ public sealed class DashboardTests
         model.ActivateWarning(critical);
         Assert.Equal(countBefore, model.Warnings.Count);
 
-        var info = model.Warnings.Single(warning => warning.Id == "summary-pending");
+        var info = model.ServiceNotes.Single(warning => warning.Id == "summary-pending");
         Assert.True(info.CanDismiss);
         model.Dismiss(info);
-        Assert.DoesNotContain(model.Warnings, warning => warning.Id == "summary-pending");
+        Assert.DoesNotContain(model.ServiceNotes, warning => warning.Id == "summary-pending");
     }
 
     private static DashboardViewModel Model(StubHttpMessageHandler handler)

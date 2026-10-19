@@ -56,6 +56,71 @@ public sealed class RecipientsTests
     }
 
     [Fact]
+    public async Task The_masked_label_is_rendered_as_served_and_not_decoded()
+    {
+        var handler = Handler(request => request.Path switch
+        {
+            "/v1/entities" => Json(DirectoryJson("""
+                [
+                  { "scopeId": "hash_mask", "kind": "recipient", "direction": "Inbound", "displayLabel": "a***@example.test", "displayLabelAvailability": "available", "displayLabelReason": null, "displayLabelSource": "queue_envelope_masked", "companyId": null, "companyName": null, "domain": "example.test", "lastContactAt": null, "lastContactReason": "no_profile_recorded", "volume": null, "evidence": null }
+                ]
+                """)),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        });
+
+        var model = Model(handler);
+        await model.LoadAsync();
+
+        var row = Assert.Single(model.Rows);
+        Assert.Equal("a***@example.test", row.Title);
+        Assert.Null(row.LabelNote);
+    }
+
+    [Fact]
+    public async Task The_direction_tabs_filter_the_host_page()
+    {
+        var handler = Handler(request => request.Path switch
+        {
+            "/v1/entities" => Json(DirectoryJson("""
+                [
+                  { "scopeId": "in_1", "kind": "recipient", "direction": "Inbound", "displayLabel": "i***@example.test", "displayLabelAvailability": "available", "displayLabelReason": null, "displayLabelSource": "queue_envelope_masked", "companyId": null, "companyName": null, "domain": "example.test", "lastContactAt": null, "lastContactReason": "no_profile_recorded", "volume": null, "evidence": null },
+                  { "scopeId": "out_1", "kind": "recipient", "direction": "Outbound", "displayLabel": "o***@example.test", "displayLabelAvailability": "available", "displayLabelReason": null, "displayLabelSource": "queue_envelope_masked", "companyId": null, "companyName": null, "domain": "example.test", "lastContactAt": null, "lastContactReason": "no_profile_recorded", "volume": null, "evidence": null }
+                ]
+                """)),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        });
+
+        var model = Model(handler);
+        await model.LoadAsync();
+        Assert.Equal("i***@example.test", Assert.Single(model.Rows).Title);
+
+        await model.LoadKindAsync("recipient", "Outbound");
+        Assert.Equal("o***@example.test", Assert.Single(model.Rows).Title);
+        Assert.Contains("mixed-direction", model.CoverageLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_named_absence_explains_the_opaque_fallback()
+    {
+        var handler = Handler(request => request.Path switch
+        {
+            "/v1/entities" => Json(DirectoryJson("""
+                [
+                  { "scopeId": "hash_absence_1", "kind": "recipient", "direction": "Inbound", "displayLabel": null, "displayLabelAvailability": "not_produced", "displayLabelReason": "address_not_in_bounded_scan", "displayLabelSource": null, "companyId": null, "companyName": null, "domain": null, "lastContactAt": null, "lastContactReason": "no_profile_recorded", "volume": null, "evidence": null }
+                ]
+                """)),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        });
+
+        var model = Model(handler);
+        await model.LoadAsync();
+
+        var row = Assert.Single(model.Rows);
+        Assert.Equal("hash_absen...", row.Title);
+        Assert.Contains("outside the recent envelope scan", row.LabelNote, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_search_with_no_match_says_so()
     {
         var handler = Handler(request => request.Path switch

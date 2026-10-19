@@ -24,12 +24,18 @@
             </Grid>
 
             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-                <Button x:Name="PeopleTabButton"
+                <Button x:Name="InboundTabButton"
                         Classes="tab"
-                        Classes.selected="{Binding IsPeopleKind}"
-                        Content="People"
-                        AutomationProperties.AutomationId="recipients-tab-people"
-                        Click="OnPeopleClick" />
+                        Classes.selected="{Binding IsInboundPeople}"
+                        Content="Who writes to you"
+                        AutomationProperties.AutomationId="recipients-tab-inbound"
+                        Click="OnInboundClick" />
+                <Button x:Name="OutboundTabButton"
+                        Classes="tab"
+                        Classes.selected="{Binding IsOutboundPeople}"
+                        Content="People you write to"
+                        AutomationProperties.AutomationId="recipients-tab-outbound"
+                        Click="OnOutboundClick" />
                 <Button x:Name="SendersTabButton"
                         Classes="tab"
                         Classes.selected="{Binding IsSenderKind}"
@@ -86,6 +92,10 @@
                                     <TextBlock Classes="rowSubtitle"
                                                TextWrapping="Wrap"
                                                Text="{Binding Detail}" />
+                                    <TextBlock Classes="dashboardCoverage"
+                                               IsVisible="{Binding HasLabelNote}"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding LabelNote}" />
                                     <TextBlock Classes="dashboardCoverage" Text="{Binding VolumeLabel}" />
                                     <TextBlock Classes="dashboardCoverage" Text="{Binding LastContactLabel}" />
                                     <TextBlock Classes="dashboardCoverage" Text="{Binding EvidenceLabel}" />

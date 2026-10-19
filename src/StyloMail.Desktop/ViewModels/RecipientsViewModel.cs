@@ -26,6 +26,7 @@ public sealed class RecipientsViewModel : ObservableObject
     private bool _failed;
     private string? _nextCursor;
     private string _kind = "recipient";
+    private string? _direction = "Inbound";
     private string _query = string.Empty;
     private string _statusLabel = "People are not loaded.";
     private string _emptyLabel = "No people yet.";
@@ -40,7 +41,9 @@ public sealed class RecipientsViewModel : ObservableObject
 
     public string Kind => _kind;
 
-    public bool IsPeopleKind => _kind == "recipient";
+    public bool IsInboundPeople => _kind == "recipient" && _direction == "Inbound";
+
+    public bool IsOutboundPeople => _kind == "recipient" && _direction == "Outbound";
 
     public bool IsSenderKind => _kind == "sender";
 
@@ -93,11 +96,19 @@ public sealed class RecipientsViewModel : ObservableObject
     public void SetClient(StyloMailApiClient? client) => _client = client;
 
     /// <summary>Switches kind and reads the first page.</summary>
-    public async Task LoadKindAsync(string kind, CancellationToken cancellationToken = default)
+    public async Task LoadKindAsync(
+        string kind,
+        string? direction = null,
+        CancellationToken cancellationToken = default)
     {
-        if (_kind == kind && _hasLoaded) return;
+        var effectiveDirection = kind == "recipient"
+            ? string.Equals(direction, "Outbound", StringComparison.OrdinalIgnoreCase) ? "Outbound" : "Inbound"
+            : null;
+
+        if (_kind == kind && _direction == effectiveDirection && _hasLoaded) return;
 
         _kind = kind;
+        _direction = effectiveDirection;
         _hasLoaded = false;
         _hasMore = false;
         _nextCursor = null;
@@ -155,7 +166,14 @@ public sealed class RecipientsViewModel : ObservableObject
             }
 
             var paused = await LoadPausedSendersAsync(cancellationToken).ConfigureAwait(true);
-            var rows = page.Entities.Select(row => RecipientRowView.From(row, paused)).ToArray();
+            var pageRows = page.Entities.Count;
+            var entities = _kind == "recipient" && _direction is not null
+                ? page.Entities
+                    .Where(row => string.Equals(row.Direction, _direction, StringComparison.OrdinalIgnoreCase))
+                    .ToArray()
+                : page.Entities.ToArray();
+
+            var rows = entities.Select(row => RecipientRowView.From(row, paused)).ToArray();
 
             if (!append) Rows.Clear();
             foreach (var row in rows) Rows.Add(row);
@@ -164,9 +182,9 @@ public sealed class RecipientsViewModel : ObservableObject
             _hasMore = page.HasMore;
             _hasLoaded = true;
 
-            StatusLabel = DescribeStatus(kind: _kind, count: Rows.Count, hasMore: _hasMore, query: SearchText);
-            EmptyLabel = DescribeEmpty(_kind, SearchText);
-            CoverageLabel = DescribeCoverage(page);
+            StatusLabel = DescribeStatus(_kind, Rows.Count, _hasMore, SearchText, _direction, pageRows);
+            EmptyLabel = DescribeEmpty(_kind, SearchText, _direction, pageRows);
+            CoverageLabel = DescribeCoverage(page, _direction, pageRows);
 
             OnRowsChanged();
         }
@@ -246,7 +264,8 @@ public sealed class RecipientsViewModel : ObservableObject
     private void OnKindChanged()
     {
         Raise(nameof(Kind));
-        Raise(nameof(IsPeopleKind));
+        Raise(nameof(IsInboundPeople));
+        Raise(nameof(IsOutboundPeople));
         Raise(nameof(IsSenderKind));
         Raise(nameof(IsCompanyKind));
     }
@@ -258,7 +277,7 @@ public sealed class RecipientsViewModel : ObservableObject
         Raise(nameof(ShowLoadMore));
     }
 
-    private static string DescribeStatus(string kind, int count, bool hasMore, string query)
+    private static string DescribeStatus(string kind, int count, bool hasMore, string query, string? direction, int pageRows)
     {
         var noun = kind switch
         {
@@ -271,14 +290,24 @@ public sealed class RecipientsViewModel : ObservableObject
             ? "No rows."
             : $"{count:N0} {noun}" + (hasMore ? ", more available." : ".");
 
+        if (direction is not null && pageRows > count)
+        {
+            sentence += " The Host page includes both directions.";
+        }
+
         return string.IsNullOrWhiteSpace(query) ? sentence : sentence + $" Search: \"{query}\".";
     }
 
-    private static string DescribeEmpty(string kind, string query)
+    private static string DescribeEmpty(string kind, string query, string? direction, int pageRows)
     {
         if (!string.IsNullOrWhiteSpace(query))
         {
             return $"No match for \"{query}\".";
+        }
+
+        if (kind == "recipient" && direction is not null && pageRows > 0)
+        {
+            return "No people in this direction on this page. Load more to continue.";
         }
 
         return kind switch
@@ -289,16 +318,28 @@ public sealed class RecipientsViewModel : ObservableObject
         };
     }
 
-    private static string DescribeCoverage(EntityDirectoryResponse page)
+    private static string DescribeCoverage(EntityDirectoryResponse page, string? direction, int pageRows)
     {
+        var parts = new List<string>();
+
         if (!string.IsNullOrWhiteSpace(page.Coverage.Note))
         {
-            return page.Coverage.Note!;
+            parts.Add(page.Coverage.Note!);
         }
 
-        return string.Equals(page.Availability, "partial", StringComparison.OrdinalIgnoreCase)
-            ? "Some rows were not produced. The page shows the rows the Host could read."
-            : "A bounded page from the Host. Search is limited to 128 characters.";
+        if (direction is not null && pageRows > 0)
+        {
+            parts.Add("This tab filters the Host's mixed-direction page; load more continues.");
+        }
+
+        if (parts.Count == 0)
+        {
+            parts.Add(string.Equals(page.Availability, "partial", StringComparison.OrdinalIgnoreCase)
+                ? "Some rows were not produced. The page shows the rows the Host could read."
+                : "A bounded page from the Host. Search is limited to 128 characters.");
+        }
+
+        return string.Join(" ", parts);
     }
 
     private static string DescribeAbsences(IReadOnlyList<SummaryAbsence> absences)
@@ -340,6 +381,11 @@ public sealed class RecipientRowView
     public required string LastContactLabel { get; init; }
 
     public required string EvidenceLabel { get; init; }
+
+    /// <summary>Why a masked label was not produced, when the Host named a reason.</summary>
+    public string? LabelNote { get; init; }
+
+    public bool HasLabelNote => !string.IsNullOrWhiteSpace(LabelNote);
 
     public string? WarningLabel { get; init; }
 
@@ -419,6 +465,20 @@ public sealed class RecipientRowView
             ? "Open the profile for its evidence measures."
             : "Profile evidence is available in the profile.";
 
+        var labelNote = row.DisplayLabel is null
+            ? row.DisplayLabelReason switch
+            {
+                "address_not_in_bounded_scan" =>
+                    "No masked label: the address is outside the recent envelope scan.",
+                "address_not_maskable" =>
+                    "No masked label: the address is not maskable.",
+                "no_profile_key" =>
+                    "No masked label: this deployment has no profile key.",
+                null or "" => null,
+                _ => "No masked label: " + row.DisplayLabelReason + ".",
+            }
+            : null;
+
         return new RecipientRowView
         {
             ScopeId = row.ScopeId,
@@ -431,6 +491,7 @@ public sealed class RecipientRowView
             VolumeLabel = DescribeVolume(row.Volume),
             LastContactLabel = DescribeLastContact(row),
             EvidenceLabel = evidenceLabel,
+            LabelNote = labelNote,
             WarningLabel = warning,
             IsPaused = isPaused,
             PauseStateAvailable = pauseStateAvailable,

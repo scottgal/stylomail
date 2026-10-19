@@ -104,7 +104,13 @@ public sealed class DashboardViewModel : ObservableObject
     /// <summary>Raised when a warning's action asks the window to open another destination.</summary>
     public event EventHandler<string>? NavigationRequested;
 
+    /// <summary>Warnings and critical items that require an action.</summary>
     public ObservableCollection<DashboardWarning> Warnings { get; } = [];
+
+    /// <summary>Information items that are in progress or need no action.</summary>
+    public ObservableCollection<DashboardWarning> ServiceNotes { get; } = [];
+
+    private readonly List<DashboardWarning> _warningBuffer = [];
 
     public ObservableCollection<QueueCountRow> QueueCounts { get; } = [];
 
@@ -365,6 +371,8 @@ public sealed class DashboardViewModel : ObservableObject
 
     public bool HasWarnings => Warnings.Count > 0;
 
+    public bool HasServiceNotes => ServiceNotes.Count > 0;
+
     public bool HasQueueCounts => QueueCounts.Count > 0;
 
     public bool HasSendingAccounts => SendingAccounts.Count > 0;
@@ -376,6 +384,13 @@ public sealed class DashboardViewModel : ObservableObject
         : Warnings.Count == 1
             ? "1 item needs your attention."
             : $"{Warnings.Count} items need your attention.";
+
+    public string ServiceNoteSummary => ServiceNotes.Count switch
+    {
+        0 => "No service notes.",
+        1 => "1 note.",
+        _ => $"{ServiceNotes.Count} notes.",
+    };
 
     public bool HasCriticalWarnings => Warnings.Any(warning => warning.IsCritical);
 
@@ -452,6 +467,7 @@ public sealed class DashboardViewModel : ObservableObject
 
         _dismissedWarnings.Add(warning.Id);
         Warnings.Remove(warning);
+        ServiceNotes.Remove(warning);
         WarningsChanged();
     }
 
@@ -1238,7 +1254,7 @@ public sealed class DashboardViewModel : ObservableObject
 
     private void RebuildWarnings()
     {
-        Warnings.Clear();
+        _warningBuffer.Clear();
 
         if (ServiceState == "critical")
         {
@@ -1363,12 +1379,20 @@ public sealed class DashboardViewModel : ObservableObject
         // Severity order, not insertion order. A warning that appears above a
         // critical one because of the order its loader finished is a panel that
         // makes the operator read the wrong line first.
-        var ordered = Warnings
+        var ordered = _warningBuffer
             .OrderBy(warning => warning.IsCritical ? 0 : warning.IsWarning ? 1 : 2)
             .ToArray();
 
         Warnings.Clear();
-        foreach (var warning in ordered) Warnings.Add(warning);
+        ServiceNotes.Clear();
+
+        foreach (var warning in ordered)
+        {
+            // Only a warning or critical item is attention. Information is a
+            // service note and never raises the count or the headline.
+            if (warning.IsInfo) ServiceNotes.Add(warning);
+            else Warnings.Add(warning);
+        }
 
         WarningsChanged();
     }
@@ -1376,13 +1400,15 @@ public sealed class DashboardViewModel : ObservableObject
     private void Add(DashboardWarning warning)
     {
         if (_dismissedWarnings.Contains(warning.Id)) return;
-        Warnings.Add(warning);
+        _warningBuffer.Add(warning);
     }
 
     private void WarningsChanged()
     {
         Raise(nameof(HasWarnings));
+        Raise(nameof(HasServiceNotes));
         Raise(nameof(WarningSummary));
+        Raise(nameof(ServiceNoteSummary));
         Raise(nameof(HasCriticalWarnings));
     }
 

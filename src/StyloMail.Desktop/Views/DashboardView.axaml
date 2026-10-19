@@ -99,6 +99,36 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <StackPanel Spacing="4"
+                                    Margin="0,8,0,0"
+                                    IsVisible="{Binding HasServiceNotes}">
+                            <Border Height="1" Background="{StaticResource ConsoleSeparator}" />
+                            <TextBlock Classes="dashboardCardTitle" Text="Service notes" />
+                            <TextBlock Classes="dashboardCoverage" Text="{Binding ServiceNoteSummary}" />
+
+                            <ItemsControl ItemsSource="{Binding ServiceNotes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Spacing="2" Margin="0,2">
+                                            <TextBlock Classes="cardBody"
+                                                       TextWrapping="Wrap"
+                                                       Text="{Binding WhatHappened}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Button Classes="linkButton"
+                                                        Content="{Binding ActionLabel}"
+                                                        IsVisible="{Binding HasAction}"
+                                                        Click="OnWarningActionClick" />
+                                                <Button Classes="linkButton"
+                                                        Content="Dismiss"
+                                                        IsVisible="{Binding CanDismiss}"
+                                                        Click="OnDismissWarningClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </WrapPanel>
