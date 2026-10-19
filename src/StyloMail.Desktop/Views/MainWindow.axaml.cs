@@ -127,6 +127,21 @@ public partial class MainWindow : Window
         };
         _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
 
+#if DEBUG
+        // A harness affordance, not a product behaviour. The reason rows live
+        // behind the moderator-polish disclosure, and the driven script cannot
+        // reliably toggle an Expander through the pointer path. This expands it
+        // when the run asks, so the evidence assertion measures the content
+        // rather than whether a click landed on a template part.
+        _model.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(ShellModel.HasDecision) && _model.HasDecision)
+            {
+                ExpandDecisionDisclosureForHarness();
+            }
+        };
+#endif
+
         // On Opened rather than in the constructor: a check started there would
         // run before the window exists and have nowhere to report to, and an
         // operator looking at an unrendered window is not waiting for it yet.
@@ -159,6 +174,32 @@ public partial class MainWindow : Window
             await StartTrafficFeedAsync().ConfigureAwait(true);
         };
     }
+
+#if DEBUG
+    /// <summary>
+    /// Opens the decision's technical drawer for a driven run.
+    /// </summary>
+    /// <remarks>
+    /// Debug only and gated on an environment variable, the same shape as the
+    /// decision fixture hook. A Release build has no path here.
+    /// </remarks>
+    private void ExpandDecisionDisclosureForHarness()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("STYLOMAIL_SMOKE_EXPAND_DECISION"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var expander = this.FindControl<Expander>("DecisionTechnicalDetailsExpander");
+        if (expander is not null)
+        {
+            expander.IsExpanded = true;
+        }
+    }
+#endif
 
     /// <summary>The sidebar entry that opens the connection screen.</summary>
     public const string ConnectionSectionTitle = "Connection";

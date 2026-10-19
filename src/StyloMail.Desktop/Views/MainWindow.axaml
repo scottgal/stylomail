@@ -234,6 +234,7 @@
                                                                     Click="OnResumeSenderClick" />
                                                             <Button Classes="rowButton"
                                                                     Content="Edit"
+                                                                    AutomationProperties.AutomationId="{Binding EditAutomationId}"
                                                                     IsVisible="{Binding IsSender}"
                                                                     Click="OnEditSenderClick" />
                                                             <Button Classes="rowButton"

@@ -194,6 +194,9 @@ public sealed class SidebarItem : ObservableObject
     /// <summary>A stable identity for this row's profile control, for the UI harness.</summary>
     public string ProfileAutomationId => $"profile-sender-{PrincipalId ?? Title}";
 
+    /// <summary>The sender profile form, not the entity history dialog the Profile button opens.</summary>
+    public string EditAutomationId => $"edit-sender-{PrincipalId ?? Title}";
+
     /// <summary>
     /// A stable identity for this row's subtitle, for the UI harness.
     /// </summary>

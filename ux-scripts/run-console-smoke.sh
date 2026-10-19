@@ -75,6 +75,11 @@ console_seed_decision "$CONSOLE_BASE"
 echo "== driving the console =="
 cd "$CONSOLE_REPO" || exit 1
 
+# The reason rows are behind the decision disclosure. The harness switch opens
+# it so the run asserts the content, not whether a pointer click toggled a
+# template part. Debug only in the app.
+export STYLOMAIL_SMOKE_EXPAND_DECISION=1
+
 dotnet run --project src/StyloMail.Desktop -- \
     --ux-headless \
     --ux-test \

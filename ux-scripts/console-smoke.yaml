@@ -241,6 +241,22 @@ actions:
     matcher: ContainsText
     value: "Divided by a counted weight of"
 
+  # The moderator-polish pass moved the reason codes behind this disclosure.
+  # The harness switch STYLOMAIL_SMOKE_EXPAND_DECISION opens it in the app, so
+  # the assertion below measures the content rather than whether a pointer click
+  # toggled a template part. The reason rows are below the fold.
+  - type: Scroll
+    target: "name=DecisionPaneScroll"
+    value: down
+
+  - type: Scroll
+    target: "name=DecisionPaneScroll"
+    value: down
+
+  - type: Scroll
+    target: "name=DecisionPaneScroll"
+    value: down
+
   # The reason the pipeline declined, in its own words.
   - type: Expect
     target: "text=assessment.semantic_unavailable"
@@ -362,8 +378,8 @@ actions:
   # different heading would attribute one message's reasoning to another.
 
   - type: Click
-    target: "type=Button:has-text(Quarantined)"
-    description: "Select the quarantined queue"
+    target: "type=Button:has-text(Stopped before delivery)"
+    description: "Select the stopped-before-delivery queue"
 
   - type: Wait
     value: "600"
@@ -420,7 +436,7 @@ actions:
   - type: Expect
     target: "name=PendingActionTitle"
     matcher: HasText
-    value: "Pause Acme outbound"
+    value: "Block outgoing mail from Acme outbound"
     timeout: 5000
 
   - type: Expect
@@ -487,7 +503,7 @@ actions:
   - type: Expect
     target: "name=PendingActionTitle"
     matcher: ContainsText
-    value: "Pause"
+    value: "Block outgoing"
 
   - type: TypeText
     target: "name=PendingReasonBox"
@@ -562,12 +578,12 @@ actions:
     value: "Decisions"
     timeout: 15000
 
-  # The route, on the pane, so the destination and the call it makes are the
-  # same statement rather than two that could drift.
+  # The operator-facing description, on the pane. The route is in the technical
+  # detail, not on the first surface.
   - type: Expect
     target: "name=PaneDetailText"
     matcher: HasText
-    value: "GET /v1/decisions"
+    value: "Decision history"
 
   # The headline reason, in policy's own words and in full: a quoted selector is
   # an exact match against the control's whole displayed text, so this fails if
@@ -720,8 +736,8 @@ actions:
   # names its window like the connection screen does.
 
   - type: Click
-    target: "testid=profile-sender-harness"
-    description: "Open the seeded sender's profile"
+    target: "testid=edit-sender-harness"
+    description: "Open the seeded sender's profile form"
 
   - type: Wait
     value: "800"
