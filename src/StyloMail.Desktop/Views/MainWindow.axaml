@@ -1046,6 +1046,13 @@
                     IsVisible="{Binding IsRecipientsSelected}">
                 <local:RecipientsView DataContext="{Binding Recipients}" />
             </Border>
+
+            <Border Grid.Column="2"
+                    Grid.ColumnSpan="3"
+                    Background="{StaticResource ConsoleSurface}"
+                    IsVisible="{Binding IsServiceSelected}">
+                <local:ServiceView DataContext="{Binding Service}" />
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

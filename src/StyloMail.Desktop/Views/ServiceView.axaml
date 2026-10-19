@@ -1,0 +1,237 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StyloMail.Desktop.Views.ServiceView">
+
+    <DockPanel>
+        <!-- The result of the last applied change. -->
+        <Border DockPanel.Dock="Bottom"
+                Classes="resultBar"
+                Classes.failed="{Binding LastFailed}"
+                IsVisible="{Binding HasLastResult}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="{Binding LastResult}" />
+                <Button Grid.Column="1"
+                        Classes="linkButton"
+                        Content="Dismiss"
+                        Click="OnDismissResultClick" />
+            </Grid>
+        </Border>
+
+        <!-- The confirmation. Nothing is applied on the first click. -->
+        <Border DockPanel.Dock="Bottom"
+                Classes="actionBar"
+                IsVisible="{Binding HasPendingAction}">
+            <StackPanel Spacing="6">
+                <TextBlock Classes="actionTitle" Text="{Binding PendingAction.Title}" />
+                <TextBlock Classes="actionConsequence"
+                           TextWrapping="Wrap"
+                           Text="{Binding PendingAction.Consequence}" />
+                <TextBlock Classes="dashboardCoverage"
+                           TextWrapping="Wrap"
+                           Text="The Host records who applies this change. These proxy routes do not accept a reason field, so this note stays with the confirmation." />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="actionLabel"
+                               VerticalAlignment="Center"
+                               Text="Tell the audit trail why" />
+                    <TextBox Width="380"
+                             Watermark="Explain this decision"
+                             Text="{Binding PendingReason, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button Content="Cancel" Click="OnCancelPendingClick" />
+                    <Button Classes="primaryButton"
+                            Content="{Binding PendingAction.ConfirmLabel}"
+                            IsEnabled="{Binding CanConfirm}"
+                            Click="OnConfirmClick" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer x:Name="ServiceScroll" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="24,20,16,24"
+                        Spacing="10"
+                        AutomationProperties.AutomationId="service-page">
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Classes="dashboardHeadline" Text="Service" />
+                        <TextBlock Classes="dashboardDetail" Text="{Binding ServiceHeadline}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Classes="rowButton"
+                            VerticalAlignment="Top"
+                            Content="{Binding RefreshLabel}"
+                            AutomationProperties.AutomationId="service-refresh"
+                            Click="OnRefreshClick" />
+                </Grid>
+
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="rowTitle" Text="{Binding AcceptingLabel}" />
+                        <TextBlock Classes="rowTitle" Text="{Binding FeedLabel}" />
+                        <TextBlock Classes="paneDetail" Text="{Binding LastCheckedLabel}" />
+                        <TextBlock Classes="paneDetail" Text="{Binding HostAddress}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Classes="dashboardCoverage" Text="{Binding LastUpdatedLabel}" />
+                <TextBlock Classes="dashboardCoverage" Text="{Binding StatusLabel}" />
+
+                <!-- ================= accounts ================= -->
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Accounts" />
+                        <TextBlock Classes="dashboardCoverage"
+                                   TextWrapping="Wrap"
+                                   Text="Proxy accounts can be enabled, disabled or revoked. A change asks for confirmation before it applies." />
+
+                        <ItemsControl ItemsSource="{Binding Accounts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card" Margin="0,0,0,8">
+                                        <StackPanel Spacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                                <Border Classes="dashboardChip">
+                                                    <TextBlock Classes="dashboardChipText" Text="{Binding StateLabel}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                            <TextBlock Classes="dashboardCoverage" Text="{Binding LiveLabel}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Button Classes="rowButton"
+                                                        Content="Enable"
+                                                        IsVisible="{Binding CanEnable}"
+                                                        Click="OnEnableAccountClick" />
+                                                <Button Classes="rowButton"
+                                                        Content="Disable"
+                                                        IsVisible="{Binding CanPause}"
+                                                        Click="OnDisableAccountClick" />
+                                                <Button Classes="rowButton"
+                                                        Content="Revoke"
+                                                        IsVisible="{Binding CanRevoke}"
+                                                        Click="OnRevokeAccountClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasAccounts}"
+                                   Text="No proxy accounts are configured on this Host." />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= listeners ================= -->
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Listeners" />
+                        <TextBlock Classes="dashboardCoverage"
+                                   TextWrapping="Wrap"
+                                   Text="A listener is a mail route clients connect to. Draining stops new connections and lets connected sessions finish." />
+
+                        <ItemsControl ItemsSource="{Binding Listeners}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card" Margin="0,0,0,8">
+                                        <StackPanel Spacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                                <Border Classes="dashboardChip">
+                                                    <TextBlock Classes="dashboardChipText" Text="{Binding StateLabel}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Classes="rowSubtitle" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                            <TextBlock Classes="dashboardCoverage" Text="{Binding BoundLabel}" />
+                                            <TextBlock Classes="dashboardCoverage" Text="{Binding TlsLabel}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Button Classes="rowButton"
+                                                        Content="Enable"
+                                                        IsVisible="{Binding CanEnable}"
+                                                        Click="OnEnableListenerClick" />
+                                                <Button Classes="rowButton"
+                                                        Content="Drain"
+                                                        IsVisible="{Binding CanDrain}"
+                                                        Click="OnDrainListenerClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasListeners}"
+                                   Text="No listeners are configured on this Host." />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= live sessions ================= -->
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="dashboardCardTitle" Text="Live sessions" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding SessionsNote}" />
+
+                        <ItemsControl ItemsSource="{Binding Sessions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="card" Margin="0,0,0,8">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                            <TextBlock Classes="rowSubtitle" Text="{Binding AccountLabel}" />
+                                            <TextBlock Classes="dashboardCoverage" Text="{Binding StartedLabel}" />
+                                            <TextBlock Classes="dashboardCoverage" Text="{Binding Detail}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding !HasSessions}"
+                                   Text="No live sessions are reported for this Host." />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= operations ================= -->
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="dashboardCardTitle" Text="Operations" />
+                        <TextBlock Classes="rowTitle" TextWrapping="Wrap" Text="{Binding OperationsLabel}" />
+                        <TextBlock Classes="dashboardCoverage" Text="{Binding OperationsCoverage}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= queue and storage ================= -->
+                <Border Classes="dashboardCard">
+                    <StackPanel Spacing="5">
+                        <TextBlock Classes="dashboardCardTitle" Text="Queue and storage" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding QueueLabel}" />
+                        <TextBlock Classes="cardBody" TextWrapping="Wrap" Text="{Binding StorageLabel}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= advanced ================= -->
+                <Expander Header="Advanced protocol details"
+                          AutomationProperties.AutomationId="service-advanced">
+                    <ItemsControl ItemsSource="{Binding TechnicalLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Classes="paneDetail"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

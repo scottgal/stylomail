@@ -73,6 +73,9 @@ public partial class MainWindow : Window
     /// <summary>The people directory, built with the window because it holds the client.</summary>
     private readonly RecipientsViewModel _recipients;
 
+    /// <summary>The service page, built with the window because it holds the client.</summary>
+    private readonly ServiceViewModel _service;
+
     /// <summary>
     /// Set while a row's open button is assigning the selection itself.
     /// </summary>
@@ -116,18 +119,23 @@ public partial class MainWindow : Window
         _model = ShellModel.CreateDefault(services?.HostAddress);
         _dashboard = new DashboardViewModel(services?.Client, services?.Conversations);
         _recipients = new RecipientsViewModel(services?.Client);
+        _service = new ServiceViewModel(services?.Client);
         _model.Dashboard = _dashboard;
         _model.Recipients = _recipients;
+        _model.Service = _service;
 
         AvaloniaXamlLoader.Load(this);
 
         DataContext = _model;
         _dashboard.SetFeedStatus(_model.LiveFeedHeadline);
+        _service.SetFeedStatus(_model.LiveFeedHeadline);
+        _service.SetHostAddress(_model.HostAddress);
         _model.PropertyChanged += (_, change) =>
         {
             if (change.PropertyName == nameof(ShellModel.LiveFeedHeadline))
             {
                 _dashboard.SetFeedStatus(_model.LiveFeedHeadline);
+                _service.SetFeedStatus(_model.LiveFeedHeadline);
             }
         };
         _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
@@ -403,6 +411,15 @@ public partial class MainWindow : Window
             // requirement as the dashboard.
             await Dispatcher.UIThread
                 .InvokeAsync(async () => await _recipients.LoadAsync(cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+            return _services is not null;
+        }
+
+        if (_model.IsServiceSelected)
+        {
+            _service.SetHostAddress(_model.HostAddress);
+            await Dispatcher.UIThread
+                .InvokeAsync(async () => await _service.LoadAsync(cancellationToken))
                 .ConfigureAwait(false);
             return _services is not null;
         }
@@ -1121,6 +1138,8 @@ public partial class MainWindow : Window
             await RefreshHostAsync().ConfigureAwait(true);
             _dashboard.SetClients(_services.Client, _services.Conversations);
             _recipients.SetClient(_services.Client);
+            _service.SetClient(_services.Client);
+            _service.SetHostAddress(_services.HostAddress.ToString());
             await LoadSendersAsync().ConfigureAwait(true);
             await LoadQueueCountsAsync().ConfigureAwait(true);
             await LoadSelectionAsync().ConfigureAwait(true);

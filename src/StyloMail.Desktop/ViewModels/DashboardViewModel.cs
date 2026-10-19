@@ -1264,8 +1264,8 @@ public sealed class DashboardViewModel : ObservableObject
                 ServiceHeadline,
                 "Mail service",
                 ServiceDetail,
-                "Open Host detail",
-                "Host"));
+                "Open Service",
+                "Service"));
         }
 
         if (_unavailableCards > 0)
@@ -1360,8 +1360,8 @@ public sealed class DashboardViewModel : ObservableObject
                 "The disk holding the mail store is nearly full.",
                 "Storage",
                 $"{FormatBytes(free)} free of {FormatBytes(capacity)}. The warning threshold is below 10 percent or 1 GB.",
-                "Open Host detail",
-                "Host"));
+                "Open Service",
+                "Service"));
         }
 
         if (_connectionFailureTotal > 0)
@@ -1371,9 +1371,9 @@ public sealed class DashboardViewModel : ObservableObject
                 "warning",
                 $"{_connectionFailureTotal:N0} client connection{(_connectionFailureTotal == 1 ? " was" : "s were")} refused or timed out in the last 24 hours.",
                 "Access proxy",
-                "Open the Host detail to inspect the listeners and the connection detail.",
-                "Open Host detail",
-                "Host"));
+                "Open Service to inspect the listeners and the connection detail.",
+                "Open Service",
+                "Service"));
         }
 
         // Severity order, not insertion order. A warning that appears above a

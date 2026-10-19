@@ -1,0 +1,71 @@
+name: console-service-smoke
+description: >
+  Drives the Service page against a throwaway Host. The Host has no proxy
+  composition, so the page must name the empty accounts and listeners and the
+  not-produced session and operation telemetry rather than drawing zeros. Queue
+  and storage are the Host's real summaries.
+
+default_delay: 500
+actions:
+  - type: Expect
+    target: "testid=dashboard-headline"
+    matcher: IsVisible
+    timeout: 20000
+
+  - type: Click
+    target: "type=Button:has-text(Service)"
+    description: "Open the Service page"
+
+  - type: Expect
+    target: "testid=service-page"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text='Accepting mail: yes.'"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text='No proxy accounts are configured on this Host.'"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "text='No listeners are configured on this Host.'"
+    matcher: IsVisible
+    timeout: 15000
+
+  - type: Expect
+    target: "testid=service-advanced"
+    matcher: IsVisible
+
+  - type: Expect
+    target: "testid=service-refresh"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "service-1180x720"
+    composite: true
+    description: "Service page at 1180x720 with named empty or not-produced proxy states"
+
+  - type: Scroll
+    target: "name=ServiceScroll"
+    value: bottom
+
+  - type: Wait
+    value: "500"
+
+  - type: Expect
+    target: "text='Queue and storage'"
+    matcher: IsVisible
+    timeout: 10000
+
+  - type: Expect
+    target: "testid=service-advanced"
+    matcher: IsVisible
+
+  - type: Screenshot
+    value: "service-1180x720-lower"
+    composite: true
+    description: "Service page lower cards: queue and storage summary and the Advanced protocol details"

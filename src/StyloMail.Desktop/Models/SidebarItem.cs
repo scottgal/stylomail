@@ -79,6 +79,9 @@ public sealed class SidebarItem : ObservableObject
     /// <summary>Whether this destination opens the people directory rather than the queue panes.</summary>
     public bool IsRecipients { get; init; }
 
+    /// <summary>Whether this destination opens the Service page.</summary>
+    public bool IsService { get; init; }
+
     private string? _badge;
 
     /// <summary>

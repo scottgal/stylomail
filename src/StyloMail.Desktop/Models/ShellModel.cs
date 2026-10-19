@@ -129,6 +129,15 @@ public sealed class ShellModel : ObservableObject
 
     private RecipientsViewModel? _recipients;
 
+    /// <summary>The service page model, when the window has built one.</summary>
+    public ServiceViewModel? Service
+    {
+        get => _service;
+        set => Set(ref _service, value);
+    }
+
+    private ServiceViewModel? _service;
+
     public ObservableCollection<MessageRow> Messages { get; } = [];
 
     /// <summary>
@@ -279,6 +288,7 @@ public sealed class ShellModel : ObservableObject
             Raise(nameof(EmptyListDetail));
             Raise(nameof(IsDashboardSelected));
             Raise(nameof(IsRecipientsSelected));
+            Raise(nameof(IsServiceSelected));
             Raise(nameof(ShowQueuePanes));
 
             // The detail pane's empty text is written for the destination that
@@ -300,8 +310,11 @@ public sealed class ShellModel : ObservableObject
     /// <summary>Whether the people directory is the selected destination.</summary>
     public bool IsRecipientsSelected => SelectedItem?.IsRecipients == true;
 
+    /// <summary>Whether the Service page is the selected destination.</summary>
+    public bool IsServiceSelected => SelectedItem?.IsService == true;
+
     /// <summary>Whether the list and detail panes should be on screen.</summary>
-    public bool ShowQueuePanes => !IsDashboardSelected && !IsRecipientsSelected;
+    public bool ShowQueuePanes => !IsDashboardSelected && !IsRecipientsSelected && !IsServiceSelected;
 
     private void OnSelectedItemChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -312,6 +325,7 @@ public sealed class ShellModel : ObservableObject
         Raise(nameof(EmptyListDetail));
         Raise(nameof(IsDashboardSelected));
         Raise(nameof(IsRecipientsSelected));
+        Raise(nameof(IsServiceSelected));
         Raise(nameof(ShowQueuePanes));
     }
 
@@ -659,9 +673,12 @@ public sealed class ShellModel : ObservableObject
 
         var service = new SidebarItem(
             "Service",
-            SidebarItemState.NotBuilt,
+            SidebarItemState.Available,
             "Mail service health",
-            "The service page is being prepared. The dashboard and status bar show the current state.");
+            "The service page is loading.")
+        {
+            IsService = true,
+        };
 
         var host = new SidebarItem(
             "Host",
