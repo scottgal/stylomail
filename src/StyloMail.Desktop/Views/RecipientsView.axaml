@@ -81,7 +81,9 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Classes="rowTitle" Text="{Binding Title}" />
+                                        <TextBlock Classes="rowTitle"
+                                                   AutomationProperties.AutomationId="recipient-title"
+                                                   Text="{Binding Title}" />
                                         <Border Classes="dashboardChip"
                                                 Background="#FDF6E8"
                                                 IsVisible="{Binding HasWarning}">

@@ -12,6 +12,11 @@ actions:
     matcher: IsVisible
     timeout: 20000
 
+  - type: Screenshot
+    value: "dashboard-1180x720"
+    composite: true
+    description: "Corrected dashboard at 1180x720 with the attention split and Service notes"
+
   - type: Click
     target: "type=Button:has-text(Recipients)"
     description: "Open the people directory"
@@ -30,6 +35,11 @@ actions:
   - type: Expect
     target: "testid=recipients-list"
     matcher: IsVisible
+
+  - type: Expect
+    target: "testid=recipient-title"
+    matcher: ContainsText
+    value: "***@"
 
   - type: Expect
     target: "type=Button:has-text(Open profile)"
