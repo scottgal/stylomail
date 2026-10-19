@@ -531,16 +531,18 @@ public sealed class ShellModel : ObservableObject
     {
         null => "Nothing here.",
 
-        // Names the route rather than saying "a route". The operator reading
-        // this is the person who has to ask for it, and the sidebar entry
-        // already spells it out, so the pane repeats it instead of making them
-        // look back up.
-        { State: SidebarItemState.AwaitingRoute } item =>
-            $"This pane needs a Host route that does not exist yet ({item.Detail}). "
-            + "The console does not read the database to work around it.",
+        // A destination that is waiting on a route or a later slice speaks in
+        // the operator's terms. The route and the slice number belong in the
+        // technical detail, not on the first surface.
+        { State: SidebarItemState.AwaitingRoute, EmptyDetail: { Length: > 0 } detail } => detail,
+
+        { State: SidebarItemState.AwaitingRoute } =>
+            "This part of the service is being prepared.",
+
+        { State: SidebarItemState.NotBuilt, EmptyDetail: { Length: > 0 } detail } => detail,
 
         { State: SidebarItemState.NotBuilt } =>
-            "This pane has not been built yet.",
+            "This part of the service is being prepared.",
 
         // The ledger's three empty states are separate sentences, because the
         // remedies are: an empty ledger means nothing has been assessed, a
@@ -639,11 +641,8 @@ public sealed class ShellModel : ObservableObject
         var service = new SidebarItem(
             "Service",
             SidebarItemState.NotBuilt,
-            "Slice 3. Host detail is under Advanced.",
-            "The Host is the mail service this console manages.")
-        {
-            TracksHostStatus = true,
-        };
+            "Mail service health",
+            "The service page is being prepared. The dashboard and status bar show the current state.");
 
         var host = new SidebarItem(
             "Host",
@@ -694,8 +693,8 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Recipients",
                 SidebarItemState.AwaitingRoute,
-                "GET /v1/entities",
-                "The people directory is being served by the summary lane. Sending accounts are below."),
+                "People and companies you correspond with",
+                "The people directory is being prepared. Sending accounts are shown below."),
         ]));
 
         // Filled from GET /v1/senders once the window opens, one section per
@@ -703,7 +702,7 @@ public sealed class ShellModel : ObservableObject
         // not appear and vanish.
         model._senderSections.Add(new SidebarSection("Senders",
         [
-            new SidebarItem("Loading", SidebarItemState.NotBuilt, "GET /v1/senders"),
+            new SidebarItem("Loading", SidebarItemState.NotBuilt, "Sending accounts are loading."),
         ]));
 
         foreach (var placeholder in model._senderSections) model.Sections.Add(placeholder);
@@ -722,8 +721,8 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Review queue",
                 SidebarItemState.NotBuilt,
-                "Slice 3. Decisions are under Advanced.",
-                "The review queue is not on this surface yet."),
+                "Messages waiting for your decision",
+                "The review page is being prepared. Decisions are under Advanced."),
         ]));
 
         model.Sections.Add(new SidebarSection("Policy",
@@ -731,8 +730,8 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Policy",
                 SidebarItemState.NotBuilt,
-                "Slice 3. Policy routes are ready.",
-                "The policy surface is not on this screen yet."),
+                "Rules and tolerances",
+                "The policy page is being prepared."),
         ]));
 
         model.Sections.Add(new SidebarSection("Images",
@@ -740,8 +739,8 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Images",
                 SidebarItemState.NotBuilt,
-                "Slice 3. Image routes are ready.",
-                "The image inspection surface is not on this screen yet."),
+                "Images inspected in conversations",
+                "The image inspection page is being prepared."),
         ]));
 
         // The operator's configuration, still reachable by the same handlers the
@@ -765,7 +764,7 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Proxy management",
                 SidebarItemState.Available,
-                "GET /v1/proxy/accounts, sessions, operations",
+                "Client accounts and sessions",
                 "Review pseudonymous proxy accounts, live sessions, and named-window operations. "
                     + "Unavailable telemetry is shown as not produced, never as zero."),
         ]));
@@ -782,7 +781,7 @@ public sealed class ShellModel : ObservableObject
             new SidebarItem(
                 "Decisions",
                 SidebarItemState.Available,
-                "GET /v1/decisions",
+                "Decision history",
                 "No decisions are recorded. A decision is written when a message is assessed, so "
                     + "an empty ledger means nothing has been assessed on this Host yet.")
             {

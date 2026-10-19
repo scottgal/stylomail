@@ -204,6 +204,7 @@
                                                                                Text="{Binding Title}" />
                                                                     <TextBlock Classes="rowSubtitle"
                                                                                AutomationProperties.AutomationId="{Binding DetailAutomationId}"
+                                                                               TextWrapping="Wrap"
                                                                                Text="{Binding Detail}" />
                                                                 </StackPanel>
                                                             </Grid>

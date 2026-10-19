@@ -203,6 +203,12 @@ public sealed record StorageSummaryResponse
     /// <summary>This tenant's spool directory, not the whole volume.</summary>
     public long? SpoolBytes { get; init; }
 
+    /// <summary>
+    /// True when <see cref="SpoolBytes"/> is a lower bound because the walk hit its file cap.
+    /// Null means the spool was not measured.
+    /// </summary>
+    public bool? SpoolTruncated { get; init; }
+
     /// <summary>Files counted under this tenant's spool directory.</summary>
     public long? SpoolFileCount { get; init; }
 
@@ -238,7 +244,10 @@ public sealed record TableRowCount
 {
     public required string Table { get; init; }
 
-    public required long Count { get; init; }
+    /// <summary>
+    /// Null when the table could not be read, with <see cref="Reason"/>. A readable empty table is 0.
+    /// </summary>
+    public long? Count { get; init; }
 
     /// <summary>True when the table holds more than <see cref="Count"/>.</summary>
     public required bool Truncated { get; init; }
@@ -358,7 +367,11 @@ public sealed record EntityDirectoryCoverage
 {
     public bool Complete { get; init; }
 
-    /// <summary>Rows examined to fill this page, including any a search filter rejected.</summary>
+    /// <summary>
+    /// Raw pre-trim query result count, including the probe row that proves there is another page.
+    /// It is not rows remaining and can exceed the page length by one. The console labels it
+    /// "examined" if it shows it at all.
+    /// </summary>
     public int? Scanned { get; init; }
 
     public string? Note { get; init; }

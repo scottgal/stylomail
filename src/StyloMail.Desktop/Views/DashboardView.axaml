@@ -40,12 +40,18 @@
                     <StackPanel Spacing="6">
                         <TextBlock Classes="dashboardCardTitle" Text="Service" />
                         <TextBlock x:Name="ServiceHeadlineText"
-                                   Classes="dashboardMetric"
+                                   Classes="rowTitle"
                                    AutomationProperties.AutomationId="dashboard-service-headline"
                                    TextWrapping="Wrap"
-                                   Text="{Binding ServiceHeadline}" />
-                        <TextBlock Classes="dashboardDetail" Text="{Binding ServiceDetail}" />
+                                   Text="{Binding ServiceAcceptingLabel}" />
+                        <TextBlock Classes="rowTitle"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ServiceFeedLabel}" />
                         <TextBlock Classes="paneDetail" Text="{Binding ServiceUpdatedLabel}" />
+                        <TextBlock Classes="dashboardCoverage"
+                                   IsVisible="{Binding IsServiceDegraded}"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ServiceDetail}" />
 
                         <controls:SparklineControl Height="36"
                                                    Margin="0,4,0,0"
@@ -130,9 +136,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <TextBlock Classes="dashboardAxis"
+                               Text="Messages"
+                               HorizontalAlignment="Left"
+                               IsVisible="{Binding HasFlowChart}" />
+
                     <Grid ColumnDefinitions="44,*"
                           Height="150"
-                          Margin="0,8,0,0"
+                          Margin="0,4,0,0"
                           IsVisible="{Binding HasFlowChart}"
                           AutomationProperties.Name="{Binding FlowChart.Summary}">
                         <StackPanel Grid.Column="0" Margin="0,0,6,0">
@@ -191,9 +202,14 @@
                         <TextBlock Classes="dashboardCardTitle" Text="Assessments" />
                         <TextBlock Classes="dashboardCoverage" Text="{Binding AssessmentsNote}" />
 
+                        <TextBlock Classes="dashboardAxis"
+                                   Text="Assessments"
+                                   HorizontalAlignment="Left"
+                                   IsVisible="{Binding HasAssessmentsChart}" />
+
                         <Grid ColumnDefinitions="36,*"
                               Height="110"
-                              Margin="0,4,0,0"
+                              Margin="0,2,0,0"
                               IsVisible="{Binding HasAssessmentsChart}"
                               AutomationProperties.Name="{Binding AssessmentsChart.Summary}">
                             <StackPanel Grid.Column="0" Margin="0,0,6,0">
@@ -303,9 +319,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <TextBlock Classes="dashboardAxis"
+                               Text="Connections"
+                               HorizontalAlignment="Left"
+                               IsVisible="{Binding HasConnectionsChart}" />
+
                     <Grid ColumnDefinitions="44,*"
                           Height="120"
-                          Margin="0,8,0,0"
+                          Margin="0,4,0,0"
                           IsVisible="{Binding HasConnectionsChart}"
                           AutomationProperties.Name="{Binding ConnectionsChart.Summary}">
                         <StackPanel Grid.Column="0" Margin="0,0,6,0">

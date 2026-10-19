@@ -102,7 +102,101 @@ public sealed class DashboardTests
         Assert.Contains("Waiting", model.StorageHeadline, StringComparison.Ordinal);
         Assert.Equal("fallback", model.QueueState);
         Assert.Contains(model.Warnings, warning => warning.Id == "summary-pending" && warning.IsInfo);
-        Assert.Contains("/v1/overview/flow", model.Warnings.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
+        Assert.Contains("mail flow", model.Warnings.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
+        Assert.DoesNotContain("/v1/", model.Warnings.Single(warning => warning.Id == "summary-pending").NextAction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_window_with_no_messages_renders_one_empty_state()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(EmptyFlowJson()),
+            "/v1/queues/summary" => Json(QueueJson()),
+            "/v1/storage/summary" => Json(StorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(ConnectionsJson()),
+            "/v1/senders" => Json(SendersJson()),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        await model.LoadAsync();
+
+        Assert.Equal("empty", model.FlowState);
+        Assert.Null(model.FlowChart);
+        Assert.Equal("No messages in this window.", model.FlowNote);
+        Assert.NotEmpty(model.FlowWindowLabel);
+        Assert.NotEmpty(model.FlowAsOfLabel);
+    }
+
+    [Fact]
+    public async Task The_service_card_carries_specific_facts_not_the_page_headline()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(FlowJson()),
+            "/v1/queues/summary" => Json(QueueJson()),
+            "/v1/storage/summary" => Json(StorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(ConnectionsJson()),
+            "/v1/senders" => Json(SendersJson()),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        model.SetFeedStatus("Live");
+        await model.LoadAsync();
+
+        Assert.Equal("Mail is flowing normally.", model.ServiceHeadline);
+        Assert.Equal("Accepting mail: yes.", model.ServiceAcceptingLabel);
+        Assert.Equal("Live feed: connected.", model.ServiceFeedLabel);
+    }
+
+    [Fact]
+    public async Task A_truncated_spool_is_a_lower_bound_and_an_unreadable_table_is_not_zero()
+    {
+        var model = Model(new StubHttpMessageHandler(request => request.Path switch
+        {
+            "/health/ready" => Json("""{ "status": "ready" }"""),
+            "/v1/overview/flow" => Json(EmptyFlowJson()),
+            "/v1/queues/summary" => Json(QueueJson()),
+            "/v1/storage/summary" => Json(TruncatedStorageJson()),
+            "/v1/decisions" => Json(DecisionsJson()),
+            "/v1/proxy/connection-outcomes" => Json(ConnectionsJson()),
+            "/v1/senders" => Json(SendersJson()),
+            "/v1/proxy/conversations" => Json(ConversationsJson()),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        }));
+
+        await model.LoadAsync();
+
+        Assert.True(
+            model.StorageHeadline.Contains("at least", StringComparison.OrdinalIgnoreCase),
+            model.StorageState + " || " + model.StorageHeadline + " || " + model.StorageDetail);
+        Assert.Contains("could not be read", model.StorageDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not measured", model.StorageDetail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_count_axis_uses_whole_numbers()
+    {
+        var start = new DateTimeOffset(2026, 10, 19, 8, 0, 0, TimeSpan.Zero);
+
+        var chart = new TimeChart
+        {
+            Title = "Test",
+            Unit = "messages",
+            WindowLabel = "Last 24 hours",
+            CoverageLabel = "Complete.",
+            Lines = [new ChartLine("Series", [new ChartPoint(start, 1)])],
+        };
+
+        Assert.Equal(2, chart.Maximum);
+        Assert.Equal("2", chart.YMaximumLabel);
+        Assert.Equal("1", chart.YMiddleLabel);
     }
 
     [Fact]
@@ -197,6 +291,27 @@ public sealed class DashboardTests
     private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
+    private static string EmptyFlowJson()
+        => $$"""
+        {
+          "tenantId": "t1",
+          "window": "last_24_hours",
+          "windowStart": "2026-10-18T10:00:00+00:00",
+          "windowEnd": "2026-10-19T10:00:00+00:00",
+          "bucketMinutes": 60,
+          "availability": "available",
+          "asOf": "2026-10-19T10:00:00+00:00",
+          "basis": "accepted_in_window_current_disposition",
+          "rejectedBasis": "rejected_decisions_in_bucket",
+          "notProduced": [],
+          "coverage": { "messagesCounted": 0, "messagesSkipped": 0, "complete": true, "directionNotRecoverable": 0, "note": null },
+          "totals": { "inbound": 0, "outbound": 0, "held": 0, "delivered": 0, "quarantined": 0, "review": 0, "other": 0, "rejected": 0 },
+          "buckets": [
+            { "bucketStart": "2026-10-18T10:00:00+00:00", "inbound": 0, "outbound": 0, "held": 0, "delivered": 0, "quarantined": 0, "review": 0, "other": 0, "rejected": 0 }
+          ]
+        }
+        """;
+
     private static string FlowJson(string notProduced = "[]", string inbound = "600")
         => $$"""
         {
@@ -208,6 +323,7 @@ public sealed class DashboardTests
           "availability": "available",
           "asOf": "2026-10-19T10:00:00+00:00",
           "basis": "accepted_in_window_current_disposition",
+          "rejectedBasis": "rejected_decisions_in_bucket",
           "notProduced": {{notProduced}},
           "coverage": { "messagesCounted": 1284, "messagesSkipped": 0, "complete": true, "directionNotRecoverable": 2, "note": null },
           "totals": { "inbound": 1200, "outbound": 84, "held": 3, "delivered": 1180, "quarantined": 2, "review": 2, "other": 0, "rejected": 1 },
@@ -249,6 +365,32 @@ public sealed class DashboardTests
           "spoolFileCount": 4,
           "rowCounts": [ { "table": "queue_item", "count": 12000, "truncated": true, "reason": "capped" } ],
           "coverage": { "measured": ["database", "spool", "payloads"], "note": null }
+        }
+        """;
+
+    private static string TruncatedStorageJson()
+        => """
+        {
+          "tenantId": "t1",
+          "asOf": "2026-10-19T10:00:00+00:00",
+          "availability": "partial",
+          "databaseBytes": 1073741824,
+          "writeAheadLogBytes": 1048576,
+          "spoolBytes": 12582912,
+          "spoolTruncated": true,
+          "spoolFileCount": 5,
+          "payloadBytes": 83886080,
+          "capacityBytes": null,
+          "volumeFreeBytes": null,
+          "capacityScope": "filesystem_volume",
+          "retentionHorizon": null,
+          "retentionReason": "retention_horizon_not_recorded",
+          "rowCounts": [
+            { "table": "queue_item", "count": null, "truncated": false, "reason": "table_unreadable" },
+            { "table": "decision_ledger", "count": 0, "truncated": false, "reason": null }
+          ],
+          "coverage": { "measured": ["database", "spool", "payloads"], "note": null },
+          "notProduced": [ { "series": "queue_item", "reason": "table_unreadable" } ]
         }
         """;
 

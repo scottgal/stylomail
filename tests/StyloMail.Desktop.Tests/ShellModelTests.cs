@@ -841,7 +841,7 @@ public sealed class ShellModelTests
 
         // The route, named on the entry, so the sidebar stays checkable at a
         // glance against what the client actually sends.
-        Assert.Equal("GET /v1/decisions", decisions.Detail);
+        Assert.Equal("Decision history", decisions.Detail);
         Assert.NotNull(decisions.Ledger);
         Assert.Null(decisions.Ledger!.Action);
     }
@@ -863,7 +863,7 @@ public sealed class ShellModelTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void Every_blocked_destination_names_the_route_it_is_waiting_for()
+    public void Every_blocked_destination_speaks_in_the_operators_terms()
     {
         var model = ShellModel.CreateDefault();
 
@@ -876,7 +876,22 @@ public sealed class ShellModelTests
         // unblocked, or the next one to be blocked, has to come here and say so.
         var waiting = Assert.Single(blocked);
         Assert.Equal("Recipients", waiting.Title);
-        Assert.Equal("GET /v1/entities", waiting.Detail);
+        Assert.Equal("People and companies you correspond with", waiting.Detail);
+        Assert.DoesNotContain("GET /v1", waiting.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_default_sidebar_has_no_routes_or_slice_numbers()
+    {
+        var model = ShellModel.CreateDefault();
+
+        var text = model.Sections
+            .SelectMany(section => section.Items)
+            .SelectMany(item => new[] { item.Title, item.Detail ?? string.Empty })
+            .ToArray();
+
+        Assert.DoesNotContain(text, item => item.Contains("GET /v1", StringComparison.Ordinal));
+        Assert.DoesNotContain(text, item => item.Contains("Slice ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -956,17 +971,19 @@ public sealed class ShellModelTests
     /// made the stale ledger marker visible, and the next gap will use it.
     /// </remarks>
     [Fact]
-    public void A_blocked_pane_explains_that_it_needs_a_route()
+    public void A_blocked_pane_speaks_in_the_operators_terms()
     {
         var model = ShellModel.CreateDefault();
 
         model.SelectedItem = new SidebarItem(
             "Traffic",
             SidebarItemState.AwaitingRoute,
-            "needs a route that does not exist yet");
+            "Traffic is being prepared.",
+            "Traffic is being prepared.");
 
-        Assert.Contains("needs a route that does not exist yet", model.EmptyListDetail, StringComparison.Ordinal);
-        Assert.Contains("does not read the database", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.Contains("being prepared", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("GET /v1", model.EmptyListDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("database", model.EmptyListDetail, StringComparison.Ordinal);
     }
 
     /// <summary>A pane that is not blocked still says something specific to itself.</summary>

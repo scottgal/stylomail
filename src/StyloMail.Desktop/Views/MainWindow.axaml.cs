@@ -117,6 +117,14 @@ public partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
 
         DataContext = _model;
+        _dashboard.SetFeedStatus(_model.LiveFeedHeadline);
+        _model.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(ShellModel.LiveFeedHeadline))
+            {
+                _dashboard.SetFeedStatus(_model.LiveFeedHeadline);
+            }
+        };
         _dashboard.NavigationRequested += (_, destination) => _ = NavigateToAsync(destination);
 
         // On Opened rather than in the constructor: a check started there would

@@ -81,7 +81,14 @@ public sealed class TimeChart
     public IReadOnlyList<ChartLegendItem> Legend
         => [.. Lines.Select((line, index) => new ChartLegendItem(line.Name, index))];
 
-    /// <summary>Largest plotted value, with a floor of one so an all-zero chart still has a scale.</summary>
+    /// <summary>
+    /// The top of the value axis: an even count at least as large as the data.
+    /// </summary>
+    /// <remarks>
+    /// A count axis must not print 0.5. Rounding the top to an even number keeps
+    /// the midpoint a whole count, and a floor of two means a chart with one
+    /// observation still has a readable scale rather than a line at the ceiling.
+    /// </remarks>
     public double Maximum
     {
         get
@@ -93,7 +100,9 @@ public sealed class TimeChart
                 .DefaultIfEmpty(0)
                 .Max();
 
-            return maximum <= 0 ? 1 : maximum;
+            if (maximum <= 0) return 2;
+
+            return Math.Max(2, Math.Ceiling(maximum / 2) * 2);
         }
     }
 

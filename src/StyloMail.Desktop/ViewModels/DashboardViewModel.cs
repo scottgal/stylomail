@@ -41,6 +41,8 @@ public sealed class DashboardViewModel : ObservableObject
     private string _serviceHeadline = "Checking the mail service.";
     private string _serviceDetail = "The console has not read the Host yet.";
     private string _serviceUpdatedLabel = string.Empty;
+    private string _serviceAcceptingLabel = "Accepting mail: checking.";
+    private string _serviceFeedLabel = "Live feed: checking.";
 
     private string _flowState = "loading";
     private TimeChart? _flowChart;
@@ -125,7 +127,10 @@ public sealed class DashboardViewModel : ObservableObject
     public string ServiceState
     {
         get => _serviceState;
-        private set => Set(ref _serviceState, value);
+        private set
+        {
+            if (Set(ref _serviceState, value)) Raise(nameof(IsServiceDegraded));
+        }
     }
 
     public string ServiceHeadline
@@ -145,6 +150,23 @@ public sealed class DashboardViewModel : ObservableObject
         get => _serviceUpdatedLabel;
         private set => Set(ref _serviceUpdatedLabel, value);
     }
+
+    /// <summary>The specific fact the Service card carries, instead of repeating the page headline.</summary>
+    public string ServiceAcceptingLabel
+    {
+        get => _serviceAcceptingLabel;
+        private set => Set(ref _serviceAcceptingLabel, value);
+    }
+
+    /// <summary>The live-feed state, supplied by the window because the feed belongs to it.</summary>
+    public string ServiceFeedLabel
+    {
+        get => _serviceFeedLabel;
+        private set => Set(ref _serviceFeedLabel, value);
+    }
+
+    /// <summary>Whether the Service card should also show the failure detail.</summary>
+    public bool IsServiceDegraded => ServiceState is not "good";
 
     public string FlowState
     {
@@ -357,6 +379,27 @@ public sealed class DashboardViewModel : ObservableObject
         _conversations = conversations;
     }
 
+    /// <summary>
+    /// Takes the window's live-feed headline for the Service card.
+    /// </summary>
+    /// <remarks>
+    /// The feed belongs to the window: it owns the subscription, the retry ticket and the state that
+    /// says the screen may be stale. The dashboard renders the headline rather than opening a second
+    /// subscription of its own.
+    /// </remarks>
+    public void SetFeedStatus(string headline)
+    {
+        if (string.IsNullOrWhiteSpace(headline))
+        {
+            ServiceFeedLabel = "Live feed: unknown.";
+            return;
+        }
+
+        ServiceFeedLabel = string.Equals(headline, "Live", StringComparison.OrdinalIgnoreCase)
+            ? "Live feed: connected."
+            : "Live feed: " + headline;
+    }
+
     /// <summary>Reads every card. A failure in one card does not stop the others.</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -437,6 +480,8 @@ public sealed class DashboardViewModel : ObservableObject
         ServiceHeadline = "This console is not connected to a Host.";
         ServiceDetail = "Enter a Host address and key in Settings, then refresh.";
         ServiceUpdatedLabel = string.Empty;
+        ServiceAcceptingLabel = "Accepting mail: unknown.";
+        ServiceFeedLabel = "Live feed: not connected.";
 
         FlowState = "unavailable";
         FlowChart = null;
@@ -483,6 +528,7 @@ public sealed class DashboardViewModel : ObservableObject
                 ServiceState = "good";
                 ServiceHeadline = "Mail is flowing normally.";
                 ServiceDetail = "The Host is accepting mail.";
+                ServiceAcceptingLabel = "Accepting mail: yes.";
             }
             else
             {
@@ -491,6 +537,7 @@ public sealed class DashboardViewModel : ObservableObject
                 ServiceDetail = failed.Count == 0
                     ? "The Host is not accepting mail, and did not name the checks that failed."
                     : "The Host is not accepting mail. Failed checks: " + string.Join(", ", failed) + ".";
+                ServiceAcceptingLabel = "Accepting mail: no.";
             }
 
             ServiceUpdatedLabel = "Last checked " + _clock().ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -504,6 +551,7 @@ public sealed class DashboardViewModel : ObservableObject
                     ? "No API key is configured, so nothing was read."
                     : api.Message
                 : "No answer was received at the configured address.";
+            ServiceAcceptingLabel = "Accepting mail: unknown.";
             ServiceUpdatedLabel = string.Empty;
             _unavailableCards++;
         }
@@ -520,6 +568,30 @@ public sealed class DashboardViewModel : ObservableObject
                 ? "State as of " + asOf.ToLocalTime().ToString("ddd d MMM HH:mm", CultureInfo.InvariantCulture) + "."
                 : "The Host did not report the instant its state was read.";
             FlowTotalsLabel = DescribeTotals(flow.Totals, flow.RejectedBasis);
+
+            // A complete window with no messages is an empty state, not three
+            // flat zero lines. The zero line stays when any series has real
+            // data: a held message or a refused decision is still something the
+            // operator should see against the window.
+            if (!HasAnyFlowValue(flow))
+            {
+                if (!HasAnyProducedFlowValue(flow))
+                {
+                    FlowState = "not_produced";
+                    FlowChart = null;
+                    FlowNote = string.IsNullOrWhiteSpace(flow.Coverage.Note)
+                        ? "The Host did not produce a flow series for this window."
+                        : flow.Coverage.Note!;
+                }
+                else
+                {
+                    FlowState = "empty";
+                    FlowChart = null;
+                    FlowNote = "No messages in this window.";
+                }
+
+                return;
+            }
 
             var lines = new List<ChartLine>();
             var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -573,7 +645,7 @@ public sealed class DashboardViewModel : ObservableObject
             FlowWindowLabel = WindowLabel(_clock().AddHours(-24), _clock());
             FlowBasisLabel = "Accepted in the last 24 hours, current state";
             FlowAsOfLabel = string.Empty;
-            FlowNote = "Waiting for GET /v1/overview/flow. The route is being served by the summary lane.";
+            FlowNote = "Waiting for the Host to provide mail flow counts.";
         }
         catch (Exception ex) when (ex is StyloMailApiException or HttpRequestException)
         {
@@ -769,7 +841,7 @@ public sealed class DashboardViewModel : ObservableObject
         {
             var summary = await _client!.GetQueueSummaryAsync(cancellationToken);
 
-            if (!string.Equals(summary.Availability, "available", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(summary.Availability, "not_produced", StringComparison.OrdinalIgnoreCase))
             {
                 QueueState = "not_produced";
                 QueueCounts.Clear();
@@ -831,11 +903,13 @@ public sealed class DashboardViewModel : ObservableObject
             { BarWidth = Width(summary.Counts.Review) });
 
             _reviewCount = summary.Counts.Review;
-            QueueCoverageLabel = summary.Coverage.Complete
-                ? "A complete count at the time shown."
-                : string.IsNullOrWhiteSpace(summary.Coverage.Note)
-                    ? "This count is not complete."
-                    : summary.Coverage.Note!;
+            QueueCoverageLabel = string.Equals(summary.Availability, "partial", StringComparison.OrdinalIgnoreCase)
+                ? "Some queue counts were not produced. The rows shown are the counts the Host did produce."
+                : summary.Coverage.Complete
+                    ? "A complete count at the time shown."
+                    : string.IsNullOrWhiteSpace(summary.Coverage.Note)
+                        ? "This count is not complete."
+                        : summary.Coverage.Note!;
             QueueAsOfLabel = "Counted at " + summary.AsOf.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
         }
         catch (StyloMailApiException ex) when (ex.Status == HttpStatusCode.NotFound)
@@ -924,7 +998,7 @@ public sealed class DashboardViewModel : ObservableObject
         {
             var storage = await _client!.GetStorageSummaryAsync(cancellationToken);
 
-            if (!string.Equals(storage.Availability, "available", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(storage.Availability, "not_produced", StringComparison.OrdinalIgnoreCase))
             {
                 StorageState = "not_produced";
                 StorageHeadline = "Storage is not measured.";
@@ -935,7 +1009,9 @@ public sealed class DashboardViewModel : ObservableObject
                 return;
             }
 
-            StorageState = "ready";
+            StorageState = string.Equals(storage.Availability, "partial", StringComparison.OrdinalIgnoreCase)
+                ? "partial"
+                : "ready";
             var measured = new List<string>();
 
             if (storage.DatabaseBytes is { } database) measured.Add("Database " + FormatBytes(database));
@@ -943,9 +1019,13 @@ public sealed class DashboardViewModel : ObservableObject
             if (storage.PayloadBytes is { } payload) measured.Add("Payloads " + FormatBytes(payload));
             if (storage.SpoolBytes is { } spool)
             {
+                // A truncated walk is a lower bound. Saying "at least" is the
+                // difference between a measurement and a floor.
+                var lowerBound = storage.SpoolTruncated == true ? "at least " : string.Empty;
+
                 measured.Add(storage.SpoolFileCount is { } files
-                    ? $"Spool {FormatBytes(spool)} in {files:N0} file{(files == 1 ? string.Empty : "s")}"
-                    : "Spool " + FormatBytes(spool));
+                    ? $"Spool {lowerBound}{FormatBytes(spool)} in {lowerBound}{files:N0} file{(files == 1 ? string.Empty : "s")}"
+                    : "Spool " + lowerBound + FormatBytes(spool));
             }
 
             StorageHeadline = measured.Count == 0
@@ -964,15 +1044,32 @@ public sealed class DashboardViewModel : ObservableObject
                 sentences.Add(FormatBytes(free) + " free on the disk.");
             }
 
-            if (storage.RowCounts.Count > 0)
+            var readableTables = storage.RowCounts.Where(row => row.Count.HasValue).ToArray();
+            var unreadableTables = storage.RowCounts.Count(row => !row.Count.HasValue);
+
+            if (readableTables.Length > 0)
             {
-                var stored = storage.RowCounts.Sum(row => row.Count);
-                var capped = storage.RowCounts.Any(row => row.Truncated);
+                var stored = readableTables.Sum(row => row.Count!.Value);
+                var capped = readableTables.Any(row => row.Truncated);
                 sentences.Add((capped ? "At least " : string.Empty)
                     + stored.ToString("N0", CultureInfo.InvariantCulture)
                     + " stored records across "
-                    + storage.RowCounts.Count.ToString("N0", CultureInfo.InvariantCulture)
+                    + readableTables.Length.ToString("N0", CultureInfo.InvariantCulture)
                     + " tables.");
+            }
+
+            if (unreadableTables > 0)
+            {
+                // A table that could not be read is not a table with no rows.
+                sentences.Add(unreadableTables.ToString("N0", CultureInfo.InvariantCulture)
+                    + " table" + (unreadableTables == 1 ? " could" : "s could")
+                    + " not be read, so " + (unreadableTables == 1 ? "its" : "their")
+                    + " row count is not measured.");
+            }
+
+            if (string.Equals(storage.Availability, "partial", StringComparison.OrdinalIgnoreCase))
+            {
+                sentences.Add("Some storage measures were not produced.");
             }
 
             if (storage.RetentionHorizon is { } horizon)
@@ -998,8 +1095,8 @@ public sealed class DashboardViewModel : ObservableObject
         catch (StyloMailApiException ex) when (ex.Status == HttpStatusCode.NotFound)
         {
             StorageState = "pending";
-            StorageHeadline = "Waiting for the storage summary.";
-            StorageDetail = "The console needs GET /v1/storage/summary. It does not infer storage from cumulative counters.";
+            StorageHeadline = "Waiting for the Host to provide a storage summary.";
+            StorageDetail = "The console does not infer storage from cumulative counters.";
             StorageCoverageLabel = string.Empty;
         }
         catch (Exception ex) when (ex is StyloMailApiException or HttpRequestException)
@@ -1138,18 +1235,18 @@ public sealed class DashboardViewModel : ObservableObject
         }
 
         var pending = new List<string>();
-        if (FlowState == "pending") pending.Add("/v1/overview/flow");
-        if (QueueState == "fallback") pending.Add("/v1/queues/summary");
-        if (StorageState == "pending") pending.Add("/v1/storage/summary");
+        if (FlowState == "pending") pending.Add("mail flow");
+        if (QueueState == "fallback") pending.Add("queue counts");
+        if (StorageState == "pending") pending.Add("storage");
 
         if (pending.Count > 0)
         {
             Add(new DashboardWarning(
                 "summary-pending",
                 "info",
-                $"{pending.Count} dashboard summar{(pending.Count == 1 ? "y is" : "ies are")} waiting for a Host route.",
+                $"{pending.Count} dashboard summar{(pending.Count == 1 ? "y is" : "ies are")} still being prepared.",
                 "Host",
-                "No action is needed. The console shows the route and fills the card when it answers: "
+                "No action is needed. The console will fill the cards when the Host answers: "
                     + string.Join(", ", pending) + ".",
                 "Dismiss",
                 string.Empty,
@@ -1208,6 +1305,40 @@ public sealed class DashboardViewModel : ObservableObject
         Raise(nameof(HasWarnings));
         Raise(nameof(WarningSummary));
         Raise(nameof(HasCriticalWarnings));
+    }
+
+    private static bool HasAnyFlowValue(FlowResponse flow)
+    {
+        var totals = flow.Totals;
+
+        if (totals.Inbound > 0 || totals.Outbound > 0 || totals.Delivered > 0
+            || totals.Held > 0 || totals.Review > 0 || totals.Quarantined > 0
+            || totals.Other > 0 || totals.Rejected > 0)
+        {
+            return true;
+        }
+
+        return flow.Buckets.Any(bucket =>
+            bucket.Inbound > 0 || bucket.Outbound > 0 || bucket.Delivered > 0
+            || bucket.Held > 0 || bucket.Review > 0 || bucket.Quarantined > 0
+            || bucket.Other > 0 || bucket.Rejected > 0);
+    }
+
+    private static bool HasAnyProducedFlowValue(FlowResponse flow)
+    {
+        var totals = flow.Totals;
+
+        if (totals.Inbound.HasValue || totals.Outbound.HasValue || totals.Delivered.HasValue
+            || totals.Held.HasValue || totals.Review.HasValue || totals.Quarantined.HasValue
+            || totals.Other.HasValue || totals.Rejected.HasValue)
+        {
+            return true;
+        }
+
+        return flow.Buckets.Any(bucket =>
+            bucket.Inbound.HasValue || bucket.Outbound.HasValue || bucket.Delivered.HasValue
+            || bucket.Held.HasValue || bucket.Review.HasValue || bucket.Quarantined.HasValue
+            || bucket.Other.HasValue || bucket.Rejected.HasValue);
     }
 
     private static void AddFlowLine(
