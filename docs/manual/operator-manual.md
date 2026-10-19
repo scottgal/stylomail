@@ -225,6 +225,20 @@ service healthy, what mail moved, is anything waiting, and who should I look at.
 > Same run and Host build, sha256
 > `72c6b8798f0d8bfac4878d60892b54c80181961acc0e78df5bd9d00706e659ad`.
 
+![Figure M32: the dashboard charts with real governed bars](images/m32-dashboard-charts.png)
+
+> **Figure M32.** The dashboard scrolled to its charts, with three governed submissions. **Mail flow**
+> shows Inbound **3** and Held **3** on the four-series legend, with the basis and asOf above and
+> "3 messages counted. The whole window was counted." below. **Assessments** draws one real nonzero
+> bar against a 4/2/0 axis. **What the decisions did** shows the outcome mix: Held **3**, and
+> Allowed, Stopped before delivery, Awaiting human review and Declined all **0**. A zero here is a
+> measured zero for this window, not a missing value.
+>
+> The three submissions were all Held on this Host, so only one outcome category is populated; the
+> frame does not claim a multi-category mix. Governed harness data, not production traffic. Captured
+> at 1180x720, Host build `9b4fb40f1c51`, sha256
+> `4a075bc814cb907fefafc9e2e5faba8c7e38c35a4507f1033bf36798a27998de`.
+
 The dashboard never colours a person. Colour names a state: accepted, held, stopped, or needs a
 person. A count that could not be measured is shown as a named gap, not as zero, and a window with no
 mail says **No messages in this window** instead of drawing three flat zero lines.
@@ -1062,12 +1076,15 @@ signals, not message content, and its caption says that.
 | M29 | Dashboard home with mail flow | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 64d4890d…; Inbound 1, Held 1, 1180x720 |
 | M30 | Dashboard queue and storage | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 085bff35…; union not a sum, storage sizes |
 | M31 | Dashboard at minimum size | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 72c6b879…; 900x520, flow partly visible |
+| M32 | Dashboard charts with real bars | ux-results/console-graphs | captured; governed harness; build 9b4fb40f1c51; sha256 4a075bc8…; Inbound 3, Held 3, outcome mix Held 3 |
 
-Seventeen frames in this table are captured, in eight batches. M27 and M28 come from the seventh, the
+Eighteen frames in this table are captured, in nine batches. M27 and M28 come from the seventh, the
 `console-profile-history` governed harness run against host build `c9feabf7b48a`; they are real
 Host and route output over a temporary seeded database, not production traffic. M29 to M31 come from
 the eighth, the `console-dashboard` governed harness run against Host build `8c9275a80753`, with the
-same rule: real Host and routes over a temporary seeded database. M08 and M21a come
+same rule: real Host and routes over a temporary seeded database. M32 comes from the ninth, the
+`console-dashboard-graphs` run against Host build `9b4fb40f1c51`, with three real submissions and the
+same governed-data rule. M08 and M21a come
 from the first batch, whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
