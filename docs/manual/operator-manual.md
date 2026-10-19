@@ -910,8 +910,9 @@ as if it were content.
 
 ### 4.9 Image observations
 
-The Images page shows what the image inspector found, never the image itself. It is disabled by
-default; a deployment enables it with `StyloMail:Images:Enabled=true`.
+The Images page shows what the image inspector found, never the image itself. This deployment
+enables it in `appsettings.json` with `StyloMail:Images:Enabled=true`; set it to `false` to stop new
+observations while keeping existing rows readable until their retention expires.
 
 ![Figure M33: an image observation from a live proxy fetch](images/m33-image-observation.png)
 
