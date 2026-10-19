@@ -272,6 +272,52 @@ public sealed class ProxyImageObservationTests
         Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_image_outcome;"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExplicitImageFlagOverridesTheDeploymentSetting(bool enabled)
+    {
+        // appsettings.json is deployment configuration and may enable images. This test's host
+        // chooses the value explicitly and asserts the resolved option, so it fails if a host ever
+        // inherits the deployment default instead of selecting its own behavior.
+        using var host = ImageHost(imagesEnabled: enabled);
+        Assert.Equal(
+            enabled,
+            host.Services.GetRequiredService<IOptions<HostImageOptions>>().Value.Enabled);
+
+        await SeedAsync(host, "m-flag", ThreadA, Now.AddMinutes(-5));
+
+        if (enabled)
+        {
+            // Enabled means the observation store's rows are visible through the route.
+            var sink = host.Services.GetRequiredService<IProxyImageObservationSink>();
+            await sink.RecordAsync(
+                Observation("k-flag", "m-flag", ThreadA, Now.AddMinutes(-5), findings: false),
+                CancellationToken.None);
+        }
+
+        using var reviewer = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var response = await ReadAsync<ProxyConversationImagesResponse>(
+            await reviewer.GetAsync($"/v1/proxy/conversations/{ThreadA}/images?window=last_24_hours"));
+
+        Assert.Equal(enabled, response.ImagesEnabled);
+        var message = Assert.Single(response.Messages);
+
+        if (enabled)
+        {
+            Assert.Equal("clean", message.State);
+            Assert.Equal("k-flag", Assert.Single(message.Observations).ObservationKey);
+        }
+        else
+        {
+            Assert.Equal("disabled", message.State);
+            Assert.Empty(message.Observations);
+            using var connection = host.Services.GetRequiredService<HostDatabase>().Open();
+            Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_image_outcome;"));
+            Assert.Equal(0L, Scalar(connection, "SELECT COUNT(*) FROM proxy_image_part;"));
+        }
+    }
+
     [Fact]
     public async Task CrossTenantReadIsAbsent()
     {
@@ -586,11 +632,12 @@ public sealed class ProxyImageObservationTests
         {
             services.RemoveAll<IProxySecretSource>();
             services.AddSingleton<IProxySecretSource>(new TestSecretSource());
-            if (clock is not null)
-            {
-                services.RemoveAll<TimeProvider>();
-                services.AddSingleton(clock);
-            }
+            // The route evaluates its fixed 24-hour window against this clock. Every seeded row is
+            // placed relative to Now, so without pinning it the fixture silently ages out of the
+            // window and the route returns an empty page. That is clock-dependence in the test, not
+            // a product fact, and it must not be able to turn a green suite red overnight.
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton(clock ?? new MutableTimeProvider(Now));
         });
         return host;
     }
