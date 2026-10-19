@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using MailKit;
 using MailKit.Net.Imap;
@@ -47,11 +48,28 @@ static async Task RunImapAsync(string host, int port, string login, string passw
     if (summaries.Count == 0)
         throw new InvalidOperationException("IMAP harness inbox is empty; retrieval proof requires a seeded message.");
     var selected = summaries[^1];
-    var bytes = selected.Size.GetValueOrDefault();
-    if (bytes <= 0)
+    var expectedBytes = selected.Size.GetValueOrDefault();
+    if (expectedBytes <= 0)
         throw new InvalidOperationException("IMAP harness message has no demonstrable body size.");
-    _ = await inbox.GetMessageAsync(selected.Index);
-    Console.WriteLine($"IMAP client authenticated, listed INBOX, and fetched one body bytes={bytes}.");
+
+    // Fetch the raw RFC822 stream so the harness can compare the relayed bytes with a direct
+    // backend fetch. The digest is content-derived and is never logged with the message.
+    long bytes = 0;
+    using var raw = await inbox.GetStreamAsync(selected.Index);
+    using var digest = SHA256.Create();
+    var buffer = new byte[64 * 1024];
+    int read;
+    while ((read = await raw.ReadAsync(buffer)) > 0)
+    {
+        digest.TransformBlock(buffer, 0, read, null, 0);
+        bytes += read;
+    }
+    digest.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+    var sha256 = Convert.ToHexString(digest.Hash!).ToLowerInvariant();
+    if (bytes != expectedBytes)
+        throw new InvalidOperationException("IMAP harness body size disagrees with the listing size.");
+    Console.WriteLine(
+        $"IMAP client authenticated, listed INBOX, and fetched one body bytes={bytes} sha256={sha256}.");
     if (hold)
     {
         await Task.Delay(Timeout.InfiniteTimeSpan);

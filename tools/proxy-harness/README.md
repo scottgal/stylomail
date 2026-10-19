@@ -25,3 +25,37 @@ For manual capture, run `PROXY_E2E_KEEP_ALIVE_SECONDS=300 zsh tools/proxy-harnes
 For the no-traffic operations state, use `PROXY_E2E_NO_TRAFFIC=1` with keep-alive; listeners start but no MailKit clients connect.
 Point the console at the printed base URL and use the harness admin key from the printed temporary config location.
 Capture the screen, then interrupt the harness or let its bounded timer tear everything down.
+
+## Governed image-observation proof
+
+```sh
+PROXY_E2E_IMAGE_PROOF=all zsh tools/proxy-harness/run.sh
+```
+
+This runs two complete passes against the real proxy retrieval path: one with
+`StyloMail:Images:Enabled=true` and one with it `false`, each on its own Host process, Dovecot
+container and disposable SQLite database. Element analysis stays off because the image producer is
+reached through the retrieval warning assembler, not through the embedding service.
+
+Each pass seeds one multipart message containing `fixtures/image-content.png` (a real 64x64 RGB PNG)
+and `fixtures/image-tracking.png` (a 1x1 transparent tracking pixel), authenticates a MailKit IMAP
+client through the proxy, and fetches that message. `image-proof.py` then asserts:
+
+- the enabled route reports one `clean` observation with `availability=available` and counts
+  `imageParts=2`, `imagesSkippedAsChrome=1`, `imagesAdmitted=1`, `imagesProduced=1`;
+- the admitted part is ordinal 3, format `png`, 64x64, 4096 pixels, no findings, end offset equal to
+  the fixture length, and no trailing bytes;
+- the disabled pass reports `imagesEnabled=false`, state `disabled`, and
+  `proxy_image_outcome` / `proxy_image_part` both empty;
+- neither route response contains a filename, address, subject, body token, raw image bytes or any
+  content-shaped key; and
+- the message bytes fetched through the proxy hash identically to a direct backend IMAP fetch
+  (`images/relay-bytes.json`).
+
+Artifacts land under `.styloagent/artifacts/proxy-e2e-<timestamp>-images/` with `enabled/` and
+`disabled/` subdirectories, each holding `images/route.json`, `images/verification.json`,
+`images/relay-bytes.json`, `host-build.id` and `host.log`. The combined
+`image-proof-summary.json` is the single content-free result document. A single pass can be run with
+`PROXY_E2E_IMAGE_PROOF=enabled` or `=disabled`; it fails closed if its Host build or fixture is
+missing. The Host must be built first (`dotnet build src/StyloMail.Host`), because the harness starts
+the compiled DLL with `--no-build`.

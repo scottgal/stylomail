@@ -20,7 +20,42 @@ fi
 : "${PROXY_E2E_BACKEND_USERNAME:=backend@example.test}"
 : "${PROXY_E2E_EMBEDDING_ENDPOINT:=http://127.0.0.1:11440}"
 : "${PROXY_E2E_EMBEDDING_TOKEN_FILE:=}"
-if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
+# 0 = the original IMAP+SMTP proof; enabled/disabled = the governed image-observation proof on one
+# Host configuration; all = both image passes under one artifact directory.
+: "${PROXY_E2E_IMAGE_PROOF:=0}"
+: "${PROXY_E2E_IMAGE_SUBJECT:=Image observation proof}"
+: "${PROXY_E2E_IMAGE_BODY_TOKEN:=HARNESS-IMAGE-BODY-7c1f}"
+: "${PROXY_E2E_IMAGE_CONTENT:=tools/proxy-harness/fixtures/image-content.png}"
+: "${PROXY_E2E_IMAGE_TRACKING:=tools/proxy-harness/fixtures/image-tracking.png}"
+
+if [[ "$PROXY_E2E_IMAGE_PROOF" == all ]]; then
+  # Each pass starts its own Host, backend containers and disposable database. A disabled pass
+  # therefore proves absence on a fresh store instead of relying on a flag read after the fact.
+  image_base="${PROXY_E2E_RUN_DIR:-.styloagent/artifacts/proxy-e2e-$(date -u +%Y%m%dT%H%M%SZ)-images}"
+  mkdir -p "$image_base"
+  image_base="$(cd "$image_base" && pwd)"
+  PROXY_E2E_RUN_DIR="$image_base/enabled" PROXY_E2E_IMAGE_PROOF=enabled zsh "$0"
+  PROXY_E2E_RUN_DIR="$image_base/disabled" PROXY_E2E_IMAGE_PROOF=disabled zsh "$0"
+  python3 - "$image_base" <<'PY'
+import json, os, sys
+base = sys.argv[1]
+read = lambda name: json.load(open(os.path.join(base, name), encoding='utf-8'))
+summary = {
+    'enabled': read('enabled/images/verification.json'),
+    'disabled': read('disabled/images/verification.json'),
+    'hostBuildIds': {
+        'enabled': open(os.path.join(base, 'enabled/host-build.id'), encoding='utf-8').read().strip(),
+        'disabled': open(os.path.join(base, 'disabled/host-build.id'), encoding='utf-8').read().strip(),
+    },
+}
+with open(os.path.join(base, 'image-proof-summary.json'), 'w', encoding='utf-8') as stream:
+    json.dump(summary, stream, indent=2, sort_keys=True)
+    stream.write('\n')
+print('IMAGE PROOF PASS artifacts=' + base)
+PY
+  exit 0
+fi
+if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 && "$PROXY_E2E_IMAGE_PROOF" == 0 ]]; then
   [[ -n "$PROXY_E2E_EMBEDDING_TOKEN_FILE" ]] || { print -u2 -- 'PROXY_E2E_EMBEDDING_TOKEN_FILE is required for retrieval element proof.'; exit 1; }
   [[ -r "$PROXY_E2E_EMBEDDING_TOKEN_FILE" ]] || { print -u2 -- 'PROXY_E2E_EMBEDDING_TOKEN_FILE must name a readable file for retrieval element proof.'; exit 1; }
   if ! curl --silent --show-error --output /dev/null --connect-timeout 2 --max-time 3 "$PROXY_E2E_EMBEDDING_ENDPOINT"; then
@@ -33,6 +68,18 @@ if [[ -z "${PROXY_E2E_CLIENT_PASSWORD:-}" ]]; then
 fi
 if [[ -z "${PROXY_E2E_BACKEND_SECRET:-}" ]]; then
   export PROXY_E2E_BACKEND_SECRET="$(openssl rand -hex 16)"
+fi
+if [[ "$PROXY_E2E_IMAGE_PROOF" != 0 ]]; then
+  if [[ -z "${STYLOMAIL_PROFILE_KEY:-}" ]]; then
+    # Image observation identity is HMAC-keyed from the tenant profile key. Without it the producer
+    # correctly declines to invent an identity, so the proof supplies real per-run key material just
+    # as it does for the login and credential-protection keys. It is never written to an artifact.
+    export STYLOMAIL_PROFILE_KEY="$(openssl rand -hex 32)"
+  fi
+  # A lone profile key is only a complete deployment under a provider that holds no credential.
+  # The image proof never asks a semantic provider, so name that fact instead of borrowing one.
+  : "${StyloMail__Assessment__Provider:=NeverAsks}"
+  export StyloMail__Assessment__Provider
 fi
 export PROXY_E2E_TENANT PROXY_E2E_PRINCIPAL PROXY_E2E_SENDER PROXY_E2E_ACTOR PROXY_E2E_HOST_URL
 export PROXY_E2E_LOGIN PROXY_E2E_BACKEND_USERNAME
@@ -132,6 +179,92 @@ PY
   done
 }
 
+# Reads the retrieval image route for the seeded message, verifies the observation facts and the
+# absence of content, and compares the relayed message bytes with a direct backend fetch.
+await_image_proof() {
+  local mode=$1
+  local images_dir="$run_dir/images"
+  local conversations="$images_dir/conversations.json"
+  local route="$images_dir/route.json"
+  local thread=''
+  local attempt
+
+  for attempt in {1..45}; do
+    if curl -fsS --config "$secret_dir/curl.conf" \
+      "$PROXY_E2E_HOST_URL/v1/proxy/conversations?window=last_24_hours" >"$conversations" \
+      && thread=$(python3 - "$conversations" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1], encoding='utf-8')).get('conversations') or []
+print(rows[0]['threadToken'] if rows else '')
+PY
+) \
+      && [[ -n "$thread" ]]; then
+      break
+    fi
+    [[ "$attempt" == 45 ]] && { print -u2 -- 'Retrieval did not publish a conversation for image proof.'; return 1; }
+    sleep 1
+  done
+
+  for attempt in {1..45}; do
+    if curl -fsS --config "$secret_dir/curl.conf" \
+      "$PROXY_E2E_HOST_URL/v1/proxy/conversations/$thread/images?window=last_24_hours" >"$route" \
+      && python3 - "$route" "$mode" <<'PY'
+import json, sys
+document = json.load(open(sys.argv[1], encoding='utf-8'))
+messages = document.get('messages') or []
+if sys.argv[2] == 'enabled':
+    ready = bool(messages) and any(message.get('observations') for message in messages)
+else:
+    ready = bool(messages) and all(message.get('state') == 'disabled' for message in messages)
+raise SystemExit(0 if ready else 1)
+PY
+    then
+      break
+    fi
+    [[ "$attempt" == 45 ]] && { print -u2 -- "Image route did not reach the $mode proof state."; return 1; }
+    sleep 1
+  done
+
+  python3 tools/proxy-harness/image-proof.py verify-route \
+    --mode "$mode" \
+    --route "$route" \
+    --summary "$images_dir/verification.json" \
+    --database "$run_dir/host.db" \
+    --content "$PROXY_E2E_IMAGE_CONTENT" \
+    --tracking "$PROXY_E2E_IMAGE_TRACKING" \
+    --sender "$PROXY_E2E_SENDER" \
+    --recipient "$PROXY_E2E_BACKEND_USERNAME" \
+    --subject "$PROXY_E2E_IMAGE_SUBJECT" \
+    --body-token "$PROXY_E2E_IMAGE_BODY_TOKEN" || return 1
+
+  local direct driver_sha
+  direct=$(python3 tools/proxy-harness/image-proof.py direct-hash \
+    --host "$PROXY_E2E_BACKEND_IMAP_HOST" \
+    --port "$PROXY_E2E_BACKEND_IMAP_PORT" \
+    --user "$PROXY_E2E_BACKEND_USERNAME" \
+    --password-env PROXY_E2E_BACKEND_SECRET) || return 1
+  driver_sha=$(sed -nE 's/.* sha256=([0-9a-f]{64}).*/\1/p' "$transcript" | tail -1)
+  [[ -n "$driver_sha" ]] || { print -u2 -- 'IMAP driver transcript carries no raw-body digest.'; return 1; }
+  python3 - "$images_dir/relay-bytes.json" "$mode" "$direct" "$driver_sha" <<'PY' || return 1
+import json, sys
+path, mode, direct_text, relayed = sys.argv[1:]
+direct = json.loads(direct_text)
+if direct['sha256'] != relayed:
+    raise SystemExit('Relayed message bytes differ from a direct backend fetch.')
+document = {
+    'mode': mode,
+    'directBytes': direct['bytes'],
+    'directSha256': direct['sha256'],
+    'relayedSha256': relayed,
+    'identical': True,
+}
+with open(path, 'w', encoding='utf-8') as stream:
+    json.dump(document, stream, indent=2, sort_keys=True)
+    stream.write('\n')
+print(json.dumps(document, sort_keys=True))
+PY
+}
+
 stop_driver() {
   local pid=$1
   if kill -0 "$pid" 2>/dev/null; then
@@ -227,9 +360,20 @@ export StyloMail__Proxy__Providers__harness__SmtpHost="$PROXY_E2E_BACKEND_SMTP_H
 export StyloMail__Proxy__Providers__harness__SmtpPort="$PROXY_E2E_BACKEND_SMTP_PORT"
 export StyloMail__Proxy__Providers__harness__SmtpTls=true
 export StyloMail__Proxy__Providers__harness__CaCertificatePath="$backend_ca"
-export StyloMail__Embeddings__Enabled=true
-export StyloMail__Embeddings__Endpoint="$PROXY_E2E_EMBEDDING_ENDPOINT"
-export StyloMail__Embeddings__TokenFilePath="$PROXY_E2E_EMBEDDING_TOKEN_FILE"
+if [[ "$PROXY_E2E_IMAGE_PROOF" == 0 ]]; then
+  export StyloMail__Embeddings__Enabled=true
+  export StyloMail__Embeddings__Endpoint="$PROXY_E2E_EMBEDDING_ENDPOINT"
+  export StyloMail__Embeddings__TokenFilePath="$PROXY_E2E_EMBEDDING_TOKEN_FILE"
+else
+  # The image proof depends on the retrieval warning assembler, not on element classification.
+  # Embeddings stay off so the scenario does not borrow an external service it does not exercise.
+  export StyloMail__Embeddings__Enabled=false
+  if [[ "$PROXY_E2E_IMAGE_PROOF" == enabled ]]; then
+    export StyloMail__Images__Enabled=true
+  else
+    export StyloMail__Images__Enabled=false
+  fi
+fi
 export PROXY_E2E_BACKEND_SMTP_CERTIFICATE="$backend_certificate"
 export PROXY_E2E_BACKEND_SMTP_PRIVATE_KEY="$backend_key"
 export StyloMail__Proxy__Listeners__0__ListenerId=imap-1
@@ -292,12 +436,28 @@ account_status=$(curl -sS --config "$secret_dir/curl.conf" -o "$run_dir/account-
 
 # The retrieval proof needs one real backend message. This stays in the disposable backend and is
 # never copied to the artifact directory or transcript.
-print -r -- 'From: sender@example.test' >"$secret_dir/retrieval.eml"
-print -r -- 'To: backend@example.test' >>"$secret_dir/retrieval.eml"
-print -r -- 'Message-ID: <harness-retrieval@example.test>' >>"$secret_dir/retrieval.eml"
-print -r -- 'Subject: Retrieval proof' >>"$secret_dir/retrieval.eml"
-print -r -- '' >>"$secret_dir/retrieval.eml"
-print -r -- 'Please verify your account immediately.' >>"$secret_dir/retrieval.eml"
+if [[ "$PROXY_E2E_IMAGE_PROOF" == 0 ]]; then
+  print -r -- 'From: sender@example.test' >"$secret_dir/retrieval.eml"
+  print -r -- 'To: backend@example.test' >>"$secret_dir/retrieval.eml"
+  print -r -- 'Message-ID: <harness-retrieval@example.test>' >>"$secret_dir/retrieval.eml"
+  print -r -- 'Subject: Retrieval proof' >>"$secret_dir/retrieval.eml"
+  print -r -- '' >>"$secret_dir/retrieval.eml"
+  print -r -- 'Please verify your account immediately.' >>"$secret_dir/retrieval.eml"
+else
+  mkdir -p "$run_dir/images"
+  [[ -r "$PROXY_E2E_IMAGE_CONTENT" ]] || { print -u2 -- "Image fixture is unreadable: $PROXY_E2E_IMAGE_CONTENT"; exit 1; }
+  [[ -r "$PROXY_E2E_IMAGE_TRACKING" ]] || { print -u2 -- "Image fixture is unreadable: $PROXY_E2E_IMAGE_TRACKING"; exit 1; }
+  python3 tools/proxy-harness/image-proof.py build-message \
+    --out "$secret_dir/retrieval.eml" \
+    --manifest "$run_dir/images/fixture-manifest.json" \
+    --content "$PROXY_E2E_IMAGE_CONTENT" \
+    --tracking "$PROXY_E2E_IMAGE_TRACKING" \
+    --sender "$PROXY_E2E_SENDER" \
+    --recipient "$PROXY_E2E_BACKEND_USERNAME" \
+    --message-id "harness-images-${PROXY_E2E_IMAGE_PROOF}@example.test" \
+    --subject "$PROXY_E2E_IMAGE_SUBJECT" \
+    --body-token "$PROXY_E2E_IMAGE_BODY_TOKEN"
+fi
 docker exec -i "$dovecot_container" doveadm save -u "$PROXY_E2E_BACKEND_USERNAME" -m INBOX <"$secret_dir/retrieval.eml"
 if ! mailbox_status=$(docker exec "$dovecot_container" doveadm mailbox status -u "$PROXY_E2E_BACKEND_USERNAME" messages INBOX); then
   print -u2 -- 'Dovecot retrieval seed mailbox-status command failed.'
@@ -326,7 +486,13 @@ if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   assert_live_session "$imap_sessions" Imap
   # The FETCH worker is intentionally off relay. Poll its durable, content-free rows rather than
   # assuming the driver completion means the background classification has persisted already.
-  await_element_analysis Retrieval "$retrieval_analysis"
+  if [[ "$PROXY_E2E_IMAGE_PROOF" == 0 ]]; then
+    await_element_analysis Retrieval "$retrieval_analysis" || exit 1
+  else
+    if ! await_image_proof "$PROXY_E2E_IMAGE_PROOF"; then
+      exit 1
+    fi
+  fi
 fi
 
 smtp_listener_json=$(curl -fsS --config "$secret_dir/curl.conf" -X POST "$PROXY_E2E_HOST_URL/v1/proxy/listeners/smtp-1/enable")
@@ -339,7 +505,9 @@ if [[ "$PROXY_E2E_NO_TRAFFIC" != 1 ]]; then
   curl -fsS --config "$secret_dir/curl.conf" "$PROXY_E2E_HOST_URL/v1/proxy/sessions?scope=live" >"$smtp_sessions"
   assert_live_session "$smtp_sessions" Imap
   assert_live_session "$smtp_sessions" Smtp
-  await_element_analysis Submission "$submission_analysis"
+  if [[ "$PROXY_E2E_IMAGE_PROOF" == 0 ]]; then
+    await_element_analysis Submission "$submission_analysis" || exit 1
+  fi
 fi
 
 # Fail closed if any run artifact emitted a supplied or generated secret. Python receives values only via env.
@@ -349,6 +517,7 @@ secrets = [
     os.environ["STYLOMAIL_PROXY_LOGIN_KEY"],
     os.environ["STYLOMAIL_PROXY_PROTECTION_KEY"],
     os.environ["PROXY_E2E_CLIENT_PASSWORD"],
+    os.environ.get("STYLOMAIL_PROFILE_KEY", ""),
     os.environ["PROXY_E2E_BACKEND_SECRET"]]
 for root, dirs, files in os.walk(sys.argv[1]):
     dirs[:] = [directory for directory in dirs
@@ -360,7 +529,7 @@ for root, dirs, files in os.walk(sys.argv[1]):
             raise SystemExit("A harness artifact contained a credential value.")
 PY
 print -r -- "HARNESS CERTIFICATE ONLY; NOT DEPLOYMENT MATERIAL" >>"$transcript"
-print -r -- "IMAP+SMTP PASS artifacts=$run_dir" >>"$transcript"
+print -r -- "IMAP+SMTP PASS images=$PROXY_E2E_IMAGE_PROOF artifacts=$run_dir" >>"$transcript"
 if [[ "$PROXY_E2E_KEEP_ALIVE_SECONDS" != <-> ]]; then
   print -u2 -- 'PROXY_E2E_KEEP_ALIVE_SECONDS must be a non-negative integer.'
   exit 1
