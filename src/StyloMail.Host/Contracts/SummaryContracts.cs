@@ -399,7 +399,16 @@ public sealed record EntityDirectoryCoverageResponse
 {
     public required bool Complete { get; init; }
 
-    /// <summary>Rows examined to fill this page, including any that a search filter rejected.</summary>
+    /// <summary>
+    /// Rows returned by the query to build this page, before the page was trimmed, including the
+    /// extra probe row that proves <see cref="EntityDirectoryResponse.HasMore"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a count of database rows examined.</b> The search predicate and the tenant and scope
+    /// predicates run inside the query, so rows they reject are never returned and are not counted
+    /// here. A reader showing this value must label it "returned for this page", not "scanned"; a
+    /// true scan count would need SQLite instrumentation the route does not have.
+    /// </remarks>
     public int? Scanned { get; init; }
 
     public string? Note { get; init; }

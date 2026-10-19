@@ -348,6 +348,52 @@ public sealed class SummaryEndpointsTests
         }
     }
 
+    [Fact]
+    public async Task A_ledger_source_failure_leaves_the_measured_queue_series_and_names_rejected_unknown()
+    {
+        // The mirror of the store-level queue-missing test: here the queue is readable and the
+        // ledger is not. The queue half must stay measured, and every rejected value must be null
+        // with a named reason rather than the zero that would read as "nothing was rejected".
+        using var host = new TestHost().WithClock();
+        await AcceptAsync(host, Acme, MailDirection.Inbound, DeliveryState.Held);
+
+        using (var connection = host.Services.GetRequiredService<HostDatabase>().Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DROP TABLE host_decision_ledger;";
+            command.ExecuteNonQuery();
+        }
+
+        using var client = host.ClientAs(TestPrincipals.AcmeReviewerKey);
+        var flow = await ReadAsync<FlowSummaryResponse>(
+            await client.GetAsync("/v1/overview/flow?window=last_24_hours"));
+
+        Assert.Equal(SummaryAvailability.Partial, flow.Availability);
+        Assert.False(flow.Coverage.Complete);
+
+        // The queue half is still true.
+        Assert.Equal(1, flow.Totals.Inbound);
+        Assert.Equal(0, flow.Totals.Outbound);
+        Assert.Equal(1, flow.Totals.Held);
+        Assert.Equal(1, flow.Buckets.Sum(bucket => bucket.Inbound ?? 0));
+
+        // The ledger half is absent, not zero.
+        Assert.Null(flow.Totals.Rejected);
+        Assert.Null(flow.Coverage.DecisionsCounted);
+        Assert.Null(flow.Coverage.DirectionNotRecoverable);
+        Assert.All(flow.Buckets, bucket => Assert.Null(bucket.Rejected));
+        Assert.All(flow.Buckets, bucket => Assert.NotNull(bucket.Inbound));
+
+        Assert.Contains(
+            flow.NotProduced,
+            entry => entry.Series == "rejected"
+                && entry.Reason == SummaryReasons.LedgerUnreadable);
+        Assert.Contains(
+            flow.NotProduced,
+            entry => entry.Series == "directionNotRecoverable"
+                && entry.Reason == SummaryReasons.LedgerUnreadable);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Queues
     // ---------------------------------------------------------------------------------------------
