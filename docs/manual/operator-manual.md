@@ -411,6 +411,28 @@ It is a failed read.
 If you see this, treat it as a connectivity or version problem, not as an account population of
 zero. The read did not happen, so the screen has nothing to report about accounts.
 
+### 3.7 The Service page
+
+The Service page is the operator's view of the running mail service, not a protocol console.
+
+![Figure M34: the service page on a governed Host](images/m34-service-page.png)
+
+> **Figure M34.** Service health in plain words: **Accepting mail: yes**, **Live feed: connected**,
+> last checked, and the Host address. Accounts, listeners, live sessions and operations are separate
+> cards. This governed Host has no access proxy composed, so the empty states name that fact:
+> no proxy accounts, no listeners, no reported sessions, and operations not produced for the window.
+> **Create proxy account** opens the existing account dialog. Listeners are deployment-owned, so the
+> page says so and offers no Add button. Queue and storage appear lower, and raw protocol detail sits
+> behind **Advanced protocol details**.
+>
+> Governed harness data, not production traffic. Captured at 1180x720, Host build `5b6167a1cce7`,
+> sha256 `1ec7b746460561e3bb4464147da29317d18ba7bed65ab504d93dd8584e0c8da7`.
+
+The page distinguishes four account states, four listener states and a session count. An empty list
+is written for its card: no accounts configured is not a failed read, and a Host that does not report
+sessions says that rather than claiming zero. Every action asks for a reason and confirms before it
+applies; the Host records the actor.
+
 ## 4. Review
 
 ### 4.1 Mail
@@ -934,6 +956,40 @@ is counted with a named reason, never as a clean image. Chrome and over-budget i
 individual row. The **Advanced image detail** drawer carries the opaque ids and the raw state, which
 the default row keeps out of the first read.
 
+### 4.10 Policy configuration
+
+The Policy page states what protection is doing and lets an authorised operator prepare a pack. It
+does not turn protection on by itself, and it never applies a rule directly.
+
+![Figure M35: a policy draft with tolerances and locked hard floors](images/m35-policy-draft-hard-floors.png)
+
+> **Figure M35.** A draft pack in the Policy editor. The rule set and scorer versions are shown, the
+> template is labelled **Balanced starting point** and says it is a starting point rather than a
+> calibrated profile, and the operator must review every level. **Child safety and grooming**,
+> **Credible threats of violence** and **Illegal content** are hard floors: they are locked at
+> **Strict**, and the reason says lowering one needs a code change and a recorded operator decision,
+> not a configuration edit. Non-floor categories offer Off, Observe, Standard, Strict and Zero
+> tolerance. The draft is explicitly not protection until it is approved and activated.
+>
+> Governed harness data, not production traffic. Captured at 1180x720, Host build `c239c5042c87`,
+> sha256 `a4a2cf0a9c1d8cbba83072cd1033f86f3f0220ec1ae10c8ffa020de134e9c6d9`.
+
+A pack moves through **Draft**, **Approved**, **Effective**, **Superseded** and **Withdrawn**.
+Approval needs a second administrator who is not the author; the Host enforces that, and the console
+shows the refusal. Activation uses the effective and review dates on the draft and asks for
+confirmation. Every state change is audited with the reason.
+
+**Exceptions** are scoped bindings. A narrower scope wins over a wider one, and every binding states
+its action, dates, author, approver, precedence and consequence before it is applied. Capture of
+message content is a separate explicit binding with a retention statement; it is never a default.
+
+Two things are deliberately outside this page:
+
+- **Authoritative evaluation and jurisdiction are deployment configuration**, not console actions.
+  The page shows their state and says so. Enabling them needs a separate operator decision.
+- **Preview against recent traffic is not produced**, because the Host has no audited dry-run route.
+  The page names that gap rather than inventing a simulation.
+
 ## 5. Operations
 
 ### 5.1 Live sessions
@@ -1104,15 +1160,20 @@ signals, not message content, and its caption says that.
 | M31 | Dashboard at minimum size | ux-results/console-dashboard | captured; governed harness; build 8c9275a80753; sha256 72c6b879…; 900x520, flow partly visible |
 | M32 | Dashboard charts with real bars | ux-results/console-graphs | captured; governed harness; build 9b4fb40f1c51; sha256 4a075bc8…; Inbound 3, Held 3, outcome mix Held 3 |
 | M33 | Image observation from a live proxy fetch | ux-results/console-images-live | captured; governed harness; build ef200fd090af; sha256 4a414f24…; 2 parts, 1 admitted PNG 64x64, no findings |
+| M34 | Service page | ux-results/console-service | captured; governed harness; build 5b6167a1cce7; sha256 1ec7b746…; health, accounts, listeners, sessions, operations |
+| M35 | Policy draft with locked hard floors | .styloagent/scratch/desktop/policy-smoke | captured; governed harness; build c239c5042c87; sha256 a4a2cf0a…; draft v1 GB, three hard floors |
 
-Nineteen frames in this table are captured, in ten batches. M27 and M28 come from the seventh, the
+Twenty-one frames in this table are captured, in eleven batches. M27 and M28 come from the seventh, the
 `console-profile-history` governed harness run against host build `c9feabf7b48a`; they are real
 Host and route output over a temporary seeded database, not production traffic. M29 to M31 come from
 the eighth, the `console-dashboard` governed harness run against Host build `8c9275a80753`, with the
 same rule: real Host and routes over a temporary seeded database. M32 comes from the ninth, the
 `console-dashboard-graphs` run against Host build `9b4fb40f1c51`, with three real submissions and the
 same governed-data rule. M33 comes from the tenth, the image-enabled `proxy-e2e-console-capture` run
-against Host build `ef200fd090af`, with a real proxy fetch and the same governed-data rule. M08 and M21a come
+against Host build `ef200fd090af`, with a real proxy fetch and the same governed-data rule. M34 comes
+from the eleventh, the `console-service` governed run against Host build `5b6167a1cce7`. M35 is from
+the `console-policy-smoke` governed run against Host build `c239c5042c87`; its source copy is kept
+under `.styloagent/scratch/desktop/policy-smoke/` and it is labelled governed harness data. M08 and M21a come
 from the first batch, whose host build id was not reported. M09, M10 and M21 come from the second batch, build
 `60716c32c85a`. M02, M16, M18 and M19 come from the third, the `console-smoke` run (success, 106
 actions); its host build is `7e498edf538a` as reported by the console lane, but `result.json` does
